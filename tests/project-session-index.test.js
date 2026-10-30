@@ -273,3 +273,76 @@ test('服务把 worker 判定透传给分组', async () => {
   assert.equal(factory.ids.length, 1)
   assert.deepEqual(grouped, [{ projectId: project.id, sessionIds: ['worker-root'] }])
 })
+
+test('换下的协调者列在项目下，与 worker 同列', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => (key === 'sessionQuery'
+        ? { listSessions: async () => sessions.map((id) => ({ header: { id, cwd: workspace } })) }
+        : undefined),
+    },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: (id) => id === 'worker-root',
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  sessions.push(factory.ids[0], 'worker-root')
+  const updated = await service.replaceCoordinator(project.id)
+  sessions.push(updated.coordinatorSessionId)
+
+  const grouped = await service.sessionsByProject()
+  // 当前协调者仍不列（入口在项目行上），换下的那个跟着 worker 走
+  assert.deepEqual(grouped, [{
+    projectId: project.id,
+    sessionIds: ['worker-root', factory.ids[0]],
+  }])
+})
+
+test('连续换协调者：退役列表只增不重，当前协调者不在其中', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const service = createProjectService({
+    store,
+    ctx: { get: () => undefined },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: () => false,
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await service.replaceCoordinator(project.id)
+  const updated = await service.replaceCoordinator(project.id)
+
+  assert.deepEqual(updated.retiredCoordinatorSessionIds, factory.ids.slice(0, 2))
+  assert.equal(updated.coordinatorSessionId, factory.ids[2])
+  assert.equal(updated.retiredCoordinatorSessionIds.includes(updated.coordinatorSessionId), false)
+})
+
+test('退役会话已从会话库消失时不再列出', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  let sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => (key === 'sessionQuery'
+        ? { listSessions: async () => sessions.map((id) => ({ header: { id, cwd: workspace } })) }
+        : undefined),
+    },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: () => false,
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  const updated = await service.replaceCoordinator(project.id)
+  // 退役那条的会话记录被宿主清掉了，只剩当前协调者
+  sessions = [updated.coordinatorSessionId]
+
+  assert.deepEqual(await service.sessionsByProject(), [])
+})
