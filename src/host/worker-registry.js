@@ -12,7 +12,7 @@
  *
  * 落盘位置在 dsh home 下的自有目录，与通知队列同构（原子写 + 串行化读改写）。
  *
- * @module dsh-coordinator/host/worker-registry
+ * @module dsh-leader-kit/host/worker-registry
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -42,7 +42,7 @@ export function createWorkerRegistry({
   maxWorkers = DEFAULT_MAX_WORKERS,
   logger = () => {},
 } = {}) {
-  const directory = join(home, 'dsh-coordinator')
+  const directory = join(home, 'dsh-leader-kit')
   const file = join(directory, 'workers.json')
   const temporary = join(directory, 'workers.json.tmp')
 

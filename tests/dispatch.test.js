@@ -282,7 +282,7 @@ test('失败终态的通知正文写明失败原因', () => {
 
 test('worker 报失败时通知判失败并写明原因', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -304,7 +304,7 @@ test('worker 报失败时通知判失败并写明原因', async () => {
 
 test('worker 一轮说完话就自动回报，不需要它调任何工具', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
@@ -327,7 +327,7 @@ test('worker 一轮说完话就自动回报，不需要它调任何工具', asyn
 
 test('人直接跟 worker 聊的轮次不打扰协调者', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
@@ -352,7 +352,7 @@ test('人直接跟 worker 聊的轮次不打扰协调者', async () => {
 
 test('一轮里有多个 step 时，摘要取最后一条 assistant 文本', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
@@ -383,7 +383,7 @@ test('一轮里有多个 step 时，摘要取最后一条 assistant 文本', asy
 
 test('这一轮只调了工具没说话，摘要如实说没产出文本', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
@@ -411,7 +411,7 @@ test('被取消、被阻断、撞 token 上限的轮次都判失败并写明原�
   ]
   for (const { reason, pattern } of cases) {
     const fixture = createFixture()
-    const home = await makeTempDir('dsh-coordinator-dispatch-')
+    const home = await makeTempDir('dsh-leader-kit-dispatch-')
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
     const parent = createParent('parent-1', fixture.delivered)
     fixture.agents.set('parent-1', parent)
@@ -441,7 +441,7 @@ test('漏传 coordinatorIndex 时装配直接报错，不静默跳过派工校�
 })
 
 test('派工立即返回，不等待 worker 完成', async () => {  const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
@@ -463,7 +463,7 @@ test('派工立即返回，不等待 worker 完成', async () => {  const fixtur
 
 test('worker 完成后通知父会话并从队列移除', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
@@ -490,7 +490,7 @@ test('worker 完成后通知父会话并从队列移除', async () => {
 
 test('父会话正忙时通知先留队，空闲后自动投递', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
   try {
     const store = createNotificationStore({ home })
@@ -523,7 +523,7 @@ test('父会话正忙时通知先留队，空闲后自动投递', async () => {
 
 test('轮询重入不会重复投递同一条通知', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const real = createNotificationStore({ home })
   // 造出「两次轮询拿到同一份待投快照」：第一份读到的结果被缓存下来，
   // 之后每次轮询都返回它——两个轮询都认为这条通知还等着投。
@@ -594,7 +594,7 @@ test('空闲检测读盘失败不会变成未处理拒绝', async () => {
 
 test('改造前落盘的旧通知补投不会失败', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   try {
@@ -624,7 +624,7 @@ test('改造前落盘的旧通知补投不会失败', async () => {
 
 test('插件卸载后不再观察会话，也不再起定时器', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   try {
@@ -660,7 +660,7 @@ test('worker 最后一次回报的内容只取产物摘要或失败原因', () =
 
 test('父会话已销毁时通知留在队列等待补投', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
@@ -684,7 +684,7 @@ test('父会话已销毁时通知留在队列等待补投', async () => {
 
 test('父会话注册后补投队列中的通知', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
@@ -713,7 +713,7 @@ test('父会话注册后补投队列中的通知', async () => {
 
 test('连续自动续行达到上限后不再唤醒', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 2 })
   try {
@@ -741,7 +741,7 @@ test('连续自动续行达到上限后不再唤醒', async () => {
 
 test('撞续行上限后不再每轮重试', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 1 })
   try {
@@ -781,7 +781,7 @@ test('撞续行上限后不再每轮重试', async () => {
 
 test('上限复位后被挡下的通知能重新投出', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 1 })
   try {
@@ -820,7 +820,7 @@ test('上限复位后被挡下的通知能重新投出', async () => {
 
 test('外部输入重置自动续行计数', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 1 })
@@ -854,7 +854,7 @@ test('外部输入重置自动续行计数', async () => {
 
 test('spawn_worker 缺少调用方 agent 时报错', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
@@ -878,7 +878,7 @@ test('spawn_worker 缺少调用方 agent 时报错', async () => {
 
 test('spawn_worker 返回子会话 id 且不等待结果', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
@@ -897,7 +897,7 @@ test('spawn_worker 返回子会话 id 且不等待结果', async () => {
 })
 
 test('未启用 agents 服务时派工明确报错', async () => {
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
     const store = createNotificationStore({ home })
     // 续聊后端都在，只缺建会话的 agents 服务：报错要指向真正的缺口。
@@ -949,7 +949,7 @@ test('派工工具拒绝非字符串的 force', async () => {
 
 test('worker 登记失败仍照常投递完成通知', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   // home 只读、磁盘满：登记抛错，但子会话已经跑起来了，没法回滚。
   const workers = {
@@ -986,7 +986,7 @@ test('worker 登记失败仍照常投递完成通知', async () => {
 
 test('项目索引读不出来时拒绝派工，不拉起子会话', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({
     ctx: fixture.ctx,
@@ -1014,7 +1014,7 @@ test('项目索引读不出来时拒绝派工，不拉起子会话', async () =>
 
 test('非协调者会话派工被拒绝', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({
     ctx: fixture.ctx,
@@ -1042,7 +1042,7 @@ test('非协调者会话派工被拒绝', async () => {
 
 test('投递途中 worker 报完工，不误报发不出去', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -1074,7 +1074,7 @@ test('投递途中 worker 报完工，不误报发不出去', async () => {
 
 test('续聊轮 worker 报失败时通知判失败', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -1103,7 +1103,7 @@ test('续聊轮 worker 报失败时通知判失败', async () => {
 
 test('续聊轮正常结束仍报完成', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -1130,7 +1130,7 @@ test('续聊轮正常结束仍报完成', async () => {
 
 test('未归档 worker 到顶时拒绝新建，并给出可复用候选', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   await fixture.workers.register({ childId: 'child-old-1', parentSessionId: 'parent-1', name: 'research-sources' })
   await fixture.workers.register({ childId: 'child-old-2', parentSessionId: 'parent-1', name: 'write-summary' })
@@ -1164,7 +1164,7 @@ test('未归档 worker 到顶时拒绝新建，并给出可复用候选', async 
 
 test('名册已归档的记录不占名额', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   await fixture.workers.register({ childId: 'child-old-1', parentSessionId: 'parent-1', name: '旧工' })
   const dispatcher = makeDispatcher({
@@ -1188,7 +1188,7 @@ test('名册已归档的记录不占名额', async () => {
 
 test('force 非空时越过名册上限', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   await fixture.workers.register({ childId: 'child-old-1', parentSessionId: 'parent-1', name: '占位' })
   const dispatcher = makeDispatcher({
@@ -1211,7 +1211,7 @@ test('force 非空时越过名册上限', async () => {
 
 test('投递未声明 cardId 而 worker 挂着未完成的卡时拒绝', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   await fixture.workers.register({ childId: 'child-9', parentSessionId: 'parent-1', name: '实现工' })
   const dispatcher = makeDispatcher({
@@ -1245,7 +1245,7 @@ test('投递未声明 cardId 而 worker 挂着未完成的卡时拒绝', async (
 
 test('声明同卡时放行，声明别的卡时拒绝', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   await fixture.workers.register({ childId: 'child-9', parentSessionId: 'parent-1', name: '实现工' })
   const dispatcher = makeDispatcher({
@@ -1285,7 +1285,7 @@ test('声明同卡时放行，声明别的卡时拒绝', async () => {
 
 test('挂着已完成卡的 worker 可以直接投递', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   await fixture.workers.register({ childId: 'child-9', parentSessionId: 'parent-1', name: '实现工' })
   const dispatcher = makeDispatcher({
@@ -1306,7 +1306,7 @@ test('挂着已完成卡的 worker 可以直接投递', async () => {
 
 test('派工时把 worker 会话标题定成 name', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -1324,7 +1324,7 @@ test('派工时把 worker 会话标题定成 name', async () => {
 
 test('宿主缺 sessionTitle 服务时派工照常成功，只是标题保持默认', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const warnings = []
   const inner = fixture.ctx.get
@@ -1350,7 +1350,7 @@ test('宿主缺 sessionTitle 服务时派工照常成功，只是标题保持默
 
 test('续聊带 rename 时登记表与会话标题都改到新名字', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -1380,7 +1380,7 @@ test('续聊带 rename 时登记表与会话标题都改到新名字', async () 
 
 test('一轮只结算一次回报，重复上报不重复唤醒', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
@@ -1404,7 +1404,7 @@ test('一轮只结算一次回报，重复上报不重复唤醒', async () => {
 
 test('投递写盘失败不会重结算，也不会把新一轮产物标成这一轮', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const real = createNotificationStore({ home })
   let failures = 1
   const store = {
@@ -1447,7 +1447,7 @@ test('投递写盘失败不会重结算，也不会把新一轮产物标成这�
 
 test('非派工的轮次不攒 assistant 文本，不会把人的话当成 worker 产物', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
@@ -1484,7 +1484,7 @@ test('非派工的轮次不攒 assistant 文本，不会把人的话当成 worke
 
 test('通知落盘失败时保留在飞记录，重试送出的仍是这一轮的产物', async () => {
   const fixture = createFixture()
-  const home = await makeTempDir('dsh-coordinator-dispatch-')
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const real = createNotificationStore({ home })
   let failures = 1
   const store = {

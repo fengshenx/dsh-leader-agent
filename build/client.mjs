@@ -24,7 +24,7 @@ const root = join(here, '..')
  */
 const BASELINE_EXTERNALS = ['react', 'react-dom']
 
-const id = 'dsh-coordinator'
+const id = 'dsh-leader-kit'
 
 await build({
   entryPoints: [join(root, 'src/client/index.js')],

@@ -9,7 +9,7 @@
  * + 版本化描述符，宿主读标记时不校验来源包的版本。手写的部分只有两处——
  * 原型上的方法标记与实例上的服务绑定，宿主的 SRC 通道据此还原调用描述符。
  *
- * @module dsh-coordinator/host/projects/remote
+ * @module dsh-leader-kit/host/projects/remote
  */
 
 import {
@@ -55,10 +55,10 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
   // 归档后的收尾要同时改两张表：漏传任何一张，问题都要等到会话真的被归档时才
   // 以 `Cannot read properties of undefined` 暴露，那时用户看到的是「归档失败」。
   if (typeof cards?.detachSession !== 'function') {
-    throw new Error('dsh-coordinator: createProjectRemote 缺少 cards，归档后无法摘卡')
+    throw new Error('dsh-leader-kit: createProjectRemote 缺少 cards，归档后无法摘卡')
   }
   if (typeof workers?.remove !== 'function') {
-    throw new Error('dsh-coordinator: createProjectRemote 缺少 workers，归档后无法摘派工登记')
+    throw new Error('dsh-leader-kit: createProjectRemote 缺少 workers，归档后无法摘派工登记')
   }
   class ProjectRemote {
     /**

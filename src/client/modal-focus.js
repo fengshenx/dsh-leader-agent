@@ -15,7 +15,7 @@
  * 这里把判定从 DOM 事件里拆出来，是因为「Tab 到边缘要绕回」「Escape 要不要关」
  * 这两条是浮层最容易写错的地方，而它们不必依赖真实 DOM 就能断言。
  *
- * @module dsh-coordinator/client/modal-focus
+ * @module dsh-leader-kit/client/modal-focus
  */
 
 /** 可聚焦元素的选取规则，与宿主 `useModalLayer` 一致。 */

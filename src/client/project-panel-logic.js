@@ -4,7 +4,7 @@
  * 浏览器侧没有 `node:path`，路径末段要自己取；两种分隔符都得认——宿主可能在
  * Windows 上把目录写成反斜杠形式。
  *
- * @module dsh-coordinator/client/project-panel-logic
+ * @module dsh-leader-kit/client/project-panel-logic
  */
 
 import { MAX_PROJECT_NAME_LENGTH } from '../shared/projects.js'

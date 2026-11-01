@@ -81,7 +81,7 @@ const rules = collectRules(readStyleText().replace(/\/\*[\s\S]*?\*\//g, ''))
 
 test('样式表能被拆成规则（拆不开会让下面几条用例空转）', () => {
   assert.ok(rules.length >= 50, `只拆出 ${rules.length} 条规则`)
-  assert.ok(rules.some((rule) => rule.selector === '.dsh-coordinator-board-card'))
+  assert.ok(rules.some((rule) => rule.selector === '.dsh-leader-kit-board-card'))
 })
 
 test('50% 与 999px 全圆声明都配对 corner-shape: round，不被主题的 superellipse 压成方角', () => {
@@ -93,7 +93,7 @@ test('50% 与 999px 全圆声明都配对 corner-shape: round，不被主题的 
 })
 
 test('可点击产物链接在 hover 与键盘焦点下都出点状下划线', () => {
-  for (const selector of ['.dsh-coordinator-board-link-chip', '.dsh-coordinator-card-detail-link']) {
+  for (const selector of ['.dsh-leader-kit-board-link-chip', '.dsh-leader-kit-card-detail-link']) {
     const focus = rules.find((rule) => rule.selector === `${selector}:focus-visible`)
     assert.notEqual(focus, undefined, `${selector} 缺 :focus-visible 规则`)
     assert.equal(focus.declarations['text-decoration'], 'underline dotted', `${selector} 的焦点态没有点状下划线`)
@@ -108,7 +108,7 @@ test('chip 的下划线偏移取 1px，真机上整条画得出来', () => {
   // 线糊成一条；再往上整条落到 padding box 外被两层 overflow 裁掉（两处读数分别
   // 从 4px 与 5px 起）。CSS 声明层看不出基线位置，所以这里只能守字面量——谁要改它
   // 得先有新的真机读数
-  for (const selector of ['.dsh-coordinator-board-link-chip:focus-visible', '.dsh-coordinator-board-link-chip:hover']) {
+  for (const selector of ['.dsh-leader-kit-board-link-chip:focus-visible', '.dsh-leader-kit-board-link-chip:hover']) {
     const rule = rules.find((item) => item.selector === selector)
     assert.notEqual(rule, undefined, `缺 ${selector} 规则`)
     assert.equal(rule.declarations['text-underline-offset'], '1px', `${selector} 的下划线偏移不是真机定下来的 1px`)
@@ -116,12 +116,12 @@ test('chip 的下划线偏移取 1px，真机上整条画得出来', () => {
 })
 
 test('链路行的裁切带里，chip 的焦点环内嵌绘制', () => {
-  const focus = rules.find((rule) => rule.selector === '.dsh-coordinator-board-link-chip:focus-visible')
+  const focus = rules.find((rule) => rule.selector === '.dsh-leader-kit-board-link-chip:focus-visible')
   assert.notEqual(focus, undefined, 'chip 缺 :focus-visible 规则')
   const offset = Number.parseFloat(focus.declarations['outline-offset'] ?? '')
-  // 必须严格小于 0：0 的环仍画在边框外侧，会被 .dsh-coordinator-board-links 的
+  // 必须严格小于 0：0 的环仍画在边框外侧，会被 .dsh-leader-kit-board-links 的
   // overflow 裁成左右两段竖条
-  assert.ok(Number.isFinite(offset) && offset < 0, 'chip 的焦点环外扩时会被 .dsh-coordinator-board-links 的 overflow 裁掉')
+  assert.ok(Number.isFinite(offset) && offset < 0, 'chip 的焦点环外扩时会被 .dsh-leader-kit-board-links 的 overflow 裁掉')
 })
 
 test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默回落成空值）', () => {
@@ -168,13 +168,13 @@ test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默�
 })
 
 test('信号点的状态变体写在基础规则之后，否则背景与透明度会被基础档覆盖', () => {
-  const baseAt = rules.findIndex((rule) => rule.selector === '.dsh-coordinator-board-signal')
+  const baseAt = rules.findIndex((rule) => rule.selector === '.dsh-leader-kit-board-signal')
   assert.notEqual(baseAt, -1, '缺信号点基础规则')
   // 只认状态名：signal-slot 这类容器不是变体，按前缀匹配会把它误算进来
   const states = 'waiting|unread|running|attention|idle|unknown|none|empty'
   const variants = rules
     .map((rule, index) => ({ rule, index }))
-    .filter(({ rule }) => new RegExp(`^\\.dsh-coordinator-board-(signal|slot-dot)-(${states})$`).test(rule.selector))
+    .filter(({ rule }) => new RegExp(`^\\.dsh-leader-kit-board-(signal|slot-dot)-(${states})$`).test(rule.selector))
   assert.ok(variants.length >= 8, `只找到 ${variants.length} 条状态变体`)
   for (const { rule, index } of variants) {
     assert.ok(index > baseAt, `${rule.selector} 写在基础规则之前，同特异性下会被覆盖`)

@@ -17,7 +17,7 @@
  * 框里没有可输入的控件，组合态下按 Escape 的风险不存在，这里只在按键判断里留
  * 一个 `isComposing` 检查。
  *
- * @module dsh-coordinator/client/modal-shell
+ * @module dsh-leader-kit/client/modal-shell
  */
 
 import { createElement, useLayoutEffect, useRef } from 'react'
@@ -32,14 +32,14 @@ import {
 import { productIcon } from './icons.js'
 
 /** 样式表 id，同一页面只注入一次。 */
-const STYLE_ID = 'dsh-coordinator-modal'
+const STYLE_ID = 'dsh-leader-kit-modal'
 
 /**
  * 样式表内容。类名、数值与断点照抄宿主 `Modal.module.css`，`--dsw-*` 变量由宿主
  * 主题提供。
  */
 const STYLE_TEXT = `
-.dsh-coordinator-modal-root {
+.dsh-leader-kit-modal-root {
   pointer-events: auto;
   position: fixed;
   inset: 0;
@@ -50,21 +50,21 @@ const STYLE_TEXT = `
   padding: max(24px, var(--dsh-frame-overlay-top, 24px)) 24px;
 }
 
-.dsh-coordinator-modal-mask {
+.dsh-leader-kit-modal-mask {
   position: absolute;
   inset: var(--dsh-frame-chrome-top, 0px) 0 0;
   backdrop-filter: var(--dsw-mask-blur);
 }
 
-.dsh-coordinator-modal-mask::after {
+.dsh-leader-kit-modal-mask::after {
   content: '';
   position: absolute;
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
-  animation: dsh-coordinator-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: dsh-leader-kit-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
-.dsh-coordinator-modal-dialog {
+.dsh-leader-kit-modal-dialog {
   box-sizing: border-box;
   position: relative;
   z-index: 1;
@@ -78,36 +78,36 @@ const STYLE_TEXT = `
   border-radius: var(--dsw-radius-panel);
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-elevation-prominent);
-  animation: dsh-coordinator-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: dsh-leader-kit-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
-.dsh-coordinator-modal-dialog-wide {
+.dsh-leader-kit-modal-dialog-wide {
   width: min(560px, 100%);
   max-height: 80vh;
 }
 
-@keyframes dsh-coordinator-modal-enter {
+@keyframes dsh-leader-kit-modal-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-coordinator-modal-mask::after,
-  .dsh-coordinator-modal-dialog { animation: none; }
+  .dsh-leader-kit-modal-mask::after,
+  .dsh-leader-kit-modal-dialog { animation: none; }
 }
 
-.dsh-coordinator-modal-dialog:focus {
+.dsh-leader-kit-modal-dialog:focus {
   outline: none;
 }
 
-.dsh-coordinator-modal-content {
+.dsh-leader-kit-modal-content {
   display: flex;
   flex-direction: column;
   width: 100%;
   min-height: 0;
 }
 
-.dsh-coordinator-modal-header {
+.dsh-leader-kit-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -115,7 +115,7 @@ const STYLE_TEXT = `
   padding: 22px 14px 12px 24px;
 }
 
-.dsh-coordinator-modal-title {
+.dsh-leader-kit-modal-title {
   margin: 0;
   font-size: 16px;
   line-height: 24px;
@@ -123,7 +123,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-coordinator-modal-close {
+.dsh-leader-kit-modal-close {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -138,12 +138,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-modal-close:hover {
+  .dsh-leader-kit-modal-close:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-coordinator-modal-description {
+.dsh-leader-kit-modal-description {
   margin: 0;
   padding: 0 24px;
   font-size: 14px;
@@ -152,7 +152,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-coordinator-modal-body {
+.dsh-leader-kit-modal-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -160,7 +160,7 @@ const STYLE_TEXT = `
   padding: 0 24px;
 }
 
-.dsh-coordinator-modal-footer {
+.dsh-leader-kit-modal-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -168,7 +168,7 @@ const STYLE_TEXT = `
   padding: 0 24px;
 }
 
-.dsh-coordinator-modal-button {
+.dsh-leader-kit-modal-button {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -185,28 +185,28 @@ const STYLE_TEXT = `
   background: transparent;
 }
 
-.dsh-coordinator-modal-button:disabled {
+.dsh-leader-kit-modal-button:disabled {
   cursor: not-allowed;
   opacity: 0.4;
 }
 
-.dsh-coordinator-modal-button-outline {
+.dsh-leader-kit-modal-button-outline {
   border: 0.5px solid transparent;
   background: transparent;
   box-shadow: inset 0 0 0 var(--ds-hairline-width, 0.5px) var(--dsh-button-outline-color, var(--dsw-alias-border-l3));
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-modal-button-outline:hover:not(:disabled) {
+  .dsh-leader-kit-modal-button-outline:hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-coordinator-modal-button-danger:not(:disabled) {
+.dsh-leader-kit-modal-button-danger:not(:disabled) {
   color: var(--dsw-alias-state-error-primary);
 }
 
-.dsh-coordinator-modal-error {
+.dsh-leader-kit-modal-error {
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-state-error-primary);
@@ -356,43 +356,43 @@ export function ModalShell({
 
   return createPortal(
     createElement('div', {
-      className: 'dsh-coordinator-modal-root',
+      className: 'dsh-leader-kit-modal-root',
       role: 'presentation',
     },
     createElement('div', {
-      className: 'dsh-coordinator-modal-mask',
+      className: 'dsh-leader-kit-modal-mask',
       'aria-hidden': 'true',
       onClick: () => close.current(),
     }),
     createElement('div', {
       ref: dialog,
       tabIndex: -1,
-      className: `dsh-coordinator-modal-dialog${wide ? ' dsh-coordinator-modal-dialog-wide' : ''}`,
+      className: `dsh-leader-kit-modal-dialog${wide ? ' dsh-leader-kit-modal-dialog-wide' : ''}`,
       role: 'dialog',
       'aria-modal': 'true',
       'aria-label': title,
     },
     headless
       ? children
-      : createElement('div', { className: 'dsh-coordinator-modal-content' },
-        createElement('div', { className: 'dsh-coordinator-modal-header' },
-          createElement('h2', { className: 'dsh-coordinator-modal-title' }, title),
+      : createElement('div', { className: 'dsh-leader-kit-modal-content' },
+        createElement('div', { className: 'dsh-leader-kit-modal-header' },
+          createElement('h2', { className: 'dsh-leader-kit-modal-title' }, title),
           createElement('button', {
             type: 'button',
-            className: 'dsh-coordinator-modal-close',
+            className: 'dsh-leader-kit-modal-close',
             'aria-label': closeLabel,
             onClick: () => close.current(),
           }, productIcon('close-outline', { size: 14 })),
         ),
         description !== ''
-          ? createElement('p', { className: 'dsh-coordinator-modal-description' }, description)
+          ? createElement('p', { className: 'dsh-leader-kit-modal-description' }, description)
           : null,
         children !== null
-          ? createElement('div', { className: 'dsh-coordinator-modal-body' }, children)
+          ? createElement('div', { className: 'dsh-leader-kit-modal-body' }, children)
           : null,
       ),
     footer !== null
-      ? createElement('div', { className: 'dsh-coordinator-modal-footer' }, footer)
+      ? createElement('div', { className: 'dsh-leader-kit-modal-footer' }, footer)
       : null,
     ),
     ),

@@ -5,7 +5,7 @@
  * 详情平铺全部。两者共享「哪些链接能跳转」与「chip 的 React key」两条判定——
  * 各写一份就会出现卡面能跳、详情不能跳，或两处 key 规则不一致。
  *
- * @module dsh-coordinator/client/link-row
+ * @module dsh-leader-kit/client/link-row
  */
 
 /**

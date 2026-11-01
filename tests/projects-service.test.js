@@ -17,8 +17,8 @@ after(cleanupTempDirs)
  * @returns {Promise<{ home: string, workspace: string }>} 路径
  */
 async function makeWorkspace() {
-  const home = await makeTempDir('dsh-coordinator-projects-')
-  const workspace = await makeTempDir('dsh-coordinator-work-')
+  const home = await makeTempDir('dsh-leader-kit-projects-')
+  const workspace = await makeTempDir('dsh-leader-kit-work-')
   return { home, workspace }
 }
 

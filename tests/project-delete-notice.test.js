@@ -22,8 +22,8 @@ after(cleanupTempDirs)
  * @returns {Promise<object>} 链路、临时目录与假件
  */
 async function makeChain({ withRegistry = true, deletable = true } = {}) {
-  const home = await makeTempDir('dsh-coordinator-delete-notice-')
-  const directory = await makeTempDir('dsh-coordinator-delete-notice-work-')
+  const home = await makeTempDir('dsh-leader-kit-delete-notice-')
+  const directory = await makeTempDir('dsh-leader-kit-delete-notice-work-')
   const workspaces = []
   const registry = {
     list: () => workspaces,

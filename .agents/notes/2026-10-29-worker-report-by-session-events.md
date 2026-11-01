@@ -1,7 +1,7 @@
 # worker 的完成回报由机制侧从会话事件结算
 
 **状态**：implemented（2026-10-29）
-**范围**：`src/host/dispatch.js`、`src/host/notification-store.js`、`src/host/tools/gate.js`、`src/host/tools/worker-done.js`（删除）、`src/host/index.js`、`skills/coordinator-mode/`、`README.md`、`docs/capability-gaps.md`、测试
+**范围**：`src/host/dispatch.js`、`src/host/notification-store.js`、`src/host/tools/gate.js`、`src/host/tools/worker-done.js`（删除）、`src/host/index.js`、`skills/leader-mode/`、`README.md`、`docs/capability-gaps.md`、测试
 
 ## 背景
 

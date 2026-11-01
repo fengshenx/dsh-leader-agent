@@ -19,7 +19,7 @@
 
 ### 初始化改为纯 skill
 
-`skills/init-project/SKILL.md` 不再调用工具：读 `references/conventions.md`，用宿主的文件编辑能力把正文并入 `AGENTS.md` 的受管区块（标记仍是 `dsh-coordinator:conventions:start/end`），重复执行只替换区块。受管区块的语义从代码搬到 skill 文本，幂等靠「替换同标记区块」保证。
+`skills/init-project/SKILL.md` 不再调用工具：读 `references/conventions.md`，用宿主的文件编辑能力把正文并入 `AGENTS.md` 的受管区块（标记仍是 `dsh-leader-kit:conventions:start/end`），重复执行只替换区块。受管区块的语义从代码搬到 skill 文本，幂等靠「替换同标记区块」保证。
 
 ### 删除 checkpoint
 

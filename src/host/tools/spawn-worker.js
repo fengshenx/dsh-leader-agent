@@ -8,7 +8,7 @@
  * 参数面：`name` 是 worker 的显示名（也是它的会话标题），`initialMessage` 是任务
  * 简报。派工即开跑，没有「先建会话、再单独发第一条消息」的分步。
  *
- * @module dsh-coordinator/host/tools/spawn-worker
+ * @module dsh-leader-kit/host/tools/spawn-worker
  */
 
 /**

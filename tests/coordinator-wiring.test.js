@@ -63,9 +63,9 @@ function createFakeHost(sessionCwds) {
 }
 
 test('装配层：手册目录只认协调者会话的项目目录，不认会话 cwd', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-coordinator-home-'))
-  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-coordinator-project-'))
-  const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-coordinator-session-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-session-'))
   const previousHome = process.env.DSH_HOME
   // cwd 故意都指向会话目录：按 cwd 取目录的错判据会读到那里。
   const { ctx, holder } = createFakeHost(new Map([
@@ -76,8 +76,8 @@ test('装配层：手册目录只认协调者会话的项目目录，不认会�
   try {
     await writeFile(join(projectDirectory, COORDINATOR_CONTEXT_FILE), '项目手册正文。', 'utf8')
     await writeFile(join(sessionDirectory, COORDINATOR_CONTEXT_FILE), '会话目录的手册不该被注入。', 'utf8')
-    await mkdir(join(home, 'dsh-coordinator'), { recursive: true })
-    await writeFile(join(home, 'dsh-coordinator', 'projects.json'), JSON.stringify({
+    await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+    await writeFile(join(home, 'dsh-leader-kit', 'projects.json'), JSON.stringify({
       version: 1,
       projects: [{
         id: 'project-1',

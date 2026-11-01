@@ -18,7 +18,7 @@ import { renderRoleContext } from '../src/host/slots/role-context.js'
  * @returns {Promise<{ directory: string, cleanup: () => Promise<void> }>} 目录与清理函数
  */
 async function createProject(content) {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-coordinator-slots-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-slots-'))
   if (content !== undefined) {
     await writeFile(join(directory, SLOT_TEMPLATE_FILE), content, 'utf8')
   }

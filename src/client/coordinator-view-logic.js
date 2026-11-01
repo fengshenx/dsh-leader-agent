@@ -9,11 +9,11 @@
  * 目标不注册成可见 tab：官方没有「按会话过滤 tab」的能力，可见 tab 会出现在
  * 所有会话的头部。它只提供活动，视图区仍是官方那个空会话。
  *
- * @module dsh-coordinator/client/coordinator-view-logic
+ * @module dsh-leader-kit/client/coordinator-view-logic
  */
 
 /** 协调者视图目标 id。 */
-export const COORDINATOR_VIEW_TARGET = 'dsh-coordinator'
+export const COORDINATOR_VIEW_TARGET = 'dsh-leader-kit'
 
 /**
  * 构造协调者视图定义。

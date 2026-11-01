@@ -25,14 +25,14 @@ test('命中排除集的会话行被标记为隐藏', () => {
   const row = fakeRow('session:s1')
   const hidden = markSessionRow(row, new Set(['s1']))
   assert.equal(hidden, true)
-  assert.equal(row.classes.has('dsh-coordinator-excluded-session'), true)
+  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), true)
 })
 
 test('不在排除集里的会话行保持可见', () => {
   const row = fakeRow('session:s2')
   const hidden = markSessionRow(row, new Set(['s1']))
   assert.equal(hidden, false)
-  assert.equal(row.classes.has('dsh-coordinator-excluded-session'), false)
+  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), false)
 })
 
 test('不是会话行的标识不参与排除', () => {
@@ -58,37 +58,37 @@ test('命中压灰集的工作区行被标记为不激活', () => {
   const row = fakeRow('workspace:w1')
   const mark = markWorkspaceRow(row, markState({ quieted: ['w1'] }))
   assert.equal(mark.quiet, true)
-  assert.equal(row.classes.has('dsh-coordinator-quiet-workspace'), true)
+  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), true)
 })
 
 test('不在压灰集里的工作区行保持激活态', () => {
   const row = fakeRow('workspace:w2')
   const mark = markWorkspaceRow(row, markState({ quieted: ['w1'] }))
   assert.equal(mark.quiet, false)
-  assert.equal(row.classes.has('dsh-coordinator-quiet-workspace'), false)
+  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), false)
 })
 
 test('压灰集变化后重新标记能恢复激活态', () => {
   const row = fakeRow('workspace:w1')
   markWorkspaceRow(row, markState({ quieted: ['w1'] }))
-  assert.equal(row.classes.has('dsh-coordinator-quiet-workspace'), true)
+  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), true)
   markWorkspaceRow(row, markState())
-  assert.equal(row.classes.has('dsh-coordinator-quiet-workspace'), false)
+  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), false)
 })
 
 test('命中藏行集的工作区行被整行隐藏', () => {
   const row = fakeRow('workspace:w1')
   const mark = markWorkspaceRow(row, markState({ hidden: ['w1'] }))
   assert.equal(mark.hidden, true)
-  assert.equal(row.classes.has('dsh-coordinator-hidden-workspace'), true)
+  assert.equal(row.classes.has('dsh-leader-kit-hidden-workspace'), true)
 })
 
 test('藏行集变化后重新标记能恢复显示', () => {
   const row = fakeRow('workspace:w1')
   markWorkspaceRow(row, markState({ hidden: ['w1'] }))
-  assert.equal(row.classes.has('dsh-coordinator-hidden-workspace'), true)
+  assert.equal(row.classes.has('dsh-leader-kit-hidden-workspace'), true)
   markWorkspaceRow(row, markState())
-  assert.equal(row.classes.has('dsh-coordinator-hidden-workspace'), false)
+  assert.equal(row.classes.has('dsh-leader-kit-hidden-workspace'), false)
 })
 
 test('会话行与工作区行各认各的前缀', () => {
@@ -102,9 +102,9 @@ test('会话行与工作区行各认各的前缀', () => {
 test('排除集变化后重新标记能改回可见', () => {
   const row = fakeRow('session:s1')
   markSessionRow(row, new Set(['s1']))
-  assert.equal(row.classes.has('dsh-coordinator-excluded-session'), true)
+  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), true)
   markSessionRow(row, new Set())
-  assert.equal(row.classes.has('dsh-coordinator-excluded-session'), false)
+  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), false)
 })
 
 /**
@@ -165,9 +165,9 @@ test('藏掉工作区 header 时，组内会话行与展开按钮一起藏掉', 
   markGroupRows(header.row, true)
 
   for (const row of [first.row, second.row, overflow]) {
-    assert.equal(row.classes.has('dsh-coordinator-hidden-workspace-group'), true)
+    assert.equal(row.classes.has('dsh-leader-kit-hidden-workspace-group'), true)
   }
-  assert.equal(header.row.classes.has('dsh-coordinator-hidden-workspace-group'), false)
+  assert.equal(header.row.classes.has('dsh-leader-kit-hidden-workspace-group'), false)
 })
 
 test('工作区重新显示时组内行不残留隐藏标记', () => {
@@ -177,9 +177,9 @@ test('工作区重新显示时组内行不残留隐藏标记', () => {
   fakeElement({ role: 'tree' }, [section])
 
   markGroupRows(header.row, true)
-  assert.equal(session.row.classes.has('dsh-coordinator-hidden-workspace-group'), true)
+  assert.equal(session.row.classes.has('dsh-leader-kit-hidden-workspace-group'), true)
   markGroupRows(header.row, false)
-  assert.equal(session.row.classes.has('dsh-coordinator-hidden-workspace-group'), false)
+  assert.equal(session.row.classes.has('dsh-leader-kit-hidden-workspace-group'), false)
 })
 
 test('嵌套分组的会话行不跟着外层分组一起藏', () => {
@@ -197,9 +197,9 @@ test('嵌套分组的会话行不跟着外层分组一起藏', () => {
 
   markGroupRows(outerHeader.row, true)
 
-  assert.equal(outerSession.row.classes.has('dsh-coordinator-hidden-workspace-group'), true)
-  assert.equal(innerSession.row.classes.has('dsh-coordinator-hidden-workspace-group'), false)
-  assert.equal(innerHeader.row.classes.has('dsh-coordinator-hidden-workspace-group'), false)
+  assert.equal(outerSession.row.classes.has('dsh-leader-kit-hidden-workspace-group'), true)
+  assert.equal(innerSession.row.classes.has('dsh-leader-kit-hidden-workspace-group'), false)
+  assert.equal(innerHeader.row.classes.has('dsh-leader-kit-hidden-workspace-group'), false)
 })
 
 test('找不到分组容器时不动任何行', () => {

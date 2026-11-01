@@ -17,11 +17,11 @@
  * （{@link HIDDEN_WORKSPACE_CLASS}，连组内属于它的行一起，
  * {@link HIDDEN_GROUP_ROW_CLASS}）与**压掉它的激活态**（{@link QUIET_CLASS}）。
  *
- * @module dsh-coordinator/client/workspace-exclusion
+ * @module dsh-leader-kit/client/workspace-exclusion
  */
 
 /** 命中排除集的会话行所用的类名。 */
-const HIDDEN_CLASS = 'dsh-coordinator-excluded-session'
+const HIDDEN_CLASS = 'dsh-leader-kit-excluded-session'
 
 /**
  * 项目自建的工作区行所用的类名。
@@ -32,7 +32,7 @@ const HIDDEN_CLASS = 'dsh-coordinator-excluded-session'
  * 宿主数据里（会话归属与打开路径都靠它）。用户自己加的同目录工作区不在此列：
  * 项目记录里只记插件注册的那个（`workspaceId`）。
  */
-const HIDDEN_WORKSPACE_CLASS = 'dsh-coordinator-hidden-workspace'
+const HIDDEN_WORKSPACE_CLASS = 'dsh-leader-kit-hidden-workspace'
 
 /**
  * 被藏掉的工作区分组里、属于该组的行所用的类名。
@@ -41,7 +41,7 @@ const HIDDEN_WORKSPACE_CLASS = 'dsh-coordinator-hidden-workspace'
  * 兄弟节点，会留下一批没有标题的孤儿行（打开协调者会话本身就会展开这一组，展开
  * 是常态）。这些行跟着 header 一起藏。
  */
-const HIDDEN_GROUP_ROW_CLASS = 'dsh-coordinator-hidden-workspace-group'
+const HIDDEN_GROUP_ROW_CLASS = 'dsh-leader-kit-hidden-workspace-group'
 
 /**
  * 被压掉激活态的工作区行所用的类名。
@@ -51,24 +51,24 @@ const HIDDEN_GROUP_ROW_CLASS = 'dsh-coordinator-hidden-workspace-group'
  * 藏掉后，被点亮的分组里看不到是谁在点亮它——分组看起来是开着的，却找不到对应
  * 的会话行。命中时把图标颜色压回三级标签色，视觉上与未打开时一致。
  */
-const QUIET_CLASS = 'dsh-coordinator-quiet-workspace'
+const QUIET_CLASS = 'dsh-leader-kit-quiet-workspace'
 
 /** 隐藏规则的样式表 id。 */
-const STYLE_ID = 'dsh-coordinator-workspace-exclusion'
+const STYLE_ID = 'dsh-leader-kit-workspace-exclusion'
 
 const STYLE_TEXT = `
-.dsh-coordinator-excluded-session {
+.dsh-leader-kit-excluded-session {
   display: none !important;
 }
-.dsh-coordinator-hidden-workspace {
+.dsh-leader-kit-hidden-workspace {
   display: none !important;
 }
-.dsh-coordinator-hidden-workspace-group {
+.dsh-leader-kit-hidden-workspace-group {
   display: none !important;
 }
 /* 工作区行的第一个 span 是目录图标槽（宿主 Rows.tsx 的 slot folder 顺序），
    图标颜色取自它；未激活时官方也是三级标签色（Rows.module.css 的 .slot）。 */
-.dsh-coordinator-quiet-workspace > span:first-child {
+.dsh-leader-kit-quiet-workspace > span:first-child {
   color: var(--dsw-alias-label-tertiary);
 }
 `

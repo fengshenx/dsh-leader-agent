@@ -17,7 +17,7 @@ import {
  * @returns {Promise<{ home: string, tools: Record<string, object> }>} 工具集与 home 目录
  */
 async function createTools(resolveProject) {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-coordinator-cardtools-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   // 可控时钟：卡片排序按更新时间戳，两次写入落在同一毫秒会退回插入序，
   // 断言「最近更新的排前面」就成了碰运气的 flaky 用例。
   let tick = 0
@@ -146,7 +146,7 @@ test('卡片数据投影到 presentationMeta，客户端据此重建看板', asy
   try {
     const created = await tools.create_card.execute({ title: '任务' }, exec)
     const single = tools.create_card.output.presentationMeta({}, created)
-    assert.equal(single.kind, 'dsh-coordinator-cards')
+    assert.equal(single.kind, 'dsh-leader-kit-cards')
     assert.equal(single.scope, 'card')
     assert.equal(single.cards[0].title, '任务')
     const listed = await tools.list_cards.execute({}, exec)

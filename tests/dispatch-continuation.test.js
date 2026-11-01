@@ -130,7 +130,7 @@ const coordinatorIndex = {
 async function createFixture({ resumeError } = {}) {
   const host = createHost({ resumeError })
   const delivered = []
-  const home = await makeTempDir('dsh-coordinator-continuation-')
+  const home = await makeTempDir('dsh-leader-kit-continuation-')
   const store = createNotificationStore({ home })
   const workers = createWorkerRegistry({ home })
   const parent = {
@@ -185,7 +185,7 @@ test('缺会话持久化后端时拒绝派工', async () => {
         ? { observeSession() {} }
         : host.ctx.get(key)),
   }
-  const home = await makeTempDir('dsh-coordinator-continuation-')
+  const home = await makeTempDir('dsh-leader-kit-continuation-')
   const dispatcher = createDispatcher({
     ctx,
     store: createNotificationStore({ home }),
@@ -217,7 +217,7 @@ test('缺会话查询后端时拒绝派工', async () => {
         ? { append() {} }
         : host.ctx.get(key)),
   }
-  const home = await makeTempDir('dsh-coordinator-continuation-')
+  const home = await makeTempDir('dsh-leader-kit-continuation-')
   const dispatcher = createDispatcher({
     ctx,
     store: createNotificationStore({ home }),

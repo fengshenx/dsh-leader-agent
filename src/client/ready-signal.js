@@ -7,7 +7,7 @@
  *
  * 状态放在闭包里而不是模块顶层：每个持有者一份，测试之间不会互相污染。
  *
- * @module dsh-coordinator/client/ready-signal
+ * @module dsh-leader-kit/client/ready-signal
  */
 
 /**
@@ -33,7 +33,7 @@ export function createReadySignal() {
     try {
       listener()
     } catch (error) {
-      console.error('dsh-coordinator: 就绪订阅回调抛错', error)
+      console.error('dsh-leader-kit: 就绪订阅回调抛错', error)
     }
   }
 

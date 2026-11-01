@@ -1,7 +1,7 @@
 {
-  "name": "dsh-coordinator",
+  "name": "dsh-leader-kit",
   "version": "0.1.0",
-  "description": "Coordinator/worker orchestration for DeepSeek Harness: protocol skills, project bootstrap, and a delivery board.",
+  "description": "Leader-driven dispatch for DeepSeek Harness: protocol skills, project bootstrap, and a delivery board.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -47,8 +47,9 @@
   "keywords": [
     "dsh-plugin",
     "deepseek-harness",
-    "orchestration",
-    "coordinator"
+    "leader",
+    "dispatch",
+    "delivery-board"
   ],
   "license": "MIT",
   "devDependencies": {

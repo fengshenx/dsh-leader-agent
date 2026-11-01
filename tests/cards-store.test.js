@@ -10,7 +10,7 @@ import { createCardStore } from '../src/host/cards/store.js'
  * @returns {Promise<{ store: object, home: string }>} 存储与 home 目录
  */
 async function createStore() {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-coordinator-cards-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cards-'))
   return { store: createCardStore({ home }), home }
 }
 

@@ -8,7 +8,7 @@
  * 这里把生命周期从 React 里拆出来，是为了能对配对关系直接断言——面板组件只负责
  * 把状态读数交给宿主，保留与释放的账本由本模块记。
  *
- * @module dsh-coordinator/client/slot-retain
+ * @module dsh-leader-kit/client/slot-retain
  */
 
 /**

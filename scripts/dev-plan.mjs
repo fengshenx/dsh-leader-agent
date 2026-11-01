@@ -6,20 +6,20 @@
  * 不触碰用户在 `~/.dsh` 里的日常 profile。
  *
  * 做法是不复制依赖：目标 profile 的 `node_modules` 逐条符号链接到源 profile 的
- * 同名条目，只有 `dsh-coordinator` 指向工作树。dsh 启动时读的是包解析结果，
+ * 同名条目，只有 `dsh-leader-kit` 指向工作树。dsh 启动时读的是包解析结果，
  * 不校验 `package.json` 的 `link:` 路径与磁盘链接是否一致，所以这样一个
  * profile 能被正常加载（`npm run dev` 的隔离实例就是这么跑起来的）。
  *
  * 这里的函数只算「该建什么」，文件系统操作在 `dev.mjs`。
  *
- * @module dsh-coordinator/scripts/dev-plan
+ * @module dsh-leader-kit/scripts/dev-plan
  */
 
 import { realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 /** 插件包名：profile 里换成工作树链接的那个。 */
-export const COORDINATOR_PACKAGE = 'dsh-coordinator'
+export const LEADER_KIT_PACKAGE = 'dsh-leader-kit'
 
 /** 开发实例用的 profile 名。插件的客户端 manifest 声明 `platform: web`。 */
 export const PROFILE_NAME = 'web'
@@ -123,7 +123,7 @@ export function assertWebBundle({ profileDir, bundles }) {
  * 从源 profile 的 `package.json` 派生开发实例的版本。
  *
  * 依赖与 bundle 列表都照源抄——开发实例要复现日常环境的组合，否则「本地跑得
- * 起来、装进 profile 就坏」这类问题测不出来。只有两处不同：`dsh-coordinator`
+ * 起来、装进 profile 就坏」这类问题测不出来。只有两处不同：`dsh-leader-kit`
  * 的依赖换成工作树链接，bundle 列表保证含它（源里没装过本插件时也能起）。
  *
  * @param {object} sourcePackage - 源 profile 的 `package.json` 解析结果
@@ -132,12 +132,12 @@ export function assertWebBundle({ profileDir, bundles }) {
  */
 export function deriveProfilePackage(sourcePackage, worktree) {
   const bundles = [...(sourcePackage?.dsh?.profile?.bundles ?? [])]
-  if (!bundles.includes(COORDINATOR_PACKAGE)) bundles.push(COORDINATOR_PACKAGE)
+  if (!bundles.includes(LEADER_KIT_PACKAGE)) bundles.push(LEADER_KIT_PACKAGE)
   return {
     ...sourcePackage,
     dependencies: {
       ...(sourcePackage?.dependencies ?? {}),
-      [COORDINATOR_PACKAGE]: `link:${worktree}`,
+      [LEADER_KIT_PACKAGE]: `link:${worktree}`,
     },
     dsh: {
       ...(sourcePackage?.dsh ?? {}),
@@ -165,10 +165,10 @@ export function deriveProfilePackage(sourcePackage, worktree) {
  */
 export function planNodeModules({ sourceEntries, existingEntries, sourceNodeModules, worktree }) {
   const links = sourceEntries
-    .filter((name) => name !== COORDINATOR_PACKAGE)
+    .filter((name) => name !== LEADER_KIT_PACKAGE)
     .map((name) => ({ name, target: join(sourceNodeModules, name) }))
-  links.push({ name: COORDINATOR_PACKAGE, target: worktree })
+  links.push({ name: LEADER_KIT_PACKAGE, target: worktree })
   const removals = existingEntries
-    .filter((name) => !sourceEntries.includes(name) && name !== COORDINATOR_PACKAGE)
+    .filter((name) => !sourceEntries.includes(name) && name !== LEADER_KIT_PACKAGE)
   return { links, removals }
 }

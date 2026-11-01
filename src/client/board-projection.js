@@ -13,7 +13,7 @@
  * 卡片本体只存显式状态（active/done/archived）。发现任何「可从会话推导的字段落进
  * 卡片存储」即为设计缺陷。
  *
- * @module dsh-coordinator/client/board-projection
+ * @module dsh-leader-kit/client/board-projection
  */
 
 /**

@@ -9,7 +9,7 @@
  * 的头注释：section 进的是会话级固定的系统提示词消息，文件改了不会重写；运行时
  * 上下文每轮重新求值，「改动在下一轮 turn 生效」因此是结构性的。
  *
- * @module dsh-coordinator/host/coordinator-context
+ * @module dsh-leader-kit/host/coordinator-context
  */
 
 import { readFileSync } from 'node:fs'
@@ -19,7 +19,7 @@ import { join } from 'node:path'
 export const COORDINATOR_CONTEXT_FILE = 'COORDINATOR.md'
 
 /** 注入项的上下文名。 */
-export const COORDINATOR_CONTEXT_NAME = 'dsh-coordinator:coordinator'
+export const COORDINATOR_CONTEXT_NAME = 'dsh-leader-kit:coordinator'
 
 /**
  * 注入项在运行时上下文里的位置。
@@ -48,7 +48,7 @@ export function loadCoordinatorManual(directory, logger = () => {}) {
     content = readFileSync(file, 'utf8')
   } catch (error) {
     if (error?.code !== 'ENOENT') {
-      logger(`dsh-coordinator: 读取协调者手册失败（${file}）：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: 读取协调者手册失败（${file}）：${error instanceof Error ? error.message : String(error)}`)
     }
     return ''
   }
@@ -102,9 +102,9 @@ export function applyCoordinatorContext({ ctx, resolveDirectory, logger = () => 
         return renderCoordinatorContext({ sessionId, resolveDirectory, logger })
       } catch (error) {
         // 求值失败会让整个 turn 崩掉。手册是增量信息，取不到就当没有。
-        logger(`dsh-coordinator: 渲染协调者手册失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-kit: 渲染协调者手册失败：${error instanceof Error ? error.message : String(error)}`)
         return ''
       }
     },
-  }), 'dsh-coordinator 协调者手册注入')
+  }), 'dsh-leader-kit 协调者手册注入')
 }

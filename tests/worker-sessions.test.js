@@ -130,7 +130,7 @@ test('建会话时用带前缀的会话 id，并把任务简报即刻投进去',
   assert.equal(entry.options.meta.cwd, '/repo')
   assert.equal(entry.messages.length, 1)
   assert.equal(entry.messages[0].content[0].text, '查一下上游依赖')
-  assert.equal(entry.messages[0].source.kind, 'dsh-coordinator/worker-task')
+  assert.equal(entry.messages[0].source.kind, 'dsh-leader-kit/worker-task')
   assert.equal(entry.messages[0].source.name, 'research-sources')
   assert.equal(entry.messages[0].source.parentSessionId, 'coordinator-1')
 })

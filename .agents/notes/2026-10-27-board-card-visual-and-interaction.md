@@ -13,7 +13,7 @@ P2 的看板只有数据通道与一个能列出卡片的壳：卡面是带边�
 
 **卡面零操作铬**。卡片只做信息与导航，不放操作按钮（完成、置顶、重命名、删除都没有）。卡片是协调者维护的事实，UI 越权写会把「谁在改」搅浑；本仓不做。
 
-**视觉走「复制宿主数值 + `--dsw-*` 变量」**。不引 Tailwind、不 import 宿主 UI 包。类名统一 `dsh-coordinator-board-*` 前缀，样式由 `board-styles.js` 注入一次（`<style id="dsh-coordinator-board">`），沿用确认弹窗既有的「同一页面只注入一次」做法。
+**视觉走「复制宿主数值 + `--dsw-*` 变量」**。不引 Tailwind、不 import 宿主 UI 包。类名统一 `dsh-leader-kit-board-*` 前缀，样式由 `board-styles.js` 注入一次（`<style id="dsh-leader-kit-board">`），沿用确认弹窗既有的「同一页面只注入一次」做法。
 
 **active 卡三层**：标题行（14px 固定信号槽 → `#编号` mono 11px → 标题 13px/500 两行 clamp → 停滞时长）→ 链接行（缩进 22px，圆角胶囊 chip）→ 元信息行（槽位 chip：状态点 + 槽位名）。done 卡是单行轻量变体（绿勾 + 编号 + 标题 + 相对完成时间）。卡面无边框无阴影，静态零装饰，hover 只出背景。
 
@@ -49,7 +49,7 @@ P2 的看板只有数据通道与一个能列出卡片的壳：卡面是带边�
 
 **详情浮层只读**，用 `headless` 模式自带头部（标题就是卡片标题本身，不用宿主默认的「无信息标题」）。卡片写权限归协调者工具，UI 不越权写。
 
-**浮层外壳抽成 `modal-shell.js`** 供确认弹窗与详情浮层共用：portal、遮罩、ESC、Tab 焦点陷阱、初始焦点、关闭回焦，以及宿主 `Modal.module.css` 的样式全文（style id `dsh-coordinator-modal`）。`confirm-dialog.js` 改为复用它，行为不变。
+**浮层外壳抽成 `modal-shell.js`** 供确认弹窗与详情浮层共用：portal、遮罩、ESC、Tab 焦点陷阱、初始焦点、关闭回焦，以及宿主 `Modal.module.css` 的样式全文（style id `dsh-leader-kit-modal`）。`confirm-dialog.js` 改为复用它，行为不变。
 
 **焦点的抑制与释放整段照抄宿主 `focus.ts`**：只设 `data-dsh-automatic-focus` 属性而照抄释放逻辑（失焦或键盘导航时撤掉），焦点环就再也回不来——简化这一段会削掉键盘可达性，属静默回归。
 

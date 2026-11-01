@@ -11,7 +11,7 @@ worker 回报改用**助手侧的形态**渲染：身份头（头像 + 名字）
 
 ## 决策
 
-**说话人标记放在 `source`，不放正文**。通知消息的 `source` 用自定义 kind `dsh-coordinator/worker-report`，带 `worker: { label, childSessionId }` 与通用契约的 `form: 'notice'` + `summary`。
+**说话人标记放在 `source`，不放正文**。通知消息的 `source` 用自定义 kind `dsh-leader-kit/worker-report`，带 `worker: { label, childSessionId }` 与通用契约的 `form: 'notice'` + `summary`。
 
 - 正文是模型读的事实，前缀会同时污染模型上下文与用户界面；`source` 是宿主的归属字段，链路上原样透传。
 - 宿主对 `source` 的唯一硬约束是「kind 是非空字符串」，自定义 kind 原样落进 `session.v4.jsonl`、重启后原样读回；宿主自己就有十几个这样的 kind（`agent-message`、`subagent-settled`、`webhook`、`goal`、`team-message` …），这是它预留的扩展位而不是越界。
@@ -56,5 +56,5 @@ worker 回报改用**助手侧的形态**渲染：身份头（头像 + 名字）
 ## 证据
 
 - 单测 279 例全绿（`tests/worker-report.test.js` 覆盖 source 构造与逐层判型、正文取文本、通知正文无前缀、头像种子确定性与分布、节点定义只认带标记的消息、不认领替换副本、视图节点字段含 `groupTree`、按官方口径条件式给分组位置、notice 摘要压到 120 字符，以及本轮新增的 source 带回报内容与终态、界面正文取回报内容（没有就退回正文）、节点状态带回报内容与终态）。
-- 真实实例（隔离 mock profile + mock LLM）：协调者真实派工，worker 收工后通知注入父会话；session log 里该条 `user/message` 的 `source.kind` 为 `dsh-coordinator/worker-report`、正文无前缀；界面上出现带头像与「mock worker」名字的左侧气泡，用户自己的输入仍是右侧气泡，console 无报错。
+- 真实实例（隔离 mock profile + mock LLM）：协调者真实派工，worker 收工后通知注入父会话；session log 里该条 `user/message` 的 `source.kind` 为 `dsh-leader-kit/worker-report`、正文无前缀；界面上出现带头像与「mock worker」名字的左侧气泡，用户自己的输入仍是右侧气泡，console 无报错。
 - 气泡形态复查（同一实例）：气泡正文只有「mock worker 收工。」，没有协议字段；底色计算值 `color(srgb 0.058 0.066 0.082 / 0.04)`；名字是 `BUTTON`；下方有时间「19:38」与复制按钮；点复制后剪贴板内容为「mock worker 收工。」、按钮文案变「已复制」；点名字跳到 worker 子会话（面包屑「跑一下 mock worker / mock worker」）。

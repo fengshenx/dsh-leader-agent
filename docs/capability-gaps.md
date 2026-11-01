@@ -48,7 +48,7 @@ is incompatible with dsh 0.2.1-rc.2: requirements {"@deepseek-ai/dsh-llm":"^0.1.
 **实测**：用 `--patch` 加载时，插件行写包名会失败：
 
 ```
-Cannot find package 'dsh-coordinator' imported from /Users/mxwu/.dsh/profiles/web/
+Cannot find package 'dsh-leader-kit' imported from /Users/mxwu/.dsh/profiles/web/
 ```
 
 把包 link 进 dsh 仓库的 `node_modules` 无效——解析基准是 profile 目录。
@@ -135,7 +135,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **实测**：`tool/result` 事件的 `message.content` 只有 `output.render` 给模型的文本；`output.value`（结构化结果）不出现在事件里。`output.presentationMeta(args, value)` 投影的 `meta` 才随事件持久化（`tool/result` 事件的 `data.meta`），并被客户端的 `ToolResultNode.meta` 读回。
 
-**影响**：客户端要拿结构化数据，只能走 `presentationMeta`。本 bundle 的卡片工具据此投影 `meta`（`{kind:'dsh-coordinator-cards', scope, cards}`），客户端据此重建看板。
+**影响**：客户端要拿结构化数据，只能走 `presentationMeta`。本 bundle 的卡片工具据此投影 `meta`（`{kind:'dsh-leader-kit-cards', scope, cards}`），客户端据此重建看板。
 
 ### 15. 右栏 tab 注册与 slot body 都在浏览器侧，host 插件够不着
 
@@ -155,13 +155,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **实测**：`defineDomain` / `domainTable`（`packages/storage/storage-domain/src/spec.ts:107`）要求 zod schema，存储域服务本身是 `@deepseek-ai/dsh-storage-domain` peer 依赖，dsh 按 peer 版本与宿主严格校验。
 
-**影响**：卡片与通知队列改用自建落盘（原子写 + 读-改-写串行化），落在 `$DSH_HOME/dsh-coordinator/`。代价是不享受 dsh 的存储域生态（迁移、备份、跨端同步），换来的是零版本耦合。
+**影响**：卡片与通知队列改用自建落盘（原子写 + 读-改-写串行化），落在 `$DSH_HOME/dsh-leader-kit/`。代价是不享受 dsh 的存储域生态（迁移、备份、跨端同步），换来的是零版本耦合。
 
 ### 18. 插件行名必须是纯包名，否则浏览器侧发现不到 client 半边
 
-**实测**：`packages/client/modules/src/index.ts:892` 的 `locatePkgJson` 要求 Loader 行名可解析成包名：`exactPackageSpecifier` 不接受含 `/` 的子路径。行名写成 `dsh-coordinator/src/host` 时定位不到包 manifest，该行不会被识别为 client row——宿主不下发 client bundle，浏览器侧完全没有本包的 UI。
+**实测**：`packages/client/modules/src/index.ts:892` 的 `locatePkgJson` 要求 Loader 行名可解析成包名：`exactPackageSpecifier` 不接受含 `/` 的子路径。行名写成 `dsh-leader-kit/src/host` 时定位不到包 manifest，该行不会被识别为 client row——宿主不下发 client bundle，浏览器侧完全没有本包的 UI。
 
-**实测（修复后）**：行名改为 `dsh-coordinator`（纯包名）→ web profile 的 boot manifest 从 70 条目变 71 条目，多出的条目即本包，附带 `plugins/??dsh-coordinator/client.js` 下发路径；浏览器右栏随即出现本包注册的 Tab。
+**实测（修复后）**：行名改为 `dsh-leader-kit`（纯包名）→ web profile 的 boot manifest 从 70 条目变 71 条目，多出的条目即本包，附带 `plugins/??dsh-leader-kit/client.js` 下发路径；浏览器右栏随即出现本包注册的 Tab。
 
 **影响**：bundle 的插件行名不能为了定位子模块而写成子路径；子模块仍可通过 `exports` 映射（如 `"./src/host"`）供包内引用。
 
@@ -373,14 +373,14 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 | 能力 | 实测结果 | 证据 |
 |---|---|---|
-| bundle 作为第三方 bundle 分发 | 通过 | `dsh plugin --profile headless add ../dsh-coordinator` 后 `dsh.profile.bundles` 含 `dsh-coordinator` |
+| bundle 作为第三方 bundle 分发 | 通过 | `dsh plugin --profile headless add ../dsh-leader-kit` 后 `dsh.profile.bundles` 含 `dsh-leader-kit` |
 | `ctx.tools.register` | 通过 | 模型调用 `init_project` 成功，目标目录生成 `AGENTS.md`（4307 字节，含受管区块） |
-| `ctx.skills.registerProvider` | 通过 | `ctx.skills.list()` 返回 `coordinator-mode` 与 `init-project`，provider `dsh-coordinator`，source `bundled` |
+| `ctx.skills.registerProvider` | 通过 | `ctx.skills.list()` 返回 `leader-mode` 与 `init-project`，provider `dsh-leader-kit`，source `bundled` |
 | 免凭据跑真实会话 | 通过 | dsh 自带 mock LLM server（`packages/test-support/llm-mock-server`）+ `DEEPSEEK_BASE_URL` 覆盖 |
 | 包名子路径解析 | 通过 | `exports` 映射 `"./src/host": "./src/host/index.js"`；ESM 不支持目录索引，必须指到文件 |
 | 后台派工（派完即返回） | 通过 | `spawn_worker` 立即返回子会话 id，父 turn 正常结束，worker 在后台继续 |
 | 完成自动唤醒 | 通过 | 父 inbox 收到完成通知（正文不带说话人前缀）后状态 `idle → running → idle`，通知队列清空 |
-| 协议层与工具对模型可见 | 通过 | 模型侧工具列表同时含 `init_project` 与 `spawn_worker`；skill catalog 含 `coordinator-mode` 与 `init-project` |
+| 协议层与工具对模型可见 | 通过 | 模型侧工具列表同时含 `init_project` 与 `spawn_worker`；skill catalog 含 `leader-mode` 与 `init-project` |
 | 原生工具管理子会话 | 通过（源码核验） | base bundle 启用 `tool-subagent-control` 与 `tool-subagent-control/list-agents`；`agent_id` 即子会话 id |
 | 卡片存储与领域规则 | 通过 | 49 例单测全绿；sdk profile + mock LLM 实测建卡/改卡/查卡/版本冲突 |
 | 客户端取数通道 | 通过 | `output.presentationMeta` 投影的 `meta` 随 `tool/result` 事件持久化，实测携带完整卡片对象 |

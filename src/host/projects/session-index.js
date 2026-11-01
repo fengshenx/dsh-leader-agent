@@ -15,7 +15,7 @@
  * 项目拆成两组，worker 会话与协调者会话分家。官方 workspace 注册表也是这么做的
  * （`realpathNormalize`），第三方没有理由发明另一套。
  *
- * @module dsh-coordinator/host/projects/session-index
+ * @module dsh-leader-kit/host/projects/session-index
  */
 
 /**

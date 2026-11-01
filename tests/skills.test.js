@@ -8,19 +8,19 @@ const bundleRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const skillsRoot = join(bundleRoot, 'skills')
 
 test('发现 bundle 内全部 skill', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-coordinator' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const candidates = await provider.list()
   const names = candidates.map(candidate => candidate.name).sort()
-  assert.deepEqual(names, ['coordinator-mode', 'init-project'])
+  assert.deepEqual(names, ['init-project', 'leader-mode'])
 })
 
 test('候选带可加载的正文与目录资源基址', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-coordinator' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const candidates = await provider.list()
-  const target = candidates.find(candidate => candidate.name === 'coordinator-mode')
-  assert.ok(target, 'coordinator-mode 应被发现')
+  const target = candidates.find(candidate => candidate.name === 'leader-mode')
+  assert.ok(target, 'leader-mode 应被发现')
   assert.equal(target.source, 'bundled')
-  assert.equal(target.provider, 'dsh-coordinator')
+  assert.equal(target.provider, 'dsh-leader-kit')
   assert.equal(target.resourceBase.kind, 'directory')
 
   const definition = await provider.get(target)
@@ -30,15 +30,15 @@ test('候选带可加载的正文与目录资源基址', async () => {
 })
 
 test('未知候选返回 undefined', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-coordinator' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const definition = await provider.get({ locator: { directory: '/nonexistent' } })
   assert.equal(definition, undefined)
 })
 
 test('协议层引用的是 bundle 内的相对路径', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-coordinator' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const candidates = await provider.list()
-  const target = candidates.find(candidate => candidate.name === 'coordinator-mode')
+  const target = candidates.find(candidate => candidate.name === 'leader-mode')
   const definition = await provider.get(target)
   const links = [...definition.content.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1])
   const relative = links.filter(link => !link.startsWith('http'))

@@ -7,7 +7,7 @@
  *
  * 本模块**只读不写** `SLOTS.md`——用户与协调者用常规的 Write/Edit 工具维护它。
  *
- * @module dsh-coordinator/host/slots/slot-templates
+ * @module dsh-leader-kit/host/slots/slot-templates
  */
 
 import { readFileSync } from 'node:fs'

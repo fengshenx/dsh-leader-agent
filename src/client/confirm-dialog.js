@@ -5,7 +5,7 @@
  * 与宿主 `packages/client/ui-primitives/src/Modal.tsx` 的分工一致；本模块只留
  * 确认框自己的内容与按钮。
  *
- * @module dsh-coordinator/client/confirm-dialog
+ * @module dsh-leader-kit/client/confirm-dialog
  */
 
 import { createElement } from 'react'
@@ -47,12 +47,12 @@ export function ConfirmDialog({
     description,
     children: error === ''
       ? null
-      : createElement('div', { className: 'dsh-coordinator-modal-error', role: 'alert' }, error),
+      : createElement('div', { className: 'dsh-leader-kit-modal-error', role: 'alert' }, error),
     footer: [
       createElement('button', {
         key: 'cancel',
         type: 'button',
-        className: 'dsh-coordinator-modal-button dsh-coordinator-modal-button-outline',
+        className: 'dsh-leader-kit-modal-button dsh-leader-kit-modal-button-outline',
         disabled: busy,
         onClick: onCancel,
       }, cancelLabel),
@@ -60,7 +60,7 @@ export function ConfirmDialog({
         key: 'confirm',
         type: 'button',
         'data-modal-autofocus': '',
-        className: `dsh-coordinator-modal-button dsh-coordinator-modal-button-outline${danger ? ' dsh-coordinator-modal-button-danger' : ''}`,
+        className: `dsh-leader-kit-modal-button dsh-leader-kit-modal-button-outline${danger ? ' dsh-leader-kit-modal-button-danger' : ''}`,
         disabled: busy,
         onClick: onConfirm,
       }, confirmLabel),

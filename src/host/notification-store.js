@@ -8,7 +8,7 @@
  * 落盘位置在 dsh home 下的自有目录，不占用 session 事件流——仓外插件不得新增
  * session event 类型。
  *
- * @module dsh-coordinator/host/notification-store
+ * @module dsh-leader-kit/host/notification-store
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -36,7 +36,7 @@ export function resolveDshHome(env = process.env, homedir) {
  * @returns {object} 队列接口
  */
 export function createNotificationStore({ home, logger = () => {} } = {}) {
-  const directory = join(home ?? resolveDshHome(), 'dsh-coordinator')
+  const directory = join(home ?? resolveDshHome(), 'dsh-leader-kit')
   const file = join(directory, 'notifications.json')
   const temporary = join(directory, 'notifications.json.tmp')
 

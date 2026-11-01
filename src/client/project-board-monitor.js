@@ -11,7 +11,7 @@
  *
  * 只在屏幕会话属于某个项目时监视：不属于项目的会话没有项目看板可开。
  *
- * @module dsh-coordinator/client/project-board-monitor
+ * @module dsh-leader-kit/client/project-board-monitor
  */
 
 import {
@@ -31,7 +31,7 @@ import {
 const RECHECK_TICKS = 15
 
 /** 本插件的看板 tab 类型 kind。 */
-export const BOARD_TAB_KIND = 'dsh-coordinator-board'
+export const BOARD_TAB_KIND = 'dsh-leader-kit-board'
 
 /**
  * 看板监视的状态机。
@@ -162,7 +162,7 @@ export function mountProjectBoardMonitor({
     } catch (error) {
       // 右栏服务在特定状态下会抛（没有屏幕会话、tab 类型没注册）。监视器不该
       // 因为一次打不开看板就把整个插件带崩。
-      logger(`dsh-coordinator: 打开看板失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: 打开看板失败：${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -186,7 +186,7 @@ export function mountProjectBoardMonitor({
   const timer = setInterval(() => {
     if (closed) return
     void watch.poll().catch((error) => {
-      logger(`dsh-coordinator: 读项目卡片失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: 读项目卡片失败：${error instanceof Error ? error.message : String(error)}`)
     })
   }, intervalMs)
 
@@ -203,7 +203,7 @@ export function mountProjectBoardMonitor({
       }
     } catch (error) {
       // 卸载阶段右栏可能已经先拆了，关不掉不是错误。
-      logger(`dsh-coordinator: 关闭看板 tab 失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: 关闭看板 tab 失败：${error instanceof Error ? error.message : String(error)}`)
     }
   }
 }
