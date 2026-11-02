@@ -26,7 +26,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协�
 | 项目级提示词（`COORDINATOR.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/coordinator-context.js`、`src/host/slots/` |
 | 真机 / GUI 取证 | [docs/e2e-testing.md](docs/e2e-testing.md) |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
-| 协议层文案（`skills/`） | 现有 `skills/leader-mode/` 的行文与结构，保持同一口吻 |
+| 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
 ## 目录与职责
 
@@ -35,7 +35,7 @@ index.js            包入口：导出 name / inject / apply（实现都在 src/
 src/host/           宿主侧：工具、派工器、存储、项目服务、worker 会话生命周期
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
-skills/             leader-mode 协议层（SKILL.md + playbooks + references）
+.agents/skills/     协议层 skill（leader-mode 派工协议、init-project 初始化方法）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 build/client.mjs    esbuild 客户端构建（closure-factory 封装）
 scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名）
@@ -64,7 +64,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。
-- 工具名只有一处来源：`src/host/index.js` 的 `createBundleTools`（门禁比对用的是它的 `documentedToolNames`）。`SLOTS.md`、`COORDINATOR.md`、`skills/**/*.md` 里反引号写的工具名由 `scripts/verify-doc-tool-names.mjs` 比对，删工具时漏改文档 `npm run check` 会红。
+- 工具名只有一处来源：`src/host/index.js` 的 `createBundleTools`（门禁比对用的是它的 `documentedToolNames`）。`SLOTS.md`、`COORDINATOR.md`、`.agents/skills/**/*.md` 里反引号写的工具名由 `scripts/verify-doc-tool-names.mjs` 比对，删工具时漏改文档 `npm run check` 会红。
 
 ## 代码风格
 

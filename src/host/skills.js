@@ -1,7 +1,7 @@
 /**
  * bundle 内置 skill 的 provider。
  *
- * 把本包 `skills/` 目录下的每个 `<name>/SKILL.md` 注册进 `ctx.skills`，
+ * 把本包 `.agents/skills/` 目录下的每个 `<name>/SKILL.md` 注册进 `ctx.skills`，
  * 让模型能通过 dsh 的 `skill` 工具发现与加载协议层。
  *
  * @module dsh-leader-kit/host/skills

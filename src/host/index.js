@@ -96,7 +96,7 @@ export function apply(ctx) {
 
   ctx.skills.registerProvider(() =>
     createSkillProvider({
-      skillsRoot: join(bundleRoot, 'skills'),
+      skillsRoot: join(bundleRoot, '.agents', 'skills'),
       providerName: 'dsh-leader-kit',
     }),
   )

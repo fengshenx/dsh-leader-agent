@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { createSkillProvider } from '../src/host/skills.js'
 
 const bundleRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
-const skillsRoot = join(bundleRoot, 'skills')
+const skillsRoot = join(bundleRoot, '.agents', 'skills')
 
 test('发现 bundle 内全部 skill', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })

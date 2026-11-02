@@ -16,7 +16,7 @@
     "cordis.patch.yml",
     "src/**",
     "lib/client.js",
-    "skills/**",
+    ".agents/skills/**",
     "locale/*.json",
     "README.md"
   ],
