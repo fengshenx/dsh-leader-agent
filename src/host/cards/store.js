@@ -244,6 +244,12 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
           next.status = status
           if (status === 'done') next.doneAt = now
           if (status === 'active') delete next.doneAt
+          // 关闭卡片即释放执行者：槽位绑定跟着失效，worker 不再挂卡、可以接新活。
+          // 重新打开卡片不会恢复绑定——那是新的指派，要显式再绑一次。
+          if ((status === 'done' || status === 'archived')
+            && next.slots !== undefined && Object.keys(next.slots).length > 0) {
+            next.slots = {}
+          }
         }
         // 内容没有实质变化时不 bump revision、不落盘：零字段调用不是内容更新，
         // 无谓的版本递增会作废其他会话持有的 expectedRevision，人为制造冲突。

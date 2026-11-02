@@ -453,11 +453,22 @@ export function createDispatcher({
     if (typeof archivedSessionIds !== 'function') return null
     const archived = new Set(archivedSessionIds())
     const active = (await workers.list()).filter((item) => !archived.has(item.childId))
-    return {
-      total: active.length,
+    /** 空闲但挂着未完成卡的 worker：不能接新活，关闭卡后槽位才会释放。 */
+    const bound = []
+    const idle = []
+    for (const item of active) {
       // 在跑的记录不算可复用：它这一轮还没回报完，再投一条只会排在后面。
-      idle: active.filter((item) => !inflight.has(item.childId)),
+      if (inflight.has(item.childId)) continue
+      const cards = typeof listCardBindings === 'function'
+        ? (await listCardBindings(item.childId)).filter((binding) => binding.status === 'active')
+        : []
+      if (cards.length > 0) {
+        bound.push({ ...item, cards })
+        continue
+      }
+      idle.push(item)
     }
+    return { total: active.length, idle, bound }
   }
 
   /**
@@ -479,7 +490,7 @@ export function createDispatcher({
     const refs = active
       .map((item) => `#${item.number} ${item.title}（cardId: ${item.cardId}，槽位 ${item.slot}）`)
       .join('、')
-    const way = '同卡续跑：带 cardId 重发本消息；该卡已完成：先 update_card 标 done 再投递；新任务：spawn_worker 新建 worker 并把卡槽位绑到它。'
+    const way = '同卡续跑：带 cardId 重发本消息；该卡已完成：先 update_card 标 done（会释放槽位上的执行者）再投递；新任务：spawn_worker 新建 worker 并把卡槽位绑到它。'
     if (cardId === undefined) {
       throw new Error(`message_worker: worker ${sessionId} 挂着未完成的卡 ${refs}，本次投递未声明同卡，已拒绝：挂未完成卡的 worker 不得接别的工作，否则会话同时服务两张卡、产物会落错卡。${way}`)
     }
@@ -618,15 +629,23 @@ export function createDispatcher({
       const roster = await describeRoster()
       if (roster !== null && roster.total >= activeWorkerLimit) {
         const candidates = roster.idle.slice(0, 10)
+        const bound = roster.bound.slice(0, 10)
         throw new Error([
           `spawn_worker: 未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
           candidates.length === 0
-            ? '当前没有可复用的 worker（都在跑）：等它们结算后再派，或归档不再需要的会话。'
-            : `可复用的 worker（当前不在跑，用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
+            ? '当前没有可复用的 worker（都在跑，或都挂着未完成的卡）：等它们结算，或关闭手上的卡释放执行者。'
+            : `可复用的 worker（当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
               candidates.map((item) => `- ${item.childId} ${item.name ?? item.label ?? ''}`.trimEnd()).join('\n')
             }`,
+          bound.length === 0
+            ? ''
+            : `挂着未完成卡、不能接新活的 worker（先 update_card 把卡标 done / archived，槽位会自动释放）：\n${
+              bound.map((item) => `- ${item.childId} ${item.name ?? item.label ?? ''}：${
+                item.cards.map((card) => `#${card.number} ${card.title}（cardId: ${card.cardId}，槽位 ${card.slot}）`).join('、')
+              }`.trimEnd()).join('\n')
+            }`,
           '确实要新建：传 force 说明为什么现有 worker 都不适合。',
-        ].join('\n'))
+        ].filter((line) => line !== '').join('\n'))
       }
     }
     // worker 的工作目录由项目决定：协调者不能指定 worker 跑在哪，也不该让

@@ -13,6 +13,8 @@
 - 卡片事实没有任何注入路径：worker 的工具面被裁掉 `list_cards`，也没有按绑定渲染 spec 的 provider。协调者只能把 spec 抄进任务消息。
 - `update_card` 的 `links` 是整体替换，worker 想挂 PR 就得先读整卡；而它读不到卡（`list_cards` 被禁），冲突时只能盲改或报错。
 
+同一轮追加两条：派 worker 之前要检查它挂没挂卡（挂卡不能派新活），以及关闭卡片要自动释放卡上的 worker。
+
 ## 决策
 
 ### 派工两段化：`spawn_worker` 只建会话，`message_worker` 才开工
@@ -42,6 +44,23 @@
 - 放 worker 进 `list_cards` 也能解决冲突重读，但那扩大了读取面与工具语义；增量合并把冲突消掉，改动更小。
 - 卡片上下文里已带 `revision` 与当前链接，worker 有现状可对照。
 
+### 挂卡门禁：挂着未完成卡的 worker 不接新活
+
+投递门禁（`assertCardGateOpen`）只放行同卡续跑：worker 挂着 `status === 'active'` 的卡时，`message_worker` 带别的 `cardId`（或干脆不带）都会被拒。名册到顶时 `describeRoster` 把这类 worker 从 `idle` 里摘出来放进 `bound`，`spawn_worker` 的上限报错分两段列出——可复用的候选，与「挂着未完成卡、先关闭再复用」的清单（带卡号、卡名、槽位）。
+
+- 挂卡的 worker 已经有活，再派一条会让一个会话同时服务两张卡，产物落错卡。
+- 候选清单必须过滤：把挂着卡的 worker 推荐成「可复用」，协调者投递就会被门禁拒，提示与实际能力自相矛盾。
+- `describeRoster` 逐 worker 调 `listCardBindings` 读盘而不是查同步 `cardIndex`：索引未就绪时查不到绑定，门禁会 fail-open 把挂卡 worker 当空闲。`idle` 通常很少，读盘开销可接受。
+
+### 关闭卡片自动释放执行者
+
+卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空；`update_card` 拒绝「关闭卡片 + 同次绑定槽位」的组合。
+
+- 关闭即收工：绑定、槽位索引、卡片事实一起失效，worker 不再带旧卡上下文，也能接新任务。这比让协调者手工清 `slots` 可靠——漏一次就留下一个永远挂卡的 worker。
+- 只在 `slots` 非空时才写 `{}`：本就没有 `slots` 字段的卡加上空对象会让 `isSameContent` 判为变化，无谓 bump 作废别人持有的 `expectedRevision`。
+- 重新打开不恢复绑定：那是新的指派，静默恢复会让一张卡突然多出一个没人通知的执行者。
+- 工具层拒绝而不是静默忽略同次传的 `slots`：调用方会以为绑定生效，实际刚被释放。
+
 ### 槽位被占时拒绝，不静默顶替
 
 `bindSlot` 在目标槽位已绑**别的**会话时抛错，提示先用 `update_card` 显式改派。静默顶替会让在跑的 worker 失去角色注入而不自知。
@@ -55,11 +74,15 @@
 - **注入不授予权限**：卡片事实与槽位一致，只贡献文本，工具面仍由 `tools/gate.js` 裁剪。
 - **`spawn_worker` 不兼容旧参数**：仍传 `initialMessage` 会明确报错，不静默忽略（本仓未发布，不留垫片）。
 - **工具名不变**：`spawn_worker` / `message_worker` / `update_card` 的名字与文档门禁比对集合不变。
+- **关闭卡片会抽走在跑 worker 的上下文**：协调者在 worker 仍在跑时把卡标 `done`，worker 下一轮请求就不再带卡片事实与角色槽位。这是「关闭即收工」的预期代价，协议层要求关闭前确认该轮已交活。
+- **关闭释放不区分谁在跑**：store 层看不到会话运行状态，关掉就清绑定；需要保留绑定时不要关，改成改派。
 
 ## 验证
 
-- 单测：660 例全绿（`npm test`）。新增覆盖：`card-context.test.js` 8 例（provider 属性、空绑定、规格/链接渲染、多卡提示、归档标注、渲染异常）；`cards-store.test.js` 9 例（`addLinks` 合并/同 id 更新/去重/互斥/无变化不 bump、`bindSlot` 绑定与拒绝顶替、`cardIndex` 随建卡改卡摘绑同步）；`cards-tools.test.js` 4 例（`addLinks` 追加、互斥、缺标签、schema 暴露）；`dispatch.test.js` 3 例（带卡派工在返回前完成绑定、槽位被占回滚且不登记、装配缺 `bindCardSlot` 时明确报错）与工具参数用例；`worker-sessions.test.js` 改为断言建会话不投递。
+- 单测：667 例全绿（`npm test`）。新增覆盖：`card-context.test.js` 8 例（provider 属性、空绑定、规格/链接渲染、多卡提示、归档标注、渲染异常）；`cards-store.test.js` 9 例（`addLinks` 合并/同 id 更新/去重/互斥/无变化不 bump、`bindSlot` 绑定与拒绝顶替、`cardIndex` 随建卡改卡摘绑同步）；`cards-tools.test.js` 4 例（`addLinks` 追加、互斥、缺标签、schema 暴露）；`dispatch.test.js` 5 例（带卡派工在返回前完成绑定、槽位被占回滚且不登记、装配缺 `bindCardSlot` 时明确报错、名册到顶不推荐挂卡 worker、关闭卡后 worker 被释放）与工具参数用例；`worker-sessions.test.js` 改为断言建会话不投递；`cards-store.test.js` / `cards-tools.test.js` 追加「关闭卡片释放槽位」「关闭没绑槽位的卡不额外 bump」「拒绝关闭同时绑槽位」。
 - 双向验证：
   1. 把 `dispatch` 的绑卡分支临时改成恒不执行 → 「派工带 cardId 与 slot 时，绑定先于开工完成」变红；还原后绿。
   2. 把 store 的 `addLinks` 临时改成整体替换 → 「addLinks 追加链接并保留原有条目」变红；还原后绿。
+  3. 把 store 的关闭释放分支临时改成恒不执行 → 「关闭卡片后 worker 被释放，可以接新任务」变红；还原后绿。该用例最初只断言「能接新任务」，撤掉释放后仍绿——门禁按卡的 `status` 过滤，卡标 done 后即使 `slots` 未清也放行。断言改为落在 `slots` 为空与 `slotIndex`/`cardIndex` 无绑定之后才具备判别力。
+  4. 去掉 `describeRoster` 里「挂卡即 `continue`」 → 「名册到顶时不推荐挂着未完成卡的 worker」变红；还原后绿。
 - 未做真机取证：需要隔离 `DSH_HOME` + mock provider 验证「首轮请求同时含角色槽位与卡片事实」「worker `addLinks` 后看板 2 秒内出现链接」以及空会话冷恢复，留待下一次 GUI 取证。

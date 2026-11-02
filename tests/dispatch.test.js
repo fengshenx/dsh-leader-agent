@@ -1604,6 +1604,91 @@ test('未归档 worker 到顶时拒绝新建，并给出可复用候选', async 
   assert.equal(fixture.spawned.length, 0)
 })
 
+test('名册到顶时不推荐挂着未完成卡的 worker，单独说明怎么释放', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const store = createNotificationStore({ home })
+    const cards = createCardStore({ home })
+    await fixture.workers.register({ childId: 'child-bound', parentSessionId: 'parent-1', name: 'dev-a' })
+    await fixture.workers.register({ childId: 'child-free', parentSessionId: 'parent-1', name: 'dev-b' })
+    await cards.create({ title: '看板上的活', slots: { dev: { sessionId: 'child-bound' } } })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store,
+      workers: fixture.workers,
+      activeWorkerLimit: 2,
+      archivedSessionIds: () => [],
+      listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
+    })
+
+    await assert.rejects(
+      () => dispatcher.dispatch({
+        parent: createParent('parent-1', fixture.delivered),
+        name: '新工',
+        signal: new AbortController().signal,
+      }),
+      (error) => {
+        const [reusable = '', blocked = ''] = error.message.split('挂着未完成卡')
+        // 挂着卡的不能接新活，不该出现在「可复用」清单里。
+        assert.match(reusable, /child-free dev-b/)
+        assert.doesNotMatch(reusable, /child-bound/)
+        assert.match(blocked, /child-bound dev-a/)
+        assert.match(blocked, /#1 看板上的活/)
+        assert.match(blocked, /标 done \/ archived/)
+        return true
+      },
+    )
+  } finally {
+  }
+})
+
+test('关闭卡片后 worker 被释放，可以接新任务', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const store = createNotificationStore({ home })
+    const cards = createCardStore({ home })
+    await fixture.workers.register({ childId: 'child-1', parentSessionId: 'parent-1', name: 'dev-a' })
+    const card = await cards.create({ title: '旧活', slots: { dev: { sessionId: 'child-1' } } })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store,
+      workers: fixture.workers,
+      listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
+    })
+    const parent = createParent('parent-1', fixture.delivered)
+
+    // 挂着未完成的卡：不能接别的工作。
+    await assert.rejects(
+      () => dispatcher.message({
+        parent,
+        sessionId: 'child-1',
+        message: '去做别的活',
+        signal: new AbortController().signal,
+      }),
+      /挂着未完成的卡/,
+    )
+
+    // 关闭卡片即释放槽位：绑定真的被清掉（不只是门禁放行），角色与卡片注入
+    // 也随之停止；否则 worker 收工后仍带着旧卡的上下文。
+    await cards.update({ id: card.id, status: 'done' })
+    assert.deepEqual((await cards.get(card.id)).slots, {})
+    assert.equal(cards.slotIndex.has('child-1'), false)
+    assert.equal(cards.cardIndex.has('child-1'), false)
+
+    // 同一条 worker 立刻可以接新任务。
+    const result = await dispatcher.message({
+      parent,
+      sessionId: 'child-1',
+      message: '去做新活',
+      signal: new AbortController().signal,
+    })
+    assert.equal(result.code, 'sent')
+  } finally {
+  }
+})
+
 test('名册已归档的记录不占名额', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')

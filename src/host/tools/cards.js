@@ -440,6 +440,12 @@ export function createUpdateCardTool({ store, resolveProject }) {
         throw new Error('update_card: links 与 addLinks 不能同时传（整体替换与增量追加互斥）')
       }
       const slots = input.slots === undefined ? undefined : normalizeSlots(input.slots)
+      // 关闭卡片会释放槽位上的执行者；同次再传槽位是自相矛盾的意图，收下会让
+      // 调用方以为绑定生效，实际被释放。
+      if ((input.status === 'done' || input.status === 'archived')
+        && slots !== undefined && Object.keys(slots).length > 0) {
+        throw new Error('update_card: 关闭卡片（done / archived）会释放槽位上的执行者，同次不能再绑定槽位')
+      }
       const sortOrder = optionalNumber(input.sortOrder, 'sortOrder')
       // 卡片按项目归属：改别人项目的卡要拒绝。无归属的存量卡不拦——没有归属可
       // 冲突，拦下来只会让存量卡永远改不动。
