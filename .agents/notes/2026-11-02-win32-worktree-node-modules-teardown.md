@@ -16,10 +16,12 @@ Windows 上 git 的递归删除会跟随 junction。C:\Temp 临时仓库实测�
 - `.dev` 里 dev 实例建的逐条链接指向源 profile，同样会被 git 跟穿。prune 在 remove 前把 `.dev` 整体挪到 `.worktrees/.dev-stash-<任务名>`（隐藏目录，不参与扫描），remove 成功后才删；remove 失败则挪回并恢复 node_modules 链接。挪不动（例如开发实例占用文件）就停在「什么都没改」的状态，不会先拆链接再失败。
 - prune 的空壳兜底也包 try/catch：清理残留目录抛错时打印 `[失败] <任务名>` 后继续处理后面的 worktree，不再中断整批 `--apply`。
 - 已进 main 的分支不再问 gh：`classifyWorktree` 在 `mergedIntoMain` 时不会用到 PR 状态；顺带让临时仓库集成用例不依赖 gh。
+- `--apply` 全程持有 `.worktrees/.prune.lock`（`wx` 创建，stale 锁按 PID/TTL 回收）：两个 prune 同时处理同一个 worktree 时，失败方会在恢复分支重建 junction，而成功方还在 `git worktree remove` 的递归里，会跟穿删掉共享依赖。第二个进程检测到锁就报「另一个 prune 正在运行」并退出。
+- remove 失败后先查 `git worktree list --porcelain`：仍登记才恢复链接，且用删除前 `readlinkSync` 记下的原 target（相对路径按工作树解析）；git 已注销则只恢复 `.dev`、不重建链接，明确提示重跑 prune 不会处理、需手工删目录，避免制造无人管理的 junction。
 
 ### 回归用例钉住调用点
 
-只测 helper 守不住脚本调用点：把 prune 的 `teardown(...)` 换回直接 `git worktree remove`，helper 用例仍然全绿。`tests/worktree-prune.integration.test.js` 在临时 git 仓库里建 junction 与 `.dev`，直接 spawn `worktree-prune.mjs --apply`，断言共享目录 marker 仍在、worktree 已删、`.dev` 暂存已清；调用点一改就会红。
+只测 helper 守不住脚本调用点：把 prune 的 `teardown(...)` 换回直接 `git worktree remove`，helper 用例仍然全绿。`tests/worktree-prune.integration.test.js` 在临时 git 仓库里建 junction 与 `.dev`，直接 spawn `worktree-prune.mjs --apply`，覆盖成功删除、持锁退出、stale 锁回收、`.dev` 暂存接管、remove 失败按原 target 恢复链接、`.dev` 与暂存同时存在时拒绝；调用点一改就会红。锁相关两条用临时仓库直接验证：别的进程持锁时不碰 worktree，stale 锁（一小时前）会被回收后继续。
 
 ### 建链接失败给可读错误
 
@@ -37,32 +39,61 @@ architecture 开发一节与 `worktree-prune.mjs` 头注释不再说「删的只
 - 不改变依赖共享方式，也不处理 POSIX 上 git 不跟穿链接的差异——两条平台统一走同一条拆除顺序。
 - Windows 目录符号链接未实测（本机没有 `SeCreateSymbolicLinkPrivilege`），只验证了 junction；POSIX 实机未跑，`unlink` 分支由单测覆盖。
 - `classifyNodeModulesLink` 的 `reason` 固定写「指向主 checkout」，只被测试使用，无功能影响。
+- prune 锁是仓库级 advisory，只约束本脚本：手工 `git worktree remove` 或旧版本脚本不受它约束；stale 回收按 PID/TTL 判断，并用文件内容比对缩小误删新锁的窗口。
+- `.dev` 与 `.dev-stash-<任务名>` 同时存在时安全拒绝并给出路径；stash 删除失败只警告、数据不丢；隐藏 stash 同名碰撞待确认（任务名不允许以 `.` 开头）；跨卷/UNC 的 `renameSync` EXDEV 未实测。
 - 复现与探针都在 C:\Temp 临时仓库里做，没有拿本仓的 `node_modules` 当靶子。
 
 ## 验证
 
-`tests/worktree-common.test.js` 新增 7 条用例：链接判定（不存在 / 真实目录 / win32 rmdir / POSIX unlink）四条，`teardownWorktree` 的拆除顺序、真实目录不拆、detach 失败后不 remove 三条。`tests/worktree-prune.integration.test.js` 新增 1 条临时仓库集成用例（win32 执行，其它平台跳过）：建 junction 与 `.dev` → spawn `worktree-prune.mjs --apply` → 断言共享 marker 仍在、worktree 已删、`.dev` 暂存已清。
+`tests/worktree-common.test.js` 新增 7 条用例：链接判定（不存在 / 真实目录 / win32 rmdir / POSIX unlink）四条，`teardownWorktree` 的拆除顺序、真实目录不拆、detach 失败后不 remove 三条。`tests/worktree-prune.integration.test.js` 6 条临时仓库集成用例（win32 执行，其它平台跳过）：成功删除、别的 prune 持锁退出、stale 锁回收、`.dev` 暂存接管、remove 失败按原 target 恢复链接、`.dev` 与暂存同时存在时拒绝。
 
-双向验证（Windows 11 / node 24.13.0）：
+### B1 并发锁
+
+C:\Temp 探针：同一临时仓库、同一 worktree，每次同时起 10 个 prune 进程，重复 20 次。
+
+| 版本 | 读数 |
+|---|---|
+| 本 PR（加锁） | 20/20 次共享 marker 保留，**0 次丢失**；共 179 条「另一个 prune 正在运行」（预期 180 条，少数进程在成功方删完后才扫描，直接 exit 0） |
+| 4b47f39（去锁） | 20 次里 **1 次丢失**（iter 9，共享目录 marker 消失）；另加跑 5 次为 0 次，合计 25 次中 1 次 |
+
+### S1 原 target 恢复
+
+集成用例把 worktree 的 `node_modules` 指向临时共享目录（不是主 checkout 的 `node_modules`），再用 `git worktree lock` 让 remove 失败：脚本恢复后的链接 target 仍是原共享目录，`.dev` 与 marker 都在。把恢复目标改回 `join(root, 'node_modules')` 时，同一用例 **6 tests / 5 pass / 1 fail**：`链接 target 被改写`；还原后 6/6 pass。
+
+### S2 git 已注销
+
+C:\Temp 临时仓库用 `FileShare.None` 占住忽略文件，让 `git worktree remove` 失败；git 已把 worktree 从 `git worktree list` 里注销。输出：
+
+```
+[失败] wt-dereg: git worktree remove 失败（error: failed to delete …）；
+git 已注销该 worktree，重跑 prune 不会处理，请手工删除目录，
+.dev 已挪回，node_modules 链接已拆且不恢复
+```
+
+删后 worktree 目录仍在、`.dev/home/session.json` 已挪回、根链接**没有**被重建、共享 marker 在、锁已释放。
+
+### S3 集成用例
+
+- 手动把 `.dev` 挪成 `.dev-stash-wt-int` 后跑 prune：输出 `[已删] wt-int`，worktree 与 stash 都清掉，共享 marker 在。
+- `.dev` 与 stash 同时存在：输出 `[失败] wt-int … 同时存在`，两边数据都在、根链接未拆、marker 未丢。
+
+### 其余双向读数
 
 | 撤销的修复 | 读数 |
 |---|---|
-| `teardownWorktree` 恢复成直接 `remove`，不拆链接 | `worktree-common.test.js` 16 tests / 14 pass / **2 fail**：`先拆 node_modules 链接再执行删除`（actual 只有 `remove`）、`拆链接失败时不再执行删除，避免 git 跟穿链接`（missing expected exception） |
-| prune 调用点换回直接 `git worktree remove` | 集成用例 1 test / 0 pass / **1 fail**：`共享依赖被 git 跟穿删除`（false !== true）；worktree 仍被删，共享 marker 已消失 |
-| 还原 | 集成 1/1 pass；整条 `npm run check` **792 tests / 789 pass / 0 fail / 3 skipped**，exit 0 |
+| `teardownWorktree` 恢复成直接 `remove`，不拆链接 | `worktree-common.test.js` 16 tests / 14 pass / **2 fail**：`先拆 node_modules 链接再执行删除`、`拆链接失败时不再执行删除，避免 git 跟穿链接` |
+| prune 调用点换回直接 `git worktree remove` | 集成用例 **6 tests / 2 pass / 4 fail**：成功删除、stale 锁回收、暂存接管、按原 target 恢复链接四条红；持锁退出与 `.dev`+stash 拒绝两条绿（它们本来就不走 remove） |
+| 还原 | 集成 6/6 pass；整条 `npm run check` **797 tests / 794 pass / 0 fail / 3 skipped**，exit 0 |
 
 C:\Temp 临时仓库复现（修复前）：`git worktree remove --force` 后共享目录只剩空 `node_modules`，`esbuild\marker.txt` 消失；worktree 根部的 junction 与 `.dev/home` 里的嵌套 junction 都会跟穿。修复前探针另确认：Node 的 `rmdirSync(junction)` / `rmSync` 都只删链接、目标保留，`unlinkSync` 在 Node 24 上对 junction 也能成功。
 
-失败路径（C:\Temp 临时仓库，均用修复后的脚本）：
-
-- `git worktree remove` 失败：把忽略文件用 `FileShare.None` 占住。输出 `[失败] wt-fail3: git worktree remove 失败（error: failed to delete …）；worktree 保留，.dev 已挪回，node_modules 链接已恢复`。删后 worktree 仍在、`.dev/home/session.json` 在、根 junction 在、共享 marker 在、没有 `.dev-stash-*` 残留。
-- `.dev` 被占用：rename 抛 `EPERM: operation not permitted, rename …`，脚本在拆链接之前停下，输出 `[失败] wt-dev: 挪走 .dev 失败，worktree 未动（…）`；链接、数据、共享 marker 均在，无暂存。解除占用后重跑输出 `[已删] wt-dev（feature/dev）`，收敛。
+`.dev` 被占用（rename EPERM）时脚本在拆链接之前停下：链接、数据、共享 marker 均在，无暂存；解除占用后重跑输出 `[已删]`，收敛。
 
 win32 真机成功路径（Windows 11 / node 24.13.0，全部用本 PR 的脚本，cwd 在主 checkout）：
 
-1. `node .worktrees/win32-worktree/scripts/worktree-spawn.mjs wt-demo2` → 建出 `.worktrees/wt-demo2`，`node_modules` 是 Junction，Target 指向主 checkout 的 `node_modules`。
-2. 在主 checkout 的 `node_modules` 放 `.win32-worktree-demo-marker`（并确认 `esbuild/package.json` 在）；在 `wt-demo2/.dev` 放会话数据，并在其 profile 的 `node_modules/esbuild` 建 Junction 指向 `C:\Temp\wt-demo2-shared\node_modules\esbuild`，目标里放 `marker.txt`。
-3. `node .worktrees/win32-worktree/scripts/worktree-prune.mjs wt-demo2 --apply` → 输出 `[已删] wt-demo2（feature/wt-demo2）`。
-4. 删后读数：worktree 目录不存在；主 checkout 的 marker 与 `esbuild` 依赖仍在；`C:\Temp\wt-demo2-shared` 的 marker 仍在；没有 `.dev-stash-*` 残留；`feature/wt-demo2` 本地分支已删；主 checkout `git status --porcelain` 为空。
+1. `node .worktrees/win32-worktree/scripts/worktree-spawn.mjs wt-demo3` → 建出 `.worktrees/wt-demo3`，`node_modules` 是 Junction，Target 指向主 checkout 的 `node_modules`。
+2. 主 checkout 的 `node_modules` 放 marker；在 `wt-demo3/.dev` 放会话数据，并在其 profile 的 `node_modules/esbuild` 建 Junction 指向 `C:\Temp\wt-demo3-shared\node_modules\esbuild`，目标里放 marker。
+3. `node .worktrees/win32-worktree/scripts/worktree-prune.mjs wt-demo3 --apply` → 输出 `[已删] wt-demo3（feature/wt-demo3）`。
+4. 删后读数：worktree 目录不存在；主 checkout 的 marker 与 `esbuild` 依赖仍在；`C:\Temp\wt-demo3-shared` 的 marker 仍在；没有 `.dev-stash-*` 残留、`.prune.lock` 已释放；`feature/wt-demo3` 本地分支已删；主 checkout `git status --porcelain` 为空。
 
-`npm run check` 整条：Agent Note 51 篇格式合规、文档工具名 11 篇、语法检查 84 文件、单测 792 用例 / 789 通过 / **0 失败** / 3 跳过，exit 0（改动前基线 784 / 781 / 3 / 0）。
+`npm run check` 整条：Agent Note 51 篇格式合规、文档工具名 11 篇、语法检查 84 文件、单测 797 用例 / 794 通过 / **0 失败** / 3 跳过，exit 0（改动前基线 784 / 781 / 3 / 0）。
