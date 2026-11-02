@@ -1810,6 +1810,45 @@ test('声明同卡时放行，声明别的卡时拒绝', async () => {
   )
 })
 
+test('同时挂两张未完成的卡时拒绝投递，声明哪张都一样', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-9', parentSessionId: 'parent-1', name: '实现工' })
+  const bindings = [
+    { cardId: 'card-1', number: 7, title: '实现登录', status: 'active', slot: 'dev' },
+    { cardId: 'card-2', number: 8, title: '审查登录', status: 'active', slot: 'review' },
+  ]
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    listCardBindings: async (sessionId) => (sessionId === 'child-9' ? bindings : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+
+  // 两条工作线并行时产物无从归属；角色注入本来就只按一张卡算，上下文早就不一致。
+  for (const cardId of ['card-1', 'card-2', undefined]) {
+    await assert.rejects(
+      () => dispatcher.message({
+        parent,
+        sessionId: 'child-9',
+        message: '接着做',
+        ...(cardId === undefined ? {} : { cardId }),
+        signal: new AbortController().signal,
+      }),
+      (error) => {
+        assert.match(error.message, /同时挂着 2 张未完成的卡/)
+        assert.match(error.message, /#7 实现登录/)
+        assert.match(error.message, /#8 审查登录/)
+        assert.match(error.message, /只留一张 active 卡/)
+        return true
+      },
+    )
+  }
+  assert.deepEqual(fixture.resumed, [])
+})
+
 test('挂着已完成卡的 worker 可以直接投递', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')

@@ -51,6 +51,7 @@
 - 挂卡的 worker 已经有活，再派一条会让一个会话同时服务两张卡，产物落错卡。
 - 候选清单必须过滤：把挂着卡的 worker 推荐成「可复用」，协调者投递就会被门禁拒，提示与实际能力自相矛盾。
 - `describeRoster` 逐 worker 调 `listCardBindings` 读盘而不是查同步 `cardIndex`：索引未就绪时查不到绑定，门禁会 fail-open 把挂卡 worker 当空闲。`idle` 通常很少，读盘开销可接受。
+- **同时挂多张 `active` 卡直接拒绝**，与声明哪张卡无关：那种会话在并行服务多条工作线，产物无从归属；角色注入本来就只按一张卡算（`slotIndex` 后绑胜出），上下文与实际服务对象已经不一致。这种状态只有整卡替换 `slots` 才造得出来，正常派工与关卡释放都不会。修法是拿着被拒提示先关掉多余的卡。
 
 ### 关闭卡片自动释放执行者
 
@@ -79,10 +80,11 @@
 
 ## 验证
 
-- 单测：667 例全绿（`npm test`）。新增覆盖：`card-context.test.js` 8 例（provider 属性、空绑定、规格/链接渲染、多卡提示、归档标注、渲染异常）；`cards-store.test.js` 9 例（`addLinks` 合并/同 id 更新/去重/互斥/无变化不 bump、`bindSlot` 绑定与拒绝顶替、`cardIndex` 随建卡改卡摘绑同步）；`cards-tools.test.js` 4 例（`addLinks` 追加、互斥、缺标签、schema 暴露）；`dispatch.test.js` 5 例（带卡派工在返回前完成绑定、槽位被占回滚且不登记、装配缺 `bindCardSlot` 时明确报错、名册到顶不推荐挂卡 worker、关闭卡后 worker 被释放）与工具参数用例；`worker-sessions.test.js` 改为断言建会话不投递；`cards-store.test.js` / `cards-tools.test.js` 追加「关闭卡片释放槽位」「关闭没绑槽位的卡不额外 bump」「拒绝关闭同时绑槽位」。
+- 单测：668 例全绿（`npm test`）。新增覆盖：`card-context.test.js` 8 例（provider 属性、空绑定、规格/链接渲染、多卡提示、归档标注、渲染异常）；`cards-store.test.js` 9 例（`addLinks` 合并/同 id 更新/去重/互斥/无变化不 bump、`bindSlot` 绑定与拒绝顶替、`cardIndex` 随建卡改卡摘绑同步）；`cards-tools.test.js` 4 例（`addLinks` 追加、互斥、缺标签、schema 暴露）；`dispatch.test.js` 5 例（带卡派工在返回前完成绑定、槽位被占回滚且不登记、装配缺 `bindCardSlot` 时明确报错、名册到顶不推荐挂卡 worker、关闭卡后 worker 被释放）与工具参数用例；`worker-sessions.test.js` 改为断言建会话不投递；`cards-store.test.js` / `cards-tools.test.js` 追加「关闭卡片释放槽位」「关闭没绑槽位的卡不额外 bump」「拒绝关闭同时绑槽位」。
 - 双向验证：
   1. 把 `dispatch` 的绑卡分支临时改成恒不执行 → 「派工带 cardId 与 slot 时，绑定先于开工完成」变红；还原后绿。
   2. 把 store 的 `addLinks` 临时改成整体替换 → 「addLinks 追加链接并保留原有条目」变红；还原后绿。
   3. 把 store 的关闭释放分支临时改成恒不执行 → 「关闭卡片后 worker 被释放，可以接新任务」变红；还原后绿。该用例最初只断言「能接新任务」，撤掉释放后仍绿——门禁按卡的 `status` 过滤，卡标 done 后即使 `slots` 未清也放行。断言改为落在 `slots` 为空与 `slotIndex`/`cardIndex` 无绑定之后才具备判别力。
   4. 去掉 `describeRoster` 里「挂卡即 `continue`」 → 「名册到顶时不推荐挂着未完成卡的 worker」变红；还原后绿。
+  5. 把多卡门禁的条件临时改成「超过 99 张才拦」 → 「同时挂两张未完成的卡时拒绝投递，声明哪张都一样」变红；还原后绿。
 - 未做真机取证：需要隔离 `DSH_HOME` + mock provider 验证「首轮请求同时含角色槽位与卡片事实」「worker `addLinks` 后看板 2 秒内出现链接」以及空会话冷恢复，留待下一次 GUI 取证。

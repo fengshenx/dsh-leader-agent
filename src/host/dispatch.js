@@ -474,9 +474,14 @@ export function createDispatcher({
   /**
    * 投递卡门禁：worker 挂着未完成的卡时，只允许同卡续跑。
    *
-   * 我们的槽位绑定是「卡 → 槽位 → 会话」的投影，一个会话可能被多张卡绑到不同
-   * 槽位上，所以按「任一 active 卡匹配」放行，而不是只看最新那张。挂 done /
-   * archived 卡、或者不挂卡时不拦——那时卡已经不是它当前在服务的工作。
+   * 我们的槽位绑定是「卡 → 槽位 → 会话」的投影，同一个会话可能被多张卡绑到
+   * 不同槽位上。挂 done / archived 卡、或者不挂卡时不拦——那时卡已经不是它
+   * 当前在服务的工作。
+   *
+   * 同时挂多张 `active` 卡是必须拦下的坏状态：它意味着会话在并行服务多条
+   * 工作线，产物无从归属，而角色槽位注入本来就只按一张卡算（`slotIndex` 后绑
+   * 胜出），上下文与实际服务对象已经不一致。只有整卡替换 `slots` 才会造成这种
+   * 状态，正常派工与关卡释放都不会。
    *
    * @param {string} sessionId - worker 会话 id
    * @param {string | undefined} cardId - 本次投递声明的卡
@@ -486,10 +491,13 @@ export function createDispatcher({
     if (typeof listCardBindings !== 'function') return
     const active = (await listCardBindings(sessionId)).filter((item) => item.status === 'active')
     if (active.length === 0) return
-    if (cardId !== undefined && active.some((item) => item.cardId === cardId)) return
     const refs = active
       .map((item) => `#${item.number} ${item.title}（cardId: ${item.cardId}，槽位 ${item.slot}）`)
       .join('、')
+    if (active.length > 1) {
+      throw new Error(`message_worker: worker ${sessionId} 同时挂着 ${active.length} 张未完成的卡（${refs}），无法判断这次产物属于哪一张，已拒绝投递：先用 update_card 关掉多余的卡（done / archived 会释放槽位上的执行者），只留一张 active 卡再派活。`)
+    }
+    if (cardId !== undefined && active[0].cardId === cardId) return
     const way = '同卡续跑：带 cardId 重发本消息；该卡已完成：先 update_card 标 done（会释放槽位上的执行者）再投递；新任务：spawn_worker 新建 worker 并把卡槽位绑到它。'
     if (cardId === undefined) {
       throw new Error(`message_worker: worker ${sessionId} 挂着未完成的卡 ${refs}，本次投递未声明同卡，已拒绝：挂未完成卡的 worker 不得接别的工作，否则会话同时服务两张卡、产物会落错卡。${way}`)
