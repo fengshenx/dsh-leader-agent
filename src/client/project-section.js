@@ -647,7 +647,6 @@ function ProjectRow(props) {
         'data-selected': selected ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
         'aria-current': selected ? 'true' : undefined,
-        'aria-expanded': expanded,
         title: `${project.name} · ${project.directory}`,
         onClick: (event) => {
           if (event.target.closest('.dsh-leader-kit-project-actions') !== null) return
@@ -661,6 +660,7 @@ function ProjectRow(props) {
           ref: leadRef,
           className: 'dsh-leader-kit-project-lead',
           'aria-label': expanded ? '收起会话' : '展开会话',
+          'aria-expanded': expanded,
           onClick: (event) => { event.stopPropagation(); onToggleExpand(project.id) },
         },
         createElement(

@@ -33,13 +33,13 @@
 ## 边界
 
 - **不跟宿主的 `panelActive`**：右栏面板打开时宿主认为主区域没有当前会话，本仓仍按 `retainedBy.mainView > 0` 判定。这与 `quietWorkspaceOf` 的既有取舍一致——多亮的只是一层底色，不改变任何行为。
-- **只点亮项目行，不点亮项目树里的会话行**：worker 会话行本身仍没有选中态。当前需求是「点项目后知道自己在哪个项目」，精确到会话行的选中是另一件事；项目行也仍不是键盘可聚焦控件（点击路径是 div + onClick，与改前一致），可访问性只保证「当前项」这条语义不说谎。
+- **只点亮项目行，不点亮项目树里的会话行**：worker 会话行本身仍没有选中态。当前需求是「点项目后知道自己在哪个项目」，精确到会话行的选中是另一件事；项目行也仍不是键盘可聚焦控件（点击路径是 div + onClick，没有 `tabindex`——改前有 `role="treeitem"` 但同样不可聚焦，只有这一半一致），可访问性只保证「当前项」这条语义不说谎。展开态的 `aria-expanded` 挂在行首那颗 button 上：它不是全局属性，留在行容器上只有在自称 `treeitem` 时才成立。
 - **名单刷新依赖面板广播**：另一个窗口里的项目变更靠窗口聚焦兜底，与原有刷新口径相同。
 - **worker 路径仍有一次远程往返**：切会话时立即重问归属，但判据本身在宿主侧（浏览器没有文件系统，做不了路径归一），这一帧仍可能先渲染成未选中。
 
 ## 验证
 
-- 单测新增/改写 5 条：`tests/project-panel.test.js` 三条（协调者与 worker 点亮；退役协调者、归档会话、被归档的现任协调者不亮；别的项目、空会话、归属未同步时不亮），`tests/coordinator-session-watch.test.js` 三条（通道就绪后填充名单；项目变更广播后名单跟着刷新；卸载后 ready 与广播都不再触发刷新）。`npm run check` 601 例全绿。
+- 单测新增/改写 6 条：`tests/project-panel.test.js` 三条（协调者与 worker 点亮；退役协调者、归档会话、被归档的现任协调者不亮；别的项目、空会话、归属未同步时不亮），`tests/coordinator-session-watch.test.js` 三条（通道就绪后填充名单；项目变更广播后名单跟着刷新；卸载后 ready 与广播都不再触发刷新）。`npm run check` 601 例全绿。
 - **用例可单独跑**：三条名单用例各自 `node --test --test-name-pattern` 单跑均绿（改前第二条依赖第一条留下的订阅与单例，单独跑必红）。假件按宿主真实 API 面构造：window 监听按 type 存 listener 集合、`removeEventListener` 按 listener 精确移除。
 - 双向验证（精确撤销 → 变红 → 还原 → 全绿）：
   - 去掉 `isRetiredCoordinatorSession` 分支 → `actual: true, expected: false`；
