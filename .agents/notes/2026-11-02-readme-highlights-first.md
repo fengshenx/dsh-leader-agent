@@ -79,6 +79,7 @@ README 在 2026-11-02 做过一次瘦身（见 [README 只留用法](2026-11-02-
 - README 仍不承载机制论证：新增的「怎么跑起来」只有三条，细节一律落架构文档。
 - 中文版与英文版的副标题、锚点、章节顺序保持对应；`.agents/notes/` 的历史笔记不改，旧笔记里的 `README.md#开发` 指针在本次迁移后失效，保留原样作为历史记录。
 - **打包门禁不守中文版这条留给 #68**：`verify:pack` 与其 `ALWAYS_SHIPPED` 只存在于未合并的 #68，本 PR 不在它上面造依赖，也不照抄一份 gate；`README_ZH.md` 已确认进 `npm pack` 清单。
+- **协议层 skill 不进每轮注入路径**：每轮请求前求值、正文变化才追加的是 `COORDINATOR.md`、`SLOTS.md` 与卡片事实（`docs/architecture.md` 的「项目级提示词与协议层」表）；`leader-mode` / `init-project` 由模型调 `skill` 工具按需加载，目标项目的 `AGENTS.md` 走宿主的 agent-instructions。README 的两版措辞按这条区分，不把 skill 写成「注入」。
 - 合并带入的是 main 的代码与 `docs/`，本 PR 不重写这些文件的内容；README 只同步它们的结论。
 
 ## 验证
