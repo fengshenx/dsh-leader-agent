@@ -4,8 +4,9 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertSeparateHome, assertWebBundle, deriveProfilePackage,
-  planNodeModules, resolveDevPaths,
+  LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertLeaderKitBundle, assertSeparateHome, assertWebBundle,
+  corruptProfilePackageMessage, deriveProfilePackage, devWebBundleHint, planNodeModules, resolveDevPaths,
+  startWebBundleHint,
 } from '../scripts/dev-plan.mjs'
 
 const WORKTREE = '/work/repo/.worktrees/feature-a'
@@ -166,20 +167,103 @@ test('两边都不存在时按字面量比较，不会误判', () => {
   assert.throws(() => assertSeparateHome({ home: '/nowhere/a', sourceHome: '/nowhere/a' }), /同一个目录/)
 })
 
-test('源 profile 带 web app bundle 时放行', () => {
+test('profile 带 web app bundle 时放行', () => {
   assert.doesNotThrow(() => assertWebBundle({
     profileDir: '/home/user/.dsh/profiles/web',
     bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE],
+    hint: '不用改。',
   }))
 })
 
-test('源 profile 缺 web app bundle 时拒绝，并说清 dsh web 会静默空转', () => {
+test('profile 缺 web app bundle 时拒绝，并说清 dsh web 会静默空转', () => {
   assert.throws(
-    () => assertWebBundle({ profileDir: '/home/user/.dsh/profiles/dev', bundles: ['@deepseek-ai/dsh-base'] }),
+    () => assertWebBundle({
+      profileDir: '/home/user/.dsh/profiles/dev',
+      bundles: ['@deepseek-ai/dsh-base'],
+      hint: '不用改。',
+    }),
     /没有 @deepseek-ai\/dsh-web-app.*dsh web 起不来/s,
   )
 })
 
-test('源 profile 根本没写 bundles 时也拒绝', () => {
-  assert.throws(() => assertWebBundle({ profileDir: '/x', bundles: undefined }), /dsh-web-app/)
+test('profile 根本没写 bundles 时也拒绝', () => {
+  assert.throws(
+    () => assertWebBundle({ profileDir: '/x', bundles: undefined, hint: '不用改。' }),
+    /dsh-web-app/,
+  )
+})
+
+test('拒绝时用调用方给的修复建议，不串别处的开关', () => {
+  assert.throws(
+    () => assertWebBundle({
+      profileDir: '/home/user/.dsh/profiles/web',
+      bundles: [],
+      hint: '删掉该 profile 让 dsh 按 web 模板重建。',
+    }),
+    (error) => error.message.includes('删掉该 profile') && !error.message.includes('DSH_PROFILE'),
+  )
+})
+
+test('dev 的修复建议指向可换的 DSH_PROFILE', () => {
+  assert.match(devWebBundleHint(), /DSH_PROFILE/)
+})
+
+test('start 的修复建议不提 DSH_PROFILE，给的是固定 profile 能照做的命令', () => {
+  const hint = startWebBundleHint({
+    profileDir: '/home/user/.dsh/profiles/web',
+    dshCommand: 'dsh',
+    worktree: WORKTREE,
+  })
+  assert.ok(!hint.includes('DSH_PROFILE'), 'start 的 profile 名固定，换 profile 的建议对它无效')
+  assert.match(hint, /删掉 \/home\/user\/\.dsh\/profiles\/web/)
+  assert.match(hint, /dsh plugin --profile web add \/work\/repo\/\.worktrees\/feature-a/)
+})
+
+test('profile package.json 损坏时给的是先修文件或删目录重建，不是直接重装', () => {
+  const message = corruptProfilePackageMessage({
+    packagePath: '/home/user/.dsh/profiles/web/package.json',
+    parseMessage: "Expected ',' or '}' after property value in JSON at position 1",
+    dshCommand: 'dsh',
+    worktree: WORKTREE,
+  })
+  // dsh plugin 在该目录里跑 pnpm，pnpm 同样读这份文件，坏了照样失败。
+  assert.match(message, /不是合法 JSON（Expected ',' or '}'/)
+  assert.match(message, /先手工修好它/)
+  assert.match(message, /删掉 \/home\/user\/\.dsh\/profiles\/web 让 dsh 按 web 模板重建/)
+  assert.match(message, /删前确认里面没有别的插件/)
+  assert.match(message, /dsh plugin --profile web add \/work\/repo\/\.worktrees\/feature-a/)
+  assert.ok(!/重装一次/.test(message), '重装修不好损坏的 package.json')
+})
+
+test('漏传修复建议时直接报错，不拼出 undefined', () => {
+  assert.throws(
+    () => assertWebBundle({ profileDir: '/x', bundles: [] }),
+    /需要 hint/,
+  )
+})
+
+test('日常 profile 已装本插件时放行', () => {
+  assert.doesNotThrow(() => assertLeaderKitBundle({
+    profileDir: '/home/user/.dsh/profiles/web',
+    bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE],
+    worktree: WORKTREE,
+  }))
+})
+
+test('日常 profile 没装本插件时拒绝，并给出可复制的安装命令', () => {
+  assert.throws(
+    () => assertLeaderKitBundle({
+      profileDir: '/home/user/.dsh/profiles/web',
+      bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE],
+      worktree: WORKTREE,
+    }),
+    /没有 dsh-leader-kit.*dsh plugin --profile web add \/work\/repo\/\.worktrees\/feature-a/s,
+  )
+})
+
+test('日常 profile 没写 bundles 时也拒绝', () => {
+  assert.throws(
+    () => assertLeaderKitBundle({ profileDir: '/x', bundles: undefined, worktree: WORKTREE }),
+    /dsh-leader-kit/,
+  )
 })

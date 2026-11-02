@@ -31,6 +31,7 @@ import { createCoordinatorHandover } from './coordinator-handover.js'
 import { applyToolGate, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyCoordinatorContext } from './coordinator-context.js'
+import { applyTeamGuard } from './team-guard.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -189,6 +190,16 @@ export function apply(ctx) {
     logger,
   })
 
+  // agent-team（experimental）并存时的护栏：检测到 `agentTeams` 服务时告警一次，
+  // 并给协调者与 worker 注入「团队工具对本流程无效」的运行时上下文。工具面挡不住
+  // 团队工具（它们注册在 Agent scope），原因见 `team-guard.js` 头注释。
+  const teamGuard = applyTeamGuard({
+    ctx,
+    isCoordinatorSession,
+    isWorkerSession: workerSessions.isWorkerSession,
+    logger,
+  })
+
   // 两份反查索引都是进程内的，崩溃后不会留下：启动时从各自的库重建。
   void cards.loadSlotIndex().catch((error) => {
     logger(`dsh-leader-kit: 重建槽位索引失败：${error instanceof Error ? error.message : String(error)}`)
@@ -216,6 +227,9 @@ export function apply(ctx) {
   // 会话创建（含冷恢复）都重算一遍，不会带着上一次的限制。
   ctx.on('agent/created', ({ agent }) => {
     applyToolGate({ agent, isCoordinatorSession, isWorkerSession: workerSessions.isWorkerSession })
+    // agent-team 服务可能在本次装配之后才注册（bundle 顺序不保证），所以检测放在
+    // 第一次会话创建时，而不是 apply 里。
+    teamGuard.warnOnce()
     dispatcher.markAlive(agent.id)
     void dispatcher.redeliverPending(agent).catch((error) => {
       logger(`dsh-leader-kit: 补投完成通知失败：${error instanceof Error ? error.message : String(error)}`)

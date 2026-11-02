@@ -70,6 +70,14 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental，base bundle 未启用），按 teammate 名字寻址，与本流程的 worker 不是同一批，不要混用。
 
+### agent-team 并存时
+
+宿主加载 `@deepseek-ai/dsh-experimental-agent-team-profile` 后，`agentTeams` 服务存在，`tool-agent-team` 会给每个「普通根会话」装团队工具（`agent-team/src/roster.ts` 的 `tryMembership`：无 `parentSession`、无 subagent descriptor 的 root 都算 lead）。本 bundle 的 worker 正是普通根会话，于是被当成隐式 Lead，能自己拉 teammate、自己记 team 任务；协调者也同时看到两套派工工具。
+
+工具面挡不住它们：团队工具注册在 Agent scope，而 `tools.restrict({ deny })` 只接受全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），`tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以本 bundle 只做两件事——第一次会话创建时告警一次，以及给协调者与 worker 注入运行时上下文（`dsh-leader-kit:team-ban`，order 106）。
+
+禁令按各自的工具面分开写：协调者的出口是 `spawn_worker` / `message_worker` 与卡片；worker 的这三件工具正被 deny（`tools/gate.js` 的 `COORDINATOR_ONLY_TOOLS`），所以它只被告知当轮交付、自己的 worktree 与 PR、以及用 `update_card` 汇报。普通会话不注入：它们可能真的在用 teammate。要彻底隔离，只能从 profile 移除 `@deepseek-ai/dsh-experimental-agent-team-profile`。
+
 ### 工具面分配
 
 工具面按角色在**会话创建时**裁剪，落在 `agent/created` 上，不是靠参数隐藏：
@@ -222,6 +230,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 - 改客户端代码（`src/client/`）要重跑 `npm run dev` 或 `npm run build:client` 再刷新；宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
 - 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DSH_PROFILE`（源 profile 名，默认 `web`；那个 profile 的 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。
+
+`npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-kit` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
 
 收尾时清掉已合并的 worktree：
 

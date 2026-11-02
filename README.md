@@ -52,6 +52,8 @@ dsh plugin --profile web add dsh-leader-kit
 
 profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类自定义名字不在 dsh 的 `PROFILE_TEMPLATES` 里，`dsh plugin` 会按默认模板只装 `@deepseek-ai/dsh-base`——没有 web-app bundle，插件客户端半边根本不加载。
 
+装好后用 `dsh web` 起日常实例。在本仓库里可以直接 `npm start`：它先 `npm run build:client` 再起 `dsh web`，起之前检查 dsh 是否可用、日常 profile 是否装了本插件——`lib/client.js` 不入库，漏了构建时实例照常起来、右栏却没有看板。
+
 `engines.dsh` 声明了支持的 dsh 版本范围（当前 `>=0.2.1-rc.2 <0.3.0`）；不满足时安装与启动会被拒绝。dsh 处于 developer preview，版本范围需随 dsh 跟进。
 
 ## 基本使用
@@ -85,12 +87,15 @@ profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类
 npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任务名>
 cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
+npm start                         # 起日常实例（~/.dsh 的数据与 profile）
 npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
 ```
 
 其余命令（`build:client` / `worktree:prune` 等）见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
 `npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。改客户端代码要重建再刷新，宿主侧代码重启实例即可。
+
+`npm start` 起的是日常那套：数据根 `~/.dsh`，插件取日常 profile 里链接的版本，起之前先 `npm run build:client`。它会逐项检查并给出可复制的修复命令：dsh 不可用（没装或不在 PATH，`DSH_DSH` 可指定路径）、日常 profile 不存在、profile 的 bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有 `npm run dev` 的隔离——在 worktree 里跑，加载的仍是链接指向的那份代码（通常是主 checkout），脚本会提示，验证本目录改动请用 `npm run dev`。
 
 开发实例的覆盖项、worktree 清理守卫、取证流程与构建约束见[架构文档的开发一节](docs/architecture.md#开发)与 [docs/e2e-testing.md](docs/e2e-testing.md)。
 

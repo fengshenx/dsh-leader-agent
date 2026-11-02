@@ -34,8 +34,8 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
-  COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, planNodeModules,
-  resolveDevPaths,
+  COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, devWebBundleHint,
+  planNodeModules, resolveDevPaths,
 } from './dev-plan.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -82,7 +82,11 @@ const sourcePackage = JSON.parse(readFileSync(sourcePackagePath, 'utf8'))
 // 这条也在写之前：源 profile 没有 web app bundle 时派生出来的实例跑 dsh web 是
 // 静默空转，早点拒绝别让人对着一个不打印任何东西的进程。
 try {
-  assertWebBundle({ profileDir: paths.sourceProfileDir, bundles: sourcePackage.dsh?.profile?.bundles })
+  assertWebBundle({
+    profileDir: paths.sourceProfileDir,
+    bundles: sourcePackage.dsh?.profile?.bundles,
+    hint: devWebBundleHint(),
+  })
 } catch (error) {
   console.error(`错误: ${error.message}`)
   process.exit(1)

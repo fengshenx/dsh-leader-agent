@@ -1,5 +1,5 @@
 /**
- * `npm run dev` 的路径与派生计算。
+ * `npm run dev` 的路径与派生计算，以及 `npm start` 复用的 profile 守卫。
  *
  * 开发实例要满足三件事：插件指向**当前工作树**（而不是主 checkout 或上一次
  * `dsh plugin add` 留下的路径）、数据（会话、项目、卡片）落在工作树内、以及
@@ -10,13 +10,14 @@
  * 不校验 `package.json` 的 `link:` 路径与磁盘链接是否一致，所以这样一个
  * profile 能被正常加载（`npm run dev` 的隔离实例就是这么跑起来的）。
  *
- * 这里的函数只算「该建什么」，文件系统操作在 `dev.mjs`。
+ * 这里的函数只算「该建什么」与「什么情况该拒绝」，文件系统操作在 `dev.mjs`
+ * 与 `start.mjs`。
  *
  * @module dsh-leader-kit/scripts/dev-plan
  */
 
 import { realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 /** 插件包名：profile 里换成工作树链接的那个。 */
 export const LEADER_KIT_PACKAGE = 'dsh-leader-kit'
@@ -97,25 +98,96 @@ export function assertSeparateHome({ home, sourceHome }) {
 }
 
 /**
- * 挡住「源 profile 没有 web UI」这个误用。
+ * 挡住「profile 没有 web UI」这个误用。
  *
  * `DSH_PROFILE` 接受任意名字，但只有落在宿主 `PROFILE_TEMPLATES` 里的名字才带
  * app bundle。实测一个只含 `@deepseek-ai/dsh-base` 的 profile 跑 `dsh web`：
  * 不监听端口、不打印 URL、也不报错——进程静默地什么都不做，而 `npm run dev`
- * 看起来是成功的。判据直接看源 profile 的 bundles 里有没有 web app bundle，
+ * 看起来是成功的。判据直接看 profile 的 bundles 里有没有 web app bundle，
  * 不抄宿主的模板表（那份表会随版本变）。
  *
+ * 修复建议由调用方给：`dev` 能换 `DSH_PROFILE`，`start` 的 profile 名是固定的
+ * （`profiles/web`），照前者的建议做无效。
+ *
  * @param {object} options - 选项
- * @param {string} options.profileDir - 源 profile 目录，只用于报错定位
- * @param {string[] | undefined} options.bundles - 源 profile 的 `dsh.profile.bundles`
+ * @param {string} options.profileDir - profile 目录，只用于报错定位
+ * @param {string[] | undefined} options.bundles - 该 profile 的 `dsh.profile.bundles`
+ * @param {string} options.hint - 该调用方能照做的修复建议，必填
  * @returns {void} 有 web app bundle 时无返回
  */
-export function assertWebBundle({ profileDir, bundles }) {
+export function assertWebBundle({ profileDir, bundles, hint }) {
+  if (typeof hint !== 'string' || hint === '') {
+    throw new Error('assertWebBundle 需要 hint：每个调用方各给自己能执行的修复建议')
+  }
   if (Array.isArray(bundles) && bundles.includes(WEB_APP_BUNDLE)) return
   throw new Error(
-    `源 profile 的 bundles 里没有 ${WEB_APP_BUNDLE}（${profileDir}），dsh web 起不来：`
-    + '实测不监听端口、不打印 URL、也不报错。'
-    + `用 DSH_PROFILE 指向一个 web profile，或把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles。`,
+    `profile 的 bundles 里没有 ${WEB_APP_BUNDLE}（${profileDir}），dsh web 起不来：`
+    + `实测不监听端口、不打印 URL、也不报错。${hint}`,
+  )
+}
+
+/**
+ * `dev` 的修复建议：源 profile 名可由 `DSH_PROFILE` 换掉。
+ *
+ * @returns {string} 修复建议
+ */
+export function devWebBundleHint() {
+  return `用 DSH_PROFILE 指向一个 web profile，或把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles。`
+}
+
+/**
+ * `start` 的修复建议：它的 profile 名固定为 `profiles/web`，换 profile 名的建议对它无效。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.profileDir - 日常 profile 目录
+ * @param {string} options.dshCommand - dsh 可执行文件，用于给出可复制的命令
+ * @param {string} options.worktree - 当前仓库路径
+ * @returns {string} 修复建议
+ */
+export function startWebBundleHint({ profileDir, dshCommand, worktree }) {
+  return `把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles，`
+    + `或删掉 ${profileDir} 让 dsh 按 ${PROFILE_NAME} 模板重建后再装本插件: `
+    + `${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`
+}
+
+/**
+ * `package.json` 解析失败时的错误文案。
+ *
+ * `dsh plugin` 在该目录里跑 pnpm，pnpm 也读这份文件，文件坏了它同样以 JSON 解析
+ * 错误退出——所以「重装一次」不是可执行的修法，必须先修好或删掉文件。原始报错
+ * 原样保留，它指到出错的字符位置。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.packagePath - 损坏的 `package.json` 路径
+ * @param {string} options.parseMessage - `JSON.parse` 的原始报错
+ * @param {string} options.dshCommand - dsh 可执行文件，用于给出可复制的命令
+ * @param {string} options.worktree - 当前仓库路径
+ * @returns {string} 错误文案
+ */
+export function corruptProfilePackageMessage({ packagePath, parseMessage, dshCommand, worktree }) {
+  return `${packagePath} 不是合法 JSON（${parseMessage}）：dsh plugin 装东西时也读这份文件，`
+    + '损坏时它会一起失败。先手工修好它，'
+    + `或删掉 ${dirname(packagePath)} 让 dsh 按 ${PROFILE_NAME} 模板重建（删前确认里面没有别的插件），`
+    + `再重装: ${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`
+}
+
+/**
+ * 挡住「日常 profile 没装本插件」这个误用。
+ *
+ * `npm start` 起的是日常 `~/.dsh` 那套，插件加载与否只看该 profile 的 bundles。
+ * 没装时 dsh 照常起来，只是右栏没有看板、协调者工具也不存在——看起来像插件坏了。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.profileDir - 日常 profile 目录，只用于报错定位
+ * @param {string[] | undefined} options.bundles - 该 profile 的 `dsh.profile.bundles`
+ * @param {string} options.worktree - 当前仓库路径，用于给出可复制的安装命令
+ * @returns {void} 已装本插件时无返回
+ */
+export function assertLeaderKitBundle({ profileDir, bundles, worktree }) {
+  if (Array.isArray(bundles) && bundles.includes(LEADER_KIT_PACKAGE)) return
+  throw new Error(
+    `日常 profile 的 bundles 里没有 ${LEADER_KIT_PACKAGE}（${profileDir}），这个实例不会加载本插件。`
+    + `先装一次：dsh plugin --profile ${PROFILE_NAME} add ${worktree}`,
   )
 }
 

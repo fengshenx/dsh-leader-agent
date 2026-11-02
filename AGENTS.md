@@ -52,6 +52,7 @@ npm run check                     # Agent Note 格式门禁 + 文档工具名门
 npm run test                      # 只跑单测
 npm run build:client              # 重建客户端产物 lib/client.js
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
+npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
 npm run worktree:prune            # 清已合并的 worktree（默认只打印，--apply 才删）
 ```
@@ -84,6 +85,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - client 产物不能用 `node:` 内置模块（第 23 条）。
 - `ctx.sessions.list()` 只返回 live session，从会话推导的列表会随重启漂移（第 21 条）。
 - profile 名要落在 `PROFILE_TEMPLATES`（`web` / `acp` / `headless` / `sdk` / `sdk-minimal`）里：自定义名会被 `dsh plugin` 按只含 `@deepseek-ai/dsh-base` 的默认模板建出来，缺 web-app bundle，插件客户端半边不加载。文档与脚本一律用 `web`。
+- **agent-team（experimental）并存时 worker 会被当成隐式 Lead**：团队工具注册在 Agent scope，`restrict({ deny })` 只认全局名、挡不住，本 bundle 只做告警与运行时上下文禁令（`src/host/team-guard.js`）。机制与取舍见 [architecture 的 agent-team 并存时](docs/architecture.md#agent-team-并存时)。
 
 ## 提交与 PR
 
