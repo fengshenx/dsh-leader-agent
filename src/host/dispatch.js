@@ -720,7 +720,17 @@ export function createDispatcher({
     const workspaceId = await resolveWorkerWorkspaceId?.(parent.id)
     // 「呈现」（改名、挂工作区）推到绑定成功之后：改名会追加 `session/title`
     // 事件、让会话在磁盘上 materialize，先做就没有东西可回滚了。
-    const childId = await workerSessions.spawn({ cwd, workspaceId, name, signal, deferPresentation: true })
+    //
+    // 权限跟着会话一起交下去：宿主的默认 preset 不一定是协调者当前那套，而
+    // worker 在后台跑，需要审批的调用没人应答。
+    const { sessionId: childId, permission } = await workerSessions.spawn({
+      cwd,
+      workspaceId,
+      name,
+      signal,
+      permissionFrom: parent.session,
+      deferPresentation: true,
+    })
     // 绑卡必须在返回前完成：协调者接下来投递的第一条消息就该带着角色与卡片事实。
     // 绑不上就销毁刚建的会话——它还没 materialize，磁盘上不会留下半成品。
     if (cardId !== undefined && slot !== undefined) {
@@ -742,6 +752,9 @@ export function createDispatcher({
       parent,
       name,
       startedAt: Date.now(),
+      // worker 以什么权限跑要跟着派工结果回去：继承到完全权限时，用户在派工
+      // 那一刻就该知道，而不是事后翻 worker 的会话日志。
+      permission,
     }
     // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
     owners.set(childId, { parentSessionId: parent.id, name })
