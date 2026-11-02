@@ -192,7 +192,10 @@ export function loadSlotTemplates(directory) {
     content = readFileSync(file, 'utf8')
   } catch (error) {
     // 文件不存在是常态，不告警；其它读失败（权限、路径是目录）是异常。
-    if (error.code !== 'ENOENT') {
+    if (error.code === 'ENOENT') {
+      // 文件删了就把告警记录清掉：重建后同样坏要重新报，而不是继承上一份文件的沉默。
+      reportedIssues.delete(directory)
+    } else {
       reportIssues(directory, [{
         signature: `read:${error.code ?? error.message}`,
         message: `dsh-leader-kit: 读取 ${file} 失败（${error.code ?? error.message}），已回落默认槽位。`,

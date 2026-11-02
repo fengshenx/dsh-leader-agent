@@ -226,6 +226,31 @@ test('部分节非法时列出全部非法节名，修好后再坏会重新告�
   }
 })
 
+test('删掉文件再重建同样坏配置时仍告警', async () => {
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = (message) => { warnings.push(message) }
+  const project = await createProject('## 开发\n噪声\n')
+  const file = join(project.directory, SLOT_TEMPLATE_FILE)
+  try {
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 2)
+
+    await rm(file)
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 2)
+
+    await writeFile(file, '## 开发\n噪声\n', 'utf8')
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 4)
+    assert.match(warnings[2], /「开发」/)
+    assert.match(warnings[3], /没有合法的/)
+  } finally {
+    console.warn = originalWarn
+    await project.cleanup()
+  }
+})
+
 test('frontmatter 给同一槽位两个不同 label 时告警，后者覆盖', async () => {
   const warnings = []
   const originalWarn = console.warn
