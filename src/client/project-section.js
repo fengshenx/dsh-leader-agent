@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isCoordinatorCurrent, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isCoordinatorCurrent, isCoordinatorRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -174,11 +174,28 @@ const STYLE_TEXT = `
 .dsh-leader-kit-project-lead-arrow[data-open='true'] {
   transform: rotate(90deg);
 }
+/* 协调者运行中：行首目录图标换成加载圈。12px 与 16px 的目录图标视觉重量相近，
+   又留得下旋转的边。 */
+.dsh-leader-kit-project-lead-spinner {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: dsh-leader-kit-spin 0.8s linear infinite;
+}
 @media (hover: hover) {
   .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-arrow {
     display: inline-flex;
   }
   .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-folder {
+    display: none;
+  }
+  /* hover 让位给展开箭头（与目录图标同一条规则）：指针在行上时用户要找的是
+     展开/收起，运行状态在移开指针后就回来了。 */
+  .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-spinner {
     display: none;
   }
   .dsh-leader-kit-project-header:hover .dsh-leader-kit-project-lead-arrow {
@@ -735,6 +752,9 @@ function ProjectRow(props) {
   // （工作区分组亮文件夹图标，会话行铺整行底色）。
   const selected = isCoordinatorCurrent(project, currentSessionId, archivedSessionIds)
   const active = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
+  // 协调者在跑：行首目录图标换成加载圈。折叠态下这是唯一能看出「它还在干活」
+  // 的位置——协调者不在项目树下单独出行。
+  const coordinatorRunning = isCoordinatorRunning(project, sessionRows)
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -783,6 +803,7 @@ function ProjectRow(props) {
         'data-dead': openable ? undefined : 'true',
         'data-selected': selected ? 'true' : undefined,
         'data-active': active ? 'true' : undefined,
+        'data-running': coordinatorRunning ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
         'aria-current': selected ? 'true' : undefined,
         title: `${project.name} · ${project.directory}`,
@@ -801,11 +822,13 @@ function ProjectRow(props) {
           'aria-expanded': expanded,
           onClick: (event) => { event.stopPropagation(); onToggleExpand(project.id) },
         },
-        createElement(
-          'span',
-          { className: 'dsh-leader-kit-project-lead-folder' },
-          productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
-        ),
+        coordinatorRunning
+          ? createElement('span', { className: 'dsh-leader-kit-project-lead-spinner' })
+          : createElement(
+              'span',
+              { className: 'dsh-leader-kit-project-lead-folder' },
+              productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
+            ),
         createElement(
           'span',
           {

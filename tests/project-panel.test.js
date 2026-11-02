@@ -14,6 +14,7 @@ import {
   describeDeletionNotice,
   describeProjectRemoval,
   isCoordinatorCurrent,
+  isCoordinatorRunning,
   isProjectCurrent,
   isProjectOpenable,
   moveProjectBefore,
@@ -181,6 +182,31 @@ test('会话行把当前会话接线到 data-selected 与 aria-current', () => {
   const rowSource = sliceSessionRow(source)
   assert.match(rowSource, /'data-selected':\s*selected\s*\?\s*'true'\s*:\s*undefined/)
   assert.match(rowSource, /'aria-current':\s*selected\s*\?\s*'page'\s*:\s*undefined/)
+})
+
+test('协调者在运行时项目行显示运行态', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  assert.equal(isCoordinatorRunning(project, { 'session-coordinator': { running: true } }), true)
+  assert.equal(isCoordinatorRunning(project, { 'session-coordinator': { running: false } }), false)
+  // worker 在跑不算：项目行只反映现任协调者，worker 各自的行上有自己的加载圈。
+  assert.equal(isCoordinatorRunning(project, { 'session-worker': { running: true } }), false)
+  // 会话列表还没同步回来、协调者已经没有会话行时按未运行处理。
+  assert.equal(isCoordinatorRunning(project, {}), false)
+  assert.equal(isCoordinatorRunning(project, undefined), false)
+  assert.equal(isCoordinatorRunning({}, { 'session-coordinator': { running: true } }), false)
+  assert.equal(isCoordinatorRunning({ coordinatorSessionId: '' }, { '': { running: true } }), false)
+})
+
+test('协调者运行态接线到行首加载圈', () => {
+  const source = readFileSync(sectionPath, 'utf8')
+  // 判据来自会话行的 running，只认现任协调者（纯函数见上一条用例）。
+  assert.match(source, /const coordinatorRunning = isCoordinatorRunning\(project, sessionRows\)/)
+  assert.match(source, /'data-running': coordinatorRunning \? 'true' : undefined/)
+  // 渲染分支：运行中不画目录图标，改画加载圈。
+  assert.match(source, /coordinatorRunning\s*\n\s*\? createElement\('span', \{ className: 'dsh-leader-kit-project-lead-spinner' \}\)/)
+  // 样式：加载圈自己会转；hover 时让位给展开箭头，与目录图标同一条规则。
+  assert.match(source, /\.dsh-leader-kit-project-lead-spinner \{[\s\S]*?animation: dsh-leader-kit-spin/)
+  assert.match(source, /\.dsh-leader-kit-project-row:hover \.dsh-leader-kit-project-lead-spinner \{\s*display: none;/)
 })
 
 test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {

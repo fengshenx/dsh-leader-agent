@@ -26,6 +26,14 @@
 
 会话行可能被水位折叠（默认只露 5 条）或项目本身是收起的：这时唯一能说明「你正在看的是这一组」的就是文件夹图标。去掉它，折叠态下左栏完全没有位置回执。
 
+### 协调者运行中：行首目录图标换成加载圈
+
+项目行的行首槽位原本固定画目录图标。协调者跑起来时这个位置换成加载圈（新增 `isCoordinatorRunning(project, sessionRows)` 读当前协调者会话行的 `running`）。
+
+理由与上一节相同：协调者在项目树下不单独出行，项目收起或 worker 行被水位折叠时，行首是唯一能看出「它还在干活」的位置。只认现任协调者——worker 在跑不影响项目行，它们各自的行上有自己的加载圈。
+
+hover 时加载圈让位给展开箭头，与目录图标的既有规则一致：指针停在行上时用户要找的是展开/收起，移开就回来。行上同时留 `data-running` 作为可断言的观测量。
+
 ## 边界
 
 - 项目收起时不自动展开到当前 worker 行。展开状态归用户，自动展开会在每次切会话时重排左栏。
@@ -33,14 +41,15 @@
 - hover 时行首文件夹被换成展开箭头（既有行为），此时看不到文件夹的激活色；箭头不跟着亮——照宿主的做法，激活色只落在文件夹上。
 - `isProjectCurrent()` 对退役协调者与归档会话的既有判据不变，相关用例原样保留。
 - 当前会话若是项目工作区里用户手动开的会话（不属于项目），两层都不亮，与之前一致。
+- 运行态读会话行的 `running`：会话列表还没同步回来、或协调者会话已不在索引里时按未运行处理，下一帧订阅刷新会补上。项目行不自己轮询宿主。
 
 ## 验证
 
-- 单测：新增「整行选中态只给协调者会话」，覆盖协调者 / worker / 别的会话 / 空值与 `undefined` / 项目不存在 / 归档协调者。`tests/project-panel.test.js` 45 pass。
-- 双向验证：临时删掉 `isCoordinatorCurrent()` 里的协调者判据（`project?.coordinatorSessionId !== currentSessionId`）→ 新用例变红（1 fail），还原 → 45 pass。
-- 会话行的接线守卫：仓里没有 jsdom，`SessionRow` 渲染不出可断言的元素，所以「当前会话 → `data-selected` / `aria-current`」这条链只能读 `src/client/project-section.js` 源码断言（同 `tests/board-styles.test.js` 读样式表的做法）：`ProjectRow` 传 `selected: row.id === currentSessionId`，`SessionRow` 把它映射到两个属性。双向验证：删掉传入 `selected` 那一行 → 1 fail；删掉 `SessionRow` 里的 `data-selected` → 1 fail；还原 → 45 pass。旧口径下这两处都能静默通过（44 pass）。
-- `npm run check`：786 tests / 777 pass / 9 skipped / 0 fail。
-- `npm run build:client` 重建产物，`lib/client.js` 里 `data-selected` 4 处命中（项目行、会话行与两处样式选择器）。
+- 单测：新增「整行选中态只给协调者会话」，覆盖协调者 / worker / 别的会话 / 空值与 `undefined` / 项目不存在 / 归档协调者；新增「协调者在运行时项目行显示运行态」，覆盖协调者运行 / 未运行 / worker 在跑 / 会话表缺失 / 项目没有协调者。`tests/project-panel.test.js` 47 pass。
+- 双向验证：临时删掉 `isCoordinatorCurrent()` 里的协调者判据（`project?.coordinatorSessionId !== currentSessionId`）→ 对应新用例变红（1 fail）；把 `isCoordinatorRunning()` 改成「任一 worker 在跑都算」→ 运行态用例变红（1 fail）；删掉项目行的运行态渲染分支 → 接线守卫变红（1 fail）；还原 → 47 pass。
+- 会话行的接线守卫：仓里没有 jsdom，`SessionRow` 渲染不出可断言的元素，所以「当前会话 → `data-selected` / `aria-current`」这条链只能读 `src/client/project-section.js` 源码断言（同 `tests/board-styles.test.js` 读样式表的做法）：`ProjectRow` 传 `selected: row.id === currentSessionId`，`SessionRow` 把它映射到两个属性。双向验证：删掉传入 `selected` 那一行 → 1 fail；删掉 `SessionRow` 里的 `data-selected` → 1 fail；还原 → 47 pass。旧口径下这两处都能静默通过（44 pass）。运行态的接线（`coordinatorRunning` → 渲染分支 → `data-running` → 样式与 hover 让位）走同一种源码断言。
+- `npm run check`：788 tests / 779 pass / 9 skipped / 0 fail。
+- `npm run build:client` 重建产物，`lib/client.js` 里 `data-selected` 4 处命中（项目行、会话行与两处样式选择器），`project-lead-spinner` 3 处命中。
 - 真机（隔离 dev 实例，`DSH_HOME` 在 `.dev/home`，端口 4321；项目与 worker 登记用 seed 写入 `dsh-leader-kit/projects.json` / `workers.json`，会话目录从既有会话复制；无头 Chrome 1440×940 走 CDP 读 `data-*` 与 `getComputedStyle`，console error 计数 0）：
 
   | 场景 | 修复前 | 修复后 |
@@ -50,3 +59,5 @@
   | 主区域是 worker 会话（页面重载后恢复） | 项目行整行亮、会话行无标记 | 项目行文件夹亮、会话行整行亮——两层同时可读，不再是「选了两个整行」 |
 
   「修复前」读数用「把 `selected` 换回 `isProjectCurrent()` 且会话行传 `selected: false` → 等 watch 重建 → 重跑探针」取得，还原后重读回到上表右列。
+
+- 运行态的呈现用样式注入核验（隔离实例没挂 mock provider，真实「协调者正在跑」要调付费模型，不做）：同一套无头 Chrome 探针读项目行首，未运行态 `hasFolder=true` / `hasSpinner=false` / `data-running=null` / 行高 34px；把 `coordinatorRunning` 临时硬编码成 `true` → `hasSpinner=true`、`hasFolder=false`、`data-running=true`、`width/height=12px`、`animationName=dsh-leader-kit-spin`、`borderRadius=50%`、行高仍是 34px（槽位没有被撑开）；还原后重读回到未运行态。真实运行态下的切换依赖的是同一条渲染分支与会话行的 `running` 订阅（`ProjectPanel` 的 `sessions.list.subscribe`），这条订阅链在选中态的真机读数里已经跑通。

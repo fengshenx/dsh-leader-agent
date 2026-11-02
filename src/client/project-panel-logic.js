@@ -183,6 +183,25 @@ export function isCoordinatorCurrent(project, currentSessionId, archivedSessionI
 }
 
 /**
+ * 判定项目的协调者会话是否在运行。
+ *
+ * 会话行有自己的运行状态位，项目行没有——协调者在项目树下不单独出行，它跑起来
+ * 时唯一能看出「还在干活」的位置就是项目行的行首图标（会话行那一层被折叠或项目
+ * 收起时更是如此）。
+ *
+ * 只认现任协调者：worker 在跑不影响项目行的状态，它们各自的行上有自己的加载圈。
+ *
+ * @param {object} project - 项目记录
+ * @param {Record<string, {running?: boolean}>} [sessionRows] - 会话 id 到会话行
+ * @returns {boolean} 协调者是否在运行
+ */
+export function isCoordinatorRunning(project, sessionRows) {
+  const id = project?.coordinatorSessionId
+  if (typeof id !== 'string' || id === '') return false
+  return sessionRows?.[id]?.running === true
+}
+
+/**
  * 判定主区域里的当前会话是否属于这个项目（协调者或 worker）。
  *
  * 这一层不画整行底色——那是协调者会话的选中态（`isCoordinatorCurrent`），只
