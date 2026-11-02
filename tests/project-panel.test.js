@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   basenameOf,
   buildProjectMenuItems,
@@ -24,6 +27,24 @@ import {
   isArchiveActiveRefusal,
   validateProjectName,
 } from '../src/client/project-panel-logic.js'
+
+// 会话行的选中态没有渲染测试可跑：仓里不引 jsdom，React 组件不硬测。断言只能落在
+// 源码接线与元素属性上——这一层断了，界面上的表现就是「点开 worker 却没有任何标记」。
+const sectionPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'src/client/project-section.js')
+
+/**
+ * 切出 SessionRow 的函数体：项目行也写着同名的 `data-selected` 属性，全局匹配
+ * 证明不了会话行自己接了选中态。
+ *
+ * @param {string} source - project-section.js 全文
+ * @returns {string} SessionRow 的源码片段
+ */
+function sliceSessionRow(source) {
+  const startAt = source.indexOf('function SessionRow(props)')
+  assert.notEqual(startAt, -1, '找不到 SessionRow 定义')
+  const endAt = source.indexOf('\nfunction ', startAt + 1)
+  return endAt === -1 ? source.slice(startAt) : source.slice(startAt, endAt)
+}
 
 test('目录末段在两种分隔符下都能取到', () => {
   assert.equal(basenameOf('/work/alpha'), 'alpha')
@@ -150,6 +171,16 @@ test('整行选中态只给协调者会话', () => {
     isCoordinatorCurrent(project, 'session-coordinator', new Set(['session-coordinator'])),
     false,
   )
+})
+
+test('会话行把当前会话接线到 data-selected 与 aria-current', () => {
+  const source = readFileSync(sectionPath, 'utf8')
+  // 接线：只有 id 等于当前会话的那一行才是选中行。
+  assert.match(source, /selected:\s*row\.id\s*===\s*currentSessionId/)
+  // 渲染：选中态要落到可观测量上——整行底色看 data-selected，读屏看 aria-current。
+  const rowSource = sliceSessionRow(source)
+  assert.match(rowSource, /'data-selected':\s*selected\s*\?\s*'true'\s*:\s*undefined/)
+  assert.match(rowSource, /'aria-current':\s*selected\s*\?\s*'page'\s*:\s*undefined/)
 })
 
 test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {

@@ -36,9 +36,10 @@
 
 ## 验证
 
-- 单测：新增「整行选中态只给协调者会话」，覆盖协调者 / worker / 别的会话 / 空值与 `undefined` / 项目不存在 / 归档协调者。`tests/project-panel.test.js` 44 pass。
-- 双向验证：临时删掉 `isCoordinatorCurrent()` 里的协调者判据（`project?.coordinatorSessionId !== currentSessionId`）→ 新用例变红（1 fail），还原 → 44 pass。
-- `npm run check`：785 tests / 776 pass / 9 skipped / 0 fail。
+- 单测：新增「整行选中态只给协调者会话」，覆盖协调者 / worker / 别的会话 / 空值与 `undefined` / 项目不存在 / 归档协调者。`tests/project-panel.test.js` 45 pass。
+- 双向验证：临时删掉 `isCoordinatorCurrent()` 里的协调者判据（`project?.coordinatorSessionId !== currentSessionId`）→ 新用例变红（1 fail），还原 → 45 pass。
+- 会话行的接线守卫：仓里没有 jsdom，`SessionRow` 渲染不出可断言的元素，所以「当前会话 → `data-selected` / `aria-current`」这条链只能读 `src/client/project-section.js` 源码断言（同 `tests/board-styles.test.js` 读样式表的做法）：`ProjectRow` 传 `selected: row.id === currentSessionId`，`SessionRow` 把它映射到两个属性。双向验证：删掉传入 `selected` 那一行 → 1 fail；删掉 `SessionRow` 里的 `data-selected` → 1 fail；还原 → 45 pass。旧口径下这两处都能静默通过（44 pass）。
+- `npm run check`：786 tests / 777 pass / 9 skipped / 0 fail。
 - `npm run build:client` 重建产物，`lib/client.js` 里 `data-selected` 4 处命中（项目行、会话行与两处样式选择器）。
 - 真机（隔离 dev 实例，`DSH_HOME` 在 `.dev/home`，端口 4321；项目与 worker 登记用 seed 写入 `dsh-leader-kit/projects.json` / `workers.json`，会话目录从既有会话复制；无头 Chrome 1440×940 走 CDP 读 `data-*` 与 `getComputedStyle`，console error 计数 0）：
 
