@@ -8,6 +8,7 @@
  */
 
 import { MAX_PROJECT_NAME_LENGTH } from '../shared/projects.js'
+import { isRetiredCoordinatorSession } from './project-board-data.js'
 
 export { MAX_PROJECT_NAME_LENGTH }
 
@@ -178,6 +179,34 @@ export function currentSessionIdOf(byId) {
     if ((row?.retainedBy?.mainView ?? 0) > 0) return id
   }
   return undefined
+}
+
+/**
+ * 判定项目行是否处于选中态。
+ *
+ * 协调者会话不在项目树下单独出行，项目行就是它的入口；点项目行打开协调者之后
+ * 主区域里放着那条会话，这一行必须跟着亮起来，否则「我现在在哪个项目里」只能
+ * 靠会话标题猜。项目下的 worker 会话被打开时同样点亮所属项目——那一行代表的
+ * 就是这一组会话。
+ *
+ * 口径与看板的「项目会话」判定一致（`boardViewState` 的 `coordinator` / `worker`）：
+ * 退役协调者仍解析得到项目、也仍列在 `sessionsByProject` 里，归档会话的行还留在
+ * 会话索引里——但它们都不是项目会话。算进来的话，点开退役会话或归档会话时项目
+ * 行也会亮，而点这一行去的是现任协调者：选中态承诺的「你正在看的就是这一组」
+ * 就成了谎。
+ *
+ * @param {object} project - 项目记录
+ * @param {string[]} sessionIds - 宿主判定的该项目会话 id（含退役协调者）
+ * @param {string | undefined} currentSessionId - 主区域当前会话 id
+ * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
+ * @returns {boolean} 是否选中
+ */
+export function isProjectCurrent(project, sessionIds, currentSessionId, archivedSessionIds) {
+  if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
+  if (archivedSessionIds?.has(currentSessionId) === true) return false
+  if (project?.coordinatorSessionId === currentSessionId) return true
+  if (isRetiredCoordinatorSession(project, currentSessionId)) return false
+  return (sessionIds ?? []).includes(currentSessionId)
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   describeDeletionNotice,
   describeProjectRemoval,
   isProjectOpenable,
+  isProjectCurrent,
   openCoordinatorSession,
   planProjectRename,
   projectSectionLayout,
@@ -140,6 +141,46 @@ test('当前会话取主区域持有的那条', () => {
   }), 's2')
   assert.equal(currentSessionIdOf({ 's1': { retainedBy: {} } }), undefined)
   assert.equal(currentSessionIdOf(undefined), undefined)
+})
+
+test('当前会话是协调者或项目下的 worker 时点亮项目行', () => {
+  const project = {
+    coordinatorSessionId: 'session-coordinator',
+    retiredCoordinatorSessionIds: ['session-retired'],
+  }
+  const sessions = ['session-worker', 'session-retired']
+  assert.equal(isProjectCurrent(project, sessions, 'session-coordinator'), true)
+  assert.equal(isProjectCurrent(project, sessions, 'session-worker'), true)
+})
+
+test('退役协调者与归档会话打开时项目行不亮', () => {
+  const project = {
+    coordinatorSessionId: 'session-coordinator',
+    retiredCoordinatorSessionIds: ['session-retired'],
+  }
+  // 宿主把退役协调者与 worker 同列返回；归档会话也仍在会话索引里。
+  const sessions = ['session-worker', 'session-retired']
+  assert.equal(isProjectCurrent(project, sessions, 'session-retired'), false)
+  assert.equal(
+    isProjectCurrent(project, sessions, 'session-worker', new Set(['session-worker'])),
+    false,
+  )
+  // 现任协调者被归档后项目树里没有这一行可点，同样不亮。
+  assert.equal(
+    isProjectCurrent(project, sessions, 'session-coordinator', new Set(['session-coordinator'])),
+    false,
+  )
+})
+
+test('当前会话属于别的项目或主区域为空时项目行不亮', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  const sessions = ['session-coordinator', 'session-worker']
+  assert.equal(isProjectCurrent(project, sessions, 'session-other'), false)
+  assert.equal(isProjectCurrent(project, sessions, undefined), false)
+  assert.equal(isProjectCurrent(project, sessions, ''), false)
+  // 会话归属还没同步回来：只有协调者那一条能判定。
+  assert.equal(isProjectCurrent(project, undefined, 'session-coordinator'), true)
+  assert.equal(isProjectCurrent(project, undefined, 'session-worker'), false)
 })
 
 test('当前会话被排除时压掉它所属工作区的激活态', () => {
