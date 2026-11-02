@@ -41,9 +41,11 @@
 
 ### worker 只改自己挂着的卡
 
-身份闸回答「能不能写卡」，回答不了「写哪张、写什么」。worker 的 cwd 就是项目目录，同项目里别的 worker 的卡它一样能改；也能整卡替换 `slots`——后者正是投递门禁（`dispatch.js` 的 `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂多张 active 卡，产物无从归属）；还能把卡标 `done`，提前关掉自己的卡、释放执行者，绕过协调者的验收；也能改 `spec`，把验收锚点换成自己写的那份。`update_card` 因此加一道 `assertWorkerCardScope`：worker 的目标卡必须在 `bindingsOf(sessionId)` 里，且本次不能带 `slots`、`status` 或 `spec`。协调者不受限，换执行者、判定完成与维护规格都归它。
+身份闸回答「能不能写卡」，回答不了「写哪张、写什么」。worker 的 cwd 就是项目目录，同项目里别的 worker 的卡它一样能改；也能整卡替换 `slots`——后者正是投递门禁（`dispatch.js` 的 `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂多张 active 卡，产物无从归属）；还能把卡标 `done`，提前关掉自己的卡、释放执行者，绕过协调者的验收；也能改 `spec`，把验收锚点换成自己写的那份。`update_card` 因此加一道 `assertWorkerCardScope`：worker 的目标卡必须在 `bindingsOf(sessionId)` 里，且本次不能带 `slots`、`status`、`spec` 或 `title`。协调者不受限，换执行者、判定完成与维护规格都归它。
 
 **状态与规格归协调者的依据**：`playbooks/implementation.md` 的交付一节写明「卡片规格与状态仍由协调者维护，不自行标 done」「开发完成不代整卡验收，不标整卡 done；有卡时回交协调者按验收判断」；`playbooks/program.md` 写「`status` 与 `spec` 仍归协调者」，并把卡片/spec 的用途定为「只保存稳定需求与当前调度摘要（阶段、审查 head、结论、下一步）」；`SLOTS.md` 的 dev 槽位写的是「交付做到 PR；合并与 approve 不由你决定」——worker 连合并都不能决定，判不了完成，也不该改目标、范围与验收。`#60` 的「关闭卡片自动释放执行者」同样按协调者的收工动作设计（关闭会抽走 worker 的卡片上下文，协议层要求关闭前确认该轮已交活）。因此收窄实现，而不是改协议。
+
+**标题也算规格载体**：`title` 与 `spec` 走同一条注入通道（`SKILL.md` 的卡片事实一节：编号、标题、状态、槽位、revision 与 spec 全文），同是看板与回执里的可读标识。实测 `title: '范围：只改文档；验收：不新增依赖'` 能落盘——只收 `spec` 等于留了个把规格语义写回来的旁路。协议没有单独点名标题，但收窄 spec 的意图是「验收锚点归协调者」，标题同等承载这个语义。
 
 范围校验放在跨项目校验之后、`store.update` 之前：跨项目先给出更准确的原因，范围闸只在同项目内兜「哪张卡、写什么」。
 
@@ -62,7 +64,7 @@
 - **装配漏传判定直接失败**：`createBundleTools` 在 `cards` 有值而 `canWriteCards`、`isWorkerSession`、`cardBindingsOf` 有任一不是函数时抛错。缺省放行只剩「文档门禁无参取名字」与「单测直接调工具工厂」两个合法场景，这两条都不需要「有 cards 但没判定」这个组合。旧版本下漏传是静默失效：工具面照裁、执行时却对所有会话开放，全量用例不会红。
 - **worker 建卡两面都关**：工具面（`WORKER_DENY_TOOLS` 的 `create_card`）与执行时（`assertCardCreator`）。执行时那道是决定性的——工具面在 `agent/created` 一次性裁，与其余写卡规则保持同一结构。
 - **worker 不能改状态与规格**：`done` / `archived`、重开与 `spec` 都归协调者（依据见上一节）。worker 在交付完成后只在 `links` 里挂产物、在回报里写进展，卡片的完成由协调者按验收判断（本仓是 PR 合并 + worktree 移除）。
-- **worker 仍能改标题与卡内容之外的事实**：本次只收 `slots` / `status` / `spec` 三项；`title` 与 `links` 留给 worker（协议层只点名了前两项的归属，且标题不构成验收锚点）。
+- **worker 能写什么**：`links` / `addLinks` 与其余非规格字段（如 `sortOrder`）。`title` / `spec` / `status` / `slots` 全部归协调者——前两者是验收锚点与注入内容，后两者决定谁在执行、卡是否算完成。
 - **产品行为变更**：在普通会话里对模型说「把这个记成卡」不再能落盘，需要切到项目协调者会话。这是有意的取舍——普通会话没有项目归属，卡落盘后看板上没人认领。
 - **文档门禁仍认三件**：`documentedToolNames()` 从 `createBundleTools()` 取名字，工具名没有变化，`scripts/verify-doc-tool-names.mjs` 的允许集不用改。
 
@@ -71,7 +73,7 @@
 - 单测：合 main（`98891c8`）后全量 `npm run check` 821 例（812 pass / 9 skip / 0 fail）。
 - 本轮新增用例：
   - `tool-gate`：普通会话禁掉三组工具、worker 只禁建卡而保留改卡、`applyToolGate` 对普通会话留下完整限制、名单互不重叠；`canWriteCardsFor` 的三态——worker 短路不碰索引、索引未就绪拒绝（不吃 `isCoordinatorSession()` 的宽松）、就绪后只认当前协调者；
-  - `cards-tools`：普通会话建卡与改卡都被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验、`createBundleTools` 把判定透传给两件工具、传了 `cards` 不传判定时抛错、worker 只能改自己挂着的卡、不能改 `slots` / `status` / `spec`（协调者不受限）、worker 建卡被拒且不落盘；
+  - `cards-tools`：普通会话建卡与改卡都被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验、`createBundleTools` 把判定透传给两件工具、传了 `cards` 不传判定时抛错、worker 只能改自己挂着的卡、不能改 `slots` / `status` / `spec` / `title`（协调者不受限）、worker 建卡被拒且不落盘；
   - `coordinator-wiring`（装配层，跑真实 `apply`）：普通会话写卡被拒且协调者能建卡、真实 `replaceCoordinator` 之后退役会话的 `create_card` / `update_card` 都被拒而新协调者通过；
   - `worker-sessions`：resume 期间已登记为 worker、resume 失败只回滚这次新登记的身份（已收编的 worker 保留、未登记 id 清掉）、同一会话并发续聊只恢复一次（两个 handle 泄漏成唯一一个、两条消息投同一 handle）、并发恢复失败时两条调用都拿到同一个错误、恢复完成后清掉在飞记录（`forget()` 之后再 `send` 会重新恢复）。
 - 双向验证（逐条撤销 → 对应用例变红 → 还原 → 全绿）：
@@ -88,5 +90,5 @@
   11. `send()` 改回「每条各自 resume」→ 两条并发用例与身份回滚用例变红（resume 调了 2 次），还原后绿。
   12. 删掉 `create_card` 的 `assertCardCreator` 调用 → 「worker 不能建卡」变红；`deniedToolsFor` 的 worker 分支改回 `COORDINATOR_ONLY_TOOLS` → `tool-gate` 2 例变红；均还原后绿。
   13. 删掉 `assertWorkerCardScope` 的 `status` 检查 → worker 改状态的三条断言变红；删掉 `resuming.delete` → 「恢复完成后清掉在飞记录」变红（第二次 `send` 命中旧 promise、`resume` 只调了 1 次）；均还原后绿。
-  14. 删掉 `assertWorkerCardScope` 的 `spec` 检查 → 「worker 不能改卡片规格」变红，还原后绿。
+  14. 删掉 `assertWorkerCardScope` 的 `spec` 检查 → 「worker 不能改卡片规格」变红；删掉 `title` 检查 → 「worker 不能改卡片标题」变红；均还原后绿。
 - 未做真机取证：工具面变化需要在隔离 `DSH_HOME` + mock provider 的实例里看普通会话的工具列表，本次只验证了判定与执行闸；留待下一次 GUI 取证。

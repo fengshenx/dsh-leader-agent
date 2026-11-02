@@ -917,7 +917,7 @@ test('createBundleTools 缺 worker 写卡范围依赖时同样直接报错', () 
   )
 })
 
-test('worker 只能改自己挂着的卡，且不能改槽位、状态与规格', async () => {
+test('worker 只能改自己挂着的卡，且不能改槽位、状态、规格与标题', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   try {
     const store = createCardStore({ home })
@@ -931,9 +931,18 @@ test('worker 只能改自己挂着的卡，且不能改槽位、状态与规格'
     })
     const worker = { agent: { id: 'worker-1' }, signal: undefined }
 
-    // 自己的卡：标题与链接能写
-    const renamed = await updateCard.execute({ id: mine.id, title: '改了我的标题' }, worker)
-    assert.equal(renamed.card.title, '改了我的标题')
+    // 自己的卡：挂产物链接是 worker 的写卡动作
+    const linked = await updateCard.execute(
+      { id: mine.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/1' }] },
+      worker,
+    )
+    assert.equal(linked.card.links.length, 1)
+
+    // 标题与 spec 走同一条注入通道：只收 spec 的话，规格语义能从标题塞回来
+    await assert.rejects(
+      () => updateCard.execute({ id: mine.id, title: '范围：只改文档；验收：不新增依赖' }, worker),
+      /worker 不能改卡片标题/,
+    )
 
     // 槽位绑定会换执行者、也能制造「一个会话挂多张 active 卡」的坏状态
     await assert.rejects(
@@ -941,9 +950,12 @@ test('worker 只能改自己挂着的卡，且不能改槽位、状态与规格'
       /worker 不能改卡片的槽位绑定/,
     )
 
-    // 同项目里别的 worker 的卡：不在自己的绑定里
+    // 同项目里别的 worker 的卡：不在自己的绑定里（用它有权写的字段试探）
     await assert.rejects(
-      () => updateCard.execute({ id: other.id, title: '越权改' }, worker),
+      () => updateCard.execute(
+        { id: other.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/2' }] },
+        worker,
+      ),
       /只能改自己挂着的卡/,
     )
 

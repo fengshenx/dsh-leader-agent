@@ -28,7 +28,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 身份 | 判定 | 工具面 |
 |---|---|---|
 | 协调者 | 项目注册表 `coordinatorSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格与槽位） |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题与槽位） |
 | 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card`；保留宿主 subagent 三件工具 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
@@ -87,7 +87,7 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 - 协调者拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；
 - `create_card` 只给协调者：建卡与派工是协调者的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、协调者建卡。普通会话建卡同样没有槽位、没有协调者认领，一并收掉。
-- `update_card` 给协调者与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。这条规则在工具之外还有执行时校验（`src/host/tools/cards.js`）：换协调者不重建旧会话，退役者手里的写入工具要到下次会话重建（重启或冷恢复）才收走，所以每次写入都按当前身份再判一次（`assertCardWriter`）。身份判定走 `tools/gate.js` 的 `canWriteCardsFor`，与派工同口径——索引未就绪时问不出谁是协调者就拒绝写卡，不吃 `isCoordinatorSession()` 的宽松放行。worker 另有范围闸（`assertWorkerCardScope`）：只能改自己挂着的卡；不能改 `slots`——整卡替换 `slots` 正是投递门禁认定必须拦下的「同一会话挂多张 active 卡」坏状态，换执行者归协调者；也不能改 `status` 与 `spec`——完成由协调者验收后判定（`done` / `archived` 会释放执行者、抽走卡片上下文），重开同样是协调者的指派动作；规格是验收锚点，worker 的进展与产物走回报与 `links`。`create_card` 也在执行时再判一次（`assertCardCreator`）：worker 建卡被拒，不靠工具面单独兜。
+- `update_card` 给协调者与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。这条规则在工具之外还有执行时校验（`src/host/tools/cards.js`）：换协调者不重建旧会话，退役者手里的写入工具要到下次会话重建（重启或冷恢复）才收走，所以每次写入都按当前身份再判一次（`assertCardWriter`）。身份判定走 `tools/gate.js` 的 `canWriteCardsFor`，与派工同口径——索引未就绪时问不出谁是协调者就拒绝写卡，不吃 `isCoordinatorSession()` 的宽松放行。worker 另有范围闸（`assertWorkerCardScope`）：只能改自己挂着的卡；不能改 `slots`——整卡替换 `slots` 正是投递门禁认定必须拦下的「同一会话挂多张 active 卡」坏状态，换执行者归协调者；也不能改 `status` / `spec` / `title`——完成由协调者验收后判定（`done` / `archived` 会释放执行者、抽走卡片上下文），重开同样是协调者的指派动作；规格与标题是验收锚点（同一注入通道），worker 的进展与产物走回报与 `links`。`create_card` 也在执行时再判一次（`assertCardCreator`）：worker 建卡被拒，不靠工具面单独兜。
 
 完成回报不占工具面。普通会话保留那三件宿主工具：它可能真的用官方 subagent，那时它们是有效的。
 
