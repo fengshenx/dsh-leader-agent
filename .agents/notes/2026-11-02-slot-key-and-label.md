@@ -28,3 +28,19 @@
 - 字典只注册 zh / en 两个基础 locale；其它语言沿宿主回退链到 en。
 - 本 PR 前一提交曾短暂允许中文 key，未发布，这里一并回退。存量卡片上的 ASCII 键全部仍在合法集合内，没有迁移动作。
 - 槽位键与显示名分离后，**卡面 chip 的 `key` 仍用槽位键**（`board-card.js` 的 React key），改名只影响渲染文本，不影响会话绑定与槽位反查。
+
+## 验证
+
+`npm run check` 580 用例全绿（合并 main 后读数；本 PR 自身新增 12 条：frontmatter 嵌套与边界、槽位 label、远程下发、显示名优先级、告警去重）。
+
+双向验证（撤掉修复 → 对应用例变红 → 还原全绿，逐条实跑）：
+
+- 撤 `readSlotLabels` → 「frontmatter 声明显示名」「项目槽位字典下发」变红。
+- 撤 `slotDisplayName` 的项目 label 优先 → 「显示名优先级」变红。
+- 撤 `normalizeSlots` 的 `isValidSlotName` → 「拒绝非法槽位名」变红。
+- pending 键归属回退成「弹出后的栈顶」→ 「无值键后跟更浅缩进」变红。
+- 去掉重复容器合并 / 不剥行内注释 / 见 `#` 就切 → 各自用例变红。
+- 告警退回按目录永久去重、或不报非法分节名、或不记重复键冲突 → 告警相关用例变红。
+- 加回 `propertyNames`、`additionalProperties` 改回对象 → 「schema 只用宿主执行子集」变红。
+- 删 `SLOTS.md` 后不清告警签名 → 「删文件再重建同样坏配置仍告警」变红。
+

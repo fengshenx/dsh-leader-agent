@@ -235,8 +235,15 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      *
      * 传 `undefined` 表示清除该字段（`workspaceId` 移除工作区后要清空）。
      *
+     * `updates` 也可以是一个函数，参数是**磁盘上的当前记录**，返回要改的字段。
+     * 调用方需要「按现值增量改」（如往退役列表里追加）时必须用它：先 `get()` 再
+     * 传对象时，两个并发调用会各读同一份快照、各写一次，后写的把先写的覆盖掉。
+     * 函数形态的读-改-写落在同一条串行链里，天然不会交错。函数**必须同步返回普通
+     * 对象**：返回 `undefined` / 字符串 / Promise 都不报错，只是白名单里挑不出字段，
+     * 落盘等于没改。
+     *
      * @param {string} id - 项目 id
-     * @param {object} updates - 待改字段，只接受 name、coordinatorSessionId、retiredCoordinatorSessionIds 与 workspaceId
+     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、coordinatorSessionId、retiredCoordinatorSessionIds 与 workspaceId；或按当前记录算出待改字段的函数
      * @returns {Promise<object>} 更新后的项目
      */
     async update(id, updates) {
@@ -245,9 +252,12 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
         const index = store.projects.findIndex((item) => item.id === id)
         if (index === -1) throw new Error(`项目不存在：${id}`)
         const current = store.projects[index]
+        // 函数必须先求值再走白名单：函数对象本身自带 `name` 属性，直接按
+        // `Object.hasOwn(updates, key)` 取会把函数名当成项目名写进记录。
+        const patch = typeof updates === 'function' ? updates(current) : updates
         const next = { ...current }
         for (const key of MUTABLE_FIELDS) {
-          if (Object.hasOwn(updates, key)) next[key] = updates[key]
+          if (Object.hasOwn(patch, key)) next[key] = patch[key]
         }
         // 重命名也要查重：建项时自动避让只是名字唯一性的一半，改名同样能撞上，
         // 列表里会重新出现两个一模一样的项目。这里不偷偷加序号——用户明明打了

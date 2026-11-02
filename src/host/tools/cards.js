@@ -391,6 +391,29 @@ export function createUpdateCardTool({ store, resolveProject }) {
 }
 
 /**
+ * 跨项目读卡的身份闸。
+ *
+ * 工具面在 `agent/created` 一次性裁，而换协调者不重建旧会话：退役的那个会话手里
+ * 仍留着 `list_cards`，直到进程重启才按普通会话重裁。跨项目读取（`scope: 'all'`
+ * 与按 `cardId` 单卡查询）因此在调用时再判一次——退役会话只能按默认范围读本项目
+ * 的卡，与同目录的普通会话同档。
+ *
+ * 判据取项目摘要里的退役集合，不用 `isCoordinatorSession()`：后者在索引未就绪时
+ * 一律放行，而摘要的解析等得起一次索引重建。会话解析不到项目时无从判定，按放行
+ * 处理——读类工具，且那时它连项目归属都没有。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {(sessionId: string) => Promise<object | undefined>} [resolveProject] - 项目解析
+ * @returns {Promise<void>} 闸门通过
+ */
+async function assertCrossProjectRead(sessionId, resolveProject) {
+  const project = await resolveProject?.(sessionId)
+  const retired = project?.retiredCoordinatorSessionIds
+  if (!Array.isArray(retired) || !retired.includes(sessionId)) return
+  throw new Error('list_cards: 换下的协调者不再有跨项目查询权限——scope 用默认的 project 读本项目的卡；要读单卡完整规格请交给当前协调者')
+}
+
+/**
  * 创建 `list_cards` 工具定义。
  *
  * 模型读 `render` 的列表视图（摘要 + 分页），客户端读 `presentationMeta` 的全量
@@ -468,8 +491,10 @@ export function createListCardsTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const query = parseListQuery(args)
-      // 单卡查询不受范围限制：模型拿着 cardId 来读，要的就是那张卡。
+      // 单卡查询不受范围限制：模型拿着 cardId 来读，要的就是那张卡。但两条路径都
+      // 跨项目寻址，退役会话要先过身份闸。
       if (query.scope === 'all' || query.cardId !== undefined) {
+        await assertCrossProjectRead(exec.agent?.id, resolveProject)
         const cards = await store.list()
         return { cards, query }
       }

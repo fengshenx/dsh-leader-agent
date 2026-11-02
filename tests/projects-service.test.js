@@ -271,6 +271,118 @@ test('换新协调者时，新会话在建立那一刻也已经登记', async ()
   assert.deepEqual(seen, [workspace, workspace])
 })
 
+test('并发换协调者：落选的新会话进退役列表，不留能派工的孤儿', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const service = makeService({
+    store,
+    ctx: createContext(),
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+  })
+  await service.loadIndex()
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+
+  // 两个 tab 各点一次「换新协调者」：两次调用各读同一份快照、各建一个会话。
+  await Promise.all([
+    service.replaceCoordinator(project.id),
+    service.replaceCoordinator(project.id),
+  ])
+
+  const stored = await store.get(project.id)
+  const current = stored.coordinatorSessionId
+  const retired = stored.retiredCoordinatorSessionIds ?? []
+  assert.equal(factory.ids.length, 3)
+  // 每条建出来的会话都有明确去处：要么是当前协调者，要么在退役列表里
+  for (const sessionId of factory.ids) {
+    assert.ok(
+      sessionId === current || retired.includes(sessionId),
+      `${sessionId} 既不是当前协调者，也不在退役列表里`,
+    )
+  }
+  // 索引与落盘记录一致：只有当前协调者还能派工、还会被注入协调者手册
+  for (const sessionId of factory.ids) {
+    assert.equal(service.isCoordinatorSession(sessionId), sessionId === current)
+    assert.equal(service.directoryOfCoordinator(sessionId), sessionId === current ? workspace : undefined)
+  }
+})
+
+test('并发换协调者：索引对齐落盘记录，不依赖两次写入的完成顺序', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const base = createProjectStore({ home })
+  // 把第一次 update 的兑现推迟到第二次之后。真实 store 是串行的，完成顺序恰好等于
+  // 写入顺序；索引若按各自 update 的返回值对齐，就等于把正确性押在这个顺序上。
+  let updateCalls = 0
+  const store = {
+    ...base,
+    async update(id, updates) {
+      updateCalls += 1
+      const call = updateCalls
+      const result = await base.update(id, updates)
+      if (call === 1) await new Promise((resolve) => { setTimeout(resolve, 20) })
+      return result
+    },
+  }
+  const factory = createSessionFactory()
+  const service = makeService({
+    store,
+    ctx: createContext(),
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+  })
+  await service.loadIndex()
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+
+  await Promise.all([
+    service.replaceCoordinator(project.id),
+    service.replaceCoordinator(project.id),
+  ])
+
+  const recorded = await base.get(project.id)
+  assert.equal(factory.ids.length, 3)
+  // 索引只认落盘的那个协调者：晚到的同步不能把已被退役的会话写回索引
+  for (const sessionId of factory.ids) {
+    assert.equal(
+      service.isCoordinatorSession(sessionId),
+      sessionId === recorded.coordinatorSessionId,
+      `${sessionId} 与落盘记录 ${recorded.coordinatorSessionId} 不一致`,
+    )
+  }
+})
+
+test('换协调者成功后触发接管，改绑失败时不触发', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const changes = []
+  const service = makeService({
+    store,
+    ctx: createContext(),
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+    onCoordinatorReplaced: async (change) => { changes.push(change) },
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  // 建项目不是换人，接管不该跑
+  assert.deepEqual(changes, [])
+  await service.replaceCoordinator(project.id)
+  // 只给项目 id：接管要按当前落盘记录算退役集与接手方，不吃调用方那次写下的值
+  assert.deepEqual(changes, [{ projectId: project.id }])
+
+  const failingStore = { ...store, update: async () => { throw new Error('改绑失败') } }
+  const failingChanges = []
+  const failing = makeService({
+    store: failingStore,
+    ctx: createContext(),
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+    onCoordinatorReplaced: async (change) => { failingChanges.push(change) },
+  })
+  await failing.loadIndex()
+  await assert.rejects(() => failing.replaceCoordinator(project.id), /改绑失败/)
+  assert.deepEqual(failingChanges, [])
+})
+
 test('目录不存在时拒绝建项目', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
