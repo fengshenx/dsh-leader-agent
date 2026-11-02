@@ -751,8 +751,8 @@ export function createDispatcher({
         if (notification.parentSessionId !== agent.id) continue
         if (await deliver(notification, agent) === DELIVERED) delivered += 1
       }
-      // 补投通道已经处理过这个父会话的待投通知，等待表里的同一批不要再留
-      if (delivered > 0) waiting.delete(agent.id)
+      // 不清等待表：补投期间可能有条目刚进去（会话转忙、额度用尽），整表删会把它们
+      // 一起丢掉。已投出的那些在 flushWaiting 里对不上落盘队列，会自己掉出去。
       return delivered
     },
 
@@ -774,7 +774,7 @@ export function createDispatcher({
         if (notification.parentSessionId !== parentSessionId) continue
         if (await deliver(notification, undefined) === DELIVERED) delivered += 1
       }
-      if (delivered > 0) waiting.delete(parentSessionId)
+      // 同 `redeliverPending`：不清等待表，这一轮新进去的条目要留在里面等空闲。
       return delivered
     },
 
@@ -800,7 +800,8 @@ export function createDispatcher({
      * 三处都以父会话 id 为键，只改落盘归属的话，回报仍会投给退役会话：
      *
      * - 等待表（`waiting`）：退役会话没投出去的通知挪给接手会话，排在它已有条目
-     *   之前——这些通知对应更早完成的工；
+     *   之前——这些通知对应更早完成的工；条目里的通知跟着改父会话 id，否则续行
+     *   计数与「会话已销毁」判定还查旧 id；
      * - 续行计数（`resumeCounts`）：取两者较大值。这批通知已经消耗过旧会话的自动
      *   续行额度，换人不清零，护栏不会因为换人而重置；人工在新会话里开口才复位。
      * - 在飞记录（`inflight`）：父会话改到接手会话，并丢掉 `parent` 活对象——那是
@@ -818,7 +819,15 @@ export function createDispatcher({
       const list = waiting.get(fromId)
       if (list !== undefined && list.length > 0) {
         waiting.delete(fromId)
-        waiting.set(toId, [...list, ...(waiting.get(toId) ?? [])])
+        // 条目里的通知要跟着改父会话 id：`deliverOnce` 按它取续行计数、`deliver`
+        // 按它查「会话已销毁」。只挪表不改 id，这批通知就按 0 算额度，绕过了护栏。
+        // 顺手丢掉条目里握着的旧 agent——那是退役会话的活对象，只能用来投错人。
+        const adopted = list.map((item) => ({
+          ...item,
+          notification: { ...item.notification, parentSessionId: toId },
+          agent: undefined,
+        }))
+        waiting.set(toId, [...adopted, ...(waiting.get(toId) ?? [])])
         ensureIdleTimer()
       }
       const used = resumeCounts.get(fromId)

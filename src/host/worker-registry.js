@@ -98,6 +98,25 @@ export function createWorkerRegistry({
     return result
   }
 
+  /**
+   * 串行执行一次读改写，写不写由变更函数自己决定。
+   *
+   * 没改到任何一条时跳过整表写盘：换协调者会对每个退役 id 调一次改绑，退役列表
+   * 只增不删，每次换人都是 N 次空读改写。`write` 传进来而不是让调用方自己写——
+   * 同一条串行链上的写必须在这里发生，否则会与别的读改写抢同一个临时文件。
+   * @template T
+   * @param {(registry: { version: number, workers: object[] }, write: () => Promise<void>) => Promise<T> | T} mutate - 变更函数
+   * @returns {Promise<T>} 变更结果
+   */
+  function serializeDeferredWrite(mutate) {
+    const result = tail.then(async () => {
+      const registry = await read()
+      return await mutate(registry, () => write(registry))
+    })
+    tail = result.then(() => undefined, () => undefined)
+    return result
+  }
+
   return {
     /**
      * 登记一个派出去的 worker。
@@ -184,7 +203,7 @@ export function createWorkerRegistry({
     async reassignParent(fromId, toId) {
       if (typeof fromId !== 'string' || fromId === '' || typeof toId !== 'string' || toId === '') return []
       if (fromId === toId) return []
-      return serialize((registry) => {
+      return serializeDeferredWrite(async (registry, flush) => {
         const moved = []
         for (const record of registry.workers) {
           if (record.parentSessionId !== fromId) continue
@@ -194,6 +213,8 @@ export function createWorkerRegistry({
           record.parentSessionId = toId
           moved.push(record.childId)
         }
+        // 一条都没改到就不写盘（见 serializeDeferredWrite）
+        if (moved.length > 0) await flush()
         return moved
       })
     },
