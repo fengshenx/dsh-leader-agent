@@ -892,3 +892,12 @@ test('createBundleTools 把写卡身份判定透传给卡片工具', async () =>
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('createBundleTools 传了 cards 却不传写卡判定时直接报错，不留静默放行的装配', () => {
+  // 装配漏传时工具面照裁、执行时却对所有会话开放——全量用例都不会红，只有调用
+  // 契约本身能拦住。文档门禁走无参调用（没有 cards），不受这条约束。
+  assert.throws(
+    () => createBundleTools({ cards: {} }),
+    /传了 cards 就必须传 canWriteCards/,
+  )
+})

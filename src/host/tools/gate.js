@@ -88,6 +88,27 @@ export function deniedToolsFor({ agent, isCoordinatorSession, isWorkerSession })
 }
 
 /**
+ * 写卡身份判定：当前协调者与 worker 可以写卡。
+ *
+ * 与派工的 `assertCoordinator` 同口径：索引未就绪时 `isCoordinatorSession()` 对
+ * 所有会话返回 true，而写卡会落盘并归属到项目，不能建立在这个宽松判定上——问不出
+ * 身份就不给写。worker 是进程内的内存集合，不依赖项目索引，先短路。
+ *
+ * @param {object} options - 选项
+ * @param {string | undefined} options.sessionId - 调用方会话 id
+ * @param {(sessionId: string | undefined) => boolean} options.isCoordinatorSession -
+ *   协调者判定（未就绪时宽松放行）
+ * @param {(sessionId: string | undefined) => boolean} options.isWorkerSession - worker 判定
+ * @param {() => Promise<boolean>} options.awaitIndex - 等项目索引就绪，报告它是否读出来
+ * @returns {Promise<boolean>} 是否允许写卡
+ */
+export async function canWriteCardsFor({ sessionId, isCoordinatorSession, isWorkerSession, awaitIndex }) {
+  if (isWorkerSession(sessionId) === true) return true
+  if ((await awaitIndex()) !== true) return false
+  return isCoordinatorSession(sessionId) === true
+}
+
+/**
  * 把工具面裁剪应用到某个 agent 的作用域。
  *
  * 会话每次创建（含冷恢复）都会发 `agent/created`，这里跟着重算一次：作用域是

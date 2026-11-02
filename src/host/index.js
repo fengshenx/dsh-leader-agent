@@ -29,7 +29,7 @@ import { createProjectService } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { createDispatcher } from './dispatch.js'
 import { createCoordinatorHandover } from './coordinator-handover.js'
-import { applyToolGate, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
+import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyCoordinatorContext } from './coordinator-context.js'
 import { applyTeamGuard } from './team-guard.js'
@@ -66,10 +66,16 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  * @param {object} [options.dispatcher] - 派工器
  * @param {object} [options.cards] - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
- * @param {(sessionId: string | undefined) => boolean} [options.canWriteCards] - 写卡身份判定
+ * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWriteCards] -
+ *   写卡身份判定；传了 `cards` 就必须传它
  * @returns {object[]} 工具定义
  */
 export function createBundleTools({ dispatcher, cards, resolveProject, canWriteCards } = {}) {
+  // 漏传判定会让写卡闸静默失效：工具面照裁，执行时却对所有会话放行。文档门禁走
+  // 无参调用（没有 cards），单测直接调工具工厂，都不受这条约束。
+  if (cards !== undefined && typeof canWriteCards !== 'function') {
+    throw new Error('createBundleTools: 传了 cards 就必须传 canWriteCards——否则卡片写入闸对所有会话放行')
+  }
   return [
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
@@ -131,9 +137,13 @@ export function apply(ctx) {
   // 裁剪在 `agent/created` 时对 agent 作用域做（见 `applyToolGate`）。
   const isCoordinatorSession = (sessionId) => projectService.isCoordinatorSession(sessionId)
   // 卡片写入只给协调者与 worker。工具面已经按角色裁过，这里再判一次是因为换协调
-  // 者不重建旧会话：退役者手里的写入工具要到进程重启才收走。
-  const canWriteCards = (sessionId) => isCoordinatorSession(sessionId)
-    || workerSessions.isWorkerSession(sessionId) === true
+  // 者不重建旧会话：退役者手里的写入工具要到下次会话重建才收走。
+  const canWriteCards = (sessionId) => canWriteCardsFor({
+    sessionId,
+    isCoordinatorSession,
+    isWorkerSession: workerSessions.isWorkerSession,
+    awaitIndex: () => projectService.awaitIndex(),
+  })
 
   const cards = createCardStore({ home: resolveDshHome(), logger })
   // 卡片按项目归属：归属由宿主按调用方会话判定，模型不传项目参数。
