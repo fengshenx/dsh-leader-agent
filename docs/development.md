@@ -4,7 +4,7 @@
 
 ## 多 worktree 并发
 
-每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见 README 的[前提](../README.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
+每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见 README 的[前提](../README_ZH.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
 
 `npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 

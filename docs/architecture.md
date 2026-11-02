@@ -1,6 +1,6 @@
 # dsh-leader-kit 架构
 
-本文是 dsh-leader-kit 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答「系统由什么组成、接缝在哪里、改一块会牵动谁」；安装与入门见 [README](../README.md)，每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
+本文是 dsh-leader-kit 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答「系统由什么组成、接缝在哪里、改一块会牵动谁」；安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)，再看自己要改的那一块；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 

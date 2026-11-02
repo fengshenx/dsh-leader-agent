@@ -1,6 +1,6 @@
 # 已知限制与取舍
 
-本文件是「本 bundle 有哪些限制、为什么这么取舍」的唯一归属。README 的[当前限制](../README.md#当前限制)是给使用者的概览，只列最要紧的几条；决策的完整推演在对应的 [Agent Note](../.agents/notes/)，宿主为什么做不到在某处能力上，见 [capability-gaps.md](capability-gaps.md)。行为与实现见[架构文档](architecture.md)与[使用手册](usage.md)。
+本文件是「本 bundle 有哪些限制、为什么这么取舍」的唯一归属。README 的[当前限制](../README_ZH.md#当前限制)是给使用者的概览，只列最要紧的几条；决策的完整推演在对应的 [Agent Note](../.agents/notes/)，宿主为什么做不到在某处能力上，见 [capability-gaps.md](capability-gaps.md)。行为与实现见[架构文档](architecture.md)与[使用手册](usage.md)。
 
 ## 宿主语义与运行形态
 
