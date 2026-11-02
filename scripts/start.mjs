@@ -22,7 +22,8 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
-  LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, startWebBundleHint,
+  LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, corruptProfilePackageMessage,
+  startWebBundleHint,
 } from './dev-plan.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -41,7 +42,8 @@ function run(command, args, options) {
     throw new Error(`执行失败: ${command} ${args.join(' ')} —— ${result.error.message}`)
   }
   if (result.status !== 0) {
-    throw new Error(`退出码 ${result.status}: ${command} ${args.join(' ')}`)
+    // 命令输出走 stdio inherit 直通，报错行只在它后面指路。
+    throw new Error(`退出码 ${result.status}: ${command} ${args.join(' ')}（上面是它自己的输出）`)
   }
 }
 
@@ -64,7 +66,7 @@ function identityOf(path) {
  * 读 profile 的 `package.json`。
  *
  * `JSON.parse` 的原始报错只说「哪一行有什么字符」，用户不知道该动什么；这里补上
- * 重装命令。
+ * 可执行的修法与重装命令。
  *
  * @param {string} path - `package.json` 路径
  * @param {string} dshCommand - dsh 可执行文件，用于给出可复制的命令
@@ -75,10 +77,12 @@ function readProfilePackage(path, dshCommand) {
   try {
     return JSON.parse(text)
   } catch (error) {
-    throw new Error(
-      `${path} 不是合法 JSON（${error.message}）。重装一次: `
-      + `${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`,
-    )
+    throw new Error(corruptProfilePackageMessage({
+      packagePath: path,
+      parseMessage: error.message,
+      dshCommand,
+      worktree,
+    }))
   }
 }
 

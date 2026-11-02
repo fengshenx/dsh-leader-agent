@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   TEAM_BAN_CONTEXT_NAME,
   TEAM_BAN_CONTEXT_ORDER,
+  TEAM_BAN_CONTEXT_ORDER_BAND,
   TEAM_BAN_GUIDANCE,
   TEAM_BAN_TEXT_COORDINATOR,
   TEAM_BAN_TEXT_WORKER,
@@ -106,11 +107,12 @@ test('注册为运行时上下文，排在协调者手册与角色槽位之后�
   applyTeamGuard({ ctx, isCoordinatorSession: () => false })
   assert.equal(holder.registered.name, TEAM_BAN_CONTEXT_NAME)
   assert.equal(holder.registered.order, TEAM_BAN_CONTEXT_ORDER)
-  assert.equal(TEAM_BAN_CONTEXT_ORDER, 106)
   assert.ok(TEAM_BAN_CONTEXT_ORDER > COORDINATOR_CONTEXT_ORDER)
   assert.ok(TEAM_BAN_CONTEXT_ORDER > ROLE_CONTEXT_ORDER)
-  // 越过 120 就排到宿主 SUBAGENT_DELEGATION 与 agent-team 的 TEAM_IDENTITY 之后，
-  // 禁令的意图（先读环境约束）失效。精确值 + 上界两头都守。
+  // 10x 段内是取值约定（段与上界有依据，具体整数没有）；越过 120 就排到宿主
+  // SUBAGENT_DELEGATION 与 agent-team 的 TEAM_IDENTITY 之后，禁令的意图失效。
+  assert.ok(TEAM_BAN_CONTEXT_ORDER >= TEAM_BAN_CONTEXT_ORDER_BAND)
+  assert.ok(TEAM_BAN_CONTEXT_ORDER < TEAM_BAN_CONTEXT_ORDER_BAND + 10)
   assert.ok(TEAM_BAN_CONTEXT_ORDER < HOST_SUBAGENT_DELEGATION_ORDER)
   assert.equal(holder.registered.required, true)
   assert.equal(holder.registered.interpolate, false)

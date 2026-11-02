@@ -36,7 +36,9 @@
 
 ### 未预期异常只说一句，不糊整段 stack
 
-环境问题（profile 的 `package.json` 损坏、`dsh web` 非零退出）都会以异常形式冒到顶层。顶层 catch 打印 `错误: <message>` 与栈首帧：整段 stack 对用户没用，首帧能定位到脚本哪一行；`JSON.parse` 的原始报错只说字符位置，包一层补上重装命令。
+环境问题（profile 的 `package.json` 损坏、`dsh web` 非零退出）都会以异常形式冒到顶层。顶层 catch 打印 `错误: <message>` 与栈首帧：整段 stack 对用户没用，首帧能定位到脚本哪一行。
+
+`package.json` 损坏时不能建议「重装一次」：`dsh plugin` 在该目录里跑 pnpm，pnpm 同样读这份文件、同样报 JSON 解析错误。文案给的是「先手工修好，或删掉该 profile 目录让 dsh 按 web 模板重建（删前确认里面没有别的插件），再重装」，并保留 `JSON.parse` 的原始报错（它指到出错字符位置）。`dsh web` 非零退出时，报错行补一句「上面是它自己的输出」——`stdio: inherit` 让它的 stderr 打在报错行之前。
 
 ### 额外参数原样转给 dsh web
 
@@ -53,13 +55,13 @@
 
 ## 验证
 
-`npm run check` 629 用例全绿。`tests/dev-plan.test.js` 26 条：本 PR 新增「日常 profile 已装本插件时放行」「没装时拒绝并给出安装命令」「没写 bundles 时拒绝」，审查修复又加 4 条 `hint` 用例（拒绝时用调用方的建议、漏传直接报错、dev 建议指向 `DSH_PROFILE`、start 建议不提它）。
+`npm run check` 630 用例全绿。`tests/dev-plan.test.js` 27 条：本 PR 新增「日常 profile 已装本插件时放行」「没装时拒绝并给出安装命令」「没写 bundles 时拒绝」，审查修复又加 5 条（`hint` 的四处行为 + 损坏 `package.json` 的建议文案）。
 
-双向验证：把 `assertLeaderKitBundle` 的判据替换成无条件 `return` → 「没装本插件时拒绝」「没写 bundles 时拒绝」两条变红（20/22 通过），还原后全绿；把 `startWebBundleHint` 换成 `devWebBundleHint` → 「start 的修复建议不提 DSH_PROFILE」变红（25/26），还原后 26/26 绿。
+双向验证：把 `assertLeaderKitBundle` 的判据替换成无条件 `return` → 「没装本插件时拒绝」「没写 bundles 时拒绝」两条变红（20/22 通过），还原后全绿；把 `startWebBundleHint` 换成 `devWebBundleHint` → 「start 的修复建议不提 DSH_PROFILE」变红（25/26），还原后 26/26 绿；把 `corruptProfilePackageMessage` 换回「重装一次: …」→「损坏时给的是先修文件或删目录重建」变红（26/27），还原后 27/27 绿。
 
 真机读数（`dsh 0.2.1-rc.2`）：
 
 - 正常路径：`DSH_HOME=/tmp/start-ok-home npm start -- --no-open --port 0`（profile 的插件链接指向本 worktree）先构建产物，横幅打印 `版本    dsh 0.2.1-rc.2`、数据根与插件路径，随后打印 `dsh web: http://127.0.0.1:…/?token=…` 并监听；`--no-open --port 0` 两项透传到位。
 - 加载目录不同：`DSH_HOME=~/.dsh npm start -- --no-open`（链接指向主 checkout）打出 `[warn] 实例加载的是 …/dsh-leader-kit，不是当前目录 …/.worktrees/npm-start-script`，跳过构建（`lib/client.js` 的 mtime 不变）。
 - 四条失败路径各自以 1 退出并给出可复制的修复命令：`DSH_DSH=no-such-dsh`（提示 PATH 与 nvm）、数据根没有 profile、profile 缺本插件、profile 声明了但没有 `node_modules/dsh-leader-kit` 链接。
-- 错误输出（stub `dsh` + /tmp 夹具）：`package.json` 损坏时打 `错误: … 不是合法 JSON（…）。重装一次: dsh plugin …` 加一行首帧；缺 web-app 时打 `错误: … 把 @deepseek-ai/dsh-web-app 加进该 profile 的 dsh.profile.bundles，或删掉 …`，**不含 `DSH_PROFILE`**；`dsh web` 退 3 时打 `错误: 退出码 3: … web` 加首帧，三者都不再吐整段 stack。
+- 错误输出（stub `dsh` + /tmp 夹具）：`package.json` 损坏时打 `错误: … 不是合法 JSON（…）：dsh plugin 装东西时也读这份文件，损坏时它会一起失败。先手工修好它，或删掉 … 让 dsh 按 web 模板重建（删前确认里面没有别的插件），再重装: …` 加一行首帧；缺 web-app 时打 `错误: … 把 @deepseek-ai/dsh-web-app 加进该 profile 的 dsh.profile.bundles，或删掉 …`，**不含 `DSH_PROFILE`**；`dsh web` 退 3 时打 `错误: 退出码 3: … web（上面是它自己的输出）` 加首帧，三者都不再吐整段 stack。

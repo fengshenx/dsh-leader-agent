@@ -17,7 +17,7 @@
  */
 
 import { realpathSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 /** 插件包名：profile 里换成工作树链接的那个。 */
 export const LEADER_KIT_PACKAGE = 'dsh-leader-kit'
@@ -148,6 +148,27 @@ export function startWebBundleHint({ profileDir, dshCommand, worktree }) {
   return `把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles，`
     + `或删掉 ${profileDir} 让 dsh 按 ${PROFILE_NAME} 模板重建后再装本插件: `
     + `${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`
+}
+
+/**
+ * `package.json` 解析失败时的错误文案。
+ *
+ * `dsh plugin` 在该目录里跑 pnpm，pnpm 也读这份文件，文件坏了它同样以 JSON 解析
+ * 错误退出——所以「重装一次」不是可执行的修法，必须先修好或删掉文件。原始报错
+ * 原样保留，它指到出错的字符位置。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.packagePath - 损坏的 `package.json` 路径
+ * @param {string} options.parseMessage - `JSON.parse` 的原始报错
+ * @param {string} options.dshCommand - dsh 可执行文件，用于给出可复制的命令
+ * @param {string} options.worktree - 当前仓库路径
+ * @returns {string} 错误文案
+ */
+export function corruptProfilePackageMessage({ packagePath, parseMessage, dshCommand, worktree }) {
+  return `${packagePath} 不是合法 JSON（${parseMessage}）：dsh plugin 装东西时也读这份文件，`
+    + '损坏时它会一起失败。先手工修好它，'
+    + `或删掉 ${dirname(packagePath)} 让 dsh 按 ${PROFILE_NAME} 模板重建（删前确认里面没有别的插件），`
+    + `再重装: ${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`
 }
 
 /**

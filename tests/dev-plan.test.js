@@ -5,7 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertLeaderKitBundle, assertSeparateHome, assertWebBundle,
-  deriveProfilePackage, devWebBundleHint, planNodeModules, resolveDevPaths, startWebBundleHint,
+  corruptProfilePackageMessage, deriveProfilePackage, devWebBundleHint, planNodeModules, resolveDevPaths,
+  startWebBundleHint,
 } from '../scripts/dev-plan.mjs'
 
 const WORKTREE = '/work/repo/.worktrees/feature-a'
@@ -216,6 +217,22 @@ test('start 的修复建议不提 DSH_PROFILE，给的是固定 profile 能照�
   assert.ok(!hint.includes('DSH_PROFILE'), 'start 的 profile 名固定，换 profile 的建议对它无效')
   assert.match(hint, /删掉 \/home\/user\/\.dsh\/profiles\/web/)
   assert.match(hint, /dsh plugin --profile web add \/work\/repo\/\.worktrees\/feature-a/)
+})
+
+test('profile package.json 损坏时给的是先修文件或删目录重建，不是直接重装', () => {
+  const message = corruptProfilePackageMessage({
+    packagePath: '/home/user/.dsh/profiles/web/package.json',
+    parseMessage: "Expected ',' or '}' after property value in JSON at position 1",
+    dshCommand: 'dsh',
+    worktree: WORKTREE,
+  })
+  // dsh plugin 在该目录里跑 pnpm，pnpm 同样读这份文件，坏了照样失败。
+  assert.match(message, /不是合法 JSON（Expected ',' or '}'/)
+  assert.match(message, /先手工修好它/)
+  assert.match(message, /删掉 \/home\/user\/\.dsh\/profiles\/web 让 dsh 按 web 模板重建/)
+  assert.match(message, /删前确认里面没有别的插件/)
+  assert.match(message, /dsh plugin --profile web add \/work\/repo\/\.worktrees\/feature-a/)
+  assert.ok(!/重装一次/.test(message), '重装修不好损坏的 package.json')
 })
 
 test('漏传修复建议时直接报错，不拼出 undefined', () => {

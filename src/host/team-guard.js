@@ -39,6 +39,15 @@ export const TEAM_TOOL_NAMES = Object.freeze([
 export const TEAM_BAN_CONTEXT_NAME = 'dsh-leader-kit:team-ban'
 
 /**
+ * 注入项所在的 order 段：10x 是「这个会话该怎么干活」的约束段。
+ *
+ * 宿主没有定义这一段：协调者手册取 104、角色槽位取 105，本项取段内下一个整数。
+ * 只要留在段内、且不到宿主的 `SUBAGENT_DELEGATION`（120），具体取值无所谓——用例
+ * 锁的是段与上界，不是这个数。
+ */
+export const TEAM_BAN_CONTEXT_ORDER_BAND = 100
+
+/**
  * 注入项在运行时上下文里的位置。
  *
  * 紧跟协调者手册（104）与角色槽位（105）之后：三者都是「这个会话该怎么干活」的

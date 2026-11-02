@@ -22,7 +22,9 @@
 
 ### C：给协调者与 worker 注入运行时上下文
 
-`dsh-leader-kit:team-ban`（order 106，紧跟协调者手册 104 与角色槽位 105）点名 9 个团队工具，走运行时上下文而非 section：只在相关会话上生效，且每轮重新求值（与槽位、协调者手册同一条通道）。
+`dsh-leader-kit:team-ban`（order 106，跟随协调者手册 104 与角色槽位 105）点名 9 个团队工具，走运行时上下文而非 section：只在相关会话上生效，且每轮重新求值（与槽位、协调者手册同一条通道）。
+
+10x 段与 120 的上界有依据，具体整数没有：段内是「这个会话该怎么干活」的约束，107 之类的等价调整同样成立。用例只锁段（`TEAM_BAN_CONTEXT_ORDER_BAND`）与「< 120」，取值写在常量注释里作为约定。
 
 正文按角色分开：协调者的出口是 `spawn_worker` / `message_worker` / 卡片；worker 的这三件工具正被 deny（`tools/gate.js` 的 `COORDINATOR_ONLY_TOOLS`），所以 worker 版只讲它真能做的——当轮结束由系统结算、交付落在自己的 worktree 与 PR、任务事实用 `update_card` 汇报。共用一份文案会让 worker 照做一个它没有的工具，拿 tool-not-found 并把失败写进交付。
 
@@ -42,13 +44,13 @@ worker 与 teammate 在运行时并不互斥，混用才是问题。拒绝并存
 
 ## 验证
 
-`npm run check` 627 用例全绿（本 PR 新增 12 条 `team-guard` 用例：启用判定、身份分派、两份禁令都点名全部工具、各角色推荐入口落在自己的工具面里、worker 禁令不点名协调者专属工具、order 精确值、求值抛错回落、告警去重）。
+`npm run check` 全部用例通过（本 PR 新增 12 条 `team-guard` 用例：启用判定、身份分派、两份禁令都点名全部工具、各角色推荐入口落在自己的工具面里、worker 禁令不点名协调者专属工具、order 段与上界、求值抛错回落、告警去重）。
 
 双向验证（撤销判定 → 对应用例变红 → 还原全绿，逐条实跑）：
 
 - 把 `teamBanFor` 的 `if (!enabled) return ''` 短路掉 → 「未启用时任何会话都不注入」变红（9/10），还原后 10/10 绿。
 - 去掉 `warnOnce` 的 `warned` 判据 → 「检测到 agent-team 时只告警一次」变红（9/10），还原后 10/10 绿。
 - 把 `TEAM_BAN_TEXT_WORKER` 换成协调者版（角色错配，审查里的 M4）→ 「worker 的禁令不点名协调者专属工具」「协调者与 worker 各拿自己的禁令」变红（10/12），还原后 12/12 绿。
-- 把 `TEAM_BAN_CONTEXT_ORDER` 由 106 改到 130（越过宿主的 120 / 125）→ order 用例变红（11/12），还原后 12/12 绿。
+- order 的三向读数：`TEAM_BAN_CONTEXT_ORDER` 改到 107（段内等价调整）→ 12/12 绿，109 以内都不会误报；改到 110（越出 10x 段）与 130（越过宿主 120 / 125）→ order 用例变红（11/12），还原后 12/12 绿。
 
 宿主侧依据（读码，非实测）：`agent-team/src/index.ts:76` 注册 `agentTeams`；`tool-agent-team/src/index.ts:411-432` 对所有 `tryMembership` 成功的 agent 装工具；`agent-team/src/roster.ts:111-112` 把普通 root 判成 lead；`packages/core/tools/src/index.ts:179-182` 的 `restrict` 只接受全局工具名。
