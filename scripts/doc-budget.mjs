@@ -49,8 +49,10 @@ export function checkBudgets(entries) {
  * @returns {string[]} 未登记的路径，按字典序
  */
 export function findUnregisteredDocs(registered, discovered) {
-  const known = new Set(registered)
-  return discovered.filter((path) => !known.has(path)).sort()
+  // Windows 的 relative() 返回反斜杠；清单统一用 `/`，不归一化会把所有文档误报为未登记。
+  const normalize = (path) => path.replaceAll('\\', '/')
+  const known = new Set(registered.map(normalize))
+  return discovered.filter((path) => !known.has(normalize(path))).sort()
 }
 
 /**

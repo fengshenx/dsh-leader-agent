@@ -82,6 +82,8 @@ test('未登记的长期文档被报出，已登记的不报', () => {
     ['AGENTS.md', 'docs/orphan.md'],
   )
   assert.deepEqual(findUnregisteredDocs(['docs/a.md'], ['docs/a.md']), [])
+  // Windows 的 relative() 产出反斜杠；归一化后不能再误报
+  assert.deepEqual(findUnregisteredDocs(['docs/a.md'], ['docs\\a.md']), [])
 })
 
 test('真实清单：声明的文件都在，且读数都是正整数', () => {

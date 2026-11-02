@@ -294,7 +294,8 @@ test('协调者在运行时项目行显示运行态', () => {
 })
 
 test('协调者运行态接线到行首加载圈', () => {
-  const source = readFileSync(sectionPath, 'utf8')
+  // 按行匹配源码：Windows 检出会把换行转成 CRLF，先归一化。
+  const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
   // 三个入参逐一钉住，不写成松散匹配：只认 coordinatorRunning 的话，把 rows
   // 改空或把 expanded 写死都还能通过，而渲染当场就退化成「只跟协调者走」。
   assert.match(

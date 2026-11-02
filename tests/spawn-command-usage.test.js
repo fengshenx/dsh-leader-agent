@@ -41,10 +41,10 @@ const ALLOWED = new Map([
 function listSources() {
   const scripts = readdirSync(join(ROOT, 'scripts'))
     .filter((name) => name.endsWith('.mjs'))
-    .map((name) => join('scripts', name))
+    .map((name) => `scripts/${name}`)
   const e2e = readdirSync(join(ROOT, 'tests', 'e2e'))
     .filter((name) => /\.(?:mjs|js)$/.test(name))
-    .map((name) => join('tests', 'e2e', name))
+    .map((name) => `tests/e2e/${name}`)
   return [...scripts, ...e2e]
 }
 
