@@ -181,6 +181,25 @@ export function currentSessionIdOf(byId) {
 }
 
 /**
+ * 判定项目行是否处于选中态。
+ *
+ * 协调者会话不在项目树下单独出行，项目行就是它的入口；点项目行打开协调者之后
+ * 主区域里放着那条会话，这一行必须跟着亮起来，否则「我现在在哪个项目里」只能
+ * 靠会话标题猜。项目下的 worker 会话被打开时同样点亮所属项目——那一行代表的
+ * 就是这一组会话。
+ *
+ * @param {object} project - 项目记录
+ * @param {string[]} sessionIds - 宿主判定的该项目会话 id
+ * @param {string | undefined} currentSessionId - 主区域当前会话 id
+ * @returns {boolean} 是否选中
+ */
+export function isProjectCurrent(project, sessionIds, currentSessionId) {
+  if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
+  if (project?.coordinatorSessionId === currentSessionId) return true
+  return (sessionIds ?? []).includes(currentSessionId)
+}
+
+/**
  * 找出要压掉激活态的工作区。
  *
  * 官方把「当前会话所在分组」的目录图标点亮。当前会话若是被排除的会话（项目的

@@ -505,6 +505,7 @@ export function ProjectPanel(props) {
     },
     onArchiveSession: (sessionId) => { void archiveSession(sessionId) },
     archivedSessionIds,
+    currentSessionId,
   })
 
   // 弹窗自己 portal 到 body，但必须挂在不会被浮层收起卸载的位置：窄栏下浮层

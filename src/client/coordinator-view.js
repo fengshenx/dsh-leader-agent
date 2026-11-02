@@ -15,19 +15,9 @@
 import { createElement, useLayoutEffect } from 'react'
 import {
   activateCoordinatorView,
-  collectCoordinatorSessionIds,
-  createCoordinatorSessionIndex,
   createCoordinatorViewDefinition,
 } from './coordinator-view-logic.js'
-import { callProjectRemote, onProjectRemoteReady } from './project-remote.js'
-
-/**
- * 协调者会话 id 索引。
- *
- * 名单由项目面板那条链路写入（面板可能被折叠卸载，所以名单的填充不挂在面板
- * 上，见 {@link watchCoordinatorSessions}），主区域入口订阅它。
- */
-export const coordinatorSessionIndex = createCoordinatorSessionIndex()
+import { coordinatorSessionIndex } from './coordinator-session-index.js'
 
 /**
  * 主区域入口：当前会话是协调者时激活协调者视图目标。
@@ -73,30 +63,4 @@ export function mountCoordinatorView(ctx) {
       getUiConversation: () => ctx.get('uiConversation'),
     }),
   }, CoordinatorViewEntry)), 'dsh-leader-kit 协调者视图入口')
-}
-
-/**
- * 把项目里的协调者会话写进索引。
- *
- * 名单的填充不能挂在项目面板上：侧栏收起时面板会卸载，索引就空了，协调者会话
- * 会退化成欢迎页。这里独立拉一次项目列表，通道就绪后补拉，窗口重新获得焦点时
- * 再拉一次（项目可能在另一个窗口里被增删）。
- *
- * @param {object} ctx - 客户端 Cordis 上下文
- * @returns {void}
- */
-export function watchCoordinatorSessions(ctx) {
-  const refresh = async () => {
-    try {
-      const projects = await callProjectRemote(ctx, 'list', [])
-      coordinatorSessionIndex.update(collectCoordinatorSessionIds(projects))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      ctx.logger?.warn?.(`dsh-leader-kit: 读取协调者会话名单失败：${message}`)
-    }
-  }
-  void onProjectRemoteReady(() => { void refresh() })
-  const onFocus = () => { void refresh() }
-  window.addEventListener('focus', onFocus)
-  ctx.effect(() => () => window.removeEventListener('focus', onFocus))
 }

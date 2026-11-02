@@ -11,6 +11,7 @@ import {
   describeDeletionNotice,
   describeProjectRemoval,
   isProjectOpenable,
+  isProjectCurrent,
   openCoordinatorSession,
   planProjectRename,
   projectSectionLayout,
@@ -140,6 +141,26 @@ test('当前会话取主区域持有的那条', () => {
   }), 's2')
   assert.equal(currentSessionIdOf({ 's1': { retainedBy: {} } }), undefined)
   assert.equal(currentSessionIdOf(undefined), undefined)
+})
+
+test('当前会话是协调者或项目下的 worker 时点亮项目行', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  const sessions = ['session-coordinator', 'session-worker', 'session-retired']
+  assert.equal(isProjectCurrent(project, sessions, 'session-coordinator'), true)
+  assert.equal(isProjectCurrent(project, sessions, 'session-worker'), true)
+  // 退役协调者也在归属名单里：用户从项目树里打开它时仍是这个项目。
+  assert.equal(isProjectCurrent(project, sessions, 'session-retired'), true)
+})
+
+test('当前会话属于别的项目或主区域为空时项目行不亮', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  const sessions = ['session-coordinator', 'session-worker']
+  assert.equal(isProjectCurrent(project, sessions, 'session-other'), false)
+  assert.equal(isProjectCurrent(project, sessions, undefined), false)
+  assert.equal(isProjectCurrent(project, sessions, ''), false)
+  // 会话归属还没同步回来：只有协调者那一条能判定。
+  assert.equal(isProjectCurrent(project, undefined, 'session-coordinator'), true)
+  assert.equal(isProjectCurrent(project, undefined, 'session-worker'), false)
 })
 
 test('当前会话被排除时压掉它所属工作区的激活态', () => {

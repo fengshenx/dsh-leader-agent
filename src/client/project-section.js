@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectOpenable, planProjectRename, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -94,6 +94,10 @@ const STYLE_TEXT = `
   .dsh-leader-kit-project-row:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
+}
+/* 选中态与官方会话行同款：hover 用的那层底色常驻。 */
+.dsh-leader-kit-project-row[data-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 .dsh-leader-kit-project-row[data-dead='true'] {
   color: var(--dsw-alias-label-secondary);
@@ -428,6 +432,7 @@ export function ProjectSection(props) {
     onToggleExpand, onOpenSession, onArchiveSession,
     archivedSessionIds,
     listExpanded, onToggleList,
+    currentSessionId,
   } = props
 
   useEffect(() => { ensureStyles() }, [])
@@ -505,7 +510,7 @@ export function ProjectSection(props) {
     layout.showList
       ? createElement(
           'div',
-          null,
+          { role: 'tree', 'aria-label': '项目' },
           projects.map((project) => createElement(ProjectRow, {
             key: project.id,
             project,
@@ -517,6 +522,7 @@ export function ProjectSection(props) {
             sessions: sessionsByProject.get(project.id) ?? [],
             sessionRows,
             expanded: expandedProjects.has(project.id),
+            currentSessionId,
             onToggleExpand,
             onOpenSession,
             onArchiveSession,
@@ -575,7 +581,7 @@ function ProjectRow(props) {
   const {
     project, busy, onOpen, onRename, onReplace, onRemove,
     sessions, sessionRows, expanded, onToggleExpand, onOpenSession, onArchiveSession,
-    archivedSessionIds,
+    archivedSessionIds, currentSessionId,
   } = props
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -617,6 +623,8 @@ function ProjectRow(props) {
     coordinatorSessionId: project.coordinatorSessionId,
     archivedSessionIds,
   })
+  // 当前会话是协调者或本项目下的 worker 时，这一行就是用户正在看的那一组。
+  const selected = isProjectCurrent(project, sessions, currentSessionId)
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -636,8 +644,10 @@ function ProjectRow(props) {
       {
         className: 'dsh-leader-kit-project-row',
         'data-dead': openable ? undefined : 'true',
+        'data-selected': selected ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
         role: 'treeitem',
+        'aria-selected': selected,
         'aria-expanded': expanded,
         title: `${project.name} · ${project.directory}`,
         onClick: (event) => {
