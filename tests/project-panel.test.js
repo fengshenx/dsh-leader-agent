@@ -12,6 +12,8 @@ import {
   describeProjectRemoval,
   isProjectOpenable,
   openCoordinatorSession,
+  planProjectRename,
+  projectSectionLayout,
   quietWorkspaceOf,
   selectProjectSessionRows,
   isArchiveActiveRefusal,
@@ -281,6 +283,47 @@ test('菜单里的删除入口只发请求，不直接执行', () => {
   })
   items.find((item) => item.id === 'remove').onSelect()
   assert.deepEqual(asked, ['p1'])
+})
+
+test('项目通道未就绪的状态行不受列表折叠影响', () => {
+  const collapsed = projectSectionLayout({
+    remoteStatus: '项目通道未就绪。通道不可用。',
+    listExpanded: false,
+    projectCount: 2,
+  })
+  assert.equal(collapsed.status, '项目通道未就绪。通道不可用。')
+  assert.equal(collapsed.showList, false)
+  assert.equal(collapsed.showEmpty, false)
+
+  // 通道就绪后这行消失，列表照常显示。
+  const ready = projectSectionLayout({ remoteStatus: '', listExpanded: true, projectCount: 2 })
+  assert.equal(ready.status, '')
+  assert.equal(ready.showList, true)
+})
+
+test('通道未就绪时不说「还没有项目」，收起时也不显示空态', () => {
+  assert.deepEqual(
+    projectSectionLayout({ remoteStatus: '', listExpanded: true, projectCount: 0 }),
+    { status: '', showList: false, showEmpty: true },
+  )
+  // 「还没有项目」属于列表内容，列表收起就跟着收起；状态行不在此列。
+  assert.equal(projectSectionLayout({ remoteStatus: '', listExpanded: false, projectCount: 0 }).showEmpty, false)
+  // 通道坏着时说「还没有项目」是误导：列表位置放状态行，不放空态。
+  assert.equal(
+    projectSectionLayout({ remoteStatus: '项目通道未就绪。', listExpanded: true, projectCount: 0 }).showEmpty,
+    false,
+  )
+})
+
+test('重命名校验失败时保留输入框并给就地原因', () => {
+  assert.deepEqual(planProjectRename('demo', ''), { action: 'keep', error: '项目名不能为空' })
+  assert.deepEqual(
+    planProjectRename('demo', 'x'.repeat(201)),
+    { action: 'keep', error: '项目名过长（上限 200 字）' },
+  )
+  // 名字没改：直接收起，不打扰宿主。
+  assert.deepEqual(planProjectRename('demo', 'demo'), { action: 'close' })
+  assert.deepEqual(planProjectRename('demo', 'renamed'), { action: 'commit', name: 'renamed' })
 })
 
 /**

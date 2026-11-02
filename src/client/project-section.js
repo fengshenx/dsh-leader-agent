@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectOpenable, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isProjectOpenable, planProjectRename, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -432,6 +432,12 @@ export function ProjectSection(props) {
 
   useEffect(() => { ensureStyles() }, [])
 
+  const layout = projectSectionLayout({
+    remoteStatus,
+    listExpanded,
+    projectCount: projects.length,
+  })
+
   return createElement(
     'div',
     { className: 'dsh-leader-kit-project-section' },
@@ -482,39 +488,41 @@ export function ProjectSection(props) {
         ),
       ),
     ),
-    listExpanded
-      ? (remoteStatus !== ''
-          ? createElement(
-              'div',
-              { className: 'dsh-leader-kit-project-notice' },
-              remoteStatus,
-            )
-          : projects.length === 0
-            ? createElement(
-                'div',
-                { className: 'dsh-leader-kit-project-notice' },
-                '还没有项目。加一个即在它的目录里建好协调者会话。',
-              )
-            : createElement(
-              'div',
-              null,
-              projects.map((project) => createElement(ProjectRow, {
-                key: project.id,
-                project,
-                busy,
-                onOpen,
-                onRename,
-                onReplace,
-                onRemove,
-                sessions: sessionsByProject.get(project.id) ?? [],
-                sessionRows,
-                expanded: expandedProjects.has(project.id),
-                onToggleExpand,
-                onOpenSession,
-                onArchiveSession,
-                archivedSessionIds,
-              })),
-            ))
+    layout.status === ''
+      ? null
+      : createElement(
+          'div',
+          { className: 'dsh-leader-kit-project-notice' },
+          layout.status,
+        ),
+    layout.showEmpty
+      ? createElement(
+          'div',
+          { className: 'dsh-leader-kit-project-notice' },
+          '还没有项目。加一个即在它的目录里建好协调者会话。',
+        )
+      : null,
+    layout.showList
+      ? createElement(
+          'div',
+          null,
+          projects.map((project) => createElement(ProjectRow, {
+            key: project.id,
+            project,
+            busy,
+            onOpen,
+            onRename,
+            onReplace,
+            onRemove,
+            sessions: sessionsByProject.get(project.id) ?? [],
+            sessionRows,
+            expanded: expandedProjects.has(project.id),
+            onToggleExpand,
+            onOpenSession,
+            onArchiveSession,
+            archivedSessionIds,
+          })),
+        )
       : null,
     // 目录名当不了项目名时才出现：这时直接提交只会换回一条没有出口的报错——
     // 项目没建成，列表里就没有那一行，行上的「重命名」也不存在。
@@ -572,6 +580,8 @@ function ProjectRow(props) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(project.name)
+  /** 重命名校验失败的原因；输入框留在原地，原因就地显示。 */
+  const [renameError, setRenameError] = useState('')
   const [menuAnchor, setMenuAnchor] = useState(null)
   const moreRef = useRef(null)
   const leadRef = useRef(null)
@@ -591,8 +601,14 @@ function ProjectRow(props) {
   }, [menuOpen])
 
   const commitRename = () => {
+    const plan = planProjectRename(project.name, name)
+    if (plan.action === 'keep') {
+      setRenameError(plan.error)
+      return
+    }
     setRenaming(false)
-    if (name !== project.name) onRename(project, name)
+    setRenameError('')
+    if (plan.action === 'commit') onRename(project, plan.name)
   }
 
   const childSessions = selectProjectSessionRows({
@@ -659,11 +675,18 @@ function ProjectRow(props) {
             value: name,
             autoFocus: true,
             onClick: (event) => event.stopPropagation(),
-            onChange: (event) => setName(event.target.value),
+            onChange: (event) => {
+              setName(event.target.value)
+              setRenameError('')
+            },
             onBlur: commitRename,
             onKeyDown: (event) => {
               if (event.key === 'Enter') commitRename()
-              if (event.key === 'Escape') { setName(project.name); setRenaming(false) }
+              if (event.key === 'Escape') {
+                setName(project.name)
+                setRenameError('')
+                setRenaming(false)
+              }
             },
           })
         : createElement(
@@ -715,6 +738,14 @@ function ProjectRow(props) {
         ),
       ),
     ),
+    // 校验失败的原因跟着输入框留在行下：提示条五秒后消失，用户要照着它改。
+    renaming && renameError !== ''
+      ? createElement(
+          'div',
+          { className: 'dsh-leader-kit-project-notice' },
+          renameError,
+        )
+      : null,
     expanded
       ? createElement(
           'div',

@@ -342,6 +342,8 @@ export function ProjectPanel(props) {
 
   const renameProject = useCallback(async (project, name) => {
     if (busy) return
+    // 行内提交已经用 planProjectRename 校验过，正常走不到这里；守住绕过行内的
+    // 调用方。校验是「输入能改好」的问题，行内会就地显示原因，这里只做兜底。
     const check = validateProjectName(name)
     if (!check.ok) {
       showToast(check.error)
