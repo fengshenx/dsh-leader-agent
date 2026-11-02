@@ -467,6 +467,17 @@ export function createProjectService({
       if (ctx.get('workspaceRegistry') === undefined) {
         return { attached: false, reason: '当前宿主没有工作区服务，无法把协调者会话挂到工作区。' }
       }
+      // 目录被删或被移走时先停下：宿主注册工作区不校验目录，挂会话时才校验会话
+      // cwd 能不能解析，报出来的是一句英文技术错——用户看不懂，也不知道该干什么。
+      try {
+        await assertUsableDirectory(project.directory)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          attached: false,
+          reason: `${message}。把这个目录恢复回来，或删掉该项目后重新添加。`,
+        }
+      }
       const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
       if (ensured === undefined) {
         return { attached: false, reason: '当前宿主的工作区服务不支持注册目录。' }

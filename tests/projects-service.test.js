@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { mkdir, realpath, symlink } from 'node:fs/promises'
+import { mkdir, realpath, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createProjectStore } from '../src/host/projects/store.js'
 import {
@@ -1099,4 +1099,27 @@ test('isCoordinatorSession 在索引未重建时保守放行', async () => {
   await service.loadIndex()
   assert.equal(service.isCoordinatorSession('session-restart'), true)
   assert.equal(service.isCoordinatorSession('session-anyone'), false)
+})
+
+test('项目目录被删后再点项目：报可读原因，不去注册空工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await service.attachCoordinator(project.id)
+  const createdBefore = registry.created.length
+  await rm(workspace, { recursive: true, force: true })
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.attached, false)
+  assert.match(result.reason, /项目目录不存在或不可访问/)
+  // 宿主注册工作区不校验目录，不先停下就会凭空多出一个指向已删目录的工作区。
+  assert.equal(registry.created.length, createdBefore)
 })
