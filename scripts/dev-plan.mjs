@@ -77,83 +77,298 @@ function identityOf(path) {
   }
 }
 
-/** `refs:` 节里的条目行：两格缩进加键名。 */
-const REF_ENTRY = /^ {2}([^\s:#][^:]*):/
+/**
+ * `refs:` 节头：块式（尾部可带注释）或行内映射；键名允许手写的引号写法。
+ * `\r` 要显式放行：CRLF 文档按 `\n` 切行后每行都带它，而 `.` 与 `$` 都不吃回车。
+ */
+const REFS_HEADER = /^(?:"refs"|'refs'|refs):(?:[ \t]+(.*?))?[ \t]*\r?$/
+
+/** 块式条目行：缩进 + 键名，兼容手写的引号写法。 */
+const REF_ENTRY = /^[ \t]+(?:"([^"\n]+)"|'([^'\n]+)'|([^\s:#][^:]*)):(?:[ \t]|\r?$)/
+
+/** 行内映射里的单个条目。 */
+const FLOW_PAIR = /^(?:"([^"\n]+)"|'([^'\n]+)'|([^\s:#][^:]*?))[ \t]*:[ \t]*([\s\S]+)$/
+
+/** 顶层键名；顶层标量（如序列项）返回 null。引号包住的键按解析后的名字算。 */
+function topLevelKeyOf(line) {
+  const match = /^(?:"([^"\n]+)"|'([^'\n]+)'|([^\s:#][^:]*)):(?:[ \t]|\r?$)/.exec(line)
+  return match === null ? null : (match[1] ?? match[2] ?? match[3])
+}
+
+/** 行首缩进宽度（yaml 不允许制表符作缩进，这里只比较一列性）。 */
+function indentOf(line) {
+  return /^[ \t]*/.exec(line)[0].length
+}
+
+/** 块式条目行的键名。 */
+function refEntryKey(line) {
+  const match = REF_ENTRY.exec(line)
+  return match === null ? null : (match[1] ?? match[2] ?? match[3]).trim()
+}
+
+/** 按顶层逗号切分行内映射，引号内的逗号不算分隔符。 */
+function splitFlowPairs(inner) {
+  const parts = []
+  let current = ''
+  let quote = null
+  for (let index = 0; index < inner.length; index += 1) {
+    const char = inner[index]
+    if (quote !== null) {
+      current += char
+      if (quote === '"' && char === '\\') {
+        current += inner[index + 1] ?? ''
+        index += 1
+        continue
+      }
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      current += char
+      continue
+    }
+    if (char === ',') {
+      parts.push(current)
+      current = ''
+      continue
+    }
+    current += char
+  }
+  parts.push(current)
+  return parts.map((part) => part.trim()).filter((part) => part !== '')
+}
+
+/** 块式 `refs:` 节：条目缩进任意合法值，续行更深。 */
+function parseBlockRefs(lines, header, end, trailingComment) {
+  const entries = new Map()
+  let indent = null
+  let lastEntryEnd = header + 1
+  let current = null
+  for (let index = header + 1; index < end; index += 1) {
+    const line = lines[index]
+    if (line.trim() === '') {
+      if (current !== null) {
+        current.push(line)
+        lastEntryEnd = index + 1
+      }
+      continue
+    }
+    const width = indentOf(line)
+    if (current !== null && width > indent) {
+      current.push(line)
+      lastEntryEnd = index + 1
+      continue
+    }
+    if (/^[ \t]*#/.test(line)) continue
+    if (indent === null || width === indent) {
+      const key = refEntryKey(line)
+      if (key === null) {
+        throw new Error(`凭据文档第 ${index + 1} 行：refs 节里的条目认不出（要「缩进 + 键名:」），先手工修正`)
+      }
+      indent = width
+      current = [line]
+      entries.set(key, current)
+      lastEntryEnd = index + 1
+      continue
+    }
+    throw new Error(`凭据文档第 ${index + 1} 行：refs 节的缩进比条目更浅，yaml 解析会报 BAD_INDENT，先手工修正`)
+  }
+  return { header, end, indent, entries, lastEntryEnd, flowLines: null, trailingComment }
+}
+
+/** 行内映射 `refs: { ... }`，含宿主删除最后一个引用后落的 `refs: {}`。 */
+function parseFlowRefs(lines, header, end, trailing) {
+  const match = /^\{([\s\S]*)\}([ \t]*#.*)?$/.exec(trailing)
+  if (match === null) {
+    throw new Error(`凭据文档第 ${header + 1} 行的 refs 是行内映射，但没找到配对的闭括号，先手工修正`)
+  }
+  const entries = new Map()
+  const flowLines = []
+  const inner = match[1].trim()
+  if (inner !== '') {
+    for (const part of splitFlowPairs(inner)) {
+      const pair = FLOW_PAIR.exec(part)
+      if (pair === null || /[[{]/.test(pair[4])) {
+        throw new Error(`凭据文档第 ${header + 1} 行的 refs 行内映射里有认不出的条目，先手工改成块式`)
+      }
+      const key = (pair[1] ?? pair[2] ?? pair[3]).trim()
+      const line = `${key}: ${pair[4].trim()}`
+      entries.set(key, [line])
+      flowLines.push(line)
+    }
+  }
+  return { header, end, indent: 0, entries, lastEntryEnd: header + 1, flowLines, trailingComment: match[2] ?? '' }
+}
+
+/**
+ * 解析凭据文档里的 `refs` 节。
+ *
+ * 认两种合法写法：块式（条目缩进任意合法值，续行更深）与行内映射（`refs: {}` /
+ * `refs: { A: b }`）。宿主的写入器会产出前者、删掉最后一个引用后落成后者。
+ * 认不出就抛错——猜一个拼接位置会写出第二个顶层 `refs:` 或缩进错乱，宿主解析器
+ * 报 DUPLICATE_KEY / BAD_INDENT，凭据插件激活失败。
+ *
+ * @param {string | null | undefined} text - 凭据文档内容
+ * @returns {{ lines: string[], section: object | null }} 行数组与 refs 节信息，无该节时 section 为 null
+ */
+function analyzeRefsSection(text) {
+  const lines = String(text ?? '').split('\n')
+  const headers = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (!/^\S/.test(line) || line.startsWith('#')) continue
+    if (topLevelKeyOf(line) === 'refs') headers.push(index)
+  }
+  if (headers.length === 0) return { lines, section: null }
+  if (headers.length > 1) {
+    throw new Error(
+      `凭据文档有 ${headers.length} 处顶层 refs:（第 ${headers.map((index) => index + 1).join('、')} 行），先手工合成一处`,
+    )
+  }
+  const header = headers[0]
+  let end = lines.length
+  for (let index = header + 1; index < lines.length; index += 1) {
+    if (/^\S/.test(lines[index]) && !lines[index].startsWith('#')) {
+      end = index
+      break
+    }
+  }
+  const trailing = (REFS_HEADER.exec(lines[header])?.[1] ?? '').trim()
+  if (trailing.startsWith('{')) return { lines, section: parseFlowRefs(lines, header, end, trailing) }
+  if (trailing !== '' && !trailing.startsWith('#')) {
+    throw new Error(`凭据文档第 ${header + 1} 行的 refs: 既不是块式映射也不是行内映射，先手工修正`)
+  }
+  return { lines, section: parseBlockRefs(lines, header, end, trailing) }
+}
+
+/** 去掉条目块尾部的空行：条目之间的空白不属于任何值。 */
+function trimmedBlocks(entries) {
+  const blocks = new Map()
+  for (const [key, block] of entries) {
+    const copy = [...block]
+    while (copy.length > 0 && copy.at(-1).trim() === '') copy.pop()
+    blocks.set(key, copy)
+  }
+  return blocks
+}
+
+/** 把条目块从一种缩进搬到另一种，续行保持相对缩进。 */
+function reindentBlocks(blocks, fromIndent, toIndent) {
+  const shift = toIndent - fromIndent
+  return blocks.map((line) => {
+    if (line.trim() === '') return ''
+    const width = indentOf(line)
+    return `${' '.repeat(Math.max(width + shift, 0))}${line.slice(width)}`
+  })
+}
+
+/** 顶层 `version` 的值；没有该键时为 undefined。 */
+function documentVersion(lines) {
+  for (const line of lines) {
+    if (!/^\S/.test(line) || line.startsWith('#')) continue
+    const match = /^version:[ \t]*(\S*)/.exec(line)
+    if (match !== null) return match[1]
+  }
+  return undefined
+}
+
+/** 写回前自检：结果里只能有一处顶层 refs，且条目集合正好是合并期望的那一组。 */
+function verifyMerged(text, existing, keys) {
+  try {
+    const section = analyzeRefsSection(text).section
+    const expected = new Set([...existing, ...keys])
+    const actual = new Set(section === null ? [] : section.entries.keys())
+    if (section === null || actual.size !== expected.size || [...expected].some((key) => !actual.has(key))) {
+      throw new Error('refs 节的条目与合并结果不一致')
+    }
+  } catch (error) {
+    throw new Error(`合并后的凭据文档自检失败（${error.message}），未写入；请手工检查该文件`)
+  }
+  return text.endsWith('\n') ? text : `${text}\n`
+}
 
 /**
  * 从凭据文档里取出 `refs` 节的条目块。
  *
- * 只认 `dsh-credentials-local` 生成的形态（顶层 `refs:`，条目缩进两格，续行更深），
  * 值原样保留——多行值与引号都不重新转义，避免把密钥改坏。
  *
  * @param {string | null | undefined} text - 凭据文档内容
  * @returns {Map<string, string[]>} 键名到该条目原始行（含首行）的映射
  */
 export function credentialRefBlocks(text) {
-  const blocks = new Map()
-  let inRefs = false
-  let current = null
-  for (const line of String(text ?? '').split('\n')) {
-    // 顶层键结束 refs 节；顶层注释不算结束，它可能是条目的注解。
-    if (/^\S/.test(line) && !line.startsWith('#')) {
-      inRefs = /^refs:\s*$/.test(line)
-      current = null
-      continue
-    }
-    if (!inRefs) continue
-    const match = REF_ENTRY.exec(line)
-    if (match !== null) {
-      current = [line]
-      blocks.set(match[1].trim(), current)
-      continue
-    }
-    if (current !== null) current.push(line)
-  }
-  for (const block of blocks.values()) {
-    while (block.length > 0 && block.at(-1).trim() === '') block.pop()
-  }
-  return blocks
+  const section = analyzeRefsSection(text).section
+  return section === null ? new Map() : trimmedBlocks(section.entries)
 }
 
 /**
  * 把源凭据的 `refs` 条目并入开发实例的凭据文档。
  *
  * 只搬 `refs`：`records` 里的账号授权带刷新令牌，两个实例各持一份会互相踢掉登录。
- * 目标里已有的条目不动——那是用户在这个实例里保存过的值，应当优先。
+ * 目标里已有的条目不动——那是用户在这个实例里保存过的值，应当优先。写回时替换
+ * 目标已有的 `refs` 节（块式或行内），绝不追加第二个 `refs:`。
  *
  * @param {object} options - 选项
  * @param {string} options.sourceText - 源 HOME 的凭据文档
  * @param {string | null | undefined} options.targetText - 开发实例的凭据文档，文件不存在为 null
- * @returns {{ text: string | null, keys: string[] }} 合并后的文档（无需变更时为 null）与新增的键名
+ * @returns {{ text: string | null, keys: string[], notice: string | null }} 合并后的文档（无需变更时为 null）、
+ *   新增的键名，以及本次不合并时的原因
  */
 export function mergeCredentialRefs({ sourceText, targetText }) {
-  const source = credentialRefBlocks(sourceText)
-  const target = credentialRefBlocks(targetText)
-  const keys = [...source.keys()].filter((key) => !target.has(key))
-  const blocks = keys.flatMap((key) => source.get(key))
-  if (blocks.length === 0) return { text: null, keys: [] }
+  const source = analyzeRefsSection(sourceText).section
+  if (source === null || source.entries.size === 0) return { text: null, keys: [], notice: null }
+  const sourceBlocks = trimmedBlocks(source.entries)
 
   if (targetText === null || targetText === undefined || targetText.trim() === '') {
-    return { text: `version: 1\nrefs:\n${blocks.join('\n')}\n`, keys }
+    const blocks = [...sourceBlocks.values()].flatMap((block) => reindentBlocks(block, source.indent, 2))
+    const keys = [...sourceBlocks.keys()]
+    const text = `version: 1\nrefs:\n${blocks.join('\n')}\n`
+    return { text: verifyMerged(text, [], keys), keys, notice: null }
   }
 
-  const lines = targetText.split('\n')
-  const refsStart = lines.findIndex((line) => /^refs:\s*$/.test(line))
-  if (refsStart === -1) {
-    const head = targetText.endsWith('\n') ? targetText : `${targetText}\n`
-    return { text: `${head}refs:\n${blocks.join('\n')}\n`, keys }
-  }
-
-  let insertAt = lines.length
-  for (let index = refsStart + 1; index < lines.length; index += 1) {
-    if (/^\S/.test(lines[index]) && !lines[index].startsWith('#')) {
-      insertAt = index
-      break
+  const { lines, section } = analyzeRefsSection(targetText)
+  if (section === null) {
+    const version = documentVersion(lines)
+    // 没有 version 的非空文档是 pre-release 扁平布局：宿主启动时会自行迁移，
+    // 此时追加 `refs:` 会让它既不是扁平的、也没有 version，插件激活反而失败。
+    if (version === undefined) {
+      return {
+        text: null,
+        keys: [],
+        notice: '开发实例的凭据文档不是 version 1 布局（pre-release 扁平布局），宿主启动时会自行迁移；本次不合并',
+      }
     }
+    if (version !== '1') {
+      return { text: null, keys: [], notice: `开发实例的凭据文档声明 version ${version}，本脚本只合并 version 1；本次不合并` }
+    }
+    const keys = [...sourceBlocks.keys()]
+    const blocks = keys.flatMap((key) => reindentBlocks(sourceBlocks.get(key), source.indent, 2))
+    const body = [...lines]
+    while (body.length > 0 && body.at(-1).trim() === '') body.pop()
+    const text = `${body.join('\n')}\nrefs:\n${blocks.join('\n')}\n`
+    return { text: verifyMerged(text, [], keys), keys, notice: null }
   }
-  while (insertAt > refsStart + 1 && lines[insertAt - 1].trim() === '') insertAt -= 1
-  const merged = [...lines.slice(0, insertAt), ...blocks, ...lines.slice(insertAt)]
-  return { text: merged.join('\n'), keys }
+
+  const existing = new Set(section.entries.keys())
+  const keys = [...sourceBlocks.keys()].filter((key) => !existing.has(key))
+  if (keys.length === 0) return { text: null, keys: [], notice: null }
+  // 行内映射要展开成块式，统一两格；空节与块式节沿用节内已有缩进。
+  const targetIndent = section.flowLines === null && section.indent !== null ? section.indent : 2
+  const blocks = keys.flatMap((key) => reindentBlocks(sourceBlocks.get(key), source.indent, targetIndent))
+  const merged = [...lines]
+  if (section.flowLines !== null) {
+    merged.splice(
+      section.header,
+      1,
+      `refs:${section.trailingComment}`,
+      ...section.flowLines.map((line) => `  ${line}`),
+      ...blocks,
+    )
+  } else {
+    merged.splice(section.lastEntryEnd, 0, ...blocks)
+  }
+  const text = verifyMerged(merged.join('\n'), existing, keys)
+  return { text, keys, notice: null }
 }
 
 /**

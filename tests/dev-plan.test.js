@@ -375,3 +375,164 @@ test('目标文件末尾没有换行时补上换行再加 refs', () => {
   })
   assert.match(merged.text, /kind: grant\nrefs:\n {2}DEEPSEEK_API_KEY: sk-source\n$/)
 })
+
+test('目标 refs 是行内空映射（宿主删掉最后一个引用后的形态）时替换成块式，不出现第二个 refs', () => {
+  const target = [
+    'version: 1',
+    'refs: {}',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: grant',
+    '',
+  ].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text, [
+    'version: 1',
+    'refs:',
+    '  DEEPSEEK_API_KEY: sk-source',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: grant',
+    '',
+  ].join('\n'))
+  assert.equal(merged.text.match(/^refs:/gm).length, 1)
+})
+
+test('目标 refs 条目的缩进是四格时新条目也缩进四格', () => {
+  const target = [
+    'version: 1',
+    'refs:',
+    '    OPENAI_API_KEY: sk-other',
+    'records:',
+    '  owner/id:',
+    '    kind: grant',
+    '',
+  ].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text, [
+    'version: 1',
+    'refs:',
+    '    OPENAI_API_KEY: sk-other',
+    '    DEEPSEEK_API_KEY: sk-source',
+    'records:',
+    '  owner/id:',
+    '    kind: grant',
+    '',
+  ].join('\n'))
+})
+
+test('目标 refs 是空节时插在节首，缩进两格', () => {
+  const target = ['version: 1', 'refs:', 'records:', '  owner/id:', '    kind: grant', ''].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text, [
+    'version: 1',
+    'refs:',
+    '  DEEPSEEK_API_KEY: sk-source',
+    'records:',
+    '  owner/id:',
+    '    kind: grant',
+    '',
+  ].join('\n'))
+})
+
+test('目标 refs 是文件末尾的空节时追加到该节', () => {
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: 'version: 1\nrefs:\n' })
+  assert.equal(merged.text, 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-source\n')
+})
+
+test('目标 refs 是行内非空映射时展开成块式，原有条目原样保留', () => {
+  const target = 'version: 1\nrefs: { OPENAI_API_KEY: sk-other }\nrecords: {}\n'
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text, [
+    'version: 1',
+    'refs:',
+    '  OPENAI_API_KEY: sk-other',
+    '  DEEPSEEK_API_KEY: sk-source',
+    'records: {}',
+    '',
+  ].join('\n'))
+})
+
+test('源的 refs 是行内映射时也能搬，条目落地成块式', () => {
+  const source = 'version: 1\nrefs: { ANTHROPIC_API_KEY: sk-ant }\n'
+  const merged = mergeCredentialRefs({ sourceText: source, targetText: 'version: 1\nrecords: {}\n' })
+  assert.deepEqual(merged.keys, ['ANTHROPIC_API_KEY'])
+  assert.match(merged.text, /refs:\n {2}ANTHROPIC_API_KEY: sk-ant\n$/)
+})
+
+test('源的 refs 是行内空映射时没有可搬的条目', () => {
+  const merged = mergeCredentialRefs({ sourceText: 'version: 1\nrefs: {}\n', targetText: null })
+  assert.equal(merged.text, null)
+  assert.deepEqual(merged.keys, [])
+})
+
+test('源条目缩进四格时搬到目标仍按目标的缩进', () => {
+  const source = ['version: 1', 'refs:', '    DEEPSEEK_API_KEY: sk-source', ''].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: source, targetText: 'version: 1\nrefs:\n' })
+  assert.equal(merged.text, 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-source\n')
+})
+
+test('多行值搬进四格缩进的目标时续行跟着加深', () => {
+  const source = [
+    'version: 1',
+    'refs:',
+    '  MULTI_LINE: |-',
+    '    line one',
+    '    line two',
+    '',
+  ].join('\n')
+  const target = ['version: 1', 'refs:', '    OPENAI_API_KEY: sk-other', ''].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: source, targetText: target })
+  assert.match(merged.text, / {4}MULTI_LINE: \|-\n {6}line one\n {6}line two\n$/)
+})
+
+test('目标只有 records 的扁平布局不改动，宿主启动时会自行迁移', () => {
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: 'DEEPSEEK_API_KEY: sk-old\n' })
+  assert.equal(merged.text, null)
+  assert.deepEqual(merged.keys, [])
+  assert.match(merged.notice, /pre-release 扁平布局/)
+})
+
+test('目标声明别的 version 时不猜格式，只报原因', () => {
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: 'version: 2\nrecords: {}\n' })
+  assert.equal(merged.text, null)
+  assert.match(merged.notice, /version 2/)
+})
+
+test('目标已经有重复的顶层 refs 时拒绝写，不加剧损坏', () => {
+  assert.throws(
+    () => mergeCredentialRefs({
+      sourceText: SOURCE_CREDENTIALS,
+      targetText: 'version: 1\nrefs:\n  A: x\nrefs:\n  B: y\n',
+    }),
+    /2 处顶层 refs/,
+  )
+})
+
+test('refs 节里有认不出的条目时拒绝写，不猜拼接位置', () => {
+  assert.throws(
+    () => mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: 'version: 1\nrefs:\n  - A\n' }),
+    /第 3 行：refs 节里的条目认不出/,
+  )
+})
+
+test('目标顶层键带引号时仍认得是 refs 节，不会追加第二个', () => {
+  const target = 'version: 1\n"refs": { OPENAI_API_KEY: sk-other }\n'
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text.match(/^(?:"refs"|refs):/gm).length, 1)
+  assert.match(merged.text, /OPENAI_API_KEY: sk-other\n {2}DEEPSEEK_API_KEY: sk-source\n$/)
+})
+
+test('CRLF 的凭据文档仍只落一个 refs 节，条目完整', () => {
+  const target = 'version: 1\r\nrefs: {}\r\nrecords:\r\n  x/y:\r\n    kind: grant\r\n'
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text.match(/^refs:/gm).length, 1)
+  assert.match(merged.text, /refs:\n {2}DEEPSEEK_API_KEY: sk-source\n/)
+  assert.match(merged.text, /x\/y:/)
+})
+
+test('合并只搬 refs，源的 records 不落进目标', () => {
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: null })
+  assert.ok(!merged.text.includes('deepseek-account-platform'))
+  assert.ok(!merged.text.includes('kind: grant'))
+})

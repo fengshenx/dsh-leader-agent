@@ -17,7 +17,8 @@
  *   起实例本来要重填 API key。不做成 `DEEPSEEK_API_KEY` 启动环境注入——那样 key 会
  *   留在 agent 工具进程的环境里。只搬 `refs` 不搬 `records`（账号授权的刷新令牌两个
  *   实例各持一份会互相踢掉登录）；目标实例里已有的条目不动，界面上改过的 key 优先，
- *   要重新跟随源就删掉那一条；
+ *   要重新跟随源就删掉那一条。写入与运行中的实例共用一把写者锁，临时文件 + rename
+ *   提交、权限 600；目标凭据文档不是 version 1 布局时不动（宿主会先自行迁移）；
  * - 端口默认交给系统分配（`--port 0`），设 `DEV_PORT` 可固定。
  *
  * 环境变量：
@@ -32,12 +33,13 @@
 
 import { spawnSync } from 'node:child_process'
 import {
-  chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync,
-  symlinkSync, writeFileSync,
+  copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync,
+  writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
 import {
   COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, devWebBundleHint,
   mergeCredentialRefs, planNodeModules, resolveDevPaths,
@@ -71,20 +73,23 @@ function run(command, args, options) {
  * 重填 API key。只搬 `refs`（按环境变量名存的密钥），不搬 `records`：账号授权带
  * 刷新令牌，两个实例各持一份会互相踢掉登录。目标里已有的条目不动。
  *
- * @returns {string[]} 新增的键名，没有变化时为空数组
+ * 读-改-写在宿主同一把写者锁里做：正在运行的实例可能同时在改这份文件，锁外的
+ * 读-改-写会把它刚保存的值盖回去。写入走临时文件 + rename，替换后的权限位是 600，
+ * 没有先落盘再 chmod 的可读窗口。
+ *
+ * @returns {{ keys: string[], notice: string | null }} 新增的键名与本次不合并的原因
  */
 function inheritCredentialRefs() {
-  if (!existsSync(paths.sourceCredentialsPath)) return []
-  const targetText = existsSync(paths.credentialsPath) ? readFileSync(paths.credentialsPath, 'utf8') : null
-  const { text, keys } = mergeCredentialRefs({
-    sourceText: readFileSync(paths.sourceCredentialsPath, 'utf8'),
-    targetText,
+  if (!existsSync(paths.sourceCredentialsPath)) return { keys: [], notice: null }
+  const sourceText = readFileSync(paths.sourceCredentialsPath, 'utf8')
+  // 写者锁是目标文件的同目录兄弟，锁的独占创建要求父目录已存在。
+  mkdirSync(dirname(paths.credentialsPath), { recursive: true, mode: 0o700 })
+  return withFileLockSync(paths.credentialsPath, () => {
+    const targetText = existsSync(paths.credentialsPath) ? readFileSync(paths.credentialsPath, 'utf8') : null
+    const { text, keys, notice } = mergeCredentialRefs({ sourceText, targetText })
+    if (text !== null) writeFileAtomicSync(paths.credentialsPath, text, { mode: 0o600, dirMode: 0o700 })
+    return { keys, notice }
   })
-  if (text === null) return []
-  writeFileSync(paths.credentialsPath, text, { mode: 0o600 })
-  // 已存在的文件不受创建模式约束，dsh 会拒绝加载其他用户可读的凭据文件。
-  chmodSync(paths.credentialsPath, 0o600)
-  return keys
 }
 
 // 任何写操作之前先挡「数据根 = 源 HOME」——那条路径会把源 profile 改写成自指
@@ -166,15 +171,26 @@ for (const { name, target } of plan.links) {
   symlinkSync(target, linkPath, 'junction')
 }
 
-const inheritedCredentials = inheritCredentialRefs()
+// 凭据继承失败要挡住启动：静默继续会让人以为 key 已经带过来了，实际上一进界面
+// 就缺凭据，而原因（形态认不出、权限不足、锁超时）只有这里能看到。
+let inheritedCredentials
+try {
+  inheritedCredentials = inheritCredentialRefs()
+} catch (error) {
+  console.error(`错误: 继承 ${paths.sourceCredentialsPath} 的 refs 失败 —— ${error.message}`)
+  process.exit(1)
+}
 
 console.log('')
 console.log('== dsh-leader-kit 开发实例 ==')
 console.log(`  工作树    ${worktree}`)
 console.log(`  数据根    ${paths.home}  （会话、项目、卡片都在这里；删掉即重置）`)
 console.log(`  插件链接  ${join(nodeModulesDir, 'dsh-leader-kit')} -> ${worktree}`)
-if (inheritedCredentials.length > 0) {
-  console.log(`  凭据引用  ${paths.sourceCredentialsPath} -> ${paths.credentialsPath}（${inheritedCredentials.join(', ')}）`)
+if (inheritedCredentials.keys.length > 0) {
+  console.log(`  凭据引用  ${paths.sourceCredentialsPath} -> ${paths.credentialsPath}（${inheritedCredentials.keys.join(', ')}）`)
+}
+if (inheritedCredentials.notice !== null) {
+  console.warn(`  凭据引用  ${inheritedCredentials.notice}`)
 }
 console.log('')
 
