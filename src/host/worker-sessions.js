@@ -194,18 +194,19 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     },
 
     /**
-     * 新建一个 worker 会话并即刻派活。
+     * 新建一个 worker 会话，但**不投递任务**。
+     *
+     * 开工由协调者随后的 `message_worker` 触发：这样槽位绑定可以先落盘，第一条
+     * 任务请求组装时角色槽位与卡片事实才读得到。建会话本身不产生任何模型调用。
      *
      * @param {object} options - 派工参数
      * @param {string | undefined} options.cwd - 工作目录
      * @param {string} options.name - 显示名（同时用作会话标题）
-     * @param {string} options.initialMessage - 任务简报
-     * @param {string} options.parentSessionId - 协调者会话 id
      * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<string>} 新会话 id
      */
-    async spawn({ cwd, name, initialMessage, parentSessionId, workspaceId, signal }) {
+    async spawn({ cwd, name, workspaceId, signal }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -236,16 +237,6 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       }
       live.set(sessionId, handle)
       renameTitle(handle, name)
-      try {
-        handle.agent.followup(taskMessage(initialMessage, name, parentSessionId))
-      } catch (error) {
-        // 会话建起来了却没收到任务：它不在任何登记表与在飞表里，协调者与名册都
-        // 看不见它。留着就是一个没人管的常驻会话，直接销毁并把原错误抛回去。
-        await disposeOne(sessionId)
-        throw error
-      }
-      // 挂在工作区这一步放在投递之后：挂载是异步落地，会话在这之前被销毁时它
-      // 不该再出现在工作区里。
       attachToWorkspace(ctx, workspaceId, sessionId, logger)
       return sessionId
     },

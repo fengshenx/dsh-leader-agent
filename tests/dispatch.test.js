@@ -3,6 +3,7 @@ import { after, test } from 'node:test'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 import { createDispatcher, buildNotificationText, buildWorkerReport } from '../src/host/dispatch.js'
 import { createNotificationStore } from '../src/host/notification-store.js'
+import { createCardStore } from '../src/host/cards/store.js'
 import { createWorkerRegistry } from '../src/host/worker-registry.js'
 import { createWorkerSessions } from '../src/host/worker-sessions.js'
 import { createSpawnWorkerTool } from '../src/host/tools/spawn-worker.js'
@@ -245,6 +246,35 @@ function createParent(id, delivered, status = 'idle') {
 }
 
 /**
+ * 建 worker 并投递第一条任务消息。
+ *
+ * 派工已两段化：`dispatch` 只建会话、不开工，任务正文由 `message` 投递。
+ * 大多数用例关心的是「派出去之后 worker 跑一轮」，用这个复合动作保持原语义；
+ * 只验派工本身（身份、名册、绑卡、回滚）的用例直接调 `dispatcher.dispatch`。
+ *
+ * @param {object} dispatcher - 派工器
+ * @param {object} options - 派工参数（含 `initialMessage`）
+ * @returns {Promise<object>} 派工记录
+ */
+async function dispatchAndStart(dispatcher, { initialMessage, cardId, slot, ...rest }) {
+  const record = await dispatcher.dispatch({
+    ...rest,
+    ...cardId === undefined ? {} : { cardId },
+    ...slot === undefined ? {} : { slot },
+  })
+  if (initialMessage !== undefined) {
+    await dispatcher.message({
+      parent: rest.parent,
+      sessionId: record.childId,
+      message: initialMessage,
+      signal: rest.signal,
+      ...cardId === undefined ? {} : { cardId },
+    })
+  }
+  return record
+}
+
+/**
  * 让最近派出的 worker 走完一轮（宿主落 `assistant/message` 与 `turn/end`）。
  *
  * @param {object} dispatcher - 派工器
@@ -288,7 +318,7 @@ test('worker 报失败时通知判失败并写明原因', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件长活',
     name: '长活',
@@ -309,7 +339,7 @@ test('worker 一轮说完话就自动回报，不需要它调任何工具', asyn
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -332,7 +362,7 @@ test('人直接跟 worker 聊的轮次不打扰协调者', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -357,7 +387,7 @@ test('一轮里有多个 step 时，摘要取最后一条 assistant 文本', asy
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -388,7 +418,7 @@ test('这一轮只调了工具没说话，摘要如实说没产出文本', async
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -416,7 +446,7 @@ test('被取消、被阻断、撞 token 上限的轮次都判失败并写明原�
     const parent = createParent('parent-1', fixture.delivered)
     fixture.agents.set('parent-1', parent)
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -447,7 +477,7 @@ test('派工立即返回，不等待 worker 完成', async () => {  const fixtur
     const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
     const parent = createParent('parent-1', fixture.delivered)
 
-    const record = await dispatcher.dispatch({
+    const record = await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -470,7 +500,7 @@ test('worker 完成后通知父会话并从队列移除', async () => {
     const parent = createParent('parent-1', fixture.delivered)
     fixture.agents.set('parent-1', parent)
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -497,7 +527,7 @@ test('父会话正忙时通知先留队，空闲后自动投递', async () => {
     const parent = createParent('parent-1', fixture.delivered, 'running')
     fixture.agents.set('parent-1', parent)
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -544,7 +574,7 @@ test('轮询重入不会重复投递同一条通知', async () => {
   try {
     const parent = createParent('parent-1', fixture.delivered, 'running')
     fixture.agents.set('parent-1', parent)
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -576,7 +606,7 @@ test('空闲检测读盘失败不会变成未处理拒绝', async () => {
   try {
     const parent = createParent('parent-1', fixture.delivered, 'running')
     fixture.agents.set('parent-1', parent)
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -632,7 +662,7 @@ test('插件卸载后不再观察会话，也不再起定时器', async () => {
     // 卸载后即便父会话转空闲，也不该再有定时器把它投出去
     const parent = createParent('parent-1', fixture.delivered, 'idle')
     fixture.agents.set('parent-1', parent)
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -675,7 +705,7 @@ test('父会话已销毁时通知留在队列等待补投', async () => {
     const parent = createParent('parent-1', fixture.delivered)
     dispatcher.markDisposed('parent-1')
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -699,7 +729,7 @@ test('父会话注册后补投队列中的通知', async () => {
     const parent = createParent('parent-1', fixture.delivered)
     dispatcher.markDisposed('parent-1')
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '实现派工',
@@ -729,7 +759,7 @@ test('连续自动续行达到上限后不再唤醒', async () => {
     fixture.agents.set('parent-1', parent)
 
     for (let index = 0; index < 3; index += 1) {
-      await dispatcher.dispatch({
+      await dispatchAndStart(dispatcher, {
         parent,
         initialMessage: '做一件事',
         name: `工 ${index}`,
@@ -758,7 +788,7 @@ test('撞续行上限后不再每轮重试', async () => {
 
     // 两条通知都在父会话忙时进等待表
     for (let index = 0; index < 2; index += 1) {
-      await dispatcher.dispatch({
+      await dispatchAndStart(dispatcher, {
         parent,
         initialMessage: '做一件事',
         name: `工 ${index}`,
@@ -797,7 +827,7 @@ test('上限复位后被挡下的通知能重新投出', async () => {
     fixture.agents.set('parent-1', parent)
 
     for (let index = 0; index < 2; index += 1) {
-      await dispatcher.dispatch({
+      await dispatchAndStart(dispatcher, {
         parent,
         initialMessage: '做一件事',
         name: `工 ${index}`,
@@ -835,7 +865,7 @@ test('外部输入重置自动续行计数', async () => {
     const parent = createParent('parent-1', fixture.delivered)
     fixture.agents.set('parent-1', parent)
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '工 0',
@@ -847,7 +877,7 @@ test('外部输入重置自动续行计数', async () => {
 
     dispatcher.resetResumeCount('parent-1')
 
-    await dispatcher.dispatch({
+    await dispatchAndStart(dispatcher, {
       parent,
       initialMessage: '做一件事',
       name: '工 1',
@@ -869,22 +899,28 @@ test('spawn_worker 缺少调用方 agent 时报错', async () => {
     const tool = createSpawnWorkerTool({ dispatcher })
 
     await assert.rejects(
-      () => tool.execute({ name: '工', initialMessage: '做一件事' }, { signal: new AbortController().signal }),
+      () => tool.execute({ name: '工' }, { signal: new AbortController().signal }),
       /调用方 agent/,
     )
     await assert.rejects(
-      () => tool.execute({ name: '工', initialMessage: '  ' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
-      /initialMessage 不能为空/,
-    )
-    await assert.rejects(
-      () => tool.execute({ initialMessage: '做一件事' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
+      () => tool.execute({ name: '  ' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
       /name 不能为空/,
+    )
+    // 旧调用还带任务正文：收下会让人以为已经开工，实际 worker 在等消息。
+    await assert.rejects(
+      () => tool.execute({ name: '工', initialMessage: '做一件事' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
+      /initialMessage 已移除/,
+    )
+    // 只给一半绑定参数会让人以为绑上了，实际什么都没写。
+    await assert.rejects(
+      () => tool.execute({ name: '工', cardId: 'card-1' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
+      /cardId 与 slot 必须成对/,
     )
   } finally {
   }
 })
 
-test('spawn_worker 返回子会话 id 且不等待结果', async () => {
+test('spawn_worker 只建会话并返回子会话 id，不开工', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
@@ -893,13 +929,106 @@ test('spawn_worker 返回子会话 id 且不等待结果', async () => {
     const tool = createSpawnWorkerTool({ dispatcher })
 
     const result = await tool.execute(
-      { initialMessage: '做一件事', name: '实现派工' },
+      { name: '实现派工' },
       { signal: new AbortController().signal, agent: createParent('parent-1', fixture.delivered) },
     )
 
     assert.match(result.childId, /^worker-/)
-    assert.equal(result.status, 'dispatched')
+    assert.equal(result.status, 'spawned')
     assert.equal(result.name, '实现派工')
+    // 建会话不产生模型调用：任务正文等协调者的 message_worker。
+    assert.equal(fixture.spawned[0].messages.length, 0)
+    assert.equal(dispatcher.inflightCount(), 0)
+  } finally {
+  }
+})
+
+test('派工带 cardId 与 slot 时，绑定先于开工完成', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const store = createNotificationStore({ home })
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store,
+      workers: fixture.workers,
+      bindCardSlot: (input) => cards.bindSlot(input),
+    })
+    const card = await cards.create({ title: '任务' })
+
+    const record = await dispatcher.dispatch({
+      parent: createParent('parent-1', fixture.delivered),
+      name: '实现派工',
+      cardId: card.id,
+      slot: 'dev',
+      signal: new AbortController().signal,
+    })
+
+    // 绑定在返回前完成：协调者接下来的第一条消息就带着角色与卡片事实。
+    const bound = await cards.get(card.id)
+    assert.deepEqual(bound.slots, { dev: { sessionId: record.childId } })
+    assert.equal(cards.slotIndex.get(record.childId), 'dev')
+    assert.equal(cards.cardIndex.get(record.childId)[0].cardId, card.id)
+    // 建会话本身仍然不投递任务。
+    assert.equal(fixture.spawned[0].messages.length, 0)
+    assert.equal(dispatcher.inflightCount(), 0)
+  } finally {
+  }
+})
+
+test('槽位已绑别的会话时派工失败，销毁新会话且不登记', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const store = createNotificationStore({ home })
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store,
+      workers: fixture.workers,
+      bindCardSlot: (input) => cards.bindSlot(input),
+    })
+    const card = await cards.create({ title: '任务', slots: { dev: { sessionId: 'worker-old' } } })
+
+    await assert.rejects(
+      () => dispatcher.dispatch({
+        parent: createParent('parent-1', fixture.delivered),
+        name: '实现派工',
+        cardId: card.id,
+        slot: 'dev',
+        signal: new AbortController().signal,
+      }),
+      /已绑到会话 worker-old/,
+    )
+
+    const childId = fixture.spawned[0].sessionId
+    assert.equal(fixture.spawned[0].disposed, true)
+    assert.equal(await fixture.workers.get(childId), undefined)
+  } finally {
+  }
+})
+
+test('装配没有 bindCardSlot 时带卡派工明确报错，不静默不绑', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+    })
+    await assert.rejects(
+      () => dispatcher.dispatch({
+        parent: createParent('parent-1', fixture.delivered),
+        name: '实现派工',
+        cardId: 'card-1',
+        slot: 'dev',
+        signal: new AbortController().signal,
+      }),
+      /bindCardSlot/,
+    )
+    assert.equal(fixture.spawned[0].disposed, true)
   } finally {
   }
 })
@@ -921,7 +1050,7 @@ test('未启用 agents 服务时派工明确报错', async () => {
       store,
     })
     await assert.rejects(
-      () => dispatcher.dispatch({
+      () => dispatchAndStart(dispatcher, {
         parent: createParent('parent-1', []),
         initialMessage: '做一件事',
         name: '工',
@@ -950,7 +1079,7 @@ test('派工工具拒绝非字符串的 force', async () => {
   const dispatcher = { dispatch: async () => ({ childId: 'child-1', name: 'x' }) }
   const tool = createSpawnWorkerTool({ dispatcher })
   await assert.rejects(
-    () => tool.execute({ name: '工', initialMessage: '做事', force: 7 }, { signal: new AbortController().signal, agent: createParent('p', []) }),
+    () => tool.execute({ name: '工', force: 7 }, { signal: new AbortController().signal, agent: createParent('p', []) }),
     /force 必须是字符串/,
   )
 })
@@ -978,7 +1107,7 @@ test('worker 登记失败仍照常投递完成通知', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1009,7 +1138,7 @@ test('项目索引读不出来时拒绝派工，不拉起子会话', async () =>
   })
 
   await assert.rejects(
-    () => dispatcher.dispatch({
+    () => dispatchAndStart(dispatcher, {
       parent: createParent('parent-1', []),
       initialMessage: '做一件事',
       name: '工',
@@ -1037,7 +1166,7 @@ test('非协调者会话派工被拒绝', async () => {
   })
 
   await assert.rejects(
-    () => dispatcher.dispatch({
+    () => dispatchAndStart(dispatcher, {
       parent: createParent('普通会话', []),
       initialMessage: '做一件事',
       name: '工',
@@ -1169,7 +1298,7 @@ test('换协调者后，在飞 worker 的回报投给新协调者', async () => 
     },
   }
   const dispatcher = makeDispatcher({ ctx, store, workers })
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent: createParent('parent-1', fixture.delivered),
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1297,7 +1426,7 @@ test('接管后等待中的通知按接手会话的额度计，不绕过自动�
   const dispatcher = makeDispatcher({ ctx, store, workers, autoResumeLimit: 1 })
   // 旧协调者正忙：这条回报进等待表，条目里的通知还带着旧父会话 id
   const retiredParent = createParent('parent-1', [], 'busy')
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent: retiredParent,
     initialMessage: '第一件事',
     name: '实现派工',
@@ -1312,7 +1441,7 @@ test('接管后等待中的通知按接手会话的额度计，不绕过自动�
   // 等待表里的那条投给新会话：额度记在新会话名下（上限 1，这里用掉唯一一次）
   assert.equal(await waitFor(() => handedOverMessages.length === 1), true)
 
-  const second = await dispatcher.dispatch({
+  const second = await dispatchAndStart(dispatcher, {
     parent: handedOver,
     initialMessage: '第二件事',
     name: '再来一单',
@@ -1334,7 +1463,7 @@ test('接管后新会话不可达：在飞回报留给新会话，不投给退�
   // ctx 没有 sessionController：投递只可能回落到记录里握着的 parent 活对象
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers })
   const retiredMessages = []
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent: createParent('parent-1', retiredMessages),
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1361,7 +1490,7 @@ test('投递途中 worker 报完工，不误报发不出去', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1393,7 +1522,7 @@ test('续聊轮 worker 报失败时通知判失败', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '续聊工',
@@ -1422,7 +1551,7 @@ test('续聊轮正常结束仍报完成', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '续聊工',
@@ -1456,7 +1585,7 @@ test('未归档 worker 到顶时拒绝新建，并给出可复用候选', async 
   })
 
   await assert.rejects(
-    () => dispatcher.dispatch({
+    () => dispatchAndStart(dispatcher, {
       parent: createParent('parent-1', fixture.delivered),
       initialMessage: '做一件事',
       name: '新工',
@@ -1489,7 +1618,7 @@ test('名册已归档的记录不占名额', async () => {
     archivedSessionIds: () => ['child-old-1'],
   })
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent: createParent('parent-1', fixture.delivered),
     initialMessage: '做一件事',
     name: '新工',
@@ -1512,7 +1641,7 @@ test('force 非空时越过名册上限', async () => {
     archivedSessionIds: () => [],
   })
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent: createParent('parent-1', fixture.delivered),
     initialMessage: '做一件事',
     name: '新工',
@@ -1624,7 +1753,7 @@ test('派工时把 worker 会话标题定成 name', async () => {
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: 'research-sources',
@@ -1649,7 +1778,7 @@ test('宿主缺 sessionTitle 服务时派工照常成功，只是标题保持默
     logger: (message) => warnings.push(message),
   })
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent: createParent('parent-1', fixture.delivered),
     initialMessage: '做一件事',
     name: 'research-sources',
@@ -1668,7 +1797,7 @@ test('续聊带 rename 时登记表与会话标题都改到新名字', async () 
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: 'research-sources',
@@ -1699,7 +1828,7 @@ test('一轮只结算一次回报，重复上报不重复唤醒', async () => {
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1734,7 +1863,7 @@ test('投递写盘失败不会重结算，也不会把新一轮产物标成这�
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1765,7 +1894,7 @@ test('非派工的轮次不攒 assistant 文本，不会把人的话当成 worke
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  const record = await dispatcher.dispatch({
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',
@@ -1820,7 +1949,7 @@ test('通知落盘失败时保留在飞记录，重试送出的仍是这一轮�
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 
-  await dispatcher.dispatch({
+  await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件事',
     name: '实现派工',

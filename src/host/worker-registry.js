@@ -125,7 +125,6 @@ export function createWorkerRegistry({
      * @param {string} worker.childId - 子会话 id
      * @param {string} worker.parentSessionId - 父会话 id
      * @param {string} worker.name - worker 显示名
-     * @param {string} [worker.task] - 任务正文
      * @returns {Promise<object>} 登记后的记录
      */
     async register(worker) {

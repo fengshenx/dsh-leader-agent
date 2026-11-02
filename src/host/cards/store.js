@@ -98,9 +98,18 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
    *
    * 槽位绑定只存在于卡片库（异步落盘），而提示词组装是同步的——组装函数里
    * `await` 不了。因此这里维护一份内存镜像。卡片库仍是真源，进程启动时用
-   * `loadSlotIndex` 重建。
+   * `loadIndexes` 重建。
    */
   const slotIndex = new Map()
+
+  /**
+   * 会话 id 到挂卡事实的反查索引。
+   *
+   * 与 `slotIndex` 的区别：槽位索引一个会话只留一个槽位名（后绑的卡胜出），
+   * 这里保留**全部**绑定与渲染需要的卡片事实（编号、状态、revision、spec、链接）。
+   * 卡片上下文注入在提示词组装时同步求值，读的就是这份镜像。
+   */
+  const cardIndex = new Map()
 
   /**
    * 原子写回卡片库。
@@ -138,6 +147,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
     file,
 
     slotIndex,
+    cardIndex,
 
     /**
      * 建卡。编号在此分配，之后永不复用。
@@ -171,7 +181,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         store.counter = card.number
         store.cards.push(card)
         await writeStore(store)
-        rebuildSlotIndex(store.cards, slotIndex)
+        rebuildIndexes(store.cards, slotIndex, cardIndex)
         return card
       })
     },
@@ -184,7 +194,8 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
      * @param {string} [input.title] - 新标题
      * @param {string} [input.spec] - 新规格
      * @param {string} [input.status] - 新状态
-     * @param {object[]} [input.links] - 新链接条目
+     * @param {object[]} [input.links] - 新链接条目（整体替换）
+     * @param {object[]} [input.addLinks] - 追加的链接条目（按 id 合并，与 `links` 互斥）
      * @param {object} [input.slots] - 新槽位绑定
      * @param {number} [input.sortOrder] - 手动排序序号
      * @returns {Promise<object>} 更新后的卡片
@@ -196,6 +207,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
       spec,
       status,
       links,
+      addLinks,
       slots,
       sortOrder,
     }) {
@@ -203,6 +215,11 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         const store = await readStore(file, recoverFromCorruption, io)
         const card = store.cards.find((item) => item.id === id)
         if (card === undefined) throw new Error(`卡片不存在：${id}`)
+        // 整体替换与增量追加是两种意图，同次传会让「保留别人刚写的链接」这个
+        // 承诺落空——调用方以为在追加，实际把整份列表换掉了。
+        if (links !== undefined && addLinks !== undefined) {
+          throw new Error('卡片更新：links 与 addLinks 不能同时传（整体替换与增量追加互斥）')
+        }
         const current = card.revision ?? 0
         if (expectedRevision !== undefined && expectedRevision !== current) {
           throw new Error(
@@ -220,6 +237,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         if (title !== undefined) next.title = title
         if (spec !== undefined) next.spec = spec
         if (links !== undefined) next.links = links
+        if (addLinks !== undefined) next.links = mergeLinks(card.links, addLinks)
         if (slots !== undefined) next.slots = slots
         if (sortOrder !== undefined) next.sortOrder = sortOrder
         if (status !== undefined && status !== card.status) {
@@ -238,8 +256,59 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         store.cards[store.cards.indexOf(card)] = next
         await writeStore(store)
         // 改卡后必须同步索引：否则「槽位改绑后下一轮 turn 仍注入旧角色」，
-        // 恰好破坏「变更在下一轮生效」这条结构性保证。
-        rebuildSlotIndex(store.cards, slotIndex)
+        // 恰好破坏「变更在下一轮生效」这条结构性保证。卡片事实索引同理——
+        // 自己挂上的链接要能在下一轮上下文里看到。
+        rebuildIndexes(store.cards, slotIndex, cardIndex)
+        return next
+      })
+    },
+
+    /**
+     * 把某个槽位绑到一个会话上（派工时用，会话 id 事先已知）。
+     *
+     * 与 `update` 的槽位替换不同，这里只动一个槽位，并且在槽位已被**别的**
+     * 会话占用时拒绝——静默顶替会让原来的 worker 失去角色注入而不自知。
+     * 换人必须先 `update_card` 显式改派。
+     *
+     * 读-改-写整段在写链上，天然不会与并发的改卡互相覆盖，不需要额外的
+     * `expectedRevision` 重试。
+     *
+     * @param {object} input - 绑卡输入
+     * @param {string} input.cardId - 卡片 id
+     * @param {string} input.slot - 槽位名
+     * @param {string} input.sessionId - 要绑的会话 id
+     * @returns {Promise<object>} 更新后的卡片
+     */
+    async bindSlot({ cardId, slot, sessionId }) {
+      return serialize(async () => {
+        const store = await readStore(file, recoverFromCorruption, io)
+        const card = store.cards.find((item) => item.id === cardId)
+        if (card === undefined) throw new Error(`卡片不存在：${cardId}`)
+        if (card.status === 'archived') {
+          throw new Error(`卡片 ${cardId} 已归档，不能再绑执行者`)
+        }
+        const slots = card.slots !== null && typeof card.slots === 'object' && !Array.isArray(card.slots)
+          ? card.slots
+          : {}
+        const existing = slots[slot]
+        if (existing !== null && typeof existing === 'object' && existing.sessionId !== undefined
+          && existing.sessionId !== sessionId) {
+          throw new Error(
+            `卡片 #${card.number} 的槽位 ${slot} 已绑到会话 ${existing.sessionId}；要换人请先 update_card 把该槽位改派到新会话`,
+          )
+        }
+        if (existing !== null && typeof existing === 'object' && existing.sessionId === sessionId) {
+          return card
+        }
+        const next = {
+          ...card,
+          slots: { ...slots, [slot]: { sessionId } },
+          revision: (card.revision ?? 0) + 1,
+          updatedAt: clock(),
+        }
+        store.cards[store.cards.indexOf(card)] = next
+        await writeStore(store)
+        rebuildIndexes(store.cards, slotIndex, cardIndex)
         return next
       })
     },
@@ -287,7 +356,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         })
         if (touched.length === 0) return { cards: [], slots: 0 }
         await writeStore(store)
-        rebuildSlotIndex(store.cards, slotIndex)
+        rebuildIndexes(store.cards, slotIndex, cardIndex)
         return { cards: touched, slots: removed }
       })
     },
@@ -303,20 +372,20 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
     },
 
     /**
-     * 重建槽位反查索引。
+     * 从卡片库重建两份反查索引（槽位与卡片事实）。
      *
      * 进程启动时调用：内存索引是进程内的，崩溃后不会留下，索引必须从卡片库恢复。
      *
      * 必须排在写链上：读盘与重建之间若插进一次写卡，重建会用旧快照覆盖索引，
      * 丢掉刚落盘的槽位绑定，直到下一次改卡才恢复。
      *
-     * @returns {Promise<Map<string, string>>} 重建后的索引
+     * @returns {Promise<{ slotIndex: Map<string, string>, cardIndex: Map<string, object[]> }>} 重建后的索引
      */
-    async loadSlotIndex() {
+    async loadIndexes() {
       return serialize(async () => {
         const store = await readStore(file, recoverFromCorruption, io)
-        rebuildSlotIndex(store.cards, slotIndex)
-        return slotIndex
+        rebuildIndexes(store.cards, slotIndex, cardIndex)
+        return { slotIndex, cardIndex }
       })
     },
 
@@ -369,17 +438,22 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
 }
 
 /**
- * 按卡片库重建「会话 id → 槽位名」的反查索引。
+ * 按卡片库重建两份反查索引。
  *
- * 一个会话可能同时被多张卡片绑到不同槽位上。按编号升序遍历、后者覆盖前者，
- * 使编号更大的卡片（更新的意图）胜出，规则确定且与卡片新旧顺序一致。
+ * 槽位索引一个会话只留一个槽位名：一个会话可能同时被多张卡片绑到不同槽位上，
+ * 按编号升序遍历、后者覆盖前者，使编号更大的卡片（更新的意图）胜出。
+ *
+ * 卡片事实索引保留全部绑定：提示词里要照实渲染这个会话挂着的每一张卡，
+ * 多绑是异常但不能静默裁掉。两份索引都按编号升序，规则与卡片新旧顺序一致。
  *
  * @param {object[]} cards - 卡片数组
- * @param {Map<string, string>} target - 待写入的索引
+ * @param {Map<string, string>} slotTarget - 槽位索引
+ * @param {Map<string, object[]>} cardTarget - 卡片事实索引
  * @returns {void}
  */
-function rebuildSlotIndex(cards, target) {
-  target.clear()
+function rebuildIndexes(cards, slotTarget, cardTarget) {
+  slotTarget.clear()
+  cardTarget.clear()
   const ordered = [...cards].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))
   for (const card of ordered) {
     const slots = card?.slots
@@ -388,9 +462,56 @@ function rebuildSlotIndex(cards, target) {
       if (binding === null || typeof binding !== 'object' || Array.isArray(binding)) continue
       const sessionId = binding.sessionId
       if (typeof sessionId !== 'string' || sessionId === '') continue
-      target.set(sessionId, name)
+      slotTarget.set(sessionId, name)
+      const list = cardTarget.get(sessionId) ?? []
+      list.push({
+        cardId: String(card.id),
+        number: typeof card.number === 'number' ? card.number : 0,
+        title: String(card.title ?? ''),
+        status: String(card.status ?? 'active'),
+        slot: name,
+        revision: typeof card.revision === 'number' ? card.revision : 0,
+        spec: typeof card.spec === 'string' ? card.spec : '',
+        links: Array.isArray(card.links) ? card.links : [],
+      })
+      cardTarget.set(sessionId, list)
     }
   }
+}
+
+/**
+ * 把增量链接合并进现有列表。
+ *
+ * 带 `id` 的条目视为同一条链接：存在则原位更新字段，不存在则追加。没带 `id`
+ * 的按「label + url」判重，完全相同就跳过——这样同一轮里重复调用不会长出
+ * 重复链接，也不需要调用方先读整卡。
+ *
+ * @param {object[] | undefined} current - 现有链接
+ * @param {object[]} additions - 要追加的链接
+ * @returns {object[]} 合并后的链接列表
+ */
+function mergeLinks(current, additions) {
+  /** @type {object[]} */
+  const merged = Array.isArray(current) ? current.map((link) => ({ ...link })) : []
+  /** @type {Map<string, number>} 带 id 条目在结果里的位置 */
+  const positions = new Map()
+  merged.forEach((link, index) => {
+    if (typeof link?.id === 'string' && link.id !== '') positions.set(link.id, index)
+  })
+  for (const addition of additions) {
+    const id = typeof addition?.id === 'string' && addition.id !== '' ? addition.id : undefined
+    if (id !== undefined && positions.has(id)) {
+      const index = positions.get(id)
+      merged[index] = { ...merged[index], ...addition }
+      continue
+    }
+    if (id === undefined && merged.some(
+      (link) => link?.label === addition?.label && (link?.url ?? '') === (addition?.url ?? ''),
+    )) continue
+    if (id !== undefined) positions.set(id, merged.length)
+    merged.push({ ...addition })
+  }
+  return merged
 }
 
 /**

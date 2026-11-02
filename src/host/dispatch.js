@@ -117,6 +117,7 @@ export function buildWorkerReport(outcome) {
  * @param {(parentSessionId: string) => Promise<string | undefined>} [options.resolveWorkerWorkspaceId] - 取 worker 该挂的工作区
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
+ * @param {(input: { cardId: string, slot: string, sessionId: string }) => Promise<object>} [options.bindCardSlot] - 派工时把卡槽位绑到新会话；缺省时传了 cardId 就报错
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 派工器接口
  */
@@ -132,6 +133,7 @@ export function createDispatcher({
   resolveWorkerWorkspaceId,
   archivedSessionIds,
   listCardBindings,
+  bindCardSlot,
   logger = () => {},
 }) {
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
@@ -145,6 +147,16 @@ export function createDispatcher({
   }
   /** @type {Map<string, object>} 派工记录，key 为 worker 会话 id */
   const inflight = new Map()
+  /**
+   * 本进程派出的 worker 归属，key 为会话 id。
+   *
+   * 派工两段化后，第一条消息要过 `message` 的归属校验，而那条校验原本只读落盘
+   * 登记表。登记失败（磁盘满等）时会话已经建好、同一轮里还要立刻投递，不能因为
+   * 落盘失败就拒绝这次投递。登记表仍是跨进程的真源，这里只补本进程的窗口。
+   *
+   * @type {Map<string, { parentSessionId: string, name: string }>}
+   */
+  const owners = new Map()
   /** @type {Map<string, string>} 各 worker 本轮的 assistant 文本（同一 turn 取最后一条非空），key 为会话 id */
   const turnText = new Map()
   /** @type {Map<string, number>} 每个父会话的连续自动续行次数 */
@@ -523,7 +535,9 @@ export function createDispatcher({
     // 卡门禁：在跑的 worker 也不能被拉去干别的卡，否则同一条会话会把两卡的
     // 产物混在一起。
     await assertCardGateOpen(sessionId, cardId)
-    const worker = await workers.get(sessionId)
+    // 登记表是跨进程真源；本进程刚派出、登记落盘失败的会话靠 `owners` 兜底，
+    // 否则同一个协调者在本轮里都投不进自己刚建的 worker。
+    const worker = await workers.get(sessionId) ?? owners.get(sessionId)
     if (worker === undefined) {
       throw new Error(`message_worker: 没有会话 ${sessionId} 的派工记录，它不是本协调体系派出的 worker`)
     }
@@ -546,6 +560,7 @@ export function createDispatcher({
       parentSessionId: parent.id,
       parent,
       name: displayName,
+      task: message,
       startedAt: Date.now(),
     })
     if (name !== undefined) {
@@ -560,17 +575,29 @@ export function createDispatcher({
   }
 
   /**
-   * 派一个 worker。立即返回，不等待 worker 完成。
+   * 建一个 worker 会话并登记，**不投递任务、不产生模型调用**。
+   *
+   * 开工由协调者随后的 `message` 触发。分成两步是为了让槽位绑定先落盘：第一条
+   * 任务请求组装时，角色槽位与卡片事实都能读到；否则首轮只能靠简报里的口头
+   * 交代，role / card 上下文要晚一个请求才出现。
+   *
+   * 这里不建在飞记录：没有 turn 就不会有 `turn/end`，先挂一条在飞记录只会让
+   * 结算路径等一个永远不来的事件。在飞记录由 `message` 首次投递时建立。
    *
    * @param {object} options - 派工参数
    * @param {object} options.parent - 发起派工的父 agent
-   * @param {string} options.initialMessage - 交给 worker 的任务正文
    * @param {string} options.name - worker 显示名
+   * @param {string} [options.cardId] - 要绑的卡片 id；与 `slot` 成对
+   * @param {string} [options.slot] - 要绑的槽位名；与 `cardId` 成对
    * @param {string} [options.force] - 名册到顶时的逃逸理由；非空才放行新建
    * @param {AbortSignal} options.signal - 取消信号
    * @returns {Promise<object>} 派工记录
    */
-  async function dispatch({ parent, initialMessage, name, force, signal }) {
+  async function dispatch({ parent, name, cardId, slot, force, signal }) {
+    // 绑定参数成对出现：只给一半会让调用方以为绑上了，实际什么都没发生。
+    if ((cardId === undefined) !== (slot === undefined)) {
+      throw new Error('spawn_worker: cardId 与 slot 必须成对传入（要绑卡就两者都给，不绑就都不给）')
+    }
     // 派工是唯一会真的拉起一个会话的操作，身份判定必须比工具面严一档。
     await assertCoordinator(parent, {
       pending: 'spawn_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能派工',
@@ -608,31 +635,37 @@ export function createDispatcher({
     // worker 与协调者同属项目工作区：不挂就落官方树的「未分组」，而它由项目区块
     // 呈现，两处都在就是重复。
     const workspaceId = await resolveWorkerWorkspaceId?.(parent.id)
-    const childId = await workerSessions.spawn({
-      cwd,
-      workspaceId,
-      name,
-      initialMessage,
-      parentSessionId: parent.id,
-      signal,
-    })
+    const childId = await workerSessions.spawn({ cwd, workspaceId, name, signal })
+    // 绑卡必须在返回前完成：协调者接下来投递的第一条消息就该带着角色与卡片事实。
+    // 绑不上就销毁刚建的会话——留一个没挂卡的会话，协调者以为已经指派好了。
+    if (cardId !== undefined && slot !== undefined) {
+      if (typeof bindCardSlot !== 'function') {
+        await workerSessions.dispose(childId)
+        throw new Error('dsh-leader-kit: 当前装配没有提供 bindCardSlot，无法在派工时绑卡')
+      }
+      try {
+        await bindCardSlot({ cardId, slot, sessionId: childId })
+      } catch (error) {
+        await workerSessions.dispose(childId)
+        throw error
+      }
+    }
     const record = {
       childId,
       parentSessionId: parent.id,
       parent,
       name,
-      task: initialMessage,
       startedAt: Date.now(),
     }
-    inflight.set(record.childId, record)
+    // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
+    owners.set(childId, { parentSessionId: parent.id, name })
     // 派工落登记表：协调者可能在任何时刻（含本进程重启后）续聊，归属与父会话
-    // 映射不能只活在内存里。
+    // 映射不能只活在内存里。任务正文此时还没有，等 `message` 投递后才有。
     try {
       await workers.register({
         childId: record.childId,
         parentSessionId: parent.id,
         name,
-        task: initialMessage,
       })
     } catch (error) {
       logger(`dsh-leader-kit: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
@@ -842,6 +875,11 @@ export function createDispatcher({
         resumeCounts.delete(fromId)
         resumeCounts.set(toId, Math.max(used, resumeCounts.get(toId) ?? 0))
       }
+      // 本进程派出的归属也要改投：只改落盘登记表的话，接手会话在同一轮里
+      // 给原班 worker 投消息会被归属校验拒绝。
+      for (const owner of owners.values()) {
+        if (owner.parentSessionId === fromId) owner.parentSessionId = toId
+      }
       let moved = 0
       for (const record of inflight.values()) {
         if (record.parentSessionId !== fromId) continue
@@ -907,6 +945,9 @@ export function createDispatcher({
      */
     markDisposed(sessionId) {
       disposed.add(sessionId)
+      // 会话已经没了：本进程归属也一并摘掉，后续投递改走登记表判断，
+      // 避免「认得出归属却投不进」的半死状态。
+      owners.delete(sessionId)
     },
 
     /**
