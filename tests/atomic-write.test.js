@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -55,13 +55,29 @@ test('写失败时把临时文件清掉，目标保持原样', () => {
   })
 })
 
-test('锁内的读-改-写独占目标：同进程重入会等到超时', () => {
+test('锁内的读-改-写独占目标：同进程重入会等到超时，文案先让人确认没有实例在跑', () => {
   withTempDir((root) => {
     const target = join(root, '.credentials.yaml')
     assert.throws(
       () => withFileLockSync(target, () => withFileLockSync(target, () => 'inner', { waitMs: 50 })),
-      /等待写者锁超时/,
+      /等待写者锁超时.*先确认没有 dev 实例在跑/,
     )
+  })
+})
+
+test('活锁的持有者没退出时不会被接管，等不到就超时报错', () => {
+  withTempDir((root) => {
+    const target = join(root, '.credentials.yaml')
+    // 本进程之外的一个活进程持有锁：内容是真的活 PID，探活成功，不该删。
+    const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { stdio: 'ignore' })
+    holder.unref()
+    try {
+      writeFileSync(`${target}.lock`, `${holder.pid}\n`, { mode: 0o600 })
+      assert.throws(() => withFileLockSync(target, () => 'ok', { waitMs: 60 }), /等待写者锁超时/)
+      assert.equal(readFileSync(`${target}.lock`, 'utf8'), `${holder.pid}\n`)
+    } finally {
+      holder.kill()
+    }
   })
 })
 

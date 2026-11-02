@@ -7,15 +7,15 @@
  * 旧或新的完整内容；写者锁是同目录下的 `<文件名>.lock`，与宿主 `withFileLock` 的
  * 路径与内容一致，所以 `npm run dev` 与正在运行的实例不会同时改同一份凭据文件。
  *
- * 与宿主的差异只有死锁接管：宿主用 claim 文件串行化接管，这里直接按 PID 探活后
- * 删除。差别落在两个进程同时判定同一个锁的持有者已退出的极端窗口——此时最多多
- * 一次 EEXIST 重试，不会让两个写者同时持锁。PID 复用与宿主一样不处理。
+ * 与宿主的差异只在死锁接管：宿主用 claim 文件串行化接管，这里按 PID 探活并复核
+ * 同一份记录（内容与 mtime）后才删。残余窗口只剩两次读取之间——持锁者恰好在那时
+ * 释放、另一个进程立刻拿到锁，接管方会删掉新锁。PID 复用与宿主一样不处理。
  *
  * @module dsh-leader-kit/scripts/atomic-write
  */
 
 import { randomBytes } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 /** Windows 上杀软或句柄能让 rename 短暂失败，退避重试有限次。 */
@@ -72,23 +72,29 @@ export function writeFileAtomicSync(filename, content, { mode, dirMode }) {
   }
 }
 
+/** 锁文件的内容与 mtime；读不到（不存在、正在删除）时返回 null。 */
+function readLockSnapshot(lockPath) {
+  try {
+    return { text: readFileSync(lockPath, 'utf8'), mtime: statSync(lockPath).mtimeMs }
+  } catch {
+    return null
+  }
+}
+
 /**
- * 锁的持有者进程是否已经不在。
+ * 锁的持有者进程是否已经不在，能证明时删掉这把锁。
  *
- * 记录被写了一半、或 PID 指向本进程时什么也证明不了，按「仍在持有」处理。
+ * 记录被写了一半、或 PID 指向本进程时什么也证明不了，按「仍在持有」处理。删除前
+ * 复核同一份记录：持锁者若在这期间释放、别的进程重新拿到锁，内容或 mtime 会变，
+ * 此时不删，避免把活锁删掉放出第二个写者。
  *
  * @param {string} lockPath - 锁文件
- * @returns {boolean} 能证明持有者已退出时为 true
+ * @returns {boolean} 删掉了一把死锁时为 true
  */
 function takeOverExitedLock(lockPath) {
-  let record
-  try {
-    record = readFileSync(lockPath, 'utf8')
-  } catch {
-    return false
-  }
-  if (!/^\d+\n$/.test(record)) return false
-  const pid = Number(record)
+  const snapshot = readLockSnapshot(lockPath)
+  if (snapshot === null || !/^\d+\n$/.test(snapshot.text)) return false
+  const pid = Number(snapshot.text)
   if (pid === 0 || pid === process.pid) return false
   try {
     process.kill(pid, 0)
@@ -96,8 +102,10 @@ function takeOverExitedLock(lockPath) {
   } catch (error) {
     if (error.code !== 'ESRCH') return false
   }
+  const current = readLockSnapshot(lockPath)
+  if (current === null || current.text !== snapshot.text || current.mtime !== snapshot.mtime) return false
   try {
-    rmSync(lockPath, { force: true })
+    unlinkSync(lockPath)
     return true
   } catch {
     return false
@@ -129,7 +137,10 @@ export function withFileLockSync(filename, operation, { waitMs = 2000 } = {}) {
       if (takeOverExitedLock(lockPath)) continue
     }
     if (Date.now() >= deadline) {
-      throw new Error(`等待写者锁超时（${lockPath}）；没有实例在运行时删掉它再试`)
+      throw new Error(
+        `等待写者锁超时（${lockPath}）；先确认没有 dev 实例在跑（ps 查 dsh 或 scripts/dev.mjs，`
+        + '或看实例横幅），再删这个文件',
+      )
     }
     sleepSync(delay)
     delay = Math.min(delay * 2, 200)

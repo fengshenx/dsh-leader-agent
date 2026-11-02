@@ -499,6 +499,25 @@ test('目标声明别的 version 时不猜格式，只报原因', () => {
   assert.match(merged.notice, /version 2/)
 })
 
+test('目标声明别的 version 但已有 refs 节时也不写入', () => {
+  const merged = mergeCredentialRefs({
+    sourceText: SOURCE_CREDENTIALS,
+    targetText: 'version: 2\nrefs:\n  OPENAI_API_KEY: sk-other\n',
+  })
+  assert.equal(merged.text, null)
+  assert.deepEqual(merged.keys, [])
+  assert.match(merged.notice, /version 2/)
+})
+
+test('目标没有 version、却有 refs 节时也不写入——宿主同样解析不了', () => {
+  const merged = mergeCredentialRefs({
+    sourceText: SOURCE_CREDENTIALS,
+    targetText: 'refs:\n  OPENAI_API_KEY: sk-other\n',
+  })
+  assert.equal(merged.text, null)
+  assert.match(merged.notice, /pre-release 扁平布局/)
+})
+
 test('目标已经有重复的顶层 refs 时拒绝写，不加剧损坏', () => {
   assert.throws(
     () => mergeCredentialRefs({

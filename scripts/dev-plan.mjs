@@ -326,21 +326,23 @@ export function mergeCredentialRefs({ sourceText, targetText }) {
     return { text: verifyMerged(text, [], keys), keys, notice: null }
   }
 
-  const { lines, section } = analyzeRefsSection(targetText)
+  const lines = String(targetText).split('\n')
+  const version = documentVersion(lines)
+  // 守卫在所有写入路径之前：不是 version 1 的文档写入只会让宿主更没法解析。没有
+  // version 的非空文档是 pre-release 扁平布局，宿主启动时会自行迁移；先追加
+  // `refs:` 会让它既不是扁平的、也没有 version，插件激活反而失败。
+  if (version === undefined) {
+    return {
+      text: null,
+      keys: [],
+      notice: '开发实例的凭据文档不是 version 1 布局（pre-release 扁平布局），宿主启动时会自行迁移；本次不合并',
+    }
+  }
+  if (version !== '1') {
+    return { text: null, keys: [], notice: `开发实例的凭据文档声明 version ${version}，本脚本只合并 version 1；本次不合并` }
+  }
+  const { section } = analyzeRefsSection(targetText)
   if (section === null) {
-    const version = documentVersion(lines)
-    // 没有 version 的非空文档是 pre-release 扁平布局：宿主启动时会自行迁移，
-    // 此时追加 `refs:` 会让它既不是扁平的、也没有 version，插件激活反而失败。
-    if (version === undefined) {
-      return {
-        text: null,
-        keys: [],
-        notice: '开发实例的凭据文档不是 version 1 布局（pre-release 扁平布局），宿主启动时会自行迁移；本次不合并',
-      }
-    }
-    if (version !== '1') {
-      return { text: null, keys: [], notice: `开发实例的凭据文档声明 version ${version}，本脚本只合并 version 1；本次不合并` }
-    }
     const keys = [...sourceBlocks.keys()]
     const blocks = keys.flatMap((key) => reindentBlocks(sourceBlocks.get(key), source.indent, 2))
     const body = [...lines]

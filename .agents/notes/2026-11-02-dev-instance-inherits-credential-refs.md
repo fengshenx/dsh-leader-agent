@@ -40,11 +40,13 @@
 
 - 临时文件以 `wx` 独占创建、创建即带 600，再 `rename` 覆盖：替换后的权限是 600，没有「先落盘 644 再 chmod」的可读窗口，也没有半截文件；
 - 写者锁是同目录的 `<文件名>.lock`、内容为持有者 PID，与宿主的锁路径和协议一致，所以正在运行的实例不会被 `npm run dev` 的读-改-写覆盖；
-- 持有者已退出（`ESRCH`）时接管遗留锁；与宿主的差别只是没有 claim 文件串行化接管，极端并发下最多多一次重试。
+- 删除前按 PID 探活（`ESRCH`）并复核同一份记录（内容 + mtime），持锁者在这期间释放、别人重新拿到锁就不删；残窗口只剩两次读取之间，PID 复用与宿主一样不处理。宿主用 claim 文件把接管也串行化，这里没照搬：本脚本只在自己的启动前短暂持锁，并发方只有同机另一个 `npm run dev` 与宿主写入器，复核后的窗口代价远小于多一个 claim 协议。
 
 ### 非 version 1 的目标文档不动
 
 目标没有 `version` 且非空时，它是 pre-release 扁平布局：宿主 `loadInitial` 会先把它迁移成 version 1 + `refs:`。此时追加 `refs:` 会让文档既不是扁平的、也没有 version，凭据插件激活失败。所以这类文档与声明其他 version 的文档都只打印原因、不写入。
+
+判据放在所有写入路径之前，不看文档有没有 `refs` 节：`version: 2` 且已有 `refs:`、或无 `version` 却带 `refs:` 的文档同样不写。后者宿主也解析不了（无 `version` 就是 flat layout 错误），写进去只会让人误以为合并成功。
 
 ## 边界
 
@@ -56,8 +58,9 @@
 
 ## 验证
 
-- `npm run check`：全绿，671 例；`dev-plan.test.js` 52 例（本卡片新增 16 例）、`atomic-write.test.js` 7 例。
-- 双向验证：把 `scripts/dev-plan.mjs` 回退到 88b6657 的 refs 实现 → 12 例红（`refs: {}`、4 空格、行内映射两向、扁平布局、version 2、重复 refs、认不出的条目、多行值重缩进、引号键、CRLF）；还原后 52 例全绿。
+- `npm run check`：全绿，674 例；`dev-plan.test.js` 54 例（本卡片新增 18 例）、`atomic-write.test.js` 8 例。
+- 双向验证：把 `scripts/dev-plan.mjs` 回退到 88b6657 的 refs 实现 → 12 例红（`refs: {}`、4 空格、行内映射两向、扁平布局、version 2、重复 refs、认不出的条目、多行值重缩进、引号键、CRLF）；还原后 54 例全绿。
+- 双向验证（本轮）：撤掉 version 守卫 → `version: 2` 带 `refs:` 与无 `version` 带 `refs:` 两例红（52 pass / 2 fail），还原后 54 绿；把死锁接管改成不探活直接删 → 「活锁不被接管」红（7 pass / 1 fail），还原后 8 绿。
 - 并发探针：两个进程对同一份 `refs: {}` 目标各写一个键、故意放大读-改-写窗口——共用写者锁时 5/5 轮都保留两个键，去掉锁对照 3/3 轮丢一个键；两次运行都无 `.tmp` / `.lock` 残留。
 - 解析器探针（宿主同款 `yaml@2.9.0`，`parseDocument(text, { uniqueKeys: true, prettyErrors: true })`）：旧逻辑产出的追加形态报 `DUPLICATE_KEY@4`，4 空格混排报 `BAD_INDENT@4`；新实现四种真实形态（`refs: {}`、4 空格、空节、行内非空）全部无错，且 `^refs:` 只有一处。
 - 端到端（假源 HOME + `DEV_DSH` 指向替身，不启动真实实例）：目标 `refs: {}` 合并成块式、`records` 原样、权限 600、无 `.lock` 与 `.tmp` 残留；二次运行无变更、幂等；扁平布局目标不被改动并打印原因。
