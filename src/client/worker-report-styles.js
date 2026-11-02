@@ -48,6 +48,10 @@ const STYLE_TEXT = `
 }
 
 .dsh-leader-kit-worker-report__bubble {
+  /* 正文是 Markdown 块级元素，折叠高度按 content-box 算行高，显式声明不随主题漂移；
+     行高取 compact 变体的值，与 MarkdownText 内部排版一致，否则折叠水位会差半行 */
+  box-sizing: border-box;
+  --dsh-leader-kit-report-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
   max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
   /* 极淡底：按前景色混出几乎看不出的一层，靠 1px 边框交代气泡边界。 */
   background: color-mix(in srgb, var(--dsw-alias-label-primary) 2%, transparent);
@@ -55,17 +59,33 @@ const STYLE_TEXT = `
   border-radius: var(--dsw-radius-xl);
   padding: 10px 16px;
   font-size: var(--dsh-content-font-size, 14px);
-  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
+  line-height: var(--dsh-leader-kit-report-line);
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
   word-break: break-word;
 }
 
-/* 默认只露两行：worker 的回报动辄一屏，协调者扫一眼摘要就够，细节按需展开。 */
+/* 同 card-detail-text：compact 变体把正文压成三级标签色、链接变成 inherit。
+   容器类 + data-markdown-variant 是 (0,2,0)，压过 .compact 的 (0,1,0)；
+   链接到 (0,2,1)，压过 .compact a 的 (0,1,1)——特异性更高，不靠注入顺序。 */
+.dsh-leader-kit-worker-report__bubble [data-markdown-variant='compact'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-kit-worker-report__bubble [data-markdown-variant='compact'] a {
+  color: var(--dsw-alias-link);
+}
+
+/* 旧消息（改造前落盘）没有 report，回退的是整条通知正文：子会话、状态、下一步
+   是逐行的协议字段，按 Markdown 渲染会因软换行折成一段。这条路径保持纯文本。 */
+.dsh-leader-kit-worker-report__plain {
+  white-space: pre-wrap;
+}
+
+/* 默认只露两行：worker 的回报动辄一屏，协调者扫一眼摘要就够，细节按需展开。
+   正文是块级元素（段落、列表、代码块），line-clamp 只能截纯文本行；按行高算
+   max-height 才对块级内容生效。22px 是上下 padding 20px 加边框 2px。 */
 .dsh-leader-kit-worker-report__bubble[data-collapsed='true'] {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  max-height: calc(2 * var(--dsh-leader-kit-report-line) + 22px);
   overflow: hidden;
 }
 

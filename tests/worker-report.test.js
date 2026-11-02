@@ -8,6 +8,7 @@ import {
   boundSummary,
   readWorkerReportSource,
   workerReportBody,
+  workerReportFormat,
   workerReportSource,
   workerReportText,
 } from '../src/shared/worker-report.js'
@@ -37,6 +38,22 @@ test('界面渲染最后一次回报的内容，没有就退回正文', () => {
   assert.equal(workerReportBody({ text: '正文' }), '正文')
   assert.equal(workerReportBody({}), '')
   assert.equal(workerReportBody(null), '')
+})
+
+test('旧消息回退的整条正文走纯文本，新消息的 report 走 Markdown', () => {
+  // 旧消息没有 report，正文是逐行协议字段；Markdown 的软换行会把它们折成一段。
+  assert.equal(workerReportFormat({ report: '', text: '任务「x」已结束。\n子会话：c1\n状态：completed' }), 'text')
+  assert.equal(workerReportFormat({ text: '正文' }), 'text')
+  // 新消息的 report 是 worker 自己的产物，按 Markdown 渲染。
+  assert.equal(workerReportFormat({ report: '## 摘要\n\n- 改完了', text: '协议字段' }), 'markdown')
+  assert.equal(workerReportFormat(null), 'text')
+  assert.equal(workerReportFormat(undefined), 'text')
+})
+
+test('失败原因的回报保持纯文本，多行错误不被 Markdown 折行', () => {
+  assert.equal(workerReportFormat({ report: '失败：第一行\n第二行', outcome: 'failed' }), 'text')
+  // 成功终态不受影响，仍按 report 是否存在判断。
+  assert.equal(workerReportFormat({ report: '## 摘要', outcome: 'completed' }), 'markdown')
 })
 
 test('节点状态带着回报内容与终态', () => {

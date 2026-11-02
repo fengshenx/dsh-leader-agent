@@ -78,6 +78,24 @@ export function workerReportBody(state) {
 }
 
 /**
+ * 决定正文用哪种方式渲染。
+ *
+ * 新消息的 `report` 是 worker 自己的产物，按 Markdown 渲染；旧消息（改造前落盘）
+ * 没有 `report`，回退的整条消息正文是逐行的协议字段（子会话、状态、下一步），
+ * 按 Markdown 渲染会被软换行折成一段，所以保持纯文本。失败原因的回报同理：它是
+ * 原样透出的错误文本，可能多行，也走纯文本。
+ *
+ * @param {{ report?: string, text?: string, outcome?: string } | null | undefined} state - 节点状态
+ * @returns {'markdown' | 'text'} 渲染方式
+ */
+export function workerReportFormat(state) {
+  if (state === null || typeof state !== 'object') return 'text'
+  // 失败原因来自 error.message，可能带换行；交给 Markdown 会被折成一段。
+  if (state.outcome === 'failed') return 'text'
+  return typeof state.report === 'string' && state.report !== '' ? 'markdown' : 'text'
+}
+
+/**
  * 从消息内容块里取出纯文本。
  *
  * 宿主不约束 content 的形状（事件数据是开放 JSON），所以读的时候自己判型。

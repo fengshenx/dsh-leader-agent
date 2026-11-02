@@ -14,8 +14,9 @@
 
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
 import { agentAvatarDataUri } from './worker-report-avatar.js'
-import { workerReportBody } from '../shared/worker-report.js'
+import { workerReportBody, workerReportFormat } from '../shared/worker-report.js'
 import { ensureWorkerReportStyles } from './worker-report-styles.js'
+import { Markdown } from './markdown.js'
 import { productIcon } from './icons.js'
 
 /**
@@ -59,6 +60,8 @@ export function WorkerReportView({ node, openSession }) {
   const bubbleRef = useRef(null)
   const data = node?.data
   const body = data === undefined ? '' : workerReportBody(data)
+  // 旧消息没有 report，回退的整条正文是协议行；走纯文本才不会被 Markdown 折成一段。
+  const markdown = data === undefined ? false : workerReportFormat(data) === 'markdown'
 
   // 样式必须在测量之前进 DOM，所以放在 layout 阶段而不是被动 effect：后者晚于
   // 绘制，首帧的 clamp 规则还没生效，`scrollHeight === clientHeight` 会量成「没
@@ -124,7 +127,9 @@ export function WorkerReportView({ node, openSession }) {
         className: 'dsh-leader-kit-worker-report__bubble',
         'data-collapsed': expanded ? undefined : 'true',
       },
-      body,
+      markdown
+        ? createElement(Markdown, { source: body })
+        : createElement('div', { className: 'dsh-leader-kit-worker-report__plain' }, body),
     ),
     overflowing
       ? createElement(

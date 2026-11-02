@@ -199,7 +199,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 项目树 | `src/client/project-section.js` | 点标题折叠/展开整个项目列表，点行首槽位展开/收起该项目的会话行（worker 与被换下的协调者；当前协调者与用户手动开的会话都不在其中，会话行是纯文字行，无左右图标）；点项目行本身是打开该项目的协调者会话；项目名后面不跟路径。行首槽位与官方工作区行同款：平时是目录图标，悬停整行换成展开箭头，展开时箭头旋转朝下；「更多」在行右端，悬停时出现。项目下的会话列表按水位折叠（见下一行） |
 | 会话水位折叠 | `src/client/session-watermark.js` | 复刻宿主工作区树的口径：默认露出 5 条，每次「展开其余 N 个会话」再加 5 条，剩余不足 5 条时一次放完；运行中的会话把水位抬到它所在位置（只在前 50 条内生效）；水位只升不降，收起回落到基线；每个项目各算各的，状态不持久化 |
 | 会话归档 | `src/client/project-panel.js`、`src/host/cards/store.js` | 悬停会话行，右端露出归档按钮（与官方会话行的 hover 动作同形：24×24、三级标签色）。归档走宿主的 `workspaces.archiveSession`，成功后摘掉卡片上指向该会话的槽位、删掉派工登记；会话正在跑时弹「停止并归档」确认，其余失败直接报错 |
-| worker 回报气泡 | `src/client/worker-report-view.js`、`src/client/worker-report-styles.js` | 回报正文默认折两行（`-webkit-line-clamp`），内容真的超两行时下方才出现「展示更多」，展开后变「收起」；气泡底色是前景色 2% 的极淡一层，边界由 1px 边框交代 |
+| worker 回报气泡 | `src/client/worker-report-view.js`、`src/client/worker-report-styles.js` | 回报正文默认折两行（按 compact 行高算 `max-height`，见[已知限制](#已知限制与取舍)），内容真的超两行时下方才出现「展示更多」，展开后变「收起」；气泡底色是前景色 2% 的极淡一层，边界由 1px 边框交代 |
 | 产品图标 | `src/client/icons.js` | 内联图标路径（宿主 web 端运行时没有 sprite，`<use>` 引用必然落空） |
 | 官方树排除 | `src/client/workspace-exclusion.js` | 把项目的协调者与 worker 会话从官方工作区树里隐藏（渲染层，官方数据层不动）。worker 是普通根会话，官方树不会自己滤掉，按会话 id 排除。项目自建的工作区整组藏掉、组内行一起（见[已知限制](#已知限制与取舍)「项目自建的工作区从官方树里藏掉」）。当前会话就是被排除的那条时，它所在工作区行的激活图标压回普通色 |
 | 删除项目确认弹窗 | `src/client/confirm-dialog.js` | 「删除」的二次确认弹窗：讲清项目连同插件注册的工作区一起删、文件夹与会话记录保留（复用 `modal-shell.js` 的浮层外壳：遮罩点击 / Escape / Tab 焦点循环 / 初始焦点 / 关闭后焦点返回） |
@@ -317,7 +317,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 - **卡面不显示所属项目/工作区**。看板已经按项目过滤，卡面不必再重复标注（无 workspace chip）。
 - **会话折叠只认运行态**。宿主的工作区树还会为「有子代理在跑」「等你输入」「未读完成」「当前会话」四种注意力抬高水位，我们手里只有会话行的 `running`，所以只按它抬。收起只在全部放完时出现，与宿主 `sessionsExpanded = hiddenCount === 0` 的口径一致——会话很多时要点若干次「展开其余 N 个会话」，而不是随时能收。
 - **「等你输入」档暂无数据源**。宿主的待处理交互机制在（`pendingInteraction`），但当前没有任何域发布它，这一档不会亮；机制与档位都留着，等真有域发布时自动生效。「未读」档已实测跑通。
-- **气泡折叠没有单测**。折几行靠 `-webkit-line-clamp`，是否出现「展示更多」要在 DOM 上量 `scrollHeight` 与 `clientHeight`；本仓不引 jsdom，这段只能用浏览器取证（[e2e-testing.md](e2e-testing.md)），逻辑本身没有可单测的纯函数。
+- **气泡折叠没有布局单测**。折叠水位按 compact 行高算 `max-height`（2 × 20px 行高 + 22px padding/border），是否出现「展示更多」要在 DOM 上量 `scrollHeight` 与 `clientHeight`；本仓不引 jsdom，真实布局只能用浏览器取证（[e2e-testing.md](e2e-testing.md)）。实现形态有源码断言：`tests/markdown.test.js` 钉住折叠不再用 `-webkit-line-clamp`、行高取 compact 值。旧消息（改造前落盘、没有 `report`）回退为纯文本 `pre-wrap`，协议行不被 Markdown 折成一段。
 - **归档入口只在有 hover 的设备上出现**。按钮的显示挂在 `@media (hover: hover)` 上（与官方会话行一致），触屏上不会出现；归档本身是宿主能力，也可以在别处完成，本区块会跟着 `archivedSessionIds` 快照把行藏掉。
 
 ### 项目、树与工作区
@@ -335,7 +335,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 ### 客户端与宿主耦合
 
-- **弹窗与菜单是复制官方源码改写的，不是复用宿主组件**。第三方 bundle 不能 import 宿主 UI 包，官方 `Modal` / `Menu` 组件用不了，因此确认弹窗照 `packages/client/ui-primitives/src/Modal.tsx` 与 `Modal.module.css` 复制一份改写（类名换 `dsh-leader-kit-modal-*` 前缀），菜单照 `Menu.tsx` 的材质与数值复刻。代价是宿主改这两个组件时本仓要同步。
+- **客户端依赖解析走宿主的冻结模块表**。`PLATFORM_MODULES`（`packages/client/web/src/platform.ts`）是宿主共享给所有 bundle 的冻结模块表，`react` / `react-dom` 也在表里；其中宿主自有包有四个——`dsh-client-store` / `dsh-client-ui-slots` / `dsh-client-ui-primitives` / `dsh-client-ui-dockkit`（宿主已把这批包列进封闭清单，新增包不再加入）。基线模块由构建期 `BASELINE_EXTERNALS` 留在产物外，运行时 `require` 解析到同一实例；基线里的宿主包可直接复用，本仓用到了 `ui-primitives` 的 `MarkdownText`（卡片说明与 worker 回报气泡）。**基线之外的宿主 UI 包不保证可用**——不是宿主禁止引用，而是这些包不承诺运行时可解析。`Modal` / `Menu` 本来就是 `ui-primitives` 的导出、在基线内；确认弹窗与菜单仍照 `packages/client/ui-primitives/src/Modal.tsx`、`Modal.module.css`、`Menu.tsx` 复制改写（类名换 `dsh-leader-kit-modal-*` 前缀、按本仓交互调整行为），动机是定制而不是「用不了」。代价是宿主改这些组件（含 `MarkdownText` 的签名与排版）时本仓要同步。
 - **协调者会话形态依赖宿主的会话视图服务**。宿主没提供 `uiConversation` 服务时（它不在机器可读的插件 API 目录里，属于版本耦合面），协调者会话退化成官方欢迎页（居中输入框），本 bundle 不阻断打开会话，也不自绘替代界面。
 - **图标数据与宿主 `artwork.ts` 耦合**。宿主 web 端把图标在构建期内联进产物，运行时 DOM 里没有 sprite 节点，第三方 bundle 在运行时渲染只能自己带路径数据——本仓内联的路径取自宿主 `dsh-client-ui-primitives` 的 `artwork.ts`（regular 字重），宿主改图标时本仓要同步。
 - **工具面裁剪靠宿主的 `tools.restrict()`**。已发布的最新 dsh（`0.2.1-rc.4`）里 `tools.register()` 仍只收一个参数，按步求值的 `when` 只在源码仓 HEAD 上，所以裁剪落在 `agent/created` 时对 `agent.ctx` 调一次 `restrict({ deny })`。协调者身份来自项目注册表——**索引重建完成前不裁**：这时候问不出谁是协调者，而少给工具会让协调者首轮干不成活；工具面这一层的宽松只对读类工具安全，派工前另行 `awaitIndex()` 并复核身份。

@@ -16,6 +16,7 @@ import { createElement, useEffect } from 'react'
 import { ModalShell } from './modal-shell.js'
 import { DETAIL_SPEC_EMPTY, detailSections, statusLabel } from './card-detail-view.js'
 import { isJumpableLink, linkRowKey } from './link-row.js'
+import { Markdown } from './markdown.js'
 import { productIcon } from './icons.js'
 import { ensureBoardStyles } from './board-styles.js'
 
@@ -85,7 +86,11 @@ export function CardDetail({ card, onClose, restoreFocus = null }) {
               'section',
               { className: 'dsh-leader-kit-card-detail-section' },
               createElement('div', { className: 'dsh-leader-kit-card-detail-section-title' }, '说明'),
-              createElement('div', { className: 'dsh-leader-kit-card-detail-text' }, sections.spec),
+              createElement(
+                'div',
+                { className: 'dsh-leader-kit-card-detail-text' },
+                createElement(Markdown, { source: sections.spec }),
+              ),
             )
           : createElement('div', { className: 'dsh-leader-kit-card-detail-muted' }, DETAIL_SPEC_EMPTY),
         sections.links.length > 0

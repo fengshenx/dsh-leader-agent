@@ -636,8 +636,21 @@ const STYLE_TEXT = `
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 宿主 compact 变体把正文压成三级标签色：.markdown 与 .compact 挂在同一个根节点上、
+   特异性同为 (0,1,0)，.compact 靠源顺序压过 .markdown 的 primary。链接同理——
+   .compact a 的 color: inherit 压过 .markdown a 的 --dsw-alias-link。
+   这里用宿主暴露的 data-markdown-variant 钩子把容器内的正文与链接压回原色：
+   容器类 + 属性选择器是 (0,2,0)，高于 .compact 的 (0,1,0)；链接再叠标签选择器到
+   (0,2,1)，高于 .compact a 的 (0,1,1)。特异性严格更高，不依赖样式表注入顺序。 */
+.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] a {
+  color: var(--dsw-alias-link);
 }
 
 .dsh-leader-kit-card-detail-muted {
