@@ -63,7 +63,23 @@
 
 说明按 #77 的分层各归各位：亮点进 `README.md` / `README_ZH.md` 的 Highlights，交互与参数进 `docs/usage.md` 的「回看 worker 的会话」，限制与取舍进 `docs/limitations.md` 的「worker 的控制面」，架构事实只留 `docs/architecture.md` 的编排动作表一行与工具数。README 不写细节层，限制细节不重复到 usage。
 
-按 #77 的余量规则（天花板 ≥ 当前值 ×1.05，`AGENTS.md` 与 `capability-gaps.md` ≥ ×1.10）重算了五个天花板：`docs/usage.md` 5,020→5,350、`docs/limitations.md` 5,600→6,000、`README.md` 3,090→3,250、`README_ZH.md` 4,660→4,850、`docs/architecture.md` 5,300→5,350，`docs/capability-gaps.md` 15,150→15,500。理由是这一版把 `read_worker_session` 的说明加进这 6 份文档，搬层后仍在声明的余量之外：压内容凑预算会把余量压到 0.2%，下一次任何改动都要先删事实，门禁就从防腐变成逼人删内容。抬完各项余量：README 6.35%、README_ZH 5.55%、architecture 5.84%、limitations 5.15%、usage 5.96%、capability-gaps 11.14%。`COORDINATOR.md`（2.43%）本 PR 未改，保持原样并在 PR 里说明。
+按 #77 的余量规则（天花板 ≥ 当前值 ×1.05，`AGENTS.md` 与 `capability-gaps.md` ≥ ×1.10）重算天花板：这一版把 `read_worker_session` 的说明写进了 7 份文档，搬层后仍在声明的余量之外；压内容凑预算会把余量压到 0.2%，下一次任何改动都要先删事实，门禁就从防腐变成逼人删内容。
+
+最终 11 项读数（单位 / 天花板 · 余量）：
+
+| 文档 | 读数 / 天花板 | 余量 |
+|---|---|---|
+| `AGENTS.md` | 3,571 / 3,930 | 10.05% |
+| `README.md` | 3,056 / 3,250 | 6.35% |
+| `README_ZH.md` | 4,595 / 4,850 | 5.55% |
+| `COORDINATOR.md` | 1,318 / 1,390 | 5.46% |
+| `SLOTS.md` | 833 / 900 | 8.04% |
+| `docs/architecture.md` | 5,055 / 5,350 | 5.84% |
+| `docs/limitations.md` | 5,706 / 6,000 | 5.15% |
+| `docs/development.md` | 1,686 / 1,780 | 5.58% |
+| `docs/capability-gaps.md` | 13,946 / 15,500 | 11.14% |
+| `docs/usage.md` | 5,049 / 5,350 | 5.96% |
+| `docs/e2e-testing.md` | 4,129 / 4,340 | 5.11% |
 
 ## 边界
 
@@ -79,7 +95,7 @@
 
 ## 验证
 
-- `npm run check`：896 例，887 pass，0 fail（9 skipped）；57 篇笔记、11 篇文档工具名、11 篇 standing docs 预算全过（`docs/usage.md` 5011/5020 最紧）。
+- `npm run check`：896 例，887 pass，0 fail（9 skipped）；57 篇笔记、11 篇文档工具名、11 篇 standing docs 预算全过，读数见「文档落位」的最终表格。
 - 新增用例分两层：
   - `tests/worker-transcript.test.js`（21 例）：回合切分、工具失败原因与兜底、未配对结果、进行中标记、`turn/end` 后的独立消息段、turns 裁剪、总上限、空日志、无关事件过滤；注入上下文与任务正文分开（不冒充用户、不占任务预算）；三层上限各自的代理对截断（单条正文 / 失败原因 / 总上限硬截断）；CJK 与组合字符截断；体积溢出时的提示不承诺调 `turns` 可达（`turns=2/3/4` 三种取值都断言）。
   - `tests/read-worker-tool.test.js`（17 例）：正常读取、turns 只影响渲染、非协调者/索引未就绪被拒、未登记与跨会话归属被拒、缺 `sessionQuery` / 缺 `readSession`、读失败转述、日志形状不符、`turns` 与 `sessionId` 校验、`owners` 兜底、schema 子集；**读路径与读失败/授权拒绝路径的写调用记录为空**。
