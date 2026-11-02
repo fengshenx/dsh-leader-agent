@@ -180,6 +180,23 @@ test('建会话失败时不落盘', async () => {
   assert.equal(service.isCoordinatorSession(factory.ids[0]), false)
 })
 
+test('建会话失败时不留刚注册的工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory({ fail: true }),
+    sessionExists: async () => true,
+  })
+
+  await assert.rejects(() => service.create({ directory: workspace }), /建会话失败/)
+  // 项目没落盘，工作区也没人认领：留着会在左栏露出一行用户没加过的目录，
+  // 而插件的删除入口随项目一起消失。
+  assert.equal(registry.list().length, 0)
+})
+
 test('项目落盘失败时也撤掉占位，不留一个没有项目归属的协调者', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
@@ -198,6 +215,22 @@ test('项目落盘失败时也撤掉占位，不留一个没有项目归属的�
   assert.deepEqual(await store.list(), [])
   assert.equal(service.directoryOfCoordinator(factory.ids[0]), undefined)
   assert.equal(service.isCoordinatorSession(factory.ids[0]), false)
+})
+
+test('项目落盘失败时不留刚注册的工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const failingStore = { ...store, insert: async () => { throw new Error('落盘失败') } }
+  const service = makeService({
+    store: failingStore,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  await assert.rejects(() => service.create({ directory: workspace, name: 'alpha' }), /落盘失败/)
+  assert.equal(registry.list().length, 0)
 })
 
 test('建会话的实现没按契约用传入 id 时当场失败', async () => {
@@ -927,6 +960,27 @@ test('打开项目时项目被并发删掉：重建的工作区要撤掉，不�
 
   await assert.rejects(() => service.attachCoordinator(project.id), /项目不存在/)
   // 项目没了，插件的删除入口也随项目消失——留下的工作区只能去管理面板清。
+  assert.equal(registry.list().length, 0)
+})
+
+test('换协调者时归属写入失败：撤掉刚建的工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await registry.delete('ws-1')
+  store.update = async () => {
+    throw new Error(`项目不存在：${project.id}`)
+  }
+
+  await assert.rejects(() => service.replaceCoordinator(project.id), /项目不存在/)
   assert.equal(registry.list().length, 0)
 })
 

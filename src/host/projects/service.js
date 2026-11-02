@@ -443,30 +443,38 @@ export function createProjectService({
       // 必须在建会话之前问——建会话本身也会注册工作区，那时再问就只剩「已存在」。
       const ensured = await ensureWorkspace(ctx, normalizedDirectory, canonicalize)
       // 先建会话再建记录：会话建不出来时项目不落盘，失败路径没有半条记录。
-      const coordinatorSessionId = await openRegisteredCoordinatorSession(normalizedDirectory)
+      let coordinatorSessionId
+      try {
+        coordinatorSessionId = await openRegisteredCoordinatorSession(normalizedDirectory)
+      } catch (error) {
+        // 会话没建成、记录也没落盘，刚注册的工作区没人认领。
+        if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
+        throw error
+      }
       const draft = store.draft({
         name: displayName,
         directory: normalizedDirectory,
         coordinatorSessionId,
         ...ensured?.created === true ? { workspaceId: ensured.workspace.id } : {},
       })
+      // 只包 `insert`：它成功之后再撤会话或工作区，就成了「记录已写、东西没了」的半回滚。
       let inserted
       try {
         inserted = await store.insert(draft)
-        coordinatorIndex.set(coordinatorSessionId, {
-          projectId: inserted.id,
-          directory: normalizedDirectory,
-        })
-        const canonical = await canonicalize(normalizedDirectory)
-        if (!canonicalDirectoryIndex.has(canonical)) {
-          canonicalDirectoryIndex.set(canonical, inserted.id)
-        }
       } catch (error) {
         coordinatorIndex.delete(coordinatorSessionId)
         await abandonCoordinatorSession(coordinatorSessionId)
         // 记录没落盘，刚注册的工作区就没人认领了。
         if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
         throw error
+      }
+      coordinatorIndex.set(coordinatorSessionId, {
+        projectId: inserted.id,
+        directory: normalizedDirectory,
+      })
+      const canonical = await canonicalize(normalizedDirectory)
+      if (!canonicalDirectoryIndex.has(canonical)) {
+        canonicalDirectoryIndex.set(canonical, inserted.id)
       }
       return inserted
     },
