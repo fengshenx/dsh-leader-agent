@@ -22,6 +22,8 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
   const attached = []
   /** 追加到会话上的 knob 事件（权限继承） */
   const appended = []
+  /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
+  const overrides = {}
   /** 每次冷恢复传给 `agents.resume` 的完整 options */
   const resumeOptions = []
   const titles = []
@@ -49,6 +51,10 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
             header: { id: sessionId },
             append(type, data) {
               appended.push({ id: sessionId, type, data })
+              // 覆盖事件落盘后该会话的有效权限就变了：回读实际值的路径靠这份状态。
+              overrides[sessionId] ??= {}
+              if (type === 'sandbox/mode') overrides[sessionId].sandbox = data.mode
+              if (type === 'approval/policy') overrides[sessionId].approval = data.policy
             },
           },
           followup(message) {
@@ -127,14 +133,14 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       // approval 只有 overrideOf 与 config.policy。默认不提供（大多数用例与权限无关）。
       if (key === 'sandboxPolicy' && permissions !== undefined) {
         return {
-          resolve: ({ session }) => ({ mode: permissions.sandbox?.[session.id] ?? 'workspace-write' }),
-          overrideOf: (session) => permissions.sandbox?.[session.id] ?? 'workspace-write',
+          resolve: ({ session }) => ({ mode: overrides[session.id]?.sandbox ?? permissions.sandbox?.[session.id] ?? 'workspace-write' }),
+          overrideOf: (session) => overrides[session.id]?.sandbox ?? permissions.sandbox?.[session.id] ?? 'workspace-write',
         }
       }
       if (key === 'approval' && permissions !== undefined) {
         return {
           config: { policy: 'ask' },
-          overrideOf: (session) => permissions.approval?.[session.id] ?? 'ask',
+          overrideOf: (session) => overrides[session.id]?.approval ?? permissions.approval?.[session.id] ?? 'ask',
         }
       }
       if (key === 'sessionProjections' && brokenProjections) return {}

@@ -47,7 +47,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 挂上的是**整个标准组合**，不只一两个工具：persona、`agent-instructions`（会读项目 `AGENTS.md`）、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web` 等一起进来。worker 是常驻后台会话，因此它也能向用户提问。
 
-worker 的**权限**（沙箱模式 + 审批策略）在派工时从协调者继承。宿主的 `permissionPresets` 会按用户默认 preset 给每个新会话钉权限，协调者自己切过的 `danger-full-access` / `never` 不会跟过来（[capability-gaps 第 41 条](capability-gaps.md)）；于是 worker 建好之后、首轮之前追加两条 `source: 'delegation'` 的覆盖事件（`permission-inherit.js`）。协调者是 `auto` 时再补一条 `permission/preset`：auto 的身份不在 knob 值里（bundle 不匹配任何配置 preset），只写 knobs 会让 `derive()` 落到 `custom`，审查门关闭而沙箱已经放开。不继承的后果不对称：worker 在后台跑，审批 answerer 按会话 UI 作用域注册，没人应答的 `ask` 一律落到 `unavailable`——需要审批的调用直接被拒（继承 `ask` 给后台 worker 仍是死路，只有打开这个会话才可能应答）。继承是一次性快照，协调者之后切换 preset 不影响已派出的 worker：权限在宿主里本来就是逐会话的。继承到的值与没继承成功的缺口都随 `spawn_worker` 回执返回，完全权限会被点名——worker 的输入含项目文件、issue 与 PR 正文，静默给完全权限等于把 prompt injection 变成任意代码执行。
+worker 的**权限**（沙箱模式 + 审批策略）在派工时从协调者继承。宿主的 `permissionPresets` 会按用户默认 preset 给每个新会话钉权限，协调者自己切过的 `danger-full-access` / `never` 不会跟过来（[capability-gaps 第 41 条](capability-gaps.md)）；于是 worker 建好之后、首轮之前追加两条 `source: 'delegation'` 的覆盖事件（`permission-inherit.js`）。协调者是 `auto` 时再补一条 `permission/preset`：auto 的身份不在 knob 值里（bundle 不匹配任何配置 preset），只写 knobs 会让 `derive()` 落到 `custom`，审查门关闭而沙箱已经放开。不继承的后果不对称：worker 在后台跑，审批 answerer 按会话 UI 作用域注册，没人应答的 `ask` 一律落到 `unavailable`——需要审批的调用直接被拒（继承 `ask` 给后台 worker 仍是死路，只有打开这个会话才可能应答）。继承是一次性快照，协调者之后切换 preset 不影响已派出的 worker：权限在宿主里本来就是逐会话的。`spawn_worker` 的回执带的是**回读到的实际权限**（写失败或放弃继承时如实说 worker 停在哪，而不是报继承目标）与未继承的缺口，完全权限会被点名——worker 的输入含项目文件、issue 与 PR 正文，静默给完全权限等于把 prompt injection 变成任意代码执行。
 
 ### 派工与唤醒
 

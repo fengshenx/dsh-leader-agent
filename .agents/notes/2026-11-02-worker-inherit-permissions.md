@@ -28,15 +28,17 @@
 
 ### 读不到 preset 身份时整体放弃继承
 
-`permissionPresets` 服务在、但 `current()` 读失败（例如 projection 未注册的启停窗口）时，无法排除协调者正处于 auto。此时只写裸 knobs 就可能落成「无沙箱、无审查门」，所以放弃整次继承，让 worker 停在更严的默认上，并把原因交给 `skipped`。组合里根本没有 `permissionPresets` 服务时不在此列：auto 由 `registerAuto()` 注册在该服务上，服务不在就不可能有 auto。
+`permissionPresets` 服务在、但 `current()` 读失败（例如 projection 未注册的启停窗口）时，无法排除协调者正处于 auto。此时只写裸 knobs 就可能落成「无沙箱、无审查门」，所以放弃整次继承，让 worker 停在**部署默认 preset** 上，并把原因交给 `skipped`。部署默认可以是任意一档（用户能把它设成 `danger-full-access`），所以这条回退方向**不保证比协调者更严**——回执必须给实际值而不是「未知」。组合里根本没有 `permissionPresets` 服务时不在此列：auto 由 `registerAuto()` 注册在该服务上，服务不在就不可能有 auto。
 
 ### 值相同时不写事件
 
 `permissionPresets` 已经给 worker pin 过默认 knobs，协调者也没切过时两边一致；此时再追加覆盖只会在 worker 的日志里留噪声。比较对象是 `overrideOf(worker)`（当前覆盖）而不是部署默认——这样在没有 `permissionPresets` 的组合里也会显式落一次值。
 
-### 派工回执带继承到的权限，完全权限点名
+### 派工回执带 worker 的实际权限，完全权限点名
 
 `spawn` 返回 `{ sessionId, permission }`，`dispatch` 把它放进 record，`spawn_worker` 的输出与渲染文案都带上：`danger-full-access` + `never` 时明说「完全访问、无审批——它能读写工作区外的文件并执行任意命令」，`auto` 时明说「无沙箱，每次工具调用先经自动审查」。
+
+`permission` 描述的是**回读到的实际值**（`sandboxPolicy.resolve({ session: worker })`、`approval.overrideOf(worker) ?? config.policy`、`permissionPresets.current(worker)`），不是继承目标。写失败或放弃继承时两者不是一回事：拿目标值当结果会**少报**（auto 身份没写进去却说「先经审查」，实际沙箱已放开、门没开）或**多报**（沙箱没写进去却说「完全访问」）。读不到的键**不写**：值为 `undefined` 的键过不了宿主工具结果的 lossless JSON 判定（`snapshotJsonValue` 返回 `undefined` → `ToolOutputError`），而报错发生在派工完成之后——会话已建、卡片已绑，用户看到「派工失败」，重试就多出一个挂卡的孤儿 worker。
 
 取舍：继承 `never` 本身可接受——`ask` 在后台 worker 上恒定落到 `unavailable`（宿主 subagent 也因此无条件钉 `never`），不继承 `never` 只会让 worker 的写操作全部失败，不构成安全增益。**不可接受的是静默**：worker 的输入来自项目文件、issue 与 PR 正文，prompt injection 在完全权限 + 无审批下直接等于任意代码执行；用户此刻在界面上只看到「建了一个 worker」。派工回执是用户唯一能在开工前否决的位置。
 
@@ -66,12 +68,17 @@
 
 ## 验证
 
-- `tests/permission-inherit.test.js`（13 例）：两个 knob 都继承、`auto` 时补写 `permission/preset`（断言事件形状只有 `preset`）、`auto` 但沙箱没落定时不写身份、读不到 preset 身份时整体放弃、值相同不写、只差审批时只写一条、没有 `permissionPresets` 时按部署默认显式落值、两个服务都缺时返回 `undefined`、只露出一半时记日志 + `skipped`、`resolve()` / `overrideOf()`/写事件各自失败时降级、读 worker 当前覆盖抛错时仍写入目标值。
-- `tests/worker-sessions.test.js`：`spawn` 把协调者的覆盖写到新会话上，并断言回执里的 `permission`；没有权限来源时不碰权限事件。
-- `tests/dispatch.test.js`：`dispatch` 把 `parent.session` 交到 `spawn`、record 带 `permission`；`spawn_worker` 的回执与渲染文案点名「完全访问、无审批」。
-- `npm run check`：801 例，792 pass，0 fail（9 skipped）。
-- 双向验证（每项都精确撤销对应代码后重跑）：
-  - 撤掉 `auto` 分支的 preset 写入 → `permission-inherit` 2 红（11 pass / 2 fail），还原后 13 pass / 0 fail；
-  - 撤掉「读不到 preset 身份就放弃」的 return → 对应用例 1 红（12 pass / 1 fail），还原后全绿；
-  - 撤掉 `spawn` 里的 `inheritPermission(...)` 调用 → `worker-sessions` 1 红（29 pass / 1 fail），还原后 30 pass / 0 fail；
-  - 撤掉 `dispatch` 里的 `permissionFrom: parent.session` → `dispatch` 2 红（68 pass / 2 fail），还原后 70 pass / 0 fail。
+- `tests/permission-inherit.test.js`（14 例）：两个 knob 都继承、`auto` 时补写 `permission/preset`（断言事件形状只有 `preset`）、`auto` 但沙箱没落定时不写身份且回执报实际值、读不到 preset 身份时整体放弃且回执不带 `undefined` 键、值相同不写、只差审批时只写一条、没有 `permissionPresets` 时按部署默认显式落值**且 `preset` 键缺席**、两个服务都缺时返回 `undefined`、只露出一半时记日志 + `skipped`、`resolve()` / `overrideOf()` / 写事件各自失败时降级、写失败与 auto 身份写失败时回执报实际值、读 worker 当前覆盖抛错时仍写入目标值。夹具用 `runtime` 折叠「事件落盘后有效值变化」，回读路径因此可测。
+- `tests/worker-sessions.test.js`：`spawn` 把协调者的覆盖写到新会话上，并断言回执里的 `permission`（回读值）；没有权限来源时不碰权限事件。
+- `tests/dispatch.test.js`：`dispatch` 把 `parent.session` 交到 `spawn`、record 带 `permission`；`spawn_worker` 的回执与渲染文案点名「完全访问、无审批」、无 `permissionPresets` 时回执不带 `preset` 键、写失败时回执报实际权限并给出「未必比协调者的权限更严」的说明。
+- 真实宿主探针：
+  - rc.2 `PermissionPresetService.prototype.derive()`：修复前 `{preset:'workspace-write', sandbox:'danger-full-access', approval:'ask'}` → `custom`；补写 `preset:'auto'` 后 → `auto`；普通继承 `danger-full-access` → `danger-full-access`。
+  - rc.2 `snapshotJsonValue()`：`permission` 含 `preset: undefined` 时整个工具结果 → `undefined`（lossless 判定失败）；去掉该键后正常快照。
+- `npm run check`：803 例，794 pass，0 fail（9 skipped）。
+- 双向验证（每项都精确撤销对应代码后重跑，工作树已还原）：
+  - 撤掉 `auto` 分支 → `permission-inherit` 11 pass / 3 fail，还原后 14 / 0；
+  - 撤掉「读不到 preset 身份就放弃」的 return → 13 pass / 1 fail，还原后全绿；
+  - 把 `preset` 无条件写回结果对象（B2 的原始形态）→ `permission-inherit` + `dispatch` 82 pass / 3 fail（含 `spawn_worker` 回执里 `preset` 键），还原后全绿；
+  - 把回读会话从 worker 换成协调者（回执报目标值）→ 79 pass / 6 fail，还原后全绿；
+  - 撤掉 `spawn` 里的 `inheritPermission(...)` 调用 → `worker-sessions` 29 pass / 1 fail，还原后 30 / 0；
+  - 撤掉 `dispatch` 里的 `permissionFrom: parent.session` → `dispatch` 68 pass / 3 fail，还原后 71 / 0。

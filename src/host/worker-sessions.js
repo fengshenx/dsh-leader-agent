@@ -221,7 +221,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
      * @param {object} [options.permissionFrom] - 权限来源会话（协调者）；沙箱模式与审批策略从它继承
      * @param {AbortSignal} options.signal - 取消信号
-     * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与继承到的权限
+     * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与 worker 实际生效的权限
      */
     async spawn({ cwd, name, workspaceId, signal, permissionFrom, deferPresentation = false }) {
       const agents = ctx.get('agents')

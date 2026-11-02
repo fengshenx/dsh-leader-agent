@@ -145,6 +145,73 @@ function appendOverride(session, type, data, logger) {
 }
 
 /**
+ * 回读会话的实际有效沙箱模式。
+ *
+ * @param {object} sandboxPolicy - `ctx.get('sandboxPolicy')`
+ * @param {object} session - 会话
+ * @param {(message: string) => void} logger - 日志输出
+ * @returns {string | undefined} 模式；读取失败时 undefined（回执里不写这个键）
+ */
+function readEffectiveSandbox(sandboxPolicy, session, logger) {
+  try {
+    return sandboxPolicy.resolve({ session }).mode
+  } catch (error) {
+    logger(`dsh-leader-kit: 回读 worker 的实际沙箱模式失败，派工回执不写该值：${error instanceof Error ? error.message : String(error)}`)
+    return undefined
+  }
+}
+
+/**
+ * 回读会话的实际有效审批策略。
+ *
+ * @param {object} approval - `ctx.get('approval')`
+ * @param {object} session - 会话
+ * @param {(message: string) => void} logger - 日志输出
+ * @returns {string | undefined} 策略；读取失败时 undefined
+ */
+function readEffectiveApproval(approval, session, logger) {
+  try {
+    return approval.overrideOf(session) ?? approval.config.policy ?? 'ask'
+  } catch (error) {
+    logger(`dsh-leader-kit: 回读 worker 的实际审批策略失败，派工回执不写该值：${error instanceof Error ? error.message : String(error)}`)
+    return undefined
+  }
+}
+
+/**
+ * 组装派工回执里的权限事实：**worker 实际生效的值**，不是继承的目标值。
+ *
+ * 写失败、读协调者失败、整体放弃继承时，目标值与 worker 真正跑的值不是一回事。
+ * 读不到的键不写：值为 `undefined` 的键过不了宿主工具结果的 lossless JSON 判定
+ * （`snapshotJsonValue` 返回 undefined → `ToolOutputError`），而报错发生在派工
+ * 完成之后，会留下一个挂卡的孤儿 worker。
+ *
+ * @param {object} options - 选项
+ * @param {object | undefined} options.sandboxPolicy - `ctx.get('sandboxPolicy')`
+ * @param {object | undefined} options.approval - `ctx.get('approval')`
+ * @param {object | undefined} options.permissionPresets - `ctx.get('permissionPresets')`
+ * @param {object} options.session - worker 会话
+ * @param {(message: string) => void} options.logger - 日志输出
+ * @returns {{ sandbox?: string, approval?: string, preset?: string }} 实际权限
+ */
+function describeEffective({ sandboxPolicy, approval, permissionPresets, session, logger }) {
+  const permission = {}
+  if (sandboxPolicy !== undefined) {
+    const mode = readEffectiveSandbox(sandboxPolicy, session, logger)
+    if (mode !== undefined) permission.sandbox = mode
+  }
+  if (approval !== undefined) {
+    const policy = readEffectiveApproval(approval, session, logger)
+    if (policy !== undefined) permission.approval = policy
+  }
+  if (permissionPresets !== undefined) {
+    const preset = currentPreset(permissionPresets, session)
+    if (preset !== undefined) permission.preset = preset
+  }
+  return permission
+}
+
+/**
  * 把协调者的有效权限写到 worker 会话上。
  *
  * 与 worker 当前值相同就不写：`permissionPresets` 已经 pin 过默认 knobs，覆盖值
@@ -156,7 +223,7 @@ function appendOverride(session, type, data, logger) {
  * @param {object} [options.toSession] - worker 会话（写入目标）
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {{ sandbox?: string, approval?: string, preset?: string, skipped: { knob: string, reason: string }[] } | undefined}
- *   继承后的权限事实；组合里没有权限旋钮时 undefined
+ *   worker 实际生效的权限与未继承的缺口；组合里没有权限旋钮时 undefined
  */
 export function inheritPermission({ ctx, fromSession, toSession, logger = () => {} }) {
   if (fromSession === undefined || toSession === undefined) return undefined
@@ -170,15 +237,18 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
 
   const permissionPresets = ctx.get('permissionPresets')
   const preset = readPreset(permissionPresets, fromSession, logger)
+  const actual = () => describeEffective({ sandboxPolicy, approval, permissionPresets, session: toSession, logger })
   // 读不到 preset 身份就排除不了 auto。auto 的 bundle 与任何配置 preset 都不重合，
   // 只写裸 knobs 会得到一个无沙箱、无审查门的 worker（比不继承更宽），
-  // 所以这里整体放弃继承，让 worker 停在更严的默认上。
+  // 所以这里整体放弃继承，让 worker 停在部署默认 preset 上（默认可能是任意一档）。
   if (permissionPresets !== undefined && preset === undefined) {
-    return { skipped: [{ knob: 'preset', reason: '读不到协调者的 preset 身份，无法排除 auto，已放弃继承' }] }
+    return {
+      ...actual(),
+      skipped: [{ knob: 'preset', reason: '读不到协调者的 preset 身份，无法排除 auto，已放弃继承' }],
+    }
   }
 
   const skipped = []
-  const permission = { preset, skipped }
   let sandboxSettled = false
   if (sandboxPolicy === undefined) {
     skipped.push({ knob: 'sandbox', reason: '当前组合未启用 sandboxPolicy 服务' })
@@ -186,15 +256,12 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
     const mode = readSandbox(sandboxPolicy, fromSession, logger)
     if (mode === undefined) {
       skipped.push({ knob: 'sandbox', reason: '读协调者的沙箱模式失败，worker 保持默认' })
+    } else if (currentOverride(sandboxPolicy, toSession) === mode) {
+      sandboxSettled = true
+    } else if (appendOverride(toSession, 'sandbox/mode', { mode, source: 'delegation' }, logger)) {
+      sandboxSettled = true
     } else {
-      permission.sandbox = mode
-      if (currentOverride(sandboxPolicy, toSession) === mode) {
-        sandboxSettled = true
-      } else if (appendOverride(toSession, 'sandbox/mode', { mode, source: 'delegation' }, logger)) {
-        sandboxSettled = true
-      } else {
-        skipped.push({ knob: 'sandbox', reason: '写 sandbox/mode 失败，worker 保持默认' })
-      }
+      skipped.push({ knob: 'sandbox', reason: '写 sandbox/mode 失败，worker 保持默认' })
     }
   }
 
@@ -204,18 +271,15 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
     const policy = readApproval(approval, fromSession, logger)
     if (policy === undefined) {
       skipped.push({ knob: 'approval', reason: '读协调者的审批策略失败，worker 保持默认' })
-    } else {
-      permission.approval = policy
-      if (currentOverride(approval, toSession) !== policy
-        && !appendOverride(toSession, 'approval/policy', { policy, source: 'delegation' }, logger)) {
-        skipped.push({ knob: 'approval', reason: '写 approval/policy 失败，worker 保持默认' })
-      }
+    } else if (currentOverride(approval, toSession) !== policy
+      && !appendOverride(toSession, 'approval/policy', { policy, source: 'delegation' }, logger)) {
+      skipped.push({ knob: 'approval', reason: '写 approval/policy 失败，worker 保持默认' })
     }
   }
 
   if (preset === 'auto') {
     if (!sandboxSettled) {
-      skipped.push({ knob: 'preset', reason: '沙箱模式没有落定，未写 auto 身份，worker 留在更严的默认上' })
+      skipped.push({ knob: 'preset', reason: '沙箱模式没有落定，未写 auto 身份，worker 停在部署默认 preset 上' })
     } else if (currentPreset(permissionPresets, toSession) !== 'auto') {
       // auto 的审查门认的是 preset 身份而不是 knobs：不补这条，worker 的
       // `derive()` 落到 custom，沙箱已经放开而审查门关着。
@@ -224,5 +288,5 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
       }
     }
   }
-  return permission
+  return { ...actual(), skipped }
 }
