@@ -235,3 +235,73 @@ test('只改协调者会话时不查名字，两个同名项目仍可各自改�
   assert.equal(rebound.name, 'beta')
   assert.equal(rebound.coordinatorSessionId, 'session-2')
 })
+
+/**
+ * 建三个项目并按 alpha、beta、gamma 的顺序返回。
+ * @param {object} store - 项目存储
+ * @returns {Promise<object[]>} 三条记录
+ */
+async function seedThree(store) {
+  return [
+    await store.insert(store.draft({ name: 'alpha', directory: '/work/a' })),
+    await store.insert(store.draft({ name: 'beta', directory: '/work/b' })),
+    await store.insert(store.draft({ name: 'gamma', directory: '/work/c' })),
+  ]
+}
+
+test('项目按落盘顺序列出，顺序由 move 决定而不是建项时间', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const [alpha, beta, gamma] = await seedThree(store)
+
+  await store.move(gamma.id, alpha.id)
+  const names = (await store.list()).map((project) => project.name)
+  assert.deepEqual(names, ['gamma', 'alpha', 'beta'])
+
+  // 重开一个 store 读盘：顺序必须真的落盘，不是内存里的数组。
+  const stored = (await createProjectStore({ home }).list()).map((project) => project.name)
+  assert.deepEqual(stored, ['gamma', 'alpha', 'beta'])
+  assert.deepEqual((await store.list()).map((project) => project.id), [gamma.id, alpha.id, beta.id])
+})
+
+test('move 传空串把项目移到末尾', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const [alpha, beta, gamma] = await seedThree(store)
+
+  const result = await store.move(alpha.id, '')
+  assert.equal(result.moved, true)
+  assert.deepEqual(result.projectIds, [beta.id, gamma.id, alpha.id])
+  assert.deepEqual((await store.list()).map((project) => project.name), ['beta', 'gamma', 'alpha'])
+})
+
+test('落点与当前位置相同不写盘，按未移动返回', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const [alpha, beta, gamma] = await seedThree(store)
+
+  // beta 本来就在 gamma 之前。
+  const noop = await store.move(beta.id, gamma.id)
+  assert.equal(noop.moved, false)
+  // 移到自己之前同样等于没动。
+  const self = await store.move(beta.id, beta.id)
+  assert.equal(self.moved, false)
+  assert.deepEqual((await store.list()).map((project) => project.name), ['alpha', 'beta', 'gamma'])
+  assert.deepEqual(noop.projectIds, [alpha.id, beta.id, gamma.id])
+})
+
+test('move 的锚点已不存在时落到末尾', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const [alpha, beta, gamma] = await seedThree(store)
+
+  const result = await store.move(alpha.id, 'missing')
+  assert.equal(result.moved, true)
+  assert.deepEqual(result.projectIds, [beta.id, gamma.id, alpha.id])
+})
+
+test('move 不存在的项目会报错', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  await assert.rejects(() => store.move('missing', ''), /项目不存在/)
+})

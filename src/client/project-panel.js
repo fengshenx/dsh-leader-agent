@@ -44,6 +44,7 @@ import {
   describeProjectRemoval,
   isArchiveActiveRefusal,
   isProjectOpenable,
+  moveProjectBefore,
   openCoordinatorSession,
   quietWorkspaceOf,
   validateProjectName,
@@ -385,6 +386,28 @@ export function ProjectPanel(props) {
     }
   }, [busy, callRemote, refresh])
 
+  /**
+   * 拖拽落地后调整项目顺序。
+   *
+   * 先按落点本地重排再发请求：远程往返几十毫秒，行停在原处再跳过去会看成「没
+   * 拖动」。失败时用宿主快照兜回来——那才是真源，界面不该停在一个没存下的顺序上。
+   *
+   * @param {string} projectId - 被拖动的项目 id
+   * @param {string} beforeId - 落点项目 id；空串表示末尾
+   * @returns {Promise<void>} 完成
+   */
+  const reorderProject = useCallback(async (projectId, beforeId) => {
+    setProjects((current) => moveProjectBefore(current, projectId, beforeId))
+    try {
+      await callRemote('reorder', [projectId, beforeId])
+    } catch (error) {
+      showToast(`调整项目顺序失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+    // 成功时把宿主算出的顺序（协调者状态等派生字段也一并刷新）拉回来；失败时
+    // 用同一份快照把本地乐观重排撤销掉。
+    await refresh()
+  }, [callRemote, refresh])
+
   const replaceCoordinator = useCallback(async (project) => {
     if (busy) return
     setBusy(true)
@@ -502,6 +525,7 @@ export function ProjectPanel(props) {
     onRename: (project, name) => { void renameProject(project, name) },
     onReplace: (project) => { void replaceCoordinator(project) },
     onRemove: requestDelete,
+    onReorder: (projectId, beforeId) => { void reorderProject(projectId, beforeId) },
     sessionsByProject,
     sessionRows,
     expandedProjects,

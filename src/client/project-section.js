@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropAnchor, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -77,7 +77,13 @@ const STYLE_TEXT = `
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
+/* 项目行之间留 2px 间距，照宿主工作区树的「groupSection 直接子元素相邻」规则。
+   行高 34px、背景铺满整行，行间不留缝时上下两行的 hover 底色会贴着拼成一整块。 */
+.dsh-leader-kit-project-list > * + * {
+  margin-top: 2px;
+}
 .dsh-leader-kit-project-row {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -101,6 +107,29 @@ const STYLE_TEXT = `
 }
 .dsh-leader-kit-project-row[data-dead='true'] {
   color: var(--dsw-alias-label-secondary);
+}
+/* 拖拽落点指示线：落在行的上半插到它之前、下半插到之后，线就画在对应的行间
+   缝隙里（行距 2px，线的 top/bottom 也取 -2px）。 */
+.dsh-leader-kit-project-row[data-drop='before']::before,
+.dsh-leader-kit-project-row[data-drop='after']::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--dsw-alias-state-business-primary);
+  pointer-events: none;
+}
+.dsh-leader-kit-project-row[data-drop='before']::before {
+  top: -2px;
+}
+.dsh-leader-kit-project-row[data-drop='after']::after {
+  bottom: -2px;
+}
+/* 拖起来的行压暗：落点线是主要反馈，源行还要看得出正在动。 */
+.dsh-leader-kit-project-row[data-dragging='true'] {
+  opacity: 0.5;
 }
 .dsh-leader-kit-project-title {
   flex: 1 1 auto;
@@ -277,6 +306,10 @@ const STYLE_TEXT = `
   flex-direction: column;
   padding: 2px 0 4px;
 }
+/* 会话行同样留 2px：与项目行一样，hover 底色贴着会连成一片。 */
+.dsh-leader-kit-project-sessions > * + * {
+  margin-top: 2px;
+}
 /* 会话行逐项照官方工作区会话行（宿主 Rows.module.css 的 sessionRow 与
    sessionRow 下的 title）：行高 32、行内不设 gap（标题自带左右外边距）、文字用
    一级标签色。左右内边距照官方两代写法：0.2.2 起行用透明边框吃掉 paint-inset、
@@ -433,9 +466,49 @@ export function ProjectSection(props) {
     archivedSessionIds,
     listExpanded, onToggleList,
     currentSessionId,
+    onReorder,
   } = props
 
   useEffect(() => { ensureStyles() }, [])
+
+  /**
+   * 被拖起的项目 id；null 表示没有拖拽进行中。
+   *
+   * 落点判定读 ref 而不是 state：drop 处理器的闭包来自某次渲染的快照，拖拽期间
+   * 的 state 更新不保证在它之前提交；ref 在事件发生时即时可读。state 只负责视觉
+   * （源行压暗、落点线）。
+   */
+  const [draggingId, setDraggingId] = useState(null)
+  const dragIdRef = useRef(null)
+  /** 当前落点 `{ id, half }`；null 表示光标不在任何行上。 */
+  const [dropTarget, setDropTarget] = useState(null)
+
+  const beginDrag = (projectId) => {
+    dragIdRef.current = projectId
+    setDraggingId(projectId)
+    setDropTarget(null)
+  }
+
+  const finishDrag = () => {
+    dragIdRef.current = null
+    setDraggingId(null)
+    setDropTarget(null)
+  }
+
+  const dropOn = (overId, half) => {
+    const activeId = dragIdRef.current
+    finishDrag()
+    if (activeId === null || typeof onReorder !== 'function') return
+    const anchorId = projectDropAnchor(
+      projects.map((project) => project.id),
+      activeId,
+      overId,
+      half,
+    )
+    // 拖回原处不发远程调用：落点与当前位置相同，写盘只是白跑一趟。
+    if (anchorId === null) return
+    onReorder(activeId, anchorId)
+  }
 
   const layout = projectSectionLayout({
     remoteStatus,
@@ -510,7 +583,7 @@ export function ProjectSection(props) {
     layout.showList
       ? createElement(
           'div',
-          null,
+          { className: 'dsh-leader-kit-project-list' },
           projects.map((project) => createElement(ProjectRow, {
             key: project.id,
             project,
@@ -527,6 +600,14 @@ export function ProjectSection(props) {
             onOpenSession,
             onArchiveSession,
             archivedSessionIds,
+            reorderable: typeof onReorder === 'function',
+            dragActive: draggingId !== null,
+            dragging: draggingId === project.id,
+            dropHalf: dropTarget !== null && dropTarget.id === project.id ? dropTarget.half : undefined,
+            onDragBegin: beginDrag,
+            onDragHover: (overId, half) => setDropTarget({ id: overId, half }),
+            onDropOn: dropOn,
+            onDragFinish: finishDrag,
           })),
         )
       : null,
@@ -569,6 +650,16 @@ export function ProjectSection(props) {
 }
 
 /**
+ * 拖拽落点在目标行的上半还是下半。
+ * @param {object} event - React 拖拽事件
+ * @returns {'before' | 'after'} 落点
+ */
+function dropHalfOf(event) {
+  const rect = event.currentTarget.getBoundingClientRect()
+  return event.clientY < rect.top + rect.height / 2 ? 'before' : 'after'
+}
+
+/**
  * 一个项目行：行首目录图标、项目名，悬停整行时行首换成展开箭头、右端露出操作按钮。
  *
  * 点行打开该项目的协调者会话；点行首槽位折叠/展开该项目下的会话列表。协调者不在
@@ -582,6 +673,7 @@ function ProjectRow(props) {
     project, busy, onOpen, onRename, onReplace, onRemove,
     sessions, sessionRows, expanded, onToggleExpand, onOpenSession, onArchiveSession,
     archivedSessionIds, currentSessionId,
+    reorderable, dragActive, dragging, dropHalf, onDragBegin, onDragHover, onDropOn, onDragFinish,
   } = props
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -643,6 +735,30 @@ function ProjectRow(props) {
       'div',
       {
         className: 'dsh-leader-kit-project-row',
+        // 重命名时不能拖：拖拽会抢走输入框的文本选择。
+        draggable: reorderable && !renaming,
+        'data-dragging': dragging ? 'true' : undefined,
+        'data-drop': dropHalf,
+        onDragStart: (event) => {
+          event.dataTransfer.effectAllowed = 'move'
+          // 不写数据时 Firefox 不开始拖；数据本身不参与判定，落点走行内半区。
+          event.dataTransfer.setData('text/plain', project.id)
+          onDragBegin(project.id)
+        },
+        onDragOver: (event) => {
+          if (!dragActive) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'move'
+          const half = dropHalfOf(event)
+          // 同一个半区里 dragover 每秒来几十次，值没变就别触发重渲染。
+          if (half !== dropHalf) onDragHover(project.id, half)
+        },
+        onDrop: (event) => {
+          if (!dragActive) return
+          event.preventDefault()
+          onDropOn(project.id, dropHalfOf(event))
+        },
+        onDragEnd: onDragFinish,
         'data-dead': openable ? undefined : 'true',
         'data-selected': selected ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,

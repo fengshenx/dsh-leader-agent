@@ -12,8 +12,10 @@ import {
   describeProjectRemoval,
   isProjectOpenable,
   isProjectCurrent,
+  moveProjectBefore,
   openCoordinatorSession,
   planProjectRename,
+  projectDropAnchor,
   projectSectionLayout,
   quietWorkspaceOf,
   selectProjectSessionRows,
@@ -388,3 +390,56 @@ function menuHandlers() {
     onRemove: noop,
   }
 }
+
+test('拖到目标行上半插到它之前，下半插到它之后', () => {
+  const ids = ['a', 'b', 'c']
+  // 把 c 拖到 a 之前。
+  assert.equal(projectDropAnchor(ids, 'c', 'a', 'before'), 'a')
+  // 把 a 拖到 b 之后：锚点是 b 的下一项 c。
+  assert.equal(projectDropAnchor(ids, 'a', 'b', 'after'), 'c')
+  // 落到最后一行下半就是末尾。
+  assert.equal(projectDropAnchor(ids, 'a', 'c', 'after'), '')
+})
+
+test('顺序不会变的落点返回 null，不发远程调用', () => {
+  const ids = ['a', 'b', 'c']
+  // a 本来就在 b 之前。
+  assert.equal(projectDropAnchor(ids, 'a', 'b', 'before'), null)
+  // c 本来就在 b 之后。
+  assert.equal(projectDropAnchor(ids, 'c', 'b', 'after'), null)
+  // 落在自己身上：上半插到自己之前、下半插到自己之后，都没动。
+  assert.equal(projectDropAnchor(ids, 'b', 'b', 'before'), null)
+  assert.equal(projectDropAnchor(ids, 'b', 'b', 'after'), null)
+  // 最后一行落在自己下半同样是末尾原地。
+  assert.equal(projectDropAnchor(ids, 'c', 'c', 'after'), null)
+})
+
+test('落点认不出来时不动顺序', () => {
+  const ids = ['a', 'b']
+  assert.equal(projectDropAnchor(ids, 'missing', 'a', 'before'), null)
+  assert.equal(projectDropAnchor(ids, 'a', 'missing', 'before'), null)
+  assert.equal(projectDropAnchor(undefined, 'a', 'b', 'before'), null)
+})
+
+test('本地乐观重排与服务端 move 同语义', () => {
+  const projects = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  assert.deepEqual(
+    moveProjectBefore(projects, 'c', 'a').map((project) => project.id),
+    ['c', 'a', 'b'],
+  )
+  assert.deepEqual(
+    moveProjectBefore(projects, 'a', '').map((project) => project.id),
+    ['b', 'c', 'a'],
+  )
+  // 锚点不存在时落到末尾；被拖项不在列表里时原样返回。
+  assert.deepEqual(
+    moveProjectBefore(projects, 'b', 'missing').map((project) => project.id),
+    ['a', 'c', 'b'],
+  )
+  assert.deepEqual(
+    moveProjectBefore(projects, 'missing', 'a').map((project) => project.id),
+    ['a', 'b', 'c'],
+  )
+  // 不改动入参。
+  assert.deepEqual(projects.map((project) => project.id), ['a', 'b', 'c'])
+})

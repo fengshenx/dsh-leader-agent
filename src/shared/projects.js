@@ -33,6 +33,7 @@ export const PROJECT_REMOTE_METHODS = Object.freeze({
   create: Object.freeze(['directory', 'name']),
   deleteProject: Object.freeze(['id']),
   rename: Object.freeze(['id', 'name']),
+  reorder: Object.freeze(['id', 'beforeId']),
   replaceCoordinator: Object.freeze(['id']),
   attachCoordinator: Object.freeze(['id']),
   sessionsByProject: Object.freeze([]),

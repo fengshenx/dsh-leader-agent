@@ -384,3 +384,50 @@ export function projectSectionLayout({ remoteStatus, listExpanded, projectCount 
     showEmpty: list && projectCount === 0,
   }
 }
+
+/**
+ * 拖拽落点的锚点：把拖起来的项目插到哪一项之前。
+ *
+ * 判据与宿主工作区的拖拽一致：落在目标行上半插到它之前，下半插到它之后（也就是
+ * 下一项之前），最后一行下半即末尾。空串代表末尾——远程协议里的 `beforeId` 是
+ * 字符串，空串就是「没有下一项」。
+ *
+ * 顺序不会变的落点返回 null：拖回原处是常见动作，客户端不该为它发远程调用。
+ *
+ * @param {string[]} projectIds - 当前显示顺序
+ * @param {string} activeId - 被拖起的项目 id
+ * @param {string} overId - 悬停其上的项目 id
+ * @param {'before' | 'after'} half - 落点在目标行的哪一半
+ * @returns {string | null} 锚点项目 id（空串表示末尾）；null 表示顺序不变
+ */
+export function projectDropAnchor(projectIds, activeId, overId, half) {
+  const ids = Array.isArray(projectIds) ? projectIds : []
+  const from = ids.indexOf(activeId)
+  const over = ids.indexOf(overId)
+  // 落在自己身上一定不变：上半会得到「插到自己之前」，下半是「插到自己之后」。
+  if (from === -1 || over === -1 || over === from) return null
+  const anchor = half === 'after' ? (ids[over + 1] ?? '') : overId
+  // 锚点是自己（插到自身之前）或紧邻的下一项（本来就排在那里）都等于没动。
+  return anchor === activeId || ids[from + 1] === anchor ? null : anchor
+}
+
+/**
+ * 按锚点重排项目列表，供拖拽落地后的本地乐观更新。
+ *
+ * 与服务端的 `move` 同语义（DOM insertBefore + 空串表示末尾），锚点找不到时落到
+ * 末尾。
+ *
+ * @param {object[]} projects - 项目列表
+ * @param {string} activeId - 被拖动的项目 id
+ * @param {string} anchorId - 锚点项目 id；空串表示末尾
+ * @returns {object[]} 重排后的新列表
+ */
+export function moveProjectBefore(projects, activeId, anchorId) {
+  const list = Array.isArray(projects) ? [...projects] : []
+  const from = list.findIndex((item) => item?.id === activeId)
+  if (from === -1) return list
+  const [record] = list.splice(from, 1)
+  const to = anchorId === '' ? -1 : list.findIndex((item) => item?.id === anchorId)
+  list.splice(to === -1 ? list.length : to, 0, record)
+  return list
+}
