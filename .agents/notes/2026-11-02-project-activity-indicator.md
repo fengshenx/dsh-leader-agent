@@ -20,9 +20,9 @@
 - 当前协调者不在会话行里（它的入口是项目行本身），它单独在跑不点亮目录行；退役协调者留在会话行里，跟着行走；
 - 换协调者留下的退役 id 不需要再单独排除——它们本来就不在渲染出来的行里时就不会被读到。
 
-**展开态不需要兜底**：运行中的会话会把水位抬到自己所在位置（`session-watermark.js` 的 `requiredWatermark`，前 50 条内），所以展开后凡是会转 spinner 的会话行都可见，不会出现「目录行不亮、会话行又被折起来」的失明窗口。
+**展开态不额外兜底，边界是 `requiredWatermark` 的前 50 条**：运行中的会话会把水位抬到自己所在位置（`session-watermark.js` 的 `requiredWatermark`），但只在前 50 条内生效。这个范围内展开后可见，不会出现「收起时目录行有加载器、展开之后连会话行也看不见」的失明窗口；第 51 条及以后在跑的会话不抬水位，展开后仍可能被折起，要再点「展开其余」——那是会话列表本身超出一页时的既有折叠口径（与宿主一致），不为它扩大边界。
 
-**渲染上是替换行首槽位里的目录图标，不是加第二个指示**。槽位尺寸不变（16×20），spinner 取 12px，复用同一份 `dsh-leader-kit-spin` 关键帧。悬停规则挂在槽位容器上，箭头照常盖住 spinner——运行中也要能展开查看是哪条会话在跑。spinner 是装饰（`aria-hidden`），状态语义不塞进按钮的无障碍名：项目行的入口含义仍是「打开协调者」。
+**渲染上是替换行首槽位里的目录图标，不是加第二个指示**。槽位尺寸不变（16×20），spinner 取 12px，复用同一份 `dsh-leader-kit-spin` 关键帧；边框用 `currentColor`，目录图标与它会解析到同一个颜色（选中态的激活色挂在 `lead-folder` 的 `color` 上）。悬停规则挂在槽位容器上，箭头照常盖住 spinner——运行中也要能展开查看是哪条会话在跑。spinner 是装饰（`aria-hidden`），状态语义不塞进按钮的无障碍名：项目行的入口含义仍是「打开协调者」。
 
 **第二项需求（原生目录选择器初始灰态）在 bundle 侧修不了，只记证据**。面板由宿主 `osascript` 进程弹出，激活时机写在那支 JXA 脚本里；`0.2.1-rc.2`～`rc.5` 都在 `runModal` 之前同步激活，modal 循环未启动时激活落空，于是面板灰着、必须先点浏览器窗口。宿主提交 `7333a38c7a`（Fixes #7320）改成把激活排进 modal 事件循环，只进了 `0.2.2-alpha.2` 及之后。本仓能做的只有记录（`docs/capability-gaps.md` 第 41 条）并提示升级宿主；自己重造一条目录选择路径不可行——浏览器拿不到绝对路径。
 
@@ -49,4 +49,5 @@
   | 展开 | `true` | 无 | — | 在 |
 
   探针改动已还原；重建后 `lib/client.js` 里能 grep 到 `showsProjectActivity` 与 `expanded === true`，不含探针写法。
+- spinner 边框用 `currentColor`（不写死 tertiary）的读数：无头 Chrome 跑一份最小 DOM（激活色规则照 `feature/project-tree-session-selected` 的 `.row[data-active='true'] .lead-folder { color: business-primary }`），`getComputedStyle` 的 `border-left-color` 分别是——激活态修复后 `rgb(65, 118, 230)`、修复前 `rgb(120, 130, 150)`，同一行目录图标（`stroke: currentColor`）也是 `rgb(65, 118, 230)`；非激活态两者都是 `rgb(120, 130, 150)`。即写死色值只在选中态丢配色，非选中态视觉不变。
 - 未做「worker 真在跑」的端到端：那需要真实模型或本地 mock provider，本轮以「判定用单测、渲染用上面的 DOM 读数」两段拼出结论；合并后第一次真实派工时再看一眼收起态即可。

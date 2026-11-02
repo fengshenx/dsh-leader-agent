@@ -162,14 +162,16 @@ const STYLE_TEXT = `
 }
 /* 收起且有会话在跑：目录图标换成加载器（尺寸与位置仍占行首槽位）。展开后
    会话行各自带 spinner，这里回到目录图标，不重复画同一个状态。悬停规则对
-   槽位容器生效，箭头照常盖住它。 */
+   槽位容器生效，箭头照常盖住它。边框用 currentColor 而不是写死色值：图标
+   本身是 stroke: currentColor，选中态的激活色挂在 lead-folder 上，写死就
+   会把那层配色丢掉。 */
 .dsh-leader-kit-project-spinner {
   display: block;
   flex: none;
   width: 12px;
   height: 12px;
   box-sizing: border-box;
-  border: 1.5px solid var(--dsw-alias-label-tertiary);
+  border: 1.5px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: dsh-leader-kit-spin 0.8s linear infinite;
