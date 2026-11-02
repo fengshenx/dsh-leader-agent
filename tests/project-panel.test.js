@@ -190,9 +190,18 @@ test('打开协调者会先挂工作区再打开会话', async () => {
     },
     openSession: (sessionId) => opened.push(sessionId),
   })
-  assert.deepEqual(result, { ok: true, workspaceId: 'ws-1' })
+  assert.deepEqual(result, { ok: true, workspaceId: 'ws-1', recreated: false, reconnected: 0 })
   assert.deepEqual(calls, [['attachCoordinator', ['p-1']]])
   assert.deepEqual(opened, ['session-1'])
+})
+
+test('工作区被删后重建：结果里带重建标记与归位数量', async () => {
+  const result = await openCoordinatorSession({
+    project: { id: 'p-1', coordinatorSessionId: 'session-1' },
+    callRemote: async () => ({ attached: true, workspaceId: 'ws-2', recreated: true, reconnected: 3 }),
+    openSession: () => {},
+  })
+  assert.deepEqual(result, { ok: true, workspaceId: 'ws-2', recreated: true, reconnected: 3 })
 })
 
 test('挂不上工作区时不打开会话并报出原因', async () => {

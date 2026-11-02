@@ -32,6 +32,7 @@ async function makeChain({ withRegistry = true, deletable = true } = {}) {
         id: `ws-${workspaces.length + 1}`,
         path,
         title,
+        createdAt: new Date().toISOString(),
         sessionIds: [],
         attachSession: async () => {},
       }

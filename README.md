@@ -25,7 +25,7 @@ DeepSeek Harness（dsh）的协调者/执行者编排 bundle：一个会话当�
 - **AGENTS.md 渐进式披露**：根文件只放每个任务都适用的规则与「按任务查阅」入口，细节进归属文档，避免一次上下文塞进整仓规则。
 - **文档防腐化**：能机械判的交给 `npm run check`，行为变更在同 PR 同步文档，临时证据不入库。
 
-本仓已按这四条落地：`scripts/worktree-spawn.mjs` / `scripts/worktree-prune.mjs`、`scripts/dev.mjs`、`.agents/notes/`、`scripts/verify-agent-note-format.mjs`、`docs/` 归属表。机制说明见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。
+本仓已按这四条落地，机制与各自的落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。
 
 如果把本 bundle 用到自己的项目里，也建议先把这四条搬进那个项目——编排协议能不能长期跑住，取决于项目自己的文档与隔离机制，而不是取决于协调者提示词写得多细。
 
@@ -57,7 +57,7 @@ profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类
 ## 基本使用
 
 1. **加载协议层**：`skill` 工具会列出 `leader-mode`。协调者会话先读 `playbooks/program.md`，再按阶段读对应 playbook。
-2. **建项目**：左栏「项目」区块点「加项目」选一个目录，项目当场建好并绑定一个协调者会话；点项目行打开协调者会话。删除项目会连插件注册的工作区一起移除，文件夹与会话记录保留。
+2. **建项目**：左栏「项目」区块点「加项目」选一个目录，项目当场建好并绑定一个协调者会话；点项目行打开协调者会话（注册的工作区被删过的话会顺手重建并归位会话）。删除项目会连插件注册的工作区一起移除，文件夹与会话记录保留。
 3. **初始化项目工程约定**：让模型加载 `init-project` skill，用宿主的文件能力把正文并入目标项目 `AGENTS.md` 的受管区块。dsh 把 `AGENTS.md` 读成系统提示段落，写入即生效；重复执行只替换受管区块。
 4. **派工**：调用 `spawn_worker`，`name`（角色-任务短名）与 `initialMessage` 必填。工具立即返回会话 id；worker 那一轮结束时协调者自动收到回报。续派用 `message_worker`（`sessionId` + `message`，可顺手 `rename`）。
 5. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡。卡片按项目归属、编号全局递增；跨项目改卡会被拒绝。
@@ -86,9 +86,9 @@ npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任
 cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
 npm run check                     # Agent Note 门禁 + 语法检查 + 全部单测
-npm run build:client              # 重建浏览器侧产物 lib/client.js
-npm run worktree:prune            # 清已合并 worktree（默认 dry-run，--apply 才删）
 ```
+
+其余命令（`build:client` / `worktree:prune` 等）见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
 `npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。改客户端代码要重建再刷新，宿主侧代码重启实例即可。
 

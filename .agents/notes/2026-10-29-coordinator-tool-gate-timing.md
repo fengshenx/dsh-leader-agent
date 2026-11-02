@@ -5,7 +5,7 @@
 
 ## 背景
 
-新建项目的协调者会话拿不到 `spawn_worker` / `message_worker` / `list_cards` / `worker_done`——工具面被裁成了「普通会话」那一档，只剩卡片编辑与项目注册表那几件。协调者因此没法派工，项目建出来是空的。
+新建项目的协调者会话拿不到 `spawn_worker` / `message_worker` / `list_cards` / `worker_done`（`worker_done` 当日稍后删除，见 [worker 回报由机制侧结算](2026-10-29-worker-report-by-session-events.md)）——工具面被裁成了「普通会话」那一档，只剩卡片编辑与项目注册表那几件。协调者因此没法派工，项目建出来是空的。
 
 根因是两件事的先后顺序：工具面在 `agent/created` 里按 `isCoordinatorSession()` 当场裁，而那个事件在**建会话内部**就发出来了；原来 `create()` 先建会话，之后才 `store.insert()` 与 `coordinatorIndex.set()`。于是协调者出生那一刻注册表里还没有它，被判成普通会话。索引在进程启动时就已重建完成（当时还是空的），所以也走不到「未就绪就一律放行」那条宽松分支。
 
