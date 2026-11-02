@@ -4,9 +4,12 @@
  * 默认只打印结论（dry-run），`--apply` 才真的删。判据见 `classifyWorktree`：
  * 有未提交改动、当前所在的 worktree、分支没进 main 且 PR 未合并——任一命中就拒绝。
  *
- * 删除范围：`git worktree remove --force`（连带清掉 `.dev/home` 数据与 node_modules
- * 链接；链接指向主 checkout，删的只是链接本身）；已合并的分支一并删本地引用。
- * 远端分支默认保留，`--delete-remote` 才删（远端名由 `--remote` 指定，默认 origin）。
+ * 删除顺序：先拆 worktree 里的 node_modules 链接（只拆链接本身，Windows junction
+ * 用 rmdir、POSIX 符号链接用 unlink），再 `git worktree remove --force` 清目录。
+ * 不先拆的话，git 在 Windows 上会跟随 junction 递归删掉主 checkout 的依赖（实测）；
+ * `.dev` 里 dev 实例的逐条链接同理，所以 `.dev` 整棵目录先删掉（这份数据本来就
+ * 随 worktree 丢弃）。已合并的分支一并删本地引用；远端分支默认保留，
+ * `--delete-remote` 才删（远端名由 `--remote` 指定，默认 origin）。
  *
  * 用法：
  *   node scripts/worktree-prune.mjs                     # 扫描全部，只打印
@@ -19,7 +22,9 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { classifyWorktree, assertTaskName, worktreeDirFor } from './worktree-common.mjs'
+import {
+  assertTaskName, classifyWorktree, detachNodeModulesLink, lstatIfExists, teardownWorktree, worktreeDirFor,
+} from './worktree-common.mjs'
 
 /**
  * 跑一条命令，返回结果而不抛错。
@@ -90,6 +95,27 @@ const root = dirname(commonDir.stdout.trim())
 const here = call('git', ['rev-parse', '--show-toplevel'], process.cwd()).stdout.trim()
 const worktreesRoot = join(root, '.worktrees')
 
+/**
+ * 先拆 node_modules 链接，再执行删除动作。
+ *
+ * 不能直接 `git worktree remove --force`：Windows 上 git 会跟穿 junction，把主
+ * checkout 的 node_modules 清空（实测）。
+ *
+ * @template T
+ * @param {string} dir - worktree 目录
+ * @param {() => T} remove - 删除动作
+ * @returns {T} remove 的返回值
+ */
+function teardown(dir, remove) {
+  return teardownWorktree({
+    dir,
+    platform: process.platform,
+    stat: lstatIfExists,
+    detach: detachNodeModulesLink,
+    remove,
+  })
+}
+
 if (!existsSync(worktreesRoot)) {
   console.log('没有 .worktrees 目录，无需清理')
   process.exit(0)
@@ -146,14 +172,27 @@ if (removable.length === 0) {
 // 在将要删除的 worktree 里执行时，删到自己那一步 cwd 就失效了，所以从主 checkout 跑
 process.chdir(root)
 for (const row of removable) {
-  const removed = call('git', ['worktree', 'remove', row.dir, '--force'], root)
+  let removed
+  try {
+    removed = teardown(row.dir, () => {
+      // dev 实例把 profile 的 node_modules 逐条链到源 profile；git 在 Windows 上
+      // 同样会跟穿这些 junction。.dev 是随 worktree 丢弃的数据，先删掉它
+      // （Node 的 rmSync 不跟穿链接，实测），别让 git 去递归。
+      rmSync(join(row.dir, '.dev'), { recursive: true, force: true })
+      return call('git', ['worktree', 'remove', row.dir, '--force'], root)
+    })
+  } catch (error) {
+    console.error(`[失败] ${row.name}: 删除前拆链接或清 .dev 失败，已跳过 git worktree remove（${error.message}）`)
+    continue
+  }
   if (removed.status !== 0) {
     console.error(`[失败] ${row.name}: ${removed.stderr.trim()}`)
     continue
   }
   let remoteNote = ''
-  // worktree remove 偶尔留下空壳目录（`--force` 之外的残留）
-  if (existsSync(row.dir)) rmSync(row.dir, { recursive: true, force: true })
+  // worktree remove 偶尔留下空壳目录（`--force` 之外的残留）。兜底也走同一套
+  // 拆除流程：真出现链接时先拆再删，rmSync 不会跟穿到主 checkout。
+  if (existsSync(row.dir)) teardown(row.dir, () => rmSync(row.dir, { recursive: true, force: true }))
   if (row.branch !== '') {
     call('git', ['branch', '-D', row.branch], root)
     if (deleteRemote) {

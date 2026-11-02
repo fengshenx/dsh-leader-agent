@@ -15,10 +15,12 @@
  *   node scripts/worktree-spawn.mjs <任务名> --remote upstream
  */
 
-import { existsSync, lstatSync, mkdirSync, symlinkSync } from 'node:fs'
+import { existsSync, mkdirSync, symlinkSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
-import { assertTaskName, branchFor, worktreeDirFor } from './worktree-common.mjs'
+import {
+  assertTaskName, branchFor, detachNodeModulesLink, lstatIfExists, teardownWorktree, worktreeDirFor,
+} from './worktree-common.mjs'
 
 /**
  * 跑一条 git 命令，返回结果而不抛错。
@@ -81,6 +83,25 @@ const root = dirname(commonDir.stdout.trim())
 const branch = branchFor(task)
 const target = worktreeDirFor(root, task)
 
+/**
+ * 拆掉 worktree：先断 node_modules 链接，再让 git 删目录。
+ *
+ * 回滚也必须走这条路径：直接 `git worktree remove --force` 会跟穿 junction 删掉
+ * 主 checkout 的依赖（Windows 实测）。
+ *
+ * @param {string} dir - worktree 目录
+ * @returns {{ status: number | null, stdout: string, stderr: string }} git 结果
+ */
+function removeWorktree(dir) {
+  return teardownWorktree({
+    dir,
+    platform: process.platform,
+    stat: lstatIfExists,
+    detach: detachNodeModulesLink,
+    remove: () => git(['worktree', 'remove', dir, '--force'], root),
+  })
+}
+
 if (existsSync(target)) {
   console.error(`错误: 目标目录已存在: ${target}`)
   process.exit(1)
@@ -116,12 +137,29 @@ try {
   created = true
   // 依赖共享：本仓依赖少，链接比重新安装便宜，也不会因缺 esbuild 无法构建客户端
   const link = join(target, 'node_modules')
-  if (!lstatSync(link, { throwIfNoEntry: false })) symlinkSync(mainNodeModules, link, 'junction')
+  if (lstatIfExists(link) === null) {
+    try {
+      symlinkSync(mainNodeModules, link, 'junction')
+    } catch (error) {
+      throw new Error(`创建 node_modules 链接失败（${link} → ${mainNodeModules}）: ${error.message}`)
+    }
+  }
 } catch (error) {
   console.error(`[rollback] ${error.message}`)
   if (created) {
-    git(['worktree', 'remove', target, '--force'], root)
-    git(['branch', '-D', branch], root)
+    let removed = false
+    try {
+      const result = removeWorktree(target)
+      removed = result.status === 0
+      if (!removed) console.error(`[rollback] git worktree remove 失败: ${result.stderr.trim()}`)
+    } catch (detachError) {
+      console.error(`[rollback] 拆 node_modules 链接失败，已跳过 git worktree remove 以免删到主 checkout 依赖: ${detachError.message}`)
+    }
+    if (removed) {
+      git(['branch', '-D', branch], root)
+    } else {
+      console.error(`[rollback] worktree 未删除，分支 ${branch} 保留`)
+    }
   }
   process.exit(1)
 }
