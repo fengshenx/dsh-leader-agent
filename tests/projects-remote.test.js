@@ -199,8 +199,12 @@ test('项目的槽位显示名来自 SLOTS.md 的 label，未声明的槽位不�
   const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-slots-remote-'))
   try {
     await writeFile(join(directory, 'SLOTS.md'), [
+      '---',
+      'slots:',
+      '  dev:',
+      '    label: 开发',
+      '---',
       '## dev',
-      'label: 开发',
       '你是实现者。',
       '## audit',
       '你是审计者。',

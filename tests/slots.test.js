@@ -100,14 +100,18 @@ test('空正文的槽位是合法条目，值为空串', () => {
   assert.equal(slots.get('review').body, '正文')
 })
 
-test('label 声明槽位显示名，并从正文中剥离', () => {
+test('frontmatter 的 slots 声明槽位显示名，正文按 ## 分节', () => {
   const slots = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  dev:',
+    '    label: 开发',
+    '  review:',
+    '    label:  审核  ',
+    '---',
     '## dev',
-    'label: 开发',
-    '',
     '你是实现者。',
     '## review',
-    'label:  审核  ',
     '你是评审者。',
   ].join('\n'))
   assert.equal(slots.get('dev').label, '开发')
@@ -116,18 +120,32 @@ test('label 声明槽位显示名，并从正文中剥离', () => {
   assert.equal(slots.get('review').body, '你是评审者。')
 })
 
-test('未声明或空 label 按未声明处理，正文首行的普通文字不剥离', () => {
+test('没有 frontmatter、空 label 或正文缺节时按未声明处理', () => {
   const plain = parseSlotTemplates('## dev\n正文\n')
   assert.equal(plain.get('dev').label, undefined)
-  const empty = parseSlotTemplates('## dev\nlabel:\n正文\n')
+  assert.equal(plain.get('dev').body, '正文')
+  const empty = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  dev:',
+    '    label:',
+    '---',
+    '## dev',
+    '正文',
+  ].join('\n'))
   assert.equal(empty.get('dev').label, undefined)
   assert.equal(empty.get('dev').body, '正文')
-  const long = parseSlotTemplates(`## dev\nlabel: ${'长'.repeat(65)}\n正文\n`)
-  assert.equal(long.get('dev').label, undefined)
-  assert.equal(long.get('dev').body, '正文')
-  const notLabel = parseSlotTemplates('## dev\nlabel 不是字段\n正文\n')
-  assert.equal(notLabel.get('dev').label, undefined)
-  assert.equal(notLabel.get('dev').body, 'label 不是字段\n正文')
+  // frontmatter 里声明了但正文没有节的槽位不成立：正文才是槽位存在的依据。
+  const orphan = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  audit:',
+    '    label: 审计',
+    '---',
+    '## dev',
+    '正文',
+  ].join('\n'))
+  assert.equal(orphan.has('audit'), false)
 })
 
 test('文件缺失时回落默认槽位名，正文为空', async () => {

@@ -30,3 +30,31 @@ test('忽略注释行与空行', () => {
   const { data } = parseFrontmatter('---\n# 注释\n\nname: demo\n---\n')
   assert.equal(data.name, 'demo')
 })
+
+test('解析一层嵌套 map，缩进子键归到上一个顶层键', () => {
+  const { data } = parseFrontmatter([
+    '---',
+    'slots:',
+    '  dev:',
+    '    label: 开发',
+    '  review:',
+    '    label: 审核',
+    'name: demo',
+    '---',
+  ].join('\n'))
+  assert.deepEqual(data.slots, { dev: { label: '开发' }, review: { label: '审核' } })
+  assert.equal(data.name, 'demo')
+})
+
+test('顶层键后没有子键时仍是空串，不变成对象', () => {
+  const { data } = parseFrontmatter('---\nempty:\nname: demo\n---\n')
+  assert.equal(data.empty, '')
+  assert.equal(data.name, 'demo')
+})
+
+test('没有归属的缩进行忽略，不影响后续标量', () => {
+  const { data } = parseFrontmatter('---\nname: demo\n  stray: x\nother: y\n---\n')
+  assert.equal(data.name, 'demo')
+  assert.equal(data.other, 'y')
+  assert.deepEqual(Object.keys(data).sort(), ['name', 'other'])
+})
