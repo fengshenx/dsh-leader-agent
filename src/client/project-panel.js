@@ -16,8 +16,8 @@
  *
  * **与官方工作区树并行**：项目的 worker 与协调者会话不在官方工作区树里重复出现。
  * 官方没有「按项目排除会话」的扩展点，这层排除走渲染层（见
- * `workspace-exclusion.js`）。项目目录本身的工作区不隐藏：用户在项目目录里手动
- * 开的会话不属于项目，隐藏工作区会让它们无处可寻。
+ * `workspace-exclusion.js`）。项目目录的工作区行照常显示：用户在项目目录里手动
+ * 开的会话不属于项目，藏掉工作区会让它们无处可寻。
  *
  * **位置**：宽侧栏里区块插在「自动化任务」面板行之下、工作区列表之上。左栏正文
  * 区只有 `sidebar.workspaces` 一个槽且已被官方工作区浏览占用，slot 机制没有装饰
@@ -37,7 +37,6 @@ import { productIcon } from './icons.js'
 import {
   classifyDeletionResult,
   collectExcludedSessionIds,
-  collectHiddenWorkspaceIds,
   createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
@@ -253,18 +252,15 @@ export function ProjectPanel(props) {
   // 当前会话若就是被排除的那条，它所属的工作区在官方树里会点亮成「开着」的样子，
   // 而里面没有可见的会话行——这个点亮一并压掉。
   const quietWorkspaceId = quietWorkspaceOf(currentSessionId, excludedSessionIds, workspaceItems)
-  // 项目自建的工作区（`workspaceId`）在官方树里整行藏掉：那个目录已经在项目区块里，
-  // 工作区树里再来一行是用户没加过的东西。
-  const hiddenWorkspaceIds = useMemo(() => collectHiddenWorkspaceIds(projects), [projects])
+  // 项目工作区行照常显示：项目目录本身也是用户在官方树里看得见、能用的入口。
   useEffect(() => {
     const exclusion = createWorkspaceExclusion()
     exclusion.update({
       sessionIds: excludedSessionIds,
       quietWorkspaceIds: quietWorkspaceId === undefined ? [] : [quietWorkspaceId],
-      hiddenWorkspaceIds,
     })
     return () => exclusion.dispose()
-  }, [excludedSessionIds, quietWorkspaceId, hiddenWorkspaceIds])
+  }, [excludedSessionIds, quietWorkspaceId])
 
   const startAdd = useCallback(async () => {
     if (busy) return
@@ -354,8 +350,8 @@ export function ProjectPanel(props) {
       return
     }
     if (result.recreated === true) {
-      // 工作区被用户删过：这次打开重建了一个，并把会话挂回去。左栏看不到工作区行，
-      // 不提示的话用户会以为删除仍然生效。
+      // 工作区被用户删过：这次打开重建了一个，并把会话挂回去。用户点的是项目行，
+      // 不会注意左栏工作区树里多回一行，不提示的话会以为删除仍然生效。
       showToast(result.reconnected > 0
         ? `项目「${project.name}」的工作区已重建，${result.reconnected} 个会话已归位。`
         : `项目「${project.name}」的工作区已重建。`)
