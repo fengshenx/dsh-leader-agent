@@ -301,25 +301,26 @@ test('协调者运行态接线到行首加载圈', () => {
     source,
     /const leadActivity = showsProjectActivity\(\{\n\s*expanded,\n\s*rows: childSessions,\n\s*coordinatorRunning: isCoordinatorRunning\(project, sessionRows, archivedSessionIds\),\n\s*\}\)/,
   )
-  // 加载圈画在槽位容器内部：替换掉容器的话，组内有当前会话时的激活色（挂在
-  // 容器的 color 上）就没有承载对象了。
+  // 加载圈画在槽位容器内部，且直接是宿主的 `StateDot`（ongoing）：轨道、呼吸弧、
+  // 1.5s 周期与多圈同相都由基线 `ui-primitives` 自带。自写圆环在 10px 上会糊成
+  // 不圆的缺口，动起来也和宿主不同步。
   assert.match(
     source,
-    /'dsh-leader-kit-project-lead-folder' \},\s*leadActivity\s*\n\s*\? createElement\('span', \{\s*className: 'dsh-leader-kit-project-spinner',\s*'aria-hidden': 'true',/,
+    /'dsh-leader-kit-project-lead-folder' \},\s*leadActivity\s*\n\s*\? createElement\(StateDot, \{ state: 'ongoing' \}\)/,
   )
-  // 装饰性元素：旋转没有语义，别让读屏念出来。
-  assert.match(source, /className: 'dsh-leader-kit-project-spinner',\s*'aria-hidden': 'true',/)
-  // 只有一个加载圈类与一条样式规则：两套判据合成后不该留下第二个入口。
-  assert.equal(source.match(/\.dsh-leader-kit-project-spinner \{/g)?.length, 1)
+  // 两套判据合成后不留第二个入口，也不留第二套自写圆环与关键帧。
   assert.doesNotMatch(source, /dsh-leader-kit-project-lead-spinner/)
   assert.doesNotMatch(source, /'data-running'/)
-  // 样式：边框跟随槽位容器的 color（激活色才生效），自己会转。
-  const spinnerAt = source.indexOf('.dsh-leader-kit-project-spinner {')
-  assert.notEqual(spinnerAt, -1, '找不到加载圈的样式规则')
-  const spinnerRule = source.slice(spinnerAt, source.indexOf('}', spinnerAt))
-  assert.match(spinnerRule, /border: 1\.5px solid currentColor/)
-  assert.doesNotMatch(spinnerRule, /--dsw-alias-label-tertiary/)
-  assert.match(spinnerRule, /animation: dsh-leader-kit-spin/)
+  assert.doesNotMatch(source, /dsh-leader-kit-project-spinner/)
+  assert.doesNotMatch(source, /dsh-leader-kit-session-spinner/)
+  assert.doesNotMatch(source, /@keyframes dsh-leader-kit-spin/)
+  // 会话行与官方会话行同一个组件、同一个默认尺寸（ongoing 时 14px）。
+  assert.match(source, /row\.running \? createElement\(StateDot, \{ state: 'ongoing' \}\) : null,/)
+  // 组件来自宿主基线模块（`PLATFORM_MODULES` 的 `ui-primitives`），不新引依赖。
+  assert.match(
+    source,
+    /import \{ StateDot \} from '@deepseek-ai\/dsh-client-ui-primitives'/,
+  )
   // hover 让位给展开箭头：槽位容器整条隐藏，加载圈跟着一起收起来。
   assert.match(source, /:hover \.dsh-leader-kit-project-lead-folder \{\s*display: none;/)
 })

@@ -14,6 +14,7 @@
 
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
 import { buildProjectMenuItems, isCoordinatorCurrent, isCoordinatorRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
@@ -169,19 +170,8 @@ const STYLE_TEXT = `
 /* 行首加载圈：本组有活动时替换目录图标（尺寸与位置仍占行首槽位）。收起时
    任一会话行在跑、或协调者自己在跑；展开后只剩协调者——其它会话行自己带
    spinner，不重复画同一个状态。悬停规则对槽位容器生效，箭头照常盖住它。
-   边框用 currentColor 而不是写死色值：图标本身是 stroke: currentColor，激活
-   色挂在 lead-folder 上，写死就会把那层配色丢掉。 */
-.dsh-leader-kit-project-spinner {
-  display: block;
-  flex: none;
-  width: 12px;
-  height: 12px;
-  box-sizing: border-box;
-  border: 1.5px solid currentColor;
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: dsh-leader-kit-spin 0.8s linear infinite;
-}
+   圈本身是宿主的 StateDot（state: 'ongoing'）：轨道、呼吸弧、1.5s 周期与页面
+   上多个圈的同步相位都由基线 ui-primitives 自带，不再自己写圆环。 */
 .dsh-leader-kit-project-lead-arrow {
   display: none;
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-tertiary));
@@ -369,7 +359,8 @@ const STYLE_TEXT = `
   background: var(--dsw-alias-interactive-bg-hover);
 }
 /* 状态位：尺寸照官方会话行的 slot（16×20）。官方在这里放运行状态圆点或加载器，
-   我们只区分「运行中」，所以只放加载器。 */
+   我们只区分「运行中」，所以只放加载器——直接渲染宿主的 StateDot，与官方会话
+   行同一个组件、同一个默认尺寸。 */
 .dsh-leader-kit-session-status {
   flex: none;
   width: 16px;
@@ -390,16 +381,6 @@ const STYLE_TEXT = `
   font-size: 14px;
   line-height: 20px;
   margin: 0 6px 0 var(--dsh-sidebar-label-gap, 4px);
-}
-.dsh-leader-kit-session-spinner {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  border: 1.5px solid var(--dsw-alias-label-tertiary);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: dsh-leader-kit-spin 0.8s linear infinite;
 }
 /* 归档按钮：外观照官方会话行的 hover 动作（三级标签色、悬停提亮）。
    尺寸取宿主 0.2.2 的形态：24×24 目标 + -4px 负边距，净占位 16×16；rc.2 那版
@@ -463,9 +444,6 @@ const STYLE_TEXT = `
   .dsh-leader-kit-session-overflow:hover {
     color: var(--dsw-alias-label-secondary);
   }
-}
-@keyframes dsh-leader-kit-spin {
-  to { transform: rotate(360deg); }
 }
 `
 
@@ -829,10 +807,7 @@ function ProjectRow(props) {
           'span',
           { className: 'dsh-leader-kit-project-lead-folder' },
           leadActivity
-            ? createElement('span', {
-                className: 'dsh-leader-kit-project-spinner',
-                'aria-hidden': 'true',
-              })
+            ? createElement(StateDot, { state: 'ongoing' })
             : productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
         ),
         createElement(
@@ -1063,7 +1038,7 @@ function SessionRow(props) {
     createElement(
       'span',
       { className: 'dsh-leader-kit-session-status' },
-      row.running ? createElement('span', { className: 'dsh-leader-kit-session-spinner' }) : null,
+      row.running ? createElement(StateDot, { state: 'ongoing' }) : null,
     ),
     createElement(
       'span',
