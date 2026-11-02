@@ -33,10 +33,12 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 交付做到 PR 为止。合并与 approve 需要用户明确指令，不要自行推进。向用户汇报时给：结论、当前 head 或 PR 链接、验证证据、未验证项与待决策。
 
+**产出挂卡**：worker 开出的 PR / Issue 立刻挂到对应卡的 `links`（`update_card` 的 links）。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失，自己事后再去拼链接也拼不全。不要等收尾再补。
+
 **卡片完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，检查点写明等合并。合并后跑 `worktree:prune --apply`（要删远端分支时带 `--delete-remote`），确认工作区干净再收尾。
 
 ## 不要做
 
-- 不要用宿主的 `list_agents` / `send_message` / `interrupt_agent` 管 worker——它们作用在 subagent 体系上，对常驻 worker 无效（工具面里本来也没有）。worker 卡住就请人去那个会话处理，或 `message_worker` 提醒收尾。
+- 不要用宿主的 `list_agents` / `send_message` / `interrupt_agent` 管 worker，也不要用 `SendMessage`——这三者与 `SendMessage` 都作用在 subagent 或会话内子代理体系上，对常驻 worker 无效：`interrupt_agent` 返回假成功回执，`SendMessage` 恢复时会报 `not found in registry or persisted transcripts`。给 worker 发消息一律用 `message_worker`；worker 卡住就请人去那个会话处理，或用 `message_worker` 提醒收尾。
 - 不要等一个 worker 完成后才继续思考：派工立即返回，你可以同一轮连派多个。
 - 不要替 worker 扩范围：范围外的问题记成新卡，不塞进当前任务。
