@@ -323,6 +323,13 @@ test('协调者运行态接线到行首加载圈', () => {
   )
   // hover 让位给展开箭头：槽位容器整条隐藏，加载圈跟着一起收起来。
   assert.match(source, /:hover \.dsh-leader-kit-project-lead-folder \{\s*display: none;/)
+  // 槽位容器是 flex：图标与加载圈都是 SVG，按行盒基线排时圈的中心比 34px 行
+  // 的中心高 1.5px（无头 Chromium 实测，读数见 Agent Note）。
+  const folderAt = source.indexOf('\n.dsh-leader-kit-project-lead-folder {')
+  assert.notEqual(folderAt, -1, '找不到行首槽位容器的样式规则')
+  const folderRule = source.slice(folderAt, source.indexOf('}', folderAt))
+  assert.match(folderRule, /display: inline-flex/)
+  assert.match(folderRule, /align-items: center/)
 })
 
 test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {

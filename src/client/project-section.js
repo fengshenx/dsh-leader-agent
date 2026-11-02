@@ -153,7 +153,14 @@ const STYLE_TEXT = `
   font-size: 14px;
   line-height: 20px;
 }
-/* 行首槽位：默认目录图标，悬停整行时换成展开箭头（与官方工作区行同款）。 */
+/* 行首槽位：默认目录图标，悬停整行时换成展开箭头（与官方工作区行同款）。
+   里面的图标与加载圈都是 SVG：不把这层撑成 flex 的话，SVG 按行盒基线排，圈会
+   比行中心高 1.5px（34px 行实测）。 */
+.dsh-leader-kit-project-lead-folder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .dsh-leader-kit-project-lead {
   flex: none;
   width: 16px;
