@@ -70,6 +70,12 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental，base bundle 未启用），按 teammate 名字寻址，与本流程的 worker 不是同一批，不要混用。
 
+### agent-team 并存时
+
+宿主加载 `@deepseek-ai/dsh-experimental-agent-team-profile` 后，`agentTeams` 服务存在，`tool-agent-team` 会给每个「普通根会话」装团队工具（`agent-team/src/roster.ts` 的 `tryMembership`：无 `parentSession`、无 subagent descriptor 的 root 都算 lead）。本 bundle 的 worker 正是普通根会话，于是被当成隐式 Lead，能自己拉 teammate、自己记 team 任务；协调者也同时看到两套派工工具。
+
+工具面挡不住它们：团队工具注册在 Agent scope，而 `tools.restrict({ deny })` 只接受全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），`tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以本 bundle 只做两件事——第一次会话创建时告警一次，以及给协调者与 worker 注入运行时上下文（`dsh-leader-kit:team-ban`，order 106），点名团队工具对本流程无效、派工与任务事实仍走 `spawn_worker` / `message_worker` / 卡片。普通会话不注入：它们可能真的在用 teammate。要彻底隔离，只能从 profile 移除 `@deepseek-ai/dsh-experimental-agent-team-profile`。
+
 ### 工具面分配
 
 工具面按角色在**会话创建时**裁剪，落在 `agent/created` 上，不是靠参数隐藏：
