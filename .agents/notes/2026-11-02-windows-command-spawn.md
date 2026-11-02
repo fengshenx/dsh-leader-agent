@@ -72,6 +72,8 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 引号探针（`.telov/probe-quote.mjs` 那 10 组 `a\"b` / `a b\\` / `x\\"y` / `tail two\\` 等）：修复前 6/10 相等，修复后 10/10 相等。另测 33 组元字符与边缘形态（制表符、单双引号、`&` / `|` / `;` / 括号、超长串、emoji、换行），不等的只有两类：`%OS%`（cmd 层展开）与含换行的参数（`'line1\nline2'` 只收到 `'line1'`）。换行是截断不是注入：`'a\necho INJECTED>文件'` 实测 argv 只有 `['a']`、目标文件没有被创建。
 
+用例比较子进程 stdout 前统一剥 ANSI 转义（`plain()`）：调用方环境可能通过 `NODE_OPTIONS` 里的 require hook、`FORCE_COLOR` 等途径给 node 子进程注入着色，`node -e` 那条实测收到 `'\x1B[33m2\x1B[39m'`。按名字清 `NODE_OPTIONS` / `FORCE_COLOR` 只能挡住已知途径，所以按内容剥。着色场景读数（`NODE_OPTIONS=--require .telov/colorize.cjs` 把子进程 stdout 全包成黄色）：修复前 22/24（`起一个真实进程并拿到输出`、`%VAR% 展开` 两条红），修复后 24/24；无注入同样 24/24。
+
 `npm run check` 整条（Windows 11）：Agent Note 格式 47 篇、文档工具名 11 篇、语法检查 80 文件、单测 714 用例 / 703 通过 / 10 失败 / 1 跳过；`main` 基线 690 / 679 / 同样那 10 条，失败用例名逐条比对相同。
 
 真机（Windows 11 / node 24.18.1 / dsh 0.2.1-rc.5）：

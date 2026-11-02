@@ -14,6 +14,20 @@ const NPM_DIR = 'C:\\Users\\me\\AppData\\Roaming\\npm'
 const NODE_DIR = 'C:\\Program Files\\nodejs'
 
 /**
+ * 剥掉 ANSI 颜色序列。
+ *
+ * 调用方的环境可能通过 `NODE_OPTIONS` 里的 require hook、`FORCE_COLOR` 等途径给 node
+ * 子进程注入着色，stdout 会夹带颜色转义。用例断言的是输出内容，不是有没有颜色；按名字
+ * 去清某几个环境变量只能挡住已知的注入途径，所以统一在比较前剥掉转义序列。
+ *
+ * @param {string} text - 子进程输出
+ * @returns {string} 去掉颜色转义后的文本
+ */
+function plain(text) {
+  return text.replace(/\u001B\[[0-9;]*m/g, '')
+}
+
+/**
  * 造一个只认给定文件集合的存在性探测。
  * @param {string[]} files - 认为存在的路径
  * @returns {(path: string) => boolean} 探测函数
@@ -113,7 +127,7 @@ test('spawnCommandSync 起一个真实进程并拿到输出', () => {
   // process.execPath 在 Windows 上落在 `C:\Program Files\…`，顺带验证带空格的路径
   const result = spawnCommandSync({ command: process.execPath, args: ['-p', '1 + 1'], encoding: 'utf8' })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), '2')
+  assert.equal(plain(result.stdout).trim(), '2')
 })
 
 test('spawnCommandSync 找不到命令时抛 CommandNotFoundError', () => {
@@ -129,7 +143,7 @@ test('Windows 上经 cmd.exe 起带空格的 .cmd shim，参数原样到达', { 
   writeFileSync(shim, '@echo off\r\necho [%~1]\r\n')
   const result = spawnCommandSync({ command: shim, args: ['a b'], encoding: 'utf8' })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), '[a b]')
+  assert.equal(plain(result.stdout).trim(), '[a b]')
 })
 
 test('Windows 上按 PATH 解析出无扩展名命令的 .cmd shim 并起起来', { skip: process.platform !== 'win32' }, async () => {
@@ -139,7 +153,7 @@ test('Windows 上按 PATH 解析出无扩展名命令的 .cmd shim 并起起来'
     command: 'probe-path', args: ['ok'], encoding: 'utf8', env: { ...process.env, PATH: dir },
   })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), 'resolved [ok]')
+  assert.equal(plain(result.stdout).trim(), 'resolved [ok]')
 })
 
 test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己找', { skip: process.platform !== 'win32' }, async () => {
@@ -153,7 +167,7 @@ test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己
     env: { ...process.env, PATH: dir, PATHEXT: '.BAT;.CMD' },
   })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), 'from-cmd')
+  assert.equal(plain(result.stdout).trim(), 'from-cmd')
 })
 
 test('调用方收窄 env 时仍能起 cmd：cmd 的定位不依赖子进程环境', { skip: process.platform !== 'win32' }, async () => {
@@ -163,7 +177,7 @@ test('调用方收窄 env 时仍能起 cmd：cmd 的定位不依赖子进程环�
   delete env.ComSpec
   const result = spawnCommandSync({ command: 'probe-env', encoding: 'utf8', env })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), 'env-ok')
+  assert.equal(plain(result.stdout).trim(), 'env-ok')
 })
 
 test('cmd 自己起不来时抛 CommandShellError，不误报成命令找不到', { skip: process.platform !== 'win32' }, () => {
@@ -197,5 +211,5 @@ test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）',
     env: { ...process.env, DSH_PROBE_VAR: 'expanded' },
   })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), 'expanded')
+  assert.equal(plain(result.stdout).trim(), 'expanded')
 })
