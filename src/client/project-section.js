@@ -12,10 +12,10 @@
  * @module dsh-leader-kit/client/project-section
  */
 
-import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropAnchor, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -82,8 +82,10 @@ const STYLE_TEXT = `
 .dsh-leader-kit-project-list > * + * {
   margin-top: 2px;
 }
-.dsh-leader-kit-project-row {
+.dsh-leader-kit-project-block {
   position: relative;
+}
+.dsh-leader-kit-project-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -109,9 +111,13 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-secondary);
 }
 /* 拖拽落点指示线：落在行的上半插到它之前、下半插到之后，线就画在对应的行间
-   缝隙里（行距 2px，线的 top/bottom 也取 -2px）。 */
-.dsh-leader-kit-project-row[data-drop='before']::before,
-.dsh-leader-kit-project-row[data-drop='after']::after {
+   缝隙里（行距 2px，线的 top/bottom 也取 -2px）。
+
+   线挂在项目块上而不是项目行上：块 = 行 + 展开的会话列表。插入点按项目排（会话
+   不是独立项），所以「落在这一行下半」的实际落点是整个块之后；挂到行上时行的底边
+   在展开态是「行与会话列表」的接缝，线会差出一整个会话列表的高度。 */
+.dsh-leader-kit-project-block[data-drop='before']::before,
+.dsh-leader-kit-project-block[data-drop='after']::after {
   content: '';
   position: absolute;
   left: 4px;
@@ -121,10 +127,10 @@ const STYLE_TEXT = `
   background: var(--dsw-alias-state-business-primary);
   pointer-events: none;
 }
-.dsh-leader-kit-project-row[data-drop='before']::before {
+.dsh-leader-kit-project-block[data-drop='before']::before {
   top: -2px;
 }
-.dsh-leader-kit-project-row[data-drop='after']::after {
+.dsh-leader-kit-project-block[data-drop='after']::after {
   bottom: -2px;
 }
 /* 拖起来的行压暗：落点线是主要反馈，源行还要看得出正在动。 */
@@ -482,6 +488,7 @@ export function ProjectSection(props) {
   const dragIdRef = useRef(null)
   /** 当前落点 `{ id, half }`；null 表示光标不在任何行上。 */
   const [dropTarget, setDropTarget] = useState(null)
+  const projectIds = useMemo(() => projects.map((project) => project.id), [projects])
 
   const beginDrag = (projectId) => {
     dragIdRef.current = projectId
@@ -499,15 +506,10 @@ export function ProjectSection(props) {
     const activeId = dragIdRef.current
     finishDrag()
     if (activeId === null || typeof onReorder !== 'function') return
-    const anchorId = projectDropAnchor(
-      projects.map((project) => project.id),
-      activeId,
-      overId,
-      half,
-    )
+    const { anchor } = projectDropPlan(projectIds, activeId, overId, half)
     // 拖回原处不发远程调用：落点与当前位置相同，写盘只是白跑一趟。
-    if (anchorId === null) return
-    onReorder(activeId, anchorId)
+    if (anchor === null) return
+    onReorder(activeId, anchor)
   }
 
   const layout = projectSectionLayout({
@@ -605,7 +607,9 @@ export function ProjectSection(props) {
             dragging: draggingId === project.id,
             dropHalf: dropTarget !== null && dropTarget.id === project.id ? dropTarget.half : undefined,
             onDragBegin: beginDrag,
-            onDragHover: (overId, half) => setDropTarget({ id: overId, half }),
+            onDragHover: (overId, half) => {
+              setDropTarget(projectDropPlan(projectIds, dragIdRef.current, overId, half).indicator)
+            },
             onDropOn: dropOn,
             onDragFinish: finishDrag,
           })),
@@ -730,15 +734,18 @@ function ProjectRow(props) {
 
   return createElement(
     'div',
-    null,
+    {
+      className: 'dsh-leader-kit-project-block',
+      'data-drop': dropHalf,
+    },
     createElement(
       'div',
       {
         className: 'dsh-leader-kit-project-row',
-        // 重命名时不能拖：拖拽会抢走输入框的文本选择。
-        draggable: reorderable && !renaming,
+        // 重命名时不能拖：拖拽会抢走输入框的文本选择。其余写操作在途时也不能拖：
+        // 拖拽会与删除、改名交错，看起来像「操作中还能动列表」。
+        draggable: reorderable && !renaming && !busy,
         'data-dragging': dragging ? 'true' : undefined,
-        'data-drop': dropHalf,
         onDragStart: (event) => {
           event.dataTransfer.effectAllowed = 'move'
           // 不写数据时 Firefox 不开始拖；数据本身不参与判定，落点走行内半区。

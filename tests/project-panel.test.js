@@ -6,6 +6,7 @@ import {
   classifyDeletionResult,
   collectExcludedSessionIds,
   collectHiddenWorkspaceIds,
+  createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
   describeDeletionNotice,
@@ -16,6 +17,7 @@ import {
   openCoordinatorSession,
   planProjectRename,
   projectDropAnchor,
+  projectDropPlan,
   projectSectionLayout,
   quietWorkspaceOf,
   selectProjectSessionRows,
@@ -419,6 +421,64 @@ test('落点认不出来时不动顺序', () => {
   assert.equal(projectDropAnchor(ids, 'missing', 'a', 'before'), null)
   assert.equal(projectDropAnchor(ids, 'a', 'missing', 'before'), null)
   assert.equal(projectDropAnchor(undefined, 'a', 'b', 'before'), null)
+})
+
+test('拖到源行本身不画插入线', () => {
+  const ids = ['a', 'b', 'c']
+  // 拖起来之后指针会从行上划过：这时线亮着而松手什么都不发生，看着像上次的落点没清。
+  assert.deepEqual(projectDropPlan(ids, 'b', 'b', 'before'), { anchor: null, indicator: null })
+  assert.deepEqual(projectDropPlan(ids, 'b', 'b', 'after'), { anchor: null, indicator: null })
+  // 拖出列表：既不画线也不发请求。
+  assert.deepEqual(projectDropPlan(ids, 'a', 'missing', 'after'), { anchor: null, indicator: null })
+})
+
+test('落点在别的行上时线照画，顺序本来就对则只省掉请求', () => {
+  const ids = ['a', 'b', 'c']
+  assert.deepEqual(
+    projectDropPlan(ids, 'c', 'a', 'before'),
+    { anchor: 'a', indicator: { id: 'a', half: 'before' } },
+  )
+  // a 本来就在 b 之前：落点是真的，只是不用发远程调用。
+  assert.deepEqual(
+    projectDropPlan(ids, 'a', 'b', 'before'),
+    { anchor: null, indicator: { id: 'b', half: 'before' } },
+  )
+})
+
+test('连续拖拽串行写入：后一笔等前一笔收尾，只有最后一笔刷新界面', async () => {
+  const queue = createWriteQueue()
+  const log = []
+  const latestFlags = []
+  let settled = null
+  const write = (name) => async (isLatest) => {
+    log.push(`start:${name}`)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    latestFlags.push([name, isLatest()])
+    if (isLatest()) settled = name
+    log.push(`end:${name}`)
+  }
+  await Promise.all([queue.push(write('a')), queue.push(write('b'))])
+
+  // 串行：第一笔必须等第二笔排进来之后才跑，两笔不会同时在途。
+  assert.deepEqual(log, ['start:a', 'end:a', 'start:b', 'end:b'])
+  // 第一笔已经过期：它的收尾刷新会把界面退到中间态，界面只认最后一笔。
+  assert.deepEqual(latestFlags, [['a', false], ['b', true]])
+  assert.equal(settled, 'b')
+})
+
+test('一笔写入失败不堵住后面的写入', async () => {
+  const queue = createWriteQueue()
+  const ran = []
+  const failing = queue.push(async () => {
+    throw new Error('写失败')
+  })
+  const after = queue.push(async (isLatest) => {
+    ran.push(['after', isLatest()])
+  })
+
+  await assert.rejects(failing, /写失败/)
+  await after
+  assert.deepEqual(ran, [['after', true]])
 })
 
 test('本地乐观重排与服务端 move 同语义', () => {
