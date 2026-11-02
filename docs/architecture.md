@@ -223,6 +223,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
 - 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DSH_PROFILE`（源 profile 名，默认 `web`；那个 profile 的 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。
 
+`npm start` 是 `npm run build:client && dsh web` 的快捷方式：起日常实例（数据根 `~/.dsh`，插件取日常 profile 链接的版本），起之前先重建客户端产物——`lib/client.js` 不入库，漏了构建时实例照常起来、右栏却没有看板。它不派生 profile、也不隔离：从 worktree 里跑时加载的仍是链接指向的那份代码（通常是主 checkout），验证本目录改动用 `npm run dev`。额外参数用 `--` 透传：`npm start -- --no-open --port 3210`。
+
 收尾时清掉已合并的 worktree：
 
 ```sh

@@ -52,6 +52,7 @@ npm run check                     # Agent Note 格式门禁 + 文档工具名门
 npm run test                      # 只跑单测
 npm run build:client              # 重建客户端产物 lib/client.js
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
+npm start                         # 起日常实例（~/.dsh 的数据与 profile，先重建客户端产物）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
 npm run worktree:prune            # 清已合并的 worktree（默认只打印，--apply 才删）
 ```
