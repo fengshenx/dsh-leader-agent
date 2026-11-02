@@ -540,7 +540,7 @@ export function createProjectService({
       const workspace = ensured.workspace
       const recreated = ensured.created === true
       // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
-      // 工作区，那不是我们的，不该被隐藏。
+      // 工作区，那不是我们的，删项目时不该连带摘掉。
       await recordWorkspaceOwnership(ctx, store, project.id, ensured, logger)
       // 归属可能刚写进记录（工作区是这次新建的），重读一遍再报给调用方。
       const recorded = await store.get(project.id) ?? project
@@ -580,8 +580,8 @@ export function createProjectService({
      * 列出该挂进项目工作区的会话：协调者、退役协调者与登记过的 worker。
      *
      * 用途只有一个——工作区被删后重建时把它们挂回去。用户在同一目录里手动开的
-     * 会话不在名单里：把别人的会话塞进一个被隐藏的工作区，等于让它们从界面上
-     * 消失。
+     * 会话不在名单里：那不是项目派生的东西，挂进来后删项目会把工作区一起摘掉，
+     * 它们会落回「未分组」。
      *
      * @param {object} project - 项目记录
      * @returns {Promise<string[]>} 会话 id（去重，协调者在前）
@@ -609,8 +609,8 @@ export function createProjectService({
     /**
      * 移除项目在宿主里注册的工作区。
      *
-     * 它是 `remove()` 的内部步骤：插件注册的工作区在官方左栏里是隐藏的，用户在
-     * 官方界面里没法直接删它，删项目时要顺手摘掉。宿主的 `delete` 只删注册，目录
+     * 它是 `remove()` 的内部步骤：工作区是随项目建的，项目没了就没人认领它，
+     * 删项目时顺手摘掉，免得左栏留一行来历不明的目录。宿主的 `delete` 只删注册，目录
      * 与全部会话日志都留着（`packages/workspace/workspace/src/index.ts:302-312`），
      * 协调者会话仍然在，只是不再归属工作区。
      *
@@ -870,7 +870,7 @@ export function createProjectService({
  * 旧方案：要归属的是分组，不是可打开性。
  *
  * 「有没有是我们建的」由 `created` 区分：复用的工作区可能是用户自己加的，
- * 那不是插件的东西，不该被隐藏、不该被记进项目记录。
+ * 那不是插件的东西，不该被记进项目记录、删项目时也不该动它。
  *
  * `create` 是幂等的——同路径已有工作区时宿主直接返回既有实体，所以「list 里没有」
  * 不等于「返回的一定是这次建的」。判据要两条：id 不在 `create` 之前的快照里，且
@@ -895,8 +895,8 @@ async function ensureWorkspace(ctx, directory, canonicalize) {
   const requestedAt = Date.now()
   const created = await registry.create(canonical, canonical.split(/[\\/]/).pop() ?? canonical)
   if (created === undefined) return undefined
-  // 解析不出创建时间时按「不是我们的」处理：宁可多留一行可见的工作区，
-  // 也不把用户的工作区整组藏掉、再随项目一起删掉。
+  // 解析不出创建时间时按「不是我们的」处理：宁可少记一次归属，也不把用户
+  // 的工作区当成项目的一起删掉。
   const createdHere = !beforeIds.has(created.id) && Date.parse(created.createdAt) >= requestedAt
   return { workspace: created, canonical, created: createdHere }
 }
@@ -905,8 +905,8 @@ async function ensureWorkspace(ctx, directory, canonicalize) {
  * 把本次新建的工作区记进项目记录。
  *
  * 记录失败（项目在注册与写入之间被删掉）时撤掉刚建的工作区：项目没了，
- * `collectHiddenWorkspaceIds` 不再认它，它会在左栏露出一行用户没加过的目录，而
- * 插件的删除入口随项目一起消失了。复用的工作区不撤——那不是我们的。
+ * `recordedWorkspaceId` 不再认它，插件的删除入口也随项目一起消失，那行目录只能
+ * 去官方面板手动清。复用的工作区不撤——那不是我们的。
  *
  * @param {object} ctx - Cordis 上下文
  * @param {object} store - 项目存储
@@ -964,7 +964,7 @@ export function recordedWorkspaceId(ctx, project) {
  * 判断工作区是否还在宿主里。
  *
  * 项目记录里的工作区 id 可能悬空——用户在工作区管理面板里删掉了它。悬空的 id
- * 不该再被当成「项目工作区」，否则客户端会拿着一张不存在的行去隐藏。
+ * 不该再被当成「项目工作区」，否则删项目时会去摘一个不存在的注册。
  *
  * @param {object} ctx - Cordis 上下文
  * @param {string} workspaceId - 记录里的工作区 id
