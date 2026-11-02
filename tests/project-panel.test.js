@@ -445,6 +445,24 @@ test('落点在别的行上时线照画，顺序本来就对则只省掉请求',
   )
 })
 
+test('线画在落点那一侧的缝里：上半在块顶、下半在块底', () => {
+  const ids = ['a', 'b', 'c']
+  // 下半区的线在目标块的 after 边，锚点是它的下一项——线所在缝与插入点同一处。
+  assert.deepEqual(
+    projectDropPlan(ids, 'a', 'b', 'after'),
+    { anchor: 'c', indicator: { id: 'b', half: 'after' } },
+  )
+  assert.deepEqual(
+    projectDropPlan(ids, 'c', 'a', 'after'),
+    { anchor: 'b', indicator: { id: 'a', half: 'after' } },
+  )
+  // 末行下半是末尾：锚点为空串，线仍画在末块的 after 边。
+  assert.deepEqual(
+    projectDropPlan(ids, 'a', 'c', 'after'),
+    { anchor: '', indicator: { id: 'c', half: 'after' } },
+  )
+})
+
 test('连续拖拽串行写入：后一笔等前一笔收尾，只有最后一笔刷新界面', async () => {
   const queue = createWriteQueue()
   const log = []

@@ -52,14 +52,17 @@
 - **拖拽中不禁用行的点击**。浏览器在拖拽结束后不派发 `click`，实测拖完不会顺带打开会话，因此不需要额外的阈值判断。
 - **重命名与写操作在途时不可拖**。`draggable` 在 `renaming` 或 `busy` 时关掉：重命名时拖拽会抢走输入框的文本选择；删除、改名请求在途时拖动列表会与之交错。
 - **插入线只在行的上下半区更新**。`dragover` 只在行的矩形上触发，指针落到展开后的会话列表区域时不改落点（松开也不会插入）。
+- **`openProject` 的 `attachCoordinator` 不走 `busy`，这一轮不补**。它改的是 `workspaceId` 与宿主工作区归属，不是顺序字段；服务端 `move` 与它在同一条 `serialize` 串行链上，不会互相覆盖或丢写。要严格做到「任何写请求在途都不可拖」得为它单独加一个在途标记，而拖拽只是排序、与挂工作区无字段冲突——把 `busy` 摊到所有远程调用上会让「点开项目」这种高频动作把整张列表锁一秒，代价大于收益。真要收口，做法是给 `openProject` 加独立的 `attaching` 标记而不是复用 `busy`。
+- **末笔刷新的「闪回一次」不修**。`isLatest()` 在发 `refresh()` 之前求值：末笔的 `projects/list` 在途时用户再拖一笔，那次 `setProjects` 仍会覆盖新一笔的本地乐观重排，界面闪回一次旧顺序，随后被新一笔的串行刷新追上（最终收敛，落盘始终正确）。修法是在刷新结果落地前再判一次 `isLatest()`，但那要求给 `refresh` 加 guard 参数、或让 `reorderProject` 自己拉快照——把「刷新」这件事拆成两份实现，只为一个几十毫秒的窗口。触发条件是「一次 `list` 往返内完成第二次拖拽」，本轮按边界记录。
 
 ## 验证
 
-- 单测新增 9 条：`tests/projects-store.test.js` 五条（按落盘顺序列出、移到末尾、原位不写盘、锚点不存在落末尾、项目不存在报错），`tests/project-panel.test.js` 八条（半区锚点、顺序不变返回 null、认不出落点、拖到源行自身不画线、落点在别的行上时线照画、本地重排与入参不变、串行写入只认最后一笔、失败不堵队列）。`npm run check` 623 例全绿。
+- 单测新增 10 条：`tests/projects-store.test.js` 五条（按落盘顺序列出、移到末尾、原位不写盘、锚点不存在落末尾、项目不存在报错），`tests/project-panel.test.js` 九条（半区锚点、顺序不变返回 null、认不出落点、拖到源行自身不画线、落点在别的行上时线照画、上下半区各自的线与锚点、本地重排与入参不变、串行写入只认最后一笔、失败不堵队列）。`npm run check` 624 例全绿。
 - 双向验证（精确撤销 → 变红 → 还原 → 全绿）：
   - `store.move` 的 `const moved = insertAt !== index` 改成 `true` → 「落点与当前位置相同不写盘」变红（`actual: true, expected: false`）；
   - `projectDropAnchor` 去掉 `ids[from + 1] === anchor` 判据 → 「顺序不会变的落点返回 null」变红（`actual: 'c', expected: null`）；
   - `projectDropPlan` 的 `indicator: overId === activeId ? null : …` 改成无条件给线 → 「拖到源行本身不画插入线」变红；
+  - `projectDropPlan` 的 `half: side` 固定成 `'before'` → 「线画在落点那一侧的缝里」变红（`half: 'before'` vs `'after'`；before 半区的断言守不住这一处，两条半区都要断）；
   - `createWriteQueue` 的 `push` 改成立即执行、`isLatest` 恒真 → 「连续拖拽串行写入」变红（事件顺序变成 `start:a / start:b / end:a / end:b`）。
 - 真机（worktree 开发实例，dsh 0.2.1-rc.2，隔离数据根，Playwright headless Chromium 1440×900）：seed 三个项目 alpha / beta / gamma 后读 DOM——三行 `draggable="true"`，相邻行矩形间距实测 `2px`、`2px`。
   - 真实鼠标拖拽（`mouse.down` → 分步 `mouse.move` → `mouse.up`）把最后一行拖到第一行上半：DOM 顺序变 `gamma / alpha / beta`，`projects.json` 落盘顺序同为 `gamma / alpha / beta`。
