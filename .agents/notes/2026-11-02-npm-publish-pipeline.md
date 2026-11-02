@@ -83,9 +83,9 @@
 
 ## 验证
 
-`npm run check` 767 用例全绿，新增 `tests/pack-manifest.test.js` 10 条（必需集从 manifest 推导、改入口即改门禁、通配子路径不进必需集、缺件逐个报、开发残留逐个拦、白名单放宽后仓内文档与决策笔记仍被拦、`.agents` 只放行 skills 子树、`files` 放宽到 `.agents/**` 时 notes 与新增目录仍被拦、发布路径不被误判）；`tests/client-build.test.js` 断言产物含 minidenticons 的版权行。
+`npm run check` 794 用例（785 通过、9 条 Windows 相关在非 Windows 上 skip）全绿，新增 `tests/pack-manifest.test.js` 10 条（必需集从 manifest 推导、改入口即改门禁、通配子路径不进必需集、缺件逐个报、开发残留逐个拦、白名单放宽后仓内文档与决策笔记仍被拦、`.agents` 只放行 skills 子树、`files` 放宽到 `.agents/**` 时 notes 与新增目录仍被拦、发布路径不被误判）；`tests/client-build.test.js` 断言产物含 minidenticons 的版权行。
 
-`npm run release:check` 全链路通过：`verify-agent-note-format: 50 篇笔记格式合规`、`verify-doc-tool-names: 11 篇文档的工具名全部存在`、767 用例、`verify-pack: 82 个文件（未压缩 908 kB），必需项齐全、无开发残留，装机 smoke 通过`。
+`npm run release:check` 全链路通过：`verify-agent-note-format: 51 篇笔记格式合规`、`verify-doc-tool-names: 11 篇文档的工具名全部存在`、`check-syntax: 86 个文件通过`、794 用例、`verify-pack: 82 个文件（未压缩 908 kB），必需项齐全、无开发残留，装机 smoke 通过`。
 
 双向验证（每次还原后重跑均全绿）：
 
@@ -99,8 +99,8 @@
 
 `npm view dsh-leader-kit version` 返回 `E404`——包名未被占用。
 
-`nvm exec 24.9.0 npm run check` → 767 用例全绿；同一版本上 `verify:pack` 也是 `82 个文件… 装机 smoke 通过`。`engines.node` 的下限档在 CI matrix 里就是配置在这里的同一个版本，本机先验过一遍。
+`nvm exec 24.9.0 npm run check` 与同一版本上的 `verify:pack` 都全绿。`ci.yml` 的 matrix 档位就是这个版本，远端也拿到了同一读数：PR #68 的 CI 两个 job `check (24.9.0)` / `check (24)` 均 success，各自 `794 用例 / 785 通过 / 9 skip`、`verify-pack: 82 个文件… 装机 smoke 通过`。
 
 `git ls-remote --tags` 核实 pin 的 SHA 就是 v7 tag 当前指向：`actions/checkout@3d3c42e5…`（= v7.0.1）、`actions/setup-node@949feb24…`（= v7.1.0）。
 
-未验证：GitHub Actions 两个 workflow 只在静态推演层面确认过，没有远端真跑（tag 发布链路不能试跑；`ci.yml` 的 matrix 两档本机都跑过，但 workflow 本身的 YAML 行为只由 YAML 解析与人工核对确认）；`npm publish` 没有真正上传（缺 `NPM_TOKEN`）；provenance 与 npm 页面上的来源标记同样待首次发布后确认。
+未验证：`publish.yml` 没有远端真跑（tag 发布链路不能试跑）；`npm publish` 没有真正上传（缺 `NPM_TOKEN`）；provenance 与 npm 页面上的来源标记同样待首次发布后确认。
