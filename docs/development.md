@@ -18,6 +18,8 @@
 
 `npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-kit` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
 
+桌面版：`npm run desktop` 把当前工作树挂进 `$DSH_HOME/profiles/desktop`（该 profile 归 Electron 独占，CLI 起不了它），改 manifest、建链接、重建产物后 `open -a`；`--remove` 摘除，应用运行中拒绝写入。多工作树并行仍用 `npm run dev`。
+
 ## 收尾清理
 
 清掉已合并的 worktree：
