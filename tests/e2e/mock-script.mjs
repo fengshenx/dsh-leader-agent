@@ -61,6 +61,10 @@ export function resolveMarker(body) {
  * 第一轮请求带标记；工具调用之后那一轮请求里已经没有标记，于是沿用上一次命中的
  * 标记继续走同一份脚本——否则「调工具、看到结果、收工」这种两轮场景没法表达。
  *
+ * 边界：`active` 是全局单值，一轮只支持一个会话在请求模型。同一场景里两个会话
+ * （协调者 + worker）并行时，无标记的请求会续到「最后命中的那份脚本」上，表现为
+ * 脚本多跑一轮而不是会话串了。做派工场景前先按 session id 分游标。
+ *
  * @param {Record<string, object[]>} scripts - 标记到步骤列表的映射
  * @returns {{ take: (marker: string | null) => object, remaining: () => Record<string, number> }}
  *   取下一步与查询各脚本剩余步数
@@ -137,8 +141,9 @@ function splitText(text, size) {
  * @param {object} step - 脚本步骤
  * @param {string} [step.text] - 文本回复
  * @param {{ name: string, input: object }} [step.tool] - 工具调用
- * @param {string} [step.model] - 回显的模型名
- * @param {number} [step.chunkSize] - 文本与 JSON 的分块大小
+ * @param {object} [options] - 选项
+ * @param {string} [options.model] - 回显的模型名
+ * @param {number} [options.chunkSize] - 文本与 JSON 的分块大小
  * @returns {object[]} 待写入的 SSE 事件
  */
 export function sseEvents(step, { chunkSize = 8, model = 'mock-model' } = {}) {

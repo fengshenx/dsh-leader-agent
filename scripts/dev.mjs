@@ -35,7 +35,7 @@
  * - `DEV_DSH`         dsh 可执行文件名，默认 `dsh`
  */
 
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -45,6 +45,7 @@ import { prepareProfileDir } from './dev-instance.mjs'
 import {
   assertSeparateHome, assertWebBundle, devWebBundleHint, mergeCredentialRefs, resolveDevPaths,
 } from './dev-plan.mjs'
+import { CommandNotFoundError, CommandShellError, commandLaunchError, spawnCommand, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
 const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: process.env })
@@ -54,14 +55,11 @@ const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: process.env }
  *
  * @param {string} command - 可执行文件
  * @param {string[]} args - 参数
- * @param {object} options - 传给 `spawnSync` 的选项
+ * @param {object} options - 传给 `spawnCommandSync` 的选项
  * @returns {void} 无返回
  */
 function run(command, args, options) {
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
-  if (result.error !== undefined) {
-    throw new Error(`执行失败: ${command} ${args.join(' ')} —— ${result.error.message}`)
-  }
+  const result = spawnCommandSync({ command, args, stdio: 'inherit', ...options })
   if (result.status !== 0) {
     throw new Error(`退出码 ${result.status}: ${command} ${args.join(' ')}`)
   }
@@ -201,18 +199,25 @@ const port = process.env.DEV_PORT || '0'
 const args = ['web', '--port', port]
 if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
 
-// dsh 用 spawn 而不是 spawnSync：同步等待会卡住事件循环，上面的信号处理器
-// 根本跑不到（父进程会一直挂到 dsh 自己退出），watcher 就成了孤儿。
-dsh = spawn(process.env.DEV_DSH || 'dsh', args, {
-  cwd: worktree,
-  env: { ...process.env, DSH_HOME: paths.home },
-  stdio: 'inherit',
-})
+// dsh 用 spawnCommand 而不是 spawnCommandSync：同步等待会卡住事件循环，上面的信号
+// 处理器根本跑不到（父进程会一直挂到 dsh 自己退出），watcher 就成了孤儿。解析与
+// 拼装仍走 spawn-command，win32 上 `spawn('dsh')` 只会 ENOENT。
+const dshCommand = process.env.DEV_DSH || 'dsh'
+try {
+  dsh = spawnCommand({
+    command: dshCommand, args, cwd: worktree, env: { ...process.env, DSH_HOME: paths.home }, stdio: 'inherit',
+  })
+} catch (error) {
+  if (!(error instanceof CommandNotFoundError)) throw error
+  console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
+  console.error('用 DEV_DSH 指定路径，例如 DEV_DSH=/opt/dsh/bin/dsh npm run dev。')
+  process.exit(1)
+}
 
 let outcome
 try {
   outcome = await new Promise((resolve) => {
-    dsh.once('error', (error) => resolve({ error }))
+    dsh.once('error', (error) => resolve({ error: commandLaunchError(error, { command: dshCommand }) }))
     dsh.once('exit', (code, signal) => resolve({ code, signal }))
   })
 } finally {
@@ -220,7 +225,16 @@ try {
 }
 
 if (outcome.error !== undefined) {
-  console.error(`无法启动 dsh: ${outcome.error.message}`)
+  // dev 没有顶层 catch，这两个错误落下去只有原始栈；文案说清该查哪里。
+  if (outcome.error instanceof CommandShellError) {
+    console.error(`错误: ${outcome.error.message}`)
+    console.error('这是 Windows 的 cmd.exe 起不来，不是 dsh 没装：检查 ComSpec 或 %SystemRoot%\\System32\\cmd.exe。')
+  } else if (outcome.error instanceof CommandNotFoundError) {
+    console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
+    console.error('用 DEV_DSH 指定路径，例如 DEV_DSH=/opt/dsh/bin/dsh npm run dev。')
+  } else {
+    console.error(`无法启动 dsh: ${outcome.error.message}`)
+  }
   process.exit(1)
 }
 if (outcome.signal !== null) {

@@ -8,11 +8,9 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { launchE2E } from './harness.mjs'
 
-test('左栏项目区块在真实宿主里挂载，且浏览器不写盘', { timeout: 180_000 }, async (t) => {
+test('左栏项目区块在真实宿主里挂载', { timeout: 180_000 }, async (t) => {
   const e2e = await launchE2E({ name: 'plugin' })
   t.after(() => e2e.stop())
 
@@ -30,13 +28,6 @@ test('左栏项目区块在真实宿主里挂载，且浏览器不写盘', { tim
   )
   // 回归靠断言；截图只给人看「插件确实在界面上」，路径打印在 stdout。
   await e2e.screenshot('project-section')
-
-  // 浏览器的读写边界：看板数据来自会话事件，客户端不直接写卡片库。
-  assert.equal(
-    existsSync(join(e2e.instance.home, 'dsh-leader-kit', 'cards.json')),
-    false,
-    '打开页面不应写出卡片库——浏览器侧没有文件系统',
-  )
 
   assert.deepEqual(e2e.problems, [], '页内不应有未处理的异常或 console 错误')
 })

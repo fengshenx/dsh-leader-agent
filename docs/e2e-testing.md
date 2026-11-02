@@ -22,12 +22,14 @@
 ```sh
 npm run e2e:install    # 首次：下载 chromium（约 150MB）
 npm run e2e            # 构建客户端产物 + 跑全部 e2e 场景
-npm run e2e -- tests/e2e/plugin.e2e.js   # 只跑一个文件
+npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文件
 ```
 
 `npm run e2e` 先跑 `npm run build:client`：`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错。
 
-前提与 `npm run dev` 相同：本机装好 `dsh`，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件。缺任何一个都会当场报错并给出可照做的修法。
+**`npm run e2e -- <文件>` 不会缩小要跑的集合**：npm 把 `--` 后面的参数追加到 script 末尾，实际执行的是 `node --test "tests/e2e/*.e2e.js" <文件>`，脚本里的 glob 照旧展开，两个文件都会跑（实测 `tests 2`）。要单跑一个文件就绕过 npm script 直接调 `node --test`；改过 `src/client/` 时先自己 `npm run build:client`。
+
+前提：`dsh` 装好，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件——与 `npm run dev` 相同，缺任何一个都会当场报错并给出可照做的修法。Node 需要 22.15+：`session-logs.mjs` 用 `node:zlib` 的 zstd 解压（v22.15.0 加入），`node --test "tests/e2e/*.e2e.js"` 依赖 test runner 自带的 glob。旧版本上不是「跑不过」，而是 import 期就崩。
 
 ### 文件职责
 
@@ -86,6 +88,7 @@ test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
 - **没有标记不猜**：既没有标记也没有进行中的脚本时返回 400 并写明原因，不会默默回一段文本把断言引到错误结论上。
 - 脚本比实际请求少一步时报错，不静默复用最后一步。
 - 会话标题生成是宿主自己的附带调用，它带着用户原文、会误命中标记；mock 按 system prompt 把它归为 `kind: 'title'` 并回固定文案，不消耗场景脚本。
+- **一轮只支持一个会话在请求模型**：脚本游标是一份全局的「最后命中的标记」，同一场景里两个会话（协调者 + worker）并行时，无标记的请求会续到别人那份脚本上。做派工场景前先按 session id 分游标（`mock-script.mjs` 的 `createScriptCursor`）。
 
 ### 断言纪律
 
@@ -100,14 +103,14 @@ test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
 要针对某个界面状态留证据时，按这三步走，不要手工开浏览器去点：
 
 1. 在 `tests/e2e/` 写一个场景（模板见上），把要证明的状态用断言固定下来；
-2. `npm run e2e -- tests/e2e/<场景>.e2e.js` —— 场景结束时自动存 `final.png`，场景里的 `screenshot()` 另存关键节点；
+2. `node --test tests/e2e/<场景>.e2e.js`（改过 `src/client/` 时先 `npm run build:client`）—— 场景结束时自动存 `final.png`，场景里的 `screenshot()` 另存关键节点；
 3. 读 stdout 打印的 PNG 路径（用 Read 直接打开图片），把读数写进 PR 或 Agent Note。
 
 ```js
-await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>/reply.png，路径打印在 stdout
+await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>-<pid>/reply.png，路径打印在 stdout
 ```
 
-- `launchE2E({ name: 'session' })` 决定目录；不传时是 `scenario`。
+- `launchE2E({ name: 'session' })` 决定目录前缀；不传时是 `scenario`。目录带本进程 pid：同机并发两次 e2e 时同名场景不互相覆盖。
 - 每个场景 `stop()` 前会**自动存一张 `final.png`**（关闭浏览器前的最后一帧）：断言失败时这张图往往就是唯一能看的东西。
 - 截图落在 `.dev/` 下，已被 gitignore：**不入库**，PR 里写读数（哪张图证明了什么），不贴图。
 - 截图是给人看的证据，**不替代断言**：回归靠断言，截图只解释「当时界面上是什么样」。

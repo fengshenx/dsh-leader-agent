@@ -8,12 +8,12 @@
  * @module dsh-leader-kit/scripts/dev-instance
  */
 
-import { spawn } from 'node:child_process'
 import {
   copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { COPIED_PROFILE_FILES, deriveProfilePackage, parseWebUrlLine, planNodeModules } from './dev-plan.mjs'
+import { commandLaunchError, spawnCommand } from './spawn-command.mjs'
 
 /**
  * 按源 profile 派生出目标 profile 目录。
@@ -90,7 +90,13 @@ export function prepareProfileDir({ worktree, paths, sourcePackage }) {
 export function spawnDshWeb({
   worktree, env, args = [], dshCommand = process.env.DEV_DSH || 'dsh', timeoutMs = 60_000,
 }) {
-  const child = spawn(dshCommand, args, { cwd: worktree, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  // win32 上解析不到 shim 会同步抛：统一成 rejected promise，调用方只处理一种失败形态。
+  let child
+  try {
+    child = spawnCommand({ command: dshCommand, args, cwd: worktree, env, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    return Promise.reject(error)
+  }
   const logs = []
   let pending = ''
   let settled = false
@@ -155,7 +161,10 @@ export function spawnDshWeb({
 
   child.stdout.on('data', collect)
   child.stderr.on('data', collect)
-  child.once('error', (error) => settle(new Error(`无法启动 ${dshCommand}: ${error.message}`), null))
+  child.once('error', (error) => {
+    const normalized = commandLaunchError(error, { command: dshCommand })
+    settle(new Error(`无法启动 ${dshCommand}: ${normalized.message}`), null)
+  })
   child.once('exit', (code, signal) => {
     settle(new Error(`dsh web 在就绪前退出（code ${code}, signal ${signal}）。输出：\n${logs.join('')}`), null)
   })

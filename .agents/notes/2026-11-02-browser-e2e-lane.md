@@ -24,9 +24,15 @@
 
 本仓只有 `node:test`。宿主本身也是「runner 与浏览器库分离」（vitest + `playwright`），本仓等价物是 `node:test` + `playwright` core。`npm run e2e` 先 `npm run build:client`——`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错，这是本仓最容易静默回退的一条。
 
+### 起进程统一走 spawn-command，并由用例守住
+
+`npm run dev` 与 e2e 都要起 `npm` / `dsh`，而 Windows 上 npm 装出来的是 `.cmd` / `.ps1` / 无扩展名 shim，裸 `spawn('dsh')` / `spawnSync('npm')` 必 ENOENT（#63 修过一次，真机读数见 `2026-11-02-windows-command-spawn.md`）。抽出 `dev-instance.mjs` 时曾退回裸 `spawn` / `spawnSync`，所以这里重新统一：`dev.mjs` 的构建与 `spawnDshWeb` 都经 `scripts/spawn-command.mjs`（`spawnCommandSync` / `spawnCommand`），异步路径用 `commandLaunchError` 把「命令不存在」与「cmd 起不来」分开报。
+
+`tests/spawn-command-usage.test.js` 静态守这道线：scripts 与 e2e 夹具里导 `spawn` / `spawnSync` 的文件必须在允许清单里（每条写理由），`dev.mjs` 里唯一的裸 `spawn` 只能是 `spawn(process.execPath)`。选静态用例而不是单独门禁脚本：`npm run check` 已经跑 tests，不必再加一条命令，失败信息也能直接指出文件名。
+
 ### 截图走同一套夹具，不另开一条手工路径
 
-「想看一眼界面上是什么样」过去只能手工开浏览器去点，这正是证据不可复现的来源。`e2e.screenshot(label)` 存到 `.dev/e2e-artifacts/<场景名>/`，`stop()` 前自动存一张 `final.png`（失败时它是唯一能看的东西），路径打到 stdout 供人或 agent 直接用 Read 打开。目录在 `.dev/` 下、已 gitignore：截图不入库，PR 里写读数而不是贴图。截图只是证据，回归仍靠断言——不写「截图里有某个字」这种断言。
+「想看一眼界面上是什么样」过去只能手工开浏览器去点，这正是证据不可复现的来源。`e2e.screenshot(label)` 存到 `.dev/e2e-artifacts/<场景名>-<pid>/`（带进程 pid：同机并发两次 e2e 时同名场景不互相覆盖），`stop()` 前自动存一张 `final.png`（失败时它是唯一能看的东西），路径打到 stdout 供人或 agent 直接用 Read 打开。目录在 `.dev/` 下、已 gitignore：截图不入库，PR 里写读数而不是贴图。截图只是证据，回归仍靠断言——不写「截图里有某个字」这种断言。
 
 ### e2e 不进 `npm run check`
 
@@ -40,12 +46,18 @@ check 的门禁只跑纯函数与假件，不能依赖真实 `dsh` 与 chromium�
 - **跨进程拿不到 `whenIdle()`**：轮次完成的屏障只能从浏览器侧观察（回复上屏、落盘文件出现）。这是一个已知的弱化，写进文档。
 - **显式 `baseURL` 会让 mock 静默失效**：派生 profile 时检测 `cordis.yml` / `cordis.patch.yml`，命中直接报错，不靠运气。
 - **会话落盘格式是宿主的**（实测 `session.v4.jsonl.zstd`）：`session-logs.mjs` 递归找文件、两种后缀都认、解压失败视为「还在写」下一轮再读，不硬编码路径与版本号。
+- **mock 的脚本游标是全局单值，一轮只支持一个会话在请求模型**：同一场景里协调者 + worker 并行时，无标记的请求会续到「最后命中的那份脚本」上，表现为脚本多跑一轮。做派工场景前先按 session id 分游标；文档的 mock 约定里写明了这条。
+- **Node 需要 22.15+**：`session-logs.mjs` 用 `node:zlib` 的 zstd 解压（v22.15.0 加入），`node --test "tests/e2e/*.e2e.js"` 用 test runner 自带的 glob。旧版本上是 import 期就崩，不是跑不过，所以写进 `docs/e2e-testing.md` 的前提而不只靠 `engines`。
 
 ## 验证
 
-- `npm run e2e`：2 个场景全绿，约 4 秒（`plugin.e2e.js` 2.9s + `session.e2e.js` 3.9s，并行）。
-- `npm run check`：新增 `tests/e2e-logic.test.js`（6 例）与 `tests/e2e-mock-script.test.js`（12 例），全量通过。
+- `npm run e2e`：2 个场景全绿，约 4.7 秒（`plugin.e2e.js` 3.5s + `session.e2e.js` 4.5s，并行）。
+- `npm run check`：805 用例 / 796 通过 / 0 失败 / 9 跳过（跳过为既有的平台相关用例），含新增的 `tests/e2e-logic.test.js`（6 例）、`tests/e2e-mock-script.test.js`（12 例）与 `tests/spawn-command-usage.test.js`（3 例）。
 - **双向验证 1**：把 `plugin.e2e.js` 的标题断言从 `'项目'` 改成 `'不存在的标题'` → 该用例 30s 超时变红；还原 → 变绿。
 - **双向验证 2**：把 `mock-llm.mjs` 的 `cursor.take(resolveMarker(parsed))` 改成 `cursor.take(null)`（等于撤掉标记处理）→ `session.e2e.js` 在等回复时 90s 超时变红；还原 → 变绿。
+- **双向验证 3**（spawn 门禁）：`dev-instance.mjs` 改回裸 `spawn(dshCommand, …)` → `起 npm / dsh 只经 spawn-command.mjs` 红，报出该文件；还原 → 绿。`dev.mjs` 的 `run()` 改回 `spawnSync(command, …)` → `dev.mjs 的裸 spawn 只起 process.execPath` 红，actual `['spawnSync(command)', 'spawn(process.execPath)']`；还原 → 绿。
+- **双向验证 4**（mock 断连，探针 `/tmp/probe-mock-abort.mjs`：`content-length: 200` 只写 12 字节后 `destroy()`）：修复前进程 exit 1，栈是 `Error: aborted … code: 'ECONNRESET'`；修复后打印 `ALIVE`、exit 0。
+- **双向验证 5**（失败路径临时根，探针 `/tmp/probe-instance-clean.mjs`，`DSH_HOME_SOURCE` 指向空目录）：修复前 `before=0 after=1`（残留一个 `dsh-leader-kit-e2e-*`）；修复后 `before=0 after=0`。
 - 真机读数：实例就绪行形如 `dsh web: http://127.0.0.1:<port>/?token=<...>`；新会话的 composer 在启动早期是 `data-phase="inert"`（`aria-label="选择工作区"`），等 `contenteditable="true"` 才是可输入状态；一条消息会带来两次模型请求（`scenario` + `title`）。
-- 截图读数：`.dev/e2e-artifacts/session/reply.png` 里左栏有本插件的「项目」区块，会话消息是 `MOCK-E2E-REPLY 收工即可`，回复为 `mock 回执已收到`，会话标题是 mock 回的「e2e 会话」——标题请求被单独归类这一点也在图上。
+- 截图读数：`.dev/e2e-artifacts/session-<pid>/reply.png` 里左栏有本插件的「项目」区块，会话消息是 `MOCK-E2E-REPLY 收工即可`，回复为 `mock 回执已收到`，会话标题是 mock 回的「e2e 会话」——标题请求被单独归类这一点也在图上。
+- `npm run dev` 冒烟（macOS，`DEV_NO_OPEN=1 DEV_PORT=0 node scripts/dev.mjs`）：打印数据根与插件链接、跑完 `build:client`、最后一行 `dsh web: http://127.0.0.1:59789/?token=…`；起进程改经 `spawnCommand` 后行为不变。

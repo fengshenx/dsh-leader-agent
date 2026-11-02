@@ -30,19 +30,22 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
   const mock = await startMockProvider({ scripts })
   let instance = null
   let browser = null
+  let context = null
+  let page = null
   try {
     instance = await startInstance({ baseUrl: mock.url, env })
     browser = await chromium.launch()
+    context = await browser.newContext({ locale, viewport: { width: 1440, height: 900 } })
+    page = await context.newPage()
   } catch (error) {
     // 起不来时把已拿到的资源收掉，否则端口与临时根会留给下一个用例背锅。
-    await browser?.close()
-    await instance?.stop()
-    await mock.stop()
+    // 清理自身的错误不能盖住真正的失败原因，这里逐条吞掉。
+    await browser?.close().catch(() => {})
+    await instance?.stop().catch(() => {})
+    await mock.stop().catch(() => {})
     throw error
   }
 
-  const context = await browser.newContext({ locale, viewport: { width: 1440, height: 900 } })
-  const page = await context.newPage()
   /** 失败时随断言一起打印：只看断言文本会漏掉页内真正的报错。 */
   const problems = []
   page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
@@ -51,7 +54,8 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
   })
 
   // 截图落在工作树的 .dev/（已 gitignore）：给人看的证据，不入库、不替代断言。
-  const artifactsDir = join(WORKTREE, '.dev', 'e2e-artifacts', name)
+  // 带上 pid：同机并发两次 e2e 时同名场景不互相覆盖，读数才对得上图。
+  const artifactsDir = join(WORKTREE, '.dev', 'e2e-artifacts', `${name}-${process.pid}`)
 
   /**
    * 存一张当前页面截图，路径打到 stdout 供人或 agent 直接打开。

@@ -47,7 +47,18 @@ export async function startMockProvider({ scripts }) {
   const requests = []
 
   const server = createServer(async (request, response) => {
-    const body = await readBody(request)
+    // 回包途中对端断开时 write/end 会触发 response 的 error 事件；没人监听就是进程级崩溃。
+    response.on('error', () => {})
+    let body
+    try {
+      body = await readBody(request)
+    } catch (_aborted) {
+      // 请求体传到一半连接断了（实例被 SIGTERM、客户端重连）：mock 没有可回答的
+      // 请求，安静收场。让它以 unhandled rejection 退出会把整轮测试打成「看不懂的
+      // crash」，掩盖真正的断言失败。
+      response.destroy()
+      return
+    }
     const record = { method: request.method, path: request.url, body }
     requests.push(record)
 
