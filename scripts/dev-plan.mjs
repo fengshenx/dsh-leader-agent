@@ -98,26 +98,56 @@ export function assertSeparateHome({ home, sourceHome }) {
 }
 
 /**
- * 挡住「源 profile 没有 web UI」这个误用。
+ * 挡住「profile 没有 web UI」这个误用。
  *
  * `DSH_PROFILE` 接受任意名字，但只有落在宿主 `PROFILE_TEMPLATES` 里的名字才带
  * app bundle。实测一个只含 `@deepseek-ai/dsh-base` 的 profile 跑 `dsh web`：
  * 不监听端口、不打印 URL、也不报错——进程静默地什么都不做，而 `npm run dev`
- * 看起来是成功的。判据直接看源 profile 的 bundles 里有没有 web app bundle，
+ * 看起来是成功的。判据直接看 profile 的 bundles 里有没有 web app bundle，
  * 不抄宿主的模板表（那份表会随版本变）。
+ *
+ * 修复建议由调用方给：`dev` 能换 `DSH_PROFILE`，`start` 的 profile 名是固定的
+ * （`profiles/web`），照前者的建议做无效。
  *
  * @param {object} options - 选项
  * @param {string} options.profileDir - profile 目录，只用于报错定位
  * @param {string[] | undefined} options.bundles - 该 profile 的 `dsh.profile.bundles`
+ * @param {string} options.hint - 该调用方能照做的修复建议，必填
  * @returns {void} 有 web app bundle 时无返回
  */
-export function assertWebBundle({ profileDir, bundles }) {
+export function assertWebBundle({ profileDir, bundles, hint }) {
+  if (typeof hint !== 'string' || hint === '') {
+    throw new Error('assertWebBundle 需要 hint：每个调用方各给自己能执行的修复建议')
+  }
   if (Array.isArray(bundles) && bundles.includes(WEB_APP_BUNDLE)) return
   throw new Error(
     `profile 的 bundles 里没有 ${WEB_APP_BUNDLE}（${profileDir}），dsh web 起不来：`
-    + '实测不监听端口、不打印 URL、也不报错。'
-    + `用 DSH_PROFILE 指向一个 web profile，或把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles。`,
+    + `实测不监听端口、不打印 URL、也不报错。${hint}`,
   )
+}
+
+/**
+ * `dev` 的修复建议：源 profile 名可由 `DSH_PROFILE` 换掉。
+ *
+ * @returns {string} 修复建议
+ */
+export function devWebBundleHint() {
+  return `用 DSH_PROFILE 指向一个 web profile，或把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles。`
+}
+
+/**
+ * `start` 的修复建议：它的 profile 名固定为 `profiles/web`，换 profile 名的建议对它无效。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.profileDir - 日常 profile 目录
+ * @param {string} options.dshCommand - dsh 可执行文件，用于给出可复制的命令
+ * @param {string} options.worktree - 当前仓库路径
+ * @returns {string} 修复建议
+ */
+export function startWebBundleHint({ profileDir, dshCommand, worktree }) {
+  return `把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles，`
+    + `或删掉 ${profileDir} 让 dsh 按 ${PROFILE_NAME} 模板重建后再装本插件: `
+    + `${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`
 }
 
 /**

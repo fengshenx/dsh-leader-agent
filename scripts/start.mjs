@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
-  LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle,
+  LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, startWebBundleHint,
 } from './dev-plan.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -60,72 +60,118 @@ function identityOf(path) {
   }
 }
 
-const dshCommand = process.env.DSH_DSH || 'dsh'
-
-// 先探可执行文件：没装 dsh 时下面每一条检查都跑不起来，而 spawnSync 的原始
-// 报错（`spawnSync dsh ENOENT`）不会告诉人「装 dsh」还是「PATH 里找不到」。
-const probe = spawnSync(dshCommand, ['--version'], { encoding: 'utf8' })
-if (probe.error?.code === 'ENOENT') {
-  console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
-  console.error('用 nvm 等版本管理器时，换了 shell 或 node 版本后 PATH 会重置，先确认 `command -v dsh` 有输出。')
-  console.error(`装好后重跑；可执行文件名不是 dsh 时用 DSH_DSH 指定路径，例如 DSH_DSH=/opt/dsh/bin/dsh npm start。`)
-  process.exit(1)
-}
-if (probe.error !== undefined) throw probe.error
-if (probe.status !== 0) {
-  console.error(`错误: ${dshCommand} --version 以退出码 ${probe.status} 结束`)
-  console.error((probe.stderr || probe.stdout || '').trim())
-  process.exit(1)
-}
-const dshVersion = probe.stdout.trim() || '未知版本'
-
-const home = process.env.DSH_HOME || join(homedir(), '.dsh')
-const profileDir = join(home, 'profiles', PROFILE_NAME)
-const packagePath = join(profileDir, 'package.json')
-
-if (!existsSync(packagePath)) {
-  console.error(`找不到日常 profile: ${packagePath}`)
-  console.error(`先装一次本插件（dsh 会按 ${PROFILE_NAME} 模板建出 profile）：`)
-  console.error(`  ${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`)
-  console.error('或用 DSH_HOME 指向另一个已备好的数据根。')
-  process.exit(1)
+/**
+ * 读 profile 的 `package.json`。
+ *
+ * `JSON.parse` 的原始报错只说「哪一行有什么字符」，用户不知道该动什么；这里补上
+ * 重装命令。
+ *
+ * @param {string} path - `package.json` 路径
+ * @param {string} dshCommand - dsh 可执行文件，用于给出可复制的命令
+ * @returns {object} 解析结果
+ */
+function readProfilePackage(path, dshCommand) {
+  const text = readFileSync(path, 'utf8')
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    throw new Error(
+      `${path} 不是合法 JSON（${error.message}）。重装一次: `
+      + `${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`,
+    )
+  }
 }
 
-const profilePackage = JSON.parse(readFileSync(packagePath, 'utf8'))
-const bundles = profilePackage.dsh?.profile?.bundles
+/**
+ * 校验环境并起实例。
+ *
+ * @returns {void} 无返回
+ */
+function main() {
+  const dshCommand = process.env.DSH_DSH || 'dsh'
+
+  // 先探可执行文件：没装 dsh 时下面每一条检查都跑不起来，而 spawnSync 的原始
+  // 报错（`spawnSync dsh ENOENT`）不会告诉人「装 dsh」还是「PATH 里找不到」。
+  const probe = spawnSync(dshCommand, ['--version'], { encoding: 'utf8' })
+  if (probe.error?.code === 'ENOENT') {
+    console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
+    console.error('用 nvm 等版本管理器时，换了 shell 或 node 版本后 PATH 会重置，先确认 `command -v dsh` 有输出。')
+    console.error('装好后重跑；可执行文件名不是 dsh 时用 DSH_DSH 指定路径，例如 DSH_DSH=/opt/dsh/bin/dsh npm start。')
+    process.exit(1)
+  }
+  if (probe.error !== undefined) throw probe.error
+  if (probe.status !== 0) {
+    console.error(`错误: ${dshCommand} --version 以退出码 ${probe.status} 结束`)
+    console.error((probe.stderr || probe.stdout || '').trim())
+    process.exit(1)
+  }
+  const dshVersion = probe.stdout.trim() || '未知版本'
+
+  const home = process.env.DSH_HOME || join(homedir(), '.dsh')
+  const profileDir = join(home, 'profiles', PROFILE_NAME)
+  const packagePath = join(profileDir, 'package.json')
+
+  if (!existsSync(packagePath)) {
+    console.error(`找不到日常 profile: ${packagePath}`)
+    console.error(`先装一次本插件（dsh 会按 ${PROFILE_NAME} 模板建出 profile）：`)
+    console.error(`  ${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`)
+    console.error('或用 DSH_HOME 指向另一个已备好的数据根。')
+    process.exit(1)
+  }
+
+  const profilePackage = readProfilePackage(packagePath, dshCommand)
+  const bundles = profilePackage.dsh?.profile?.bundles
+  try {
+    assertWebBundle({
+      profileDir,
+      bundles,
+      hint: startWebBundleHint({ profileDir, dshCommand, worktree }),
+    })
+    assertLeaderKitBundle({ profileDir, bundles, worktree })
+  } catch (error) {
+    console.error(`错误: ${error.message}`)
+    process.exit(1)
+  }
+
+  const pluginLink = join(profileDir, 'node_modules', LEADER_KIT_PACKAGE)
+  const loadedFrom = identityOf(pluginLink)
+  if (loadedFrom === null) {
+    console.error(`错误: ${pluginLink} 不存在，profile 声明了本插件但没链接上。`)
+    console.error(`重装一次: ${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`)
+    process.exit(1)
+  }
+
+  // 脚本就在仓库里，identityOf(worktree) 不会是 null
+  const building = loadedFrom === identityOf(worktree)
+  if (!building) {
+    console.warn(`[warn] 实例加载的是 ${loadedFrom}，不是当前目录 ${worktree}`)
+    console.warn('       当前目录的改动不会被它加载；要在本目录里验证请用 npm run dev。')
+  }
+
+  console.log('')
+  console.log('== dsh-leader-kit 日常实例 ==')
+  console.log(`  版本    ${dshCommand} ${dshVersion}`)
+  console.log(`  数据根  ${home}`)
+  console.log(`  插件    ${loadedFrom}`)
+  console.log('')
+
+  if (building) run('npm', ['run', 'build:client'], { cwd: worktree })
+
+  run(dshCommand, ['web', ...process.argv.slice(2)], {
+    cwd: worktree,
+    env: { ...process.env, DSH_HOME: home },
+  })
+}
+
 try {
-  assertWebBundle({ profileDir, bundles })
-  assertLeaderKitBundle({ profileDir, bundles, worktree })
+  main()
 } catch (error) {
-  console.error(`错误: ${error.message}`)
+  // 未预期异常的栈对用户没用，但首帧能定位到脚本哪一行；其余交给这里的一句话。
+  const detail = error instanceof Error ? error.message : String(error)
+  console.error(`错误: ${detail}`)
+  const frame = error instanceof Error
+    ? error.stack?.split('\n').find((line) => line.trim().startsWith('at '))
+    : undefined
+  if (frame !== undefined) console.error(frame.trim())
   process.exit(1)
 }
-
-const pluginLink = join(profileDir, 'node_modules', LEADER_KIT_PACKAGE)
-const loadedFrom = identityOf(pluginLink)
-if (loadedFrom === null) {
-  console.error(`错误: ${pluginLink} 不存在，profile 声明了本插件但没链接上。`)
-  console.error(`重装一次: ${dshCommand} plugin --profile ${PROFILE_NAME} add ${worktree}`)
-  process.exit(1)
-}
-
-// 脚本就在仓库里，identityOf(worktree) 不会是 null
-const building = loadedFrom === identityOf(worktree)
-if (!building) {
-  console.warn(`[warn] 实例加载的是 ${loadedFrom}，不是当前目录 ${worktree}`)
-  console.warn('       当前目录的改动不会被它加载；要在本目录里验证请用 npm run dev。')
-}
-
-console.log('')
-console.log('== dsh-leader-kit 日常实例 ==')
-console.log(`  dsh     ${dshCommand} ${dshVersion}`)
-console.log(`  数据根  ${home}`)
-console.log(`  插件    ${loadedFrom}`)
-console.log('')
-
-if (building) run('npm', ['run', 'build:client'], { cwd: worktree })
-
-run(dshCommand, ['web', ...process.argv.slice(2)], {
-  cwd: worktree,
-  env: { ...process.env, DSH_HOME: home },
-})

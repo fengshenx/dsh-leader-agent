@@ -74,7 +74,9 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 
 宿主加载 `@deepseek-ai/dsh-experimental-agent-team-profile` 后，`agentTeams` 服务存在，`tool-agent-team` 会给每个「普通根会话」装团队工具（`agent-team/src/roster.ts` 的 `tryMembership`：无 `parentSession`、无 subagent descriptor 的 root 都算 lead）。本 bundle 的 worker 正是普通根会话，于是被当成隐式 Lead，能自己拉 teammate、自己记 team 任务；协调者也同时看到两套派工工具。
 
-工具面挡不住它们：团队工具注册在 Agent scope，而 `tools.restrict({ deny })` 只接受全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），`tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以本 bundle 只做两件事——第一次会话创建时告警一次，以及给协调者与 worker 注入运行时上下文（`dsh-leader-kit:team-ban`，order 106），点名团队工具对本流程无效、派工与任务事实仍走 `spawn_worker` / `message_worker` / 卡片。普通会话不注入：它们可能真的在用 teammate。要彻底隔离，只能从 profile 移除 `@deepseek-ai/dsh-experimental-agent-team-profile`。
+工具面挡不住它们：团队工具注册在 Agent scope，而 `tools.restrict({ deny })` 只接受全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），`tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以本 bundle 只做两件事——第一次会话创建时告警一次，以及给协调者与 worker 注入运行时上下文（`dsh-leader-kit:team-ban`，order 106）。
+
+禁令按各自的工具面分开写：协调者的出口是 `spawn_worker` / `message_worker` 与卡片；worker 的这三件工具正被 deny（`tools/gate.js` 的 `COORDINATOR_ONLY_TOOLS`），所以它只被告知当轮交付、自己的 worktree 与 PR、以及用 `update_card` 汇报。普通会话不注入：它们可能真的在用 teammate。要彻底隔离，只能从 profile 移除 `@deepseek-ai/dsh-experimental-agent-team-profile`。
 
 ### 工具面分配
 

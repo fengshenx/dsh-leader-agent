@@ -20,15 +20,23 @@
 
 1. `dsh` 可执行文件：用 `--version` 探测。ENOENT 时说明「没装或不在 PATH」，并提示 nvm 换版本会重置 PATH、`DSH_DSH` 可指定路径；非零退出码时把 stderr 打出来。
 2. 日常 profile 的 `package.json`：不存在时给 `dsh plugin --profile web add <当前仓库>`。
-3. bundles 里有 `@deepseek-ai/dsh-web-app`（复用 `assertWebBundle`）：缺它时 `dsh web` 不监听、不打印、也不报错，起一个「成功」的空进程最糟。
+3. bundles 里有 `@deepseek-ai/dsh-web-app`（复用 `assertWebBundle`，修复建议由调用方传入）：缺它时 `dsh web` 不监听、不打印、也不报错，起一个「成功」的空进程最糟。
 4. bundles 里有本插件（`assertLeaderKitBundle`，本 PR 新增）：缺它时实例不会加载本仓库。
 5. `node_modules/dsh-leader-kit` 链接存在：声明了却没链接上说明链接被破坏。
 
 `dsh --version` 顺带显示在启动横幅里，但**不校验 `engines.dsh` 范围**——npm 安装与宿主启动各自会拦，start 不重复实现 semver 比较。
 
+### 修复建议由调用方给，不复用别处的开关
+
+`assertWebBundle` 由 dev 与 start 共用，但两边的活路不同：dev 的源 profile 名可以换（`DSH_PROFILE`），start 的 profile 名固定 `profiles/web`（见下方边界）。所以守卫接受 `hint`，`devWebBundleHint()` 指向 `DSH_PROFILE`，`startWebBundleHint()` 给的是「把 web-app 写进 bundles，或删掉 profile 让 dsh 按 web 模板重建」。漏传 `hint` 直接抛错，不拼出 `undefined`。
+
 ### 构建产物只在链接指向当前目录时执行
 
 `npm run build:client` 产出的是当前目录的 `lib/client.js`。profile 链接指向别处时（典型是从 worktree 里跑 start，链接指向主 checkout）跳过构建：否则产出的是没人加载的产物，还让人误以为本目录的改动已被验证。这种情况打印一行 warn，指向 `npm run dev`。
+
+### 未预期异常只说一句，不糊整段 stack
+
+环境问题（profile 的 `package.json` 损坏、`dsh web` 非零退出）都会以异常形式冒到顶层。顶层 catch 打印 `错误: <message>` 与栈首帧：整段 stack 对用户没用，首帧能定位到脚本哪一行；`JSON.parse` 的原始报错只说字符位置，包一层补上重装命令。
 
 ### 额外参数原样转给 dsh web
 
@@ -45,12 +53,13 @@
 
 ## 验证
 
-`npm run check` 613 用例全绿。本 PR 新增 3 条 `dev-plan` 用例：日常 profile 已装本插件时放行、没装时拒绝并给出安装命令、没写 bundles 时拒绝。
+`npm run check` 629 用例全绿。`tests/dev-plan.test.js` 26 条：本 PR 新增「日常 profile 已装本插件时放行」「没装时拒绝并给出安装命令」「没写 bundles 时拒绝」，审查修复又加 4 条 `hint` 用例（拒绝时用调用方的建议、漏传直接报错、dev 建议指向 `DSH_PROFILE`、start 建议不提它）。
 
-双向验证：把 `assertLeaderKitBundle` 的判据替换成无条件 `return` → 「没装本插件时拒绝」「没写 bundles 时拒绝」两条变红（20/22 通过），还原后 22/22 绿。
+双向验证：把 `assertLeaderKitBundle` 的判据替换成无条件 `return` → 「没装本插件时拒绝」「没写 bundles 时拒绝」两条变红（20/22 通过），还原后全绿；把 `startWebBundleHint` 换成 `devWebBundleHint` → 「start 的修复建议不提 DSH_PROFILE」变红（25/26），还原后 26/26 绿。
 
 真机读数（`dsh 0.2.1-rc.2`）：
 
-- 正常路径：`DSH_HOME=/tmp/start-ok-home npm start -- --no-open --port 0`（profile 的插件链接指向本 worktree）先构建产物，横幅打印 `dsh dsh 0.2.1-rc.2`、数据根与插件路径，随后打印 `dsh web: http://127.0.0.1:…/?token=…` 并监听；`--no-open --port 0` 两项透传到位。
+- 正常路径：`DSH_HOME=/tmp/start-ok-home npm start -- --no-open --port 0`（profile 的插件链接指向本 worktree）先构建产物，横幅打印 `版本    dsh 0.2.1-rc.2`、数据根与插件路径，随后打印 `dsh web: http://127.0.0.1:…/?token=…` 并监听；`--no-open --port 0` 两项透传到位。
 - 加载目录不同：`DSH_HOME=~/.dsh npm start -- --no-open`（链接指向主 checkout）打出 `[warn] 实例加载的是 …/dsh-leader-kit，不是当前目录 …/.worktrees/npm-start-script`，跳过构建（`lib/client.js` 的 mtime 不变）。
 - 四条失败路径各自以 1 退出并给出可复制的修复命令：`DSH_DSH=no-such-dsh`（提示 PATH 与 nvm）、数据根没有 profile、profile 缺本插件、profile 声明了但没有 `node_modules/dsh-leader-kit` 链接。
+- 错误输出（stub `dsh` + /tmp 夹具）：`package.json` 损坏时打 `错误: … 不是合法 JSON（…）。重装一次: dsh plugin …` 加一行首帧；缺 web-app 时打 `错误: … 把 @deepseek-ai/dsh-web-app 加进该 profile 的 dsh.profile.bundles，或删掉 …`，**不含 `DSH_PROFILE`**；`dsh web` 退 3 时打 `错误: 退出码 3: … web` 加首帧，三者都不再吐整段 stack。

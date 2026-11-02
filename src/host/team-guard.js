@@ -11,6 +11,8 @@
  * 全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），
  * `tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以这里只做两件事
  * ——会话创建时告警一次，以及给协调者与 worker 的运行时上下文写明不要混用。
+ * 两边的「该用什么」按各自工具面分开写：worker 没有 worker 编排工具，共用一份
+ * 文案会让它去调一个被 deny 的名字。
  *
  * @module dsh-leader-kit/host/team-guard
  */
@@ -44,18 +46,51 @@ export const TEAM_BAN_CONTEXT_NAME = 'dsh-leader-kit:team-ban'
  */
 export const TEAM_BAN_CONTEXT_ORDER = 106
 
-/** 禁令正文。协调者与 worker 读到同一份——两者的禁忌是同一批工具。 */
-export const TEAM_BAN_TEXT = [
+/**
+ * 各角色的正向指引：文本里提到的「该用哪个」必须落在该角色自己的工具面里。
+ *
+ * 协调者与 worker 的工具面不同（`tools/gate.js` 的 `COORDINATOR_ONLY_TOOLS` 对
+ * worker 全禁），共用一份文案就会让 worker 照做一个它没有的工具、拿 tool-not-found。
+ * 单测按这份清单核对，见 `tests/team-guard.test.js`。
+ */
+export const TEAM_BAN_GUIDANCE = Object.freeze({
+  coordinator: Object.freeze(['spawn_worker', 'message_worker', 'create_card', 'update_card']),
+  worker: Object.freeze(['update_card']),
+})
+
+const TEAM_BAN_HEADER = [
   '## 环境：agent-team 与本流程并存',
   '',
   '当前部署同时加载了 dsh 的 experimental agent-team（`agentTeams` 服务存在）。它的团队工具'
   + `（\`${TEAM_TOOL_NAMES.join('` / `')}\`）不参与本流程，不要用：`,
+]
+
+/** 协调者的禁令正文。 */
+export const TEAM_BAN_TEXT_COORDINATOR = [
+  ...TEAM_BAN_HEADER,
   '',
   '- 派活与续聊只用 `spawn_worker` / `message_worker`。`spawn_teammate` 建的 teammate 有父会话，'
   + '不进入 worker 登记表，完成回报也送不到协调者。',
   '- 找 worker 不要用 `send_message` / `list_agents` / `wait_agent` / `interrupt_agent`：'
   + '它们按 teammate 名字与 subagent 血统寻址，而 worker 是普通根会话，不在名册里。',
   '- 任务事实写进卡片（`create_card` / `update_card`），不要用 `team_task_*`——看板只读卡片。',
+].join('\n')
+
+/**
+ * worker 的禁令正文。
+ *
+ * 它没有 `spawn_worker` / `message_worker` / `list_cards`（见 `tools/gate.js`），所以
+ * 只讲它真能做的：当轮交付与卡片汇报。
+ */
+export const TEAM_BAN_TEXT_WORKER = [
+  ...TEAM_BAN_HEADER,
+  '',
+  '- 派活不是你的事：`spawn_teammate` 建的 teammate 不在协调者的 worker 登记表里，'
+  + '完成回报也送不到协调者；要让协调者继续派活就在当轮交付里说明。',
+  '- 续聊与收尾不要用 `send_message` / `list_agents` / `wait_agent` / `interrupt_agent`：'
+  + '它们按 teammate 名字与 subagent 血统寻址，本会话是普通根会话，不在名册里。',
+  '- 当轮结束由系统结算，不用自己调停；交付落在自己的 worktree 与 PR 上，'
+  + '任务事实用 `update_card` 汇报——看板只读卡片，不要用 `team_task_*`。',
 ].join('\n')
 
 /**
@@ -88,10 +123,9 @@ export function isAgentTeamEnabled(ctx) {
  */
 export function teamBanFor({ sessionId, enabled, isCoordinatorSession, isWorkerSession }) {
   if (!enabled) return ''
-  const coordinator = isCoordinatorSession(sessionId) === true
+  if (isCoordinatorSession(sessionId) === true) return TEAM_BAN_TEXT_COORDINATOR
   const worker = typeof isWorkerSession === 'function' && isWorkerSession(sessionId) === true
-  if (!coordinator && !worker) return ''
-  return TEAM_BAN_TEXT
+  return worker ? TEAM_BAN_TEXT_WORKER : ''
 }
 
 /**
