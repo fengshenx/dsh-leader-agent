@@ -86,31 +86,6 @@ test('源 package.json 缺 dsh 段时也能派生', () => {
   assert.equal(derived.dependencies[LEADER_KIT_PACKAGE], `link:${WORKTREE}`)
 })
 
-test('派生 package.json 剔除改名前的旧包，避免双插件实例', () => {
-  const source = sourcePackage()
-  source.dependencies['dsh-coordinator'] = 'link:/home/user/code/dsh-coordinator'
-  source.dsh.profile.bundles.push('dsh-coordinator')
-  const derived = deriveProfilePackage(source, WORKTREE)
-  assert.equal('dsh-coordinator' in derived.dependencies, false)
-  assert.equal(derived.dsh.profile.bundles.includes('dsh-coordinator'), false)
-  assert.equal(derived.dependencies[LEADER_KIT_PACKAGE], `link:${WORKTREE}`)
-  assert.equal(derived.dsh.profile.bundles.includes(LEADER_KIT_PACKAGE), true)
-  // 剔除只影响派生结果，不动入参
-  assert.equal('dsh-coordinator' in source.dependencies, true)
-  assert.equal(source.dsh.profile.bundles.includes('dsh-coordinator'), true)
-})
-
-test('node_modules 不链旧包，已链上的旧包要清掉', () => {
-  const plan = planNodeModules({
-    sourceEntries: ['@deepseek-ai', 'dsh-coordinator', 'dsh-remind'],
-    existingEntries: ['dsh-coordinator', 'dsh-remind'],
-    sourceNodeModules: '/src/node_modules',
-    worktree: WORKTREE,
-  })
-  assert.deepEqual(plan.links.map((item) => item.name), ['@deepseek-ai', 'dsh-remind', LEADER_KIT_PACKAGE])
-  assert.deepEqual(plan.removals, ['dsh-coordinator'])
-})
-
 test('node_modules 逐条链到源，只有插件本体指工作树', () => {
   const plan = planNodeModules({
     sourceEntries: ['@deepseek-ai', 'dsh-leader-kit', 'dsh-remind', '.pnpm'],

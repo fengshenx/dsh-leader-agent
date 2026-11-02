@@ -92,14 +92,6 @@ profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类
 
 `engines.dsh` 声明了支持的 dsh 版本范围；不满足时安装与启动会被拒绝——dsh 处于 developer preview，版本范围需随 dsh 跟进。
 
-**从 `dsh-coordinator` 升级**：运行时数据目录随包名改成 `$DSH_HOME/dsh-leader-kit/`，插件只读新目录，旧的 `$DSH_HOME/dsh-coordinator/`（项目、卡片、派工记录）不会自动迁移。升级前先搬过去，否则新版本里这些数据全部不可见：
-
-```sh
-mv ~/.dsh/dsh-coordinator ~/.dsh/dsh-leader-kit
-```
-
-新目录已经存在时 `mv` 会把旧目录塞进新目录里面，不生效：先确认新目录里没有要保留的数据，删掉它再搬，或逐个文件合并。
-
 ## 开发
 
 在 worktree 里开发时，一条命令起一个**挂当前工作树插件版本**的 dsh 实例：

@@ -21,14 +21,6 @@ import { join, resolve } from 'node:path'
 /** 插件包名：profile 里换成工作树链接的那个。 */
 export const LEADER_KIT_PACKAGE = 'dsh-leader-kit'
 
-/**
- * 改名前的包名：派生的 profile 里遇到就剔除。
- *
- * 旧包与本包各带一行 patch（`coordinator-host` / `leader-kit-host`），行 id 不同，
- * 装在同一 profile 里不会被去重，得到两个插件实例。
- */
-export const LEGACY_PACKAGE = 'dsh-coordinator'
-
 /** 开发实例用的 profile 名。插件的客户端 manifest 声明 `platform: web`。 */
 export const PROFILE_NAME = 'web'
 
@@ -131,25 +123,20 @@ export function assertWebBundle({ profileDir, bundles }) {
  * 从源 profile 的 `package.json` 派生开发实例的版本。
  *
  * 依赖与 bundle 列表都照源抄——开发实例要复现日常环境的组合，否则「本地跑得
- * 起来、装进 profile 就坏」这类问题测不出来。例外是 `dsh-leader-kit` 的依赖换成
- * 工作树链接、bundle 列表保证含它（源里没装过本插件时也能起），以及旧包名
- * `dsh-coordinator` 从两边剔除——源 profile 没清理干净时，两个包会各装一份
- * 插件实例。
+ * 起来、装进 profile 就坏」这类问题测不出来。只有两处不同：`dsh-leader-kit`
+ * 的依赖换成工作树链接，bundle 列表保证含它（源里没装过本插件时也能起）。
  *
  * @param {object} sourcePackage - 源 profile 的 `package.json` 解析结果
  * @param {string} worktree - 当前工作树的绝对路径
  * @returns {object} 派生后的 `package.json` 对象
  */
 export function deriveProfilePackage(sourcePackage, worktree) {
-  const bundles = (sourcePackage?.dsh?.profile?.bundles ?? []).filter((name) => name !== LEGACY_PACKAGE)
+  const bundles = [...(sourcePackage?.dsh?.profile?.bundles ?? [])]
   if (!bundles.includes(LEADER_KIT_PACKAGE)) bundles.push(LEADER_KIT_PACKAGE)
-  const dependencies = Object.fromEntries(
-    Object.entries(sourcePackage?.dependencies ?? {}).filter(([name]) => name !== LEGACY_PACKAGE),
-  )
   return {
     ...sourcePackage,
     dependencies: {
-      ...dependencies,
+      ...(sourcePackage?.dependencies ?? {}),
       [LEADER_KIT_PACKAGE]: `link:${worktree}`,
     },
     dsh: {
@@ -167,8 +154,7 @@ export function deriveProfilePackage(sourcePackage, worktree) {
  *
  * 源 profile 的每个条目都链过去（依赖由它在源里那一份承担，升级时开发实例自动
  * 跟随），只有插件本体指工作树。目标里多出来的条目要删掉——源里已经移除的插件
- * 留在开发实例里会让「卸掉它之后还能不能起」测不出来。旧包 `dsh-coordinator`
- * 例外：源里还留着它也一律不链、已链上的要删，否则两个插件实例同时加载。
+ * 留在开发实例里会让「卸掉它之后还能不能起」测不出来。
  *
  * @param {object} options - 选项
  * @param {string[]} options.sourceEntries - 源 `node_modules` 的条目名
@@ -179,11 +165,10 @@ export function deriveProfilePackage(sourcePackage, worktree) {
  */
 export function planNodeModules({ sourceEntries, existingEntries, sourceNodeModules, worktree }) {
   const links = sourceEntries
-    .filter((name) => name !== LEADER_KIT_PACKAGE && name !== LEGACY_PACKAGE)
+    .filter((name) => name !== LEADER_KIT_PACKAGE)
     .map((name) => ({ name, target: join(sourceNodeModules, name) }))
   links.push({ name: LEADER_KIT_PACKAGE, target: worktree })
   const removals = existingEntries
-    .filter((name) => name !== LEADER_KIT_PACKAGE
-      && (name === LEGACY_PACKAGE || !sourceEntries.includes(name)))
+    .filter((name) => !sourceEntries.includes(name) && name !== LEADER_KIT_PACKAGE)
   return { links, removals }
 }
