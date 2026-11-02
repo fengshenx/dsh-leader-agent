@@ -47,4 +47,4 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 - `DSH_HOME=<临时数据根> npm start -- --help`：先打印 `版本 dsh …`、数据根与插件路径，跑完 `npm run build:client`，再打印 `dsh web --help` 全文，`exit=0`——探测器、`npm` 构建、`dsh` 启动三条都在 cmd 封装里过了一遍。
 - `DSH_DSH=no-such-dsh npm start` 与 `DEV_DSH=no-such-dsh npm run dev`：各自在准备完 profile 后打出新的两行提示并以 1 退出，不再是 ENOENT 的原始形态。
-- 同一份临时数据根下发现一个既有现象（不是本次引入）：`npm start` 里 `dsh --version` 报 `0.1.0-rc.7`，直接跑 `node scripts/start.mjs` 报 `0.2.1-rc.5`——npm 把 `C:\Users\…\Documents\code\node_modules\.bin` 插在 PATH 前面，那里有一份旧 dsh。见上面边界。
+- 本机 `Documents\code\node_modules` 里曾残留一份 pnpm 装的 dsh 0.1.0-rc.7，npm 把它挂的 `.bin` 插在 PATH 前面：清掉之前 `npm start` 打印 `版本 dsh 0.1.0-rc.7`，清掉之后同一份临时数据根下 `npm start -- --help` 打印 `版本 dsh 0.2.1-rc.5` 并以 0 退出。封装在 npm 脚本里对 PATH 顺序的处理与直接跑 `node scripts/start.mjs` 一致，见上面边界。
