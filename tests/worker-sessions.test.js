@@ -644,5 +644,26 @@ test('挂载失败不拖累派工，只在日志里说明后果', async () => {
   })
   await new Promise((resolve) => { setTimeout(resolve, 0) })
 
-  assert.equal(lines.some((line) => line.includes('未分组')), true)
+  // 漂移排查要能看出是哪个工作区：只有会话 id 与错误，定位不到项目。
+  assert.equal(lines.some((line) => line.includes('未分组') && line.includes('ws-1')), true)
+})
+
+test('投递失败销毁会话时不把它挂进工作区', async () => {
+  const fixture = createFixture({ followupError: new Error('INBOX_CLOSED') })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  await assert.rejects(
+    () => sessions.spawn({
+      name: 'w',
+      initialMessage: 'x',
+      parentSessionId: 'c',
+      workspaceId: 'ws-1',
+      signal: new AbortController().signal,
+    }),
+    /INBOX_CLOSED/,
+  )
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+
+  assert.equal(fixture.created.at(-1).disposed, true)
+  assert.deepEqual(fixture.attached, [])
 })

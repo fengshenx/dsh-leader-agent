@@ -464,6 +464,8 @@ export function createProjectService({
       } catch (error) {
         coordinatorIndex.delete(coordinatorSessionId)
         await abandonCoordinatorSession(coordinatorSessionId)
+        // 记录没落盘，刚注册的工作区就没人认领了。
+        if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
         throw error
       }
       return inserted
@@ -526,11 +528,9 @@ export function createProjectService({
       }
       const workspace = ensured.workspace
       const recreated = ensured.created === true
-      if (recreated) {
-        // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
-        // 工作区，那不是我们的，不该被隐藏。
-        await store.update(project.id, { workspaceId: workspace.id })
-      }
+      // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
+      // 工作区，那不是我们的，不该被隐藏。
+      await recordWorkspaceOwnership(ctx, store, project.id, ensured, logger)
       // 归属可能刚写进记录（工作区是这次新建的），重读一遍再报给调用方。
       const recorded = await store.get(project.id) ?? project
       const targets = await this.coordinatorAttachTargets(recorded)
@@ -753,12 +753,13 @@ export function createProjectService({
     async replaceCoordinator(id) {
       const project = await store.get(id)
       if (project === undefined) throw new Error(`项目不存在：${id}`)
+      // 与打开项目同一条前置检查：目录没了先给可读的中文原因，而不是让宿主在
+      // 注册工作区时抛一句英文技术错。
+      await assertUsableDirectory(project.directory)
       // 建会话本身会注册工作区（会话要归属工作区才能被官方 UI 打开），这一步
       // 顺带把归属记进项目记录——工作区被删过再换协调者时，归属会重新落回。
       const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
-      if (ensured?.created === true) {
-        await store.update(id, { workspaceId: ensured.workspace.id })
-      }
+      await recordWorkspaceOwnership(ctx, store, id, ensured, logger)
       const coordinatorSessionId = await openRegisteredCoordinatorSession(project.directory)
       let updated
       try {
@@ -843,6 +844,11 @@ export function createProjectService({
  * 「有没有是我们建的」由 `created` 区分：复用的工作区可能是用户自己加的，
  * 那不是插件的东西，不该被隐藏、不该被记进项目记录。
  *
+ * `create` 是幂等的——同路径已有工作区时宿主直接返回既有实体，所以「list 里没有」
+ * 不等于「返回的一定是这次建的」。判据要两条：id 不在 `create` 之前的快照里，且
+ * `createdAt` 不早于这次调用。只看 id 不够——用户正好在 list 与 create 之间从管理
+ * 面板加了同目录工作区时，那个 id 同样不在快照里。
+ *
  * @param {object} ctx - Cordis 上下文
  * @param {string} directory - 项目目录绝对路径
  * @param {(directory: string) => Promise<string>} canonicalize - 路径归一器
@@ -852,12 +858,64 @@ async function ensureWorkspace(ctx, directory, canonicalize) {
   const registry = ctx.get('workspaceRegistry')
   if (registry === undefined || typeof registry.list !== 'function') return undefined
   const canonical = await canonicalize(directory)
-  const existing = registry.list().find((workspace) => workspace.path === canonical)
+  const before = registry.list()
+  const existing = before.find((workspace) => workspace.path === canonical)
   if (existing !== undefined) return { workspace: existing, canonical, created: false }
   if (typeof registry.create !== 'function') return undefined
+  // 先取 id 快照再 create：`list()` 返回的是活数组时，create 之后再看就晚了。
+  const beforeIds = new Set(before.map((workspace) => workspace.id))
+  const requestedAt = Date.now()
   const created = await registry.create(canonical, canonical.split(/[\\/]/).pop() ?? canonical)
   if (created === undefined) return undefined
-  return { workspace: created, canonical, created: true }
+  // 解析不出创建时间时按「不是我们的」处理：宁可多留一行可见的工作区，
+  // 也不把用户的工作区整组藏掉、再随项目一起删掉。
+  const createdHere = !beforeIds.has(created.id) && Date.parse(created.createdAt) >= requestedAt
+  return { workspace: created, canonical, created: createdHere }
+}
+
+/**
+ * 把本次新建的工作区记进项目记录。
+ *
+ * 记录失败（项目在注册与写入之间被删掉）时撤掉刚建的工作区：项目没了，
+ * `collectHiddenWorkspaceIds` 不再认它，它会在左栏露出一行用户没加过的目录，而
+ * 插件的删除入口随项目一起消失了。复用的工作区不撤——那不是我们的。
+ *
+ * @param {object} ctx - Cordis 上下文
+ * @param {object} store - 项目存储
+ * @param {string} projectId - 项目 id
+ * @param {{workspace: object, created: boolean} | undefined} ensured - `ensureWorkspace` 的结果
+ * @param {(message: string) => void} log - 日志输出
+ * @returns {Promise<void>}
+ */
+async function recordWorkspaceOwnership(ctx, store, projectId, ensured, log) {
+  if (ensured?.created !== true) return
+  try {
+    await store.update(projectId, { workspaceId: ensured.workspace.id })
+  } catch (error) {
+    await discardWorkspace(ctx, ensured.workspace.id, log)
+    throw error
+  }
+}
+
+/**
+ * 尽力撤销一个刚注册、还没人认领的工作区。
+ *
+ * 回滚失败只记日志：调用方要知道的是原始错误（项目已被删），回滚没成功也不该被
+ * 盖掉，况且能在官方面板里手动删。
+ *
+ * @param {object} ctx - Cordis 上下文
+ * @param {string} workspaceId - 要撤销的工作区 id
+ * @param {(message: string) => void} log - 日志输出
+ * @returns {Promise<void>}
+ */
+async function discardWorkspace(ctx, workspaceId, log) {
+  const registry = ctx.get('workspaceRegistry')
+  if (registry === undefined || typeof registry.delete !== 'function') return
+  try {
+    await registry.delete(workspaceId)
+  } catch (error) {
+    log(`dsh-leader-kit: 回滚工作区 ${workspaceId} 失败：${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 /**

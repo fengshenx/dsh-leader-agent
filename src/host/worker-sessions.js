@@ -119,7 +119,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     if ((workspace.sessionIds ?? []).includes(sessionId)) return
     void workspace.attachSession(sessionId).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
-      log(`dsh-leader-kit: worker 会话 ${sessionId} 挂到工作区失败，它会留在官方树的「未分组」里：${message}`)
+      log(`dsh-leader-kit: worker 会话 ${sessionId} 挂到工作区 ${workspaceId} 失败，它会留在官方树的「未分组」里：${message}`)
     })
   }
 
@@ -235,7 +235,6 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
-      attachToWorkspace(ctx, workspaceId, sessionId, logger)
       renameTitle(handle, name)
       try {
         handle.agent.followup(taskMessage(initialMessage, name, parentSessionId))
@@ -245,6 +244,9 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         await disposeOne(sessionId)
         throw error
       }
+      // 挂在工作区这一步放在投递之后：挂载是异步落地，会话在这之前被销毁时它
+      // 不该再出现在工作区里。
+      attachToWorkspace(ctx, workspaceId, sessionId, logger)
       return sessionId
     },
 
