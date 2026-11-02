@@ -238,7 +238,9 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      * `updates` 也可以是一个函数，参数是**磁盘上的当前记录**，返回要改的字段。
      * 调用方需要「按现值增量改」（如往退役列表里追加）时必须用它：先 `get()` 再
      * 传对象时，两个并发调用会各读同一份快照、各写一次，后写的把先写的覆盖掉。
-     * 函数形态的读-改-写落在同一条串行链里，天然不会交错。
+     * 函数形态的读-改-写落在同一条串行链里，天然不会交错。函数**必须同步返回普通
+     * 对象**：返回 `undefined` / 字符串 / Promise 都不报错，只是白名单里挑不出字段，
+     * 落盘等于没改。
      *
      * @param {string} id - 项目 id
      * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、coordinatorSessionId、retiredCoordinatorSessionIds 与 workspaceId；或按当前记录算出待改字段的函数

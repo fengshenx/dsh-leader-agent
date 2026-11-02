@@ -254,17 +254,22 @@ export function createProjectService({
   }
 
   /**
-   * 让协调者索引与刚落盘的记录对齐。
+   * 让协调者索引与当前的落盘记录对齐。
    *
-   * 退役集取自已落盘的记录，不取进函数时的快照：并发换协调者时，前一次调用建的
-   * 会话会被后一次写进退役集，索引必须跟着摘掉它——否则它既不在退役列表之外的
-   * 任何位置、又仍是 `isCoordinatorSession()` 认定的协调者，直到进程重启都能
-   * 派工、都被注入协调者手册。
+   * 判据是**重新读出来的记录**，不是那次 `store.update` 的返回值：返回值是「这一次
+   * 写下的状态」，两次并发换协调者时有两次写入，按各自的返回值对齐就等于认定
+   * 「后完成的那次同步一定对」——那只在「两次 update 的续体按写入顺序兑现」时成立，
+   * 是把正确性押在微任务顺序上。落选的那次同步晚到一步，就会把已被退役的会话重新
+   * 写成协调者，落盘的协调者和索引对不上。重读记录则每次同步都朝最新值收敛，与
+   * 完成顺序无关。
    *
-   * @param {object} project - 刚落盘的项目记录
-   * @returns {void}
+   * @param {string} id - 项目 id
+   * @returns {Promise<void>} 索引已对齐
    */
-  function syncCoordinatorIndex(project) {
+  async function syncCoordinatorIndex(id) {
+    const project = await store.get(id)
+    // 项目在并发里被删掉了：没有协调者可登记，索引项由 remove() 清。
+    if (project === undefined) return
     for (const sessionId of Array.isArray(project.retiredCoordinatorSessionIds)
       ? project.retiredCoordinatorSessionIds
       : []) {
@@ -680,12 +685,14 @@ export function createProjectService({
             ? { coordinatorSessionId, retiredCoordinatorSessionIds: [...retired, previous] }
             : { coordinatorSessionId }
         })
-        syncCoordinatorIndex(updated)
       } catch (error) {
         coordinatorIndex.delete(coordinatorSessionId)
         await abandonCoordinatorSession(coordinatorSessionId)
         throw error
       }
+      // 对齐放在失败路径之外：这次写已经落盘、新会话就是记录里的协调者，重读失败
+      // 不该把它连带撤销（那会留下「记录指向一条被停掉的会话」）。
+      await syncCoordinatorIndex(id)
       return updated
     },
 

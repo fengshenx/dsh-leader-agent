@@ -308,6 +308,49 @@ test('并发换协调者：落选的新会话进退役列表，不留能派工�
   }
 })
 
+test('并发换协调者：索引对齐落盘记录，不依赖两次写入的完成顺序', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const base = createProjectStore({ home })
+  // 把第一次 update 的兑现推迟到第二次之后。真实 store 是串行的，完成顺序恰好等于
+  // 写入顺序；索引若按各自 update 的返回值对齐，就等于把正确性押在这个顺序上。
+  let updateCalls = 0
+  const store = {
+    ...base,
+    async update(id, updates) {
+      updateCalls += 1
+      const call = updateCalls
+      const result = await base.update(id, updates)
+      if (call === 1) await new Promise((resolve) => { setTimeout(resolve, 20) })
+      return result
+    },
+  }
+  const factory = createSessionFactory()
+  const service = makeService({
+    store,
+    ctx: createContext(),
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+  })
+  await service.loadIndex()
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+
+  await Promise.all([
+    service.replaceCoordinator(project.id),
+    service.replaceCoordinator(project.id),
+  ])
+
+  const recorded = await base.get(project.id)
+  assert.equal(factory.ids.length, 3)
+  // 索引只认落盘的那个协调者：晚到的同步不能把已被退役的会话写回索引
+  for (const sessionId of factory.ids) {
+    assert.equal(
+      service.isCoordinatorSession(sessionId),
+      sessionId === recorded.coordinatorSessionId,
+      `${sessionId} 与落盘记录 ${recorded.coordinatorSessionId} 不一致`,
+    )
+  }
+})
+
 test('目录不存在时拒绝建项目', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })

@@ -510,8 +510,10 @@ export function createDispatcher({
    * @returns {Promise<{ code: 'merged' | 'sent', name: string }>} 投递结果与 worker 显示名
    */
   async function message({ parent, sessionId, message, name, cardId, signal }) {
-    // 换人之后原班 worker 归新协调者指挥：退役会话不能借「我是它的父会话」
-    // 继续下指令。
+    // 退役会话不能借「我是它的父会话」继续下指令。这不等于「原班 worker 转归新
+    // 协调者」：登记表里的父会话仍是那个退役 id，新协调者过不了下面的父会话校验，
+    // 所以换人之后这批 worker 对谁都投不进去——继续用只有两条路，人下钻直接对话，
+    // 或归档后在新协调者会话里重新派工。
     await assertCoordinator(parent, {
       pending: 'message_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能给 worker 发消息',
       refused: 'message_worker: 只有项目协调者能给 worker 发消息——这个会话已不是任何项目的协调者（换下的协调者降级为项目里的普通会话）',
@@ -524,7 +526,7 @@ export function createDispatcher({
       throw new Error(`message_worker: 没有会话 ${sessionId} 的派工记录，它不是本协调体系派出的 worker`)
     }
     if (worker.parentSessionId !== parent.id) {
-      throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息')
+      throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息（换协调者后原班 worker 的父会话仍是旧会话：要续用就在新的协调者会话里重新派工，或请人下钻直接对话）')
     }
     const displayName = name ?? (typeof worker.name === 'string' ? worker.name : sessionId)
     // worker 活着就直接投，不在内存就冷恢复后再投——两种形态对调用方是同一步。

@@ -367,6 +367,62 @@ test('查卡默认只列本项目的卡，scope=all 才跨项目', async () => {
   }
 })
 
+test('退役协调者不能跨项目查卡：scope=all 与单卡 cardId 两条路径都被拒', async () => {
+  // 退役会话按 cwd 仍解析到项目；摘要里的退役集合就是判据。
+  const project = {
+    id: 'p1',
+    name: '项目一',
+    directory: '/repo',
+    coordinatorSessionId: 'session-new',
+    retiredCoordinatorSessionIds: ['session-1'],
+  }
+  const { home, tools } = await createTools(async () => project)
+  try {
+    await tools.create_card.execute({ title: '本项目的卡' }, exec)
+    const store = createCardStore({ home })
+    const other = await store.create({ title: '别的项目的卡', projectId: 'p2' })
+
+    // 本项目范围照旧可读：它与同目录的普通会话同档
+    const listed = await tools.list_cards.execute({}, exec)
+    assert.deepEqual(listed.cards.map((card) => card.title), ['本项目的卡'])
+
+    await assert.rejects(
+      () => tools.list_cards.execute({ scope: 'all' }, exec),
+      /不再有跨项目查询权限/,
+    )
+    // 单卡查询是跨项目寻址（工具在解析归属前就读了全库），同样收口
+    await assert.rejects(
+      () => tools.list_cards.execute({ cardId: other.id }, exec),
+      /不再有跨项目查询权限/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('当前协调者的跨项目查卡不受影响', async () => {
+  const project = {
+    id: 'p1',
+    name: '项目一',
+    directory: '/repo',
+    coordinatorSessionId: 'session-1',
+    retiredCoordinatorSessionIds: ['session-old'],
+  }
+  const { home, tools } = await createTools(async () => project)
+  try {
+    await tools.create_card.execute({ title: '本项目的卡' }, exec)
+    const store = createCardStore({ home })
+    const other = await store.create({ title: '别的项目的卡', projectId: 'p2' })
+
+    const all = await tools.list_cards.execute({ scope: 'all' }, exec)
+    assert.equal(all.cards.length, 2)
+    const single = await tools.list_cards.execute({ cardId: other.id }, exec)
+    assert.match(tools.list_cards.output.render({}, single)[0].text, /别的项目的卡/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('跨项目改卡被拒绝', async () => {
   const { home, tools } = await createTools(async () => ({ id: 'p1', name: '项目一', directory: '/repo' }))
   try {
