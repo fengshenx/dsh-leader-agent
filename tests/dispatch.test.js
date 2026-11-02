@@ -31,8 +31,8 @@ async function waitFor(predicate, timeoutMs = 3000) {
  * 构造一个假的 dsh 上下文与会话工厂。
  * @returns {object} 测试夹具
  */
-function createFixture() {
-  /** 建过的 worker 会话：{ sessionId, messages, disposed } */
+function createFixture({ permissions } = {}) {
+  /** 建过的 worker 会话：{ sessionId, messages, disposed, appends } */
   const spawned = []
   /** 冷恢复过的会话 id */
   const resumed = []
@@ -45,6 +45,8 @@ function createFixture() {
   const parents = new Map()
   /** 订阅上来的 `session/event` 监听器 */
   const sessionEventListeners = []
+  /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
+  const overrides = {}
   let sequence = 0
 
   /**
@@ -53,9 +55,19 @@ function createFixture() {
    * @returns {object} 句柄
    */
   function createHandle(sessionId) {
-    const entry = { sessionId, messages: [], disposed: false }
+    const entry = { sessionId, messages: [], disposed: false, appends: [] }
     spawned.push(entry)
-    const session = { id: sessionId, header: { id: sessionId } }
+    const session = {
+      id: sessionId,
+      header: { id: sessionId },
+      append(type, data) {
+        entry.appends.push({ type, data })
+        // 覆盖事件落盘后该会话的有效权限就变了：回执回读的是这份状态。
+        overrides[sessionId] ??= {}
+        if (type === 'sandbox/mode') overrides[sessionId].sandbox = data.mode
+        if (type === 'approval/policy') overrides[sessionId].approval = data.policy
+      },
+    }
     sessions.set(sessionId, session)
     return {
       entry,
@@ -131,6 +143,19 @@ function createFixture() {
       }
       if (key === 'sessionPersistence') return { append() {} }
       if (key === 'sessionQuery') return { observeSession() {} }
+      // 权限服务照 rc.2 的方法面；默认不提供，只有权限继承用例打开。
+      if (key === 'sandboxPolicy' && permissions !== undefined) {
+        return {
+          resolve: ({ session }) => ({ mode: overrides[session.id]?.sandbox ?? permissions.sandbox?.[session.id] ?? 'workspace-write' }),
+          overrideOf: (session) => overrides[session.id]?.sandbox ?? permissions.sandbox?.[session.id] ?? 'workspace-write',
+        }
+      }
+      if (key === 'approval' && permissions !== undefined) {
+        return {
+          config: { policy: 'ask' },
+          overrideOf: (session) => overrides[session.id]?.approval ?? permissions.approval?.[session.id] ?? 'ask',
+        }
+      }
       return undefined
     },
   }
@@ -941,6 +966,104 @@ test('spawn_worker 只建会话并返回子会话 id，不开工', async () => {
     assert.equal(dispatcher.inflightCount(), 0)
   } finally {
   }
+})
+
+test('派工时 worker 继承协调者的权限（沙箱模式 + 审批策略）', async () => {
+  const fixture = createFixture({
+    permissions: {
+      sandbox: { 'coordinator-1': 'danger-full-access' },
+      approval: { 'coordinator-1': 'never' },
+    },
+  })
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  // 权限来源是协调者会话本身：宿主的默认 preset 不一定是用户当前选的那套。
+  const parent = { ...createParent('coordinator-1', []), session: { id: 'coordinator-1' } }
+
+  const record = await dispatcher.dispatch({
+    parent,
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(record.childId, fixture.spawned[0].sessionId)
+  assert.deepEqual(fixture.spawned[0].appends, [
+    { type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
+    { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
+  ])
+  // 派工结果要带着继承到的权限：完全权限的 worker 不能在用户不知情时开跑。
+  assert.equal(record.permission.sandbox, 'danger-full-access')
+  assert.equal(record.permission.approval, 'never')
+  assert.deepEqual(record.permission.skipped, [])
+})
+
+test('spawn_worker 把继承到的权限写进回执，完全权限要让协调者看见', async () => {
+  const fixture = createFixture({
+    permissions: {
+      sandbox: { 'coordinator-1': 'danger-full-access' },
+      approval: { 'coordinator-1': 'never' },
+    },
+  })
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const tool = createSpawnWorkerTool({ dispatcher })
+
+  const result = await tool.execute(
+    { name: '实现派工' },
+    {
+      signal: new AbortController().signal,
+      agent: { ...createParent('coordinator-1', fixture.delivered), session: { id: 'coordinator-1' } },
+    },
+  )
+
+  assert.equal(result.permission.sandbox, 'danger-full-access')
+  assert.equal(result.permission.approval, 'never')
+  // 组合里没有 permissionPresets：回执不能带 `preset: undefined` 的键——值为
+  // undefined 的键过不了宿主工具结果的 lossless JSON 判定，而报错发生在派工
+  // 完成之后（会话已建、卡片已绑），留下挂卡的孤儿 worker。
+  assert.equal('preset' in result.permission, false)
+  const rendered = tool.output.render({}, result).map((block) => block.text).join('\n')
+  assert.match(rendered, /完全访问、无审批/)
+})
+
+test('写失败时派工回执报 worker 的实际权限，不是继承目标', async () => {
+  const fixture = createFixture({
+    permissions: {
+      sandbox: { 'coordinator-1': 'danger-full-access' },
+      approval: { 'coordinator-1': 'never' },
+    },
+  })
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const tool = createSpawnWorkerTool({ dispatcher })
+  // 让 worker 的覆盖事件写不进去：会话已建好但权限停在默认上。
+  const realCreate = fixture.agents.create
+  fixture.agents.create = async (options) => {
+    const handle = await realCreate(options)
+    handle.agent.session.append = () => {
+      throw new Error('session is closed')
+    }
+    return handle
+  }
+
+  const result = await tool.execute(
+    { name: '实现派工' },
+    {
+      signal: new AbortController().signal,
+      agent: { ...createParent('coordinator-1', fixture.delivered), session: { id: 'coordinator-1' } },
+    },
+  )
+
+  assert.equal(result.permission.sandbox, 'workspace-write')
+  assert.equal(result.permission.approval, 'ask')
+  assert.deepEqual(result.permission.skipped.map((item) => item.knob), ['sandbox', 'approval'])
+  const rendered = tool.output.render({}, result).map((block) => block.text).join('\n')
+  assert.doesNotMatch(rendered, /完全访问、无审批/)
+  assert.match(rendered, /权限未完整继承/)
+  assert.match(rendered, /未必比协调者的权限更严/)
 })
 
 test('派工带 cardId 与 slot 时，绑定先于开工完成', async () => {

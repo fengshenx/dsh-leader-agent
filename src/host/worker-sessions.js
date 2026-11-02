@@ -21,6 +21,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { agentPresetOptions, agentPresetResumeSetup } from './agent-preset.js'
+import { inheritPermission } from './permission-inherit.js'
 import { createUserMessage } from './message.js'
 
 /**
@@ -218,10 +219,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
      * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
      * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
+     * @param {object} [options.permissionFrom] - 权限来源会话（协调者）；沙箱模式与审批策略从它继承
      * @param {AbortSignal} options.signal - 取消信号
-     * @returns {Promise<string>} 新会话 id
+     * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与 worker 实际生效的权限
      */
-    async spawn({ cwd, name, workspaceId, signal, deferPresentation = false }) {
+    async spawn({ cwd, name, workspaceId, signal, permissionFrom, deferPresentation = false }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -251,8 +253,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
+      // 权限要在首轮之前落定：宿主的 permissionPresets 已在 `session/created` 上给
+      // 这条新会话 pin 了**用户默认** preset，这里用协调者的有效值覆盖它。
+      const permission = inheritPermission({ ctx, fromSession: permissionFrom, toSession: handle.agent.session, logger })
       if (!deferPresentation) presentOne(handle, sessionId, name, workspaceId)
-      return sessionId
+      return { sessionId, permission }
     },
 
     /**
