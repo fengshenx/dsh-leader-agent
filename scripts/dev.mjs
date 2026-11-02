@@ -31,7 +31,6 @@
  * - `DEV_DSH`         dsh 可执行文件名，默认 `dsh`
  */
 
-import { spawnSync } from 'node:child_process'
 import {
   copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync,
   writeFileSync,
@@ -44,6 +43,7 @@ import {
   COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, devWebBundleHint,
   mergeCredentialRefs, planNodeModules, resolveDevPaths,
 } from './dev-plan.mjs'
+import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
 const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: process.env })
@@ -53,14 +53,11 @@ const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: process.env }
  *
  * @param {string} command - 可执行文件
  * @param {string[]} args - 参数
- * @param {object} options - 传给 `spawnSync` 的选项
+ * @param {object} options - 传给 `spawnCommandSync` 的选项
  * @returns {void} 无返回
  */
 function run(command, args, options) {
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
-  if (result.error !== undefined) {
-    throw new Error(`执行失败: ${command} ${args.join(' ')} —— ${result.error.message}`)
-  }
+  const result = spawnCommandSync({ command, args, stdio: 'inherit', ...options })
   if (result.status !== 0) {
     throw new Error(`退出码 ${result.status}: ${command} ${args.join(' ')}`)
   }
@@ -200,4 +197,12 @@ run('npm', ['run', 'build:client'], { cwd: worktree })
 const port = process.env.DEV_PORT || '0'
 const args = ['web', '--port', port]
 if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
-run(process.env.DEV_DSH || 'dsh', args, { cwd: worktree, env: { ...process.env, DSH_HOME: paths.home } })
+const dshCommand = process.env.DEV_DSH || 'dsh'
+try {
+  run(dshCommand, args, { cwd: worktree, env: { ...process.env, DSH_HOME: paths.home } })
+} catch (error) {
+  if (!(error instanceof CommandNotFoundError)) throw error
+  console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
+  console.error('用 DEV_DSH 指定路径，例如 DEV_DSH=/opt/dsh/bin/dsh npm run dev。')
+  process.exit(1)
+}

@@ -16,7 +16,6 @@
  * 额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
  */
 
-import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
@@ -25,6 +24,7 @@ import {
   LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, corruptProfilePackageMessage,
   startWebBundleHint,
 } from './dev-plan.mjs'
+import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -33,14 +33,11 @@ const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
  *
  * @param {string} command - 可执行文件
  * @param {string[]} args - 参数
- * @param {object} options - 传给 `spawnSync` 的选项
+ * @param {object} options - 传给 `spawnCommandSync` 的选项
  * @returns {void} 无返回
  */
 function run(command, args, options) {
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options })
-  if (result.error !== undefined) {
-    throw new Error(`执行失败: ${command} ${args.join(' ')} —— ${result.error.message}`)
-  }
+  const result = spawnCommandSync({ command, args, stdio: 'inherit', ...options })
   if (result.status !== 0) {
     // 命令输出走 stdio inherit 直通，报错行只在它后面指路。
     throw new Error(`退出码 ${result.status}: ${command} ${args.join(' ')}（上面是它自己的输出）`)
@@ -96,14 +93,17 @@ function main() {
 
   // 先探可执行文件：没装 dsh 时下面每一条检查都跑不起来，而 spawnSync 的原始
   // 报错（`spawnSync dsh ENOENT`）不会告诉人「装 dsh」还是「PATH 里找不到」。
-  const probe = spawnSync(dshCommand, ['--version'], { encoding: 'utf8' })
-  if (probe.error?.code === 'ENOENT') {
+  let probe
+  try {
+    probe = spawnCommandSync({ command: dshCommand, args: ['--version'], encoding: 'utf8' })
+  } catch (error) {
+    if (!(error instanceof CommandNotFoundError)) throw error
     console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
-    console.error('用 nvm 等版本管理器时，换了 shell 或 node 版本后 PATH 会重置，先确认 `command -v dsh` 有输出。')
+    console.error('用 nvm / nvm-windows 等版本管理器时，换了 shell 或 node 版本后 PATH 会重置，'
+      + '先确认 `command -v dsh`（Windows 上 `where dsh`）有输出。')
     console.error('装好后重跑；可执行文件名不是 dsh 时用 DSH_DSH 指定路径，例如 DSH_DSH=/opt/dsh/bin/dsh npm start。')
     process.exit(1)
   }
-  if (probe.error !== undefined) throw probe.error
   if (probe.status !== 0) {
     console.error(`错误: ${dshCommand} --version 以退出码 ${probe.status} 结束`)
     console.error((probe.stderr || probe.stdout || '').trim())
