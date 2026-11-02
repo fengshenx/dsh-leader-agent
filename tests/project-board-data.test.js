@@ -4,6 +4,7 @@ import {
   boardViewState,
   fetchBoardCards,
   fetchProjectWorkers,
+  fetchSlotLabels,
   isBoardEntryVisible,
   isBoardViewable,
   isCoordinatorProject,
@@ -192,6 +193,19 @@ test('取项目卡片：通道返回数组才认，非数组当空列表', async
   assert.equal(cards.length, 1)
   assert.deepEqual(await fetchBoardCards(async () => 'not-an-array', 'p1'), [])
   assert.deepEqual(await fetchBoardCards(async () => [{ id: 'c1' }], ''), [])
+})
+
+test('取槽位显示名：只留非空字符串条目，空项目 id 不发调用', async () => {
+  let call
+  const labels = await fetchSlotLabels(async (method, args) => {
+    call = [method, args]
+    return { dev: '开发', review: '审核', audit: '', bad: 3 }
+  }, 'p1')
+  assert.deepEqual(call, ['projectSlots', ['p1']])
+  assert.deepEqual(labels, { dev: '开发', review: '审核' })
+  assert.deepEqual(await fetchSlotLabels(async () => ({}), ''), {})
+  assert.deepEqual(await fetchSlotLabels(async () => null, 'p1'), {})
+  assert.deepEqual(await fetchSlotLabels(async () => ['dev'], 'p1'), {})
 })
 
 test('新增卡片 id：只看多出来的卡，改卡不算新增', () => {

@@ -39,8 +39,8 @@ test('解析按 ## 分节，正文归属所在槽位', () => {
     '你是评审者。',
   ].join('\n'))
   assert.equal(slots.size, 2)
-  assert.equal(slots.get('dev'), '你是实现者。\n先写测试。')
-  assert.equal(slots.get('review'), '你是评审者。')
+  assert.equal(slots.get('dev').body, '你是实现者。\n先写测试。')
+  assert.equal(slots.get('review').body, '你是评审者。')
 })
 
 test('同名槽位先见为准，后一节整节忽略', () => {
@@ -51,7 +51,7 @@ test('同名槽位先见为准，后一节整节忽略', () => {
     '第二个定义',
   ].join('\n'))
   assert.equal(slots.size, 1)
-  assert.equal(slots.get('dev'), '第一个定义')
+  assert.equal(slots.get('dev').body, '第一个定义')
 })
 
 test('槽位名是 ASCII 机器标识，中文标题整节忽略', () => {
@@ -64,8 +64,8 @@ test('槽位名是 ASCII 机器标识，中文标题整节忽略', () => {
     '你是审查者。',
   ].join('\n'))
   assert.equal(slots.size, 2)
-  assert.equal(slots.get('dev'), '你是开发者。')
-  assert.equal(slots.get('review'), '你是审查者。')
+  assert.equal(slots.get('dev').body, '你是开发者。')
+  assert.equal(slots.get('review').body, '你是审查者。')
 })
 
 test('槽位名只接受小写 ASCII 字母数字下划线连字符，拒绝空白、标点与超长', () => {
@@ -89,15 +89,45 @@ test('非法槽位名整节忽略，正文不归到上一节', () => {
     '另一个合法正文',
   ].join('\n'))
   assert.equal(slots.size, 2)
-  assert.equal(slots.get('dev'), '合法正文')
-  assert.equal(slots.get('review'), '另一个合法正文')
+  assert.equal(slots.get('dev').body, '合法正文')
+  assert.equal(slots.get('review').body, '另一个合法正文')
 })
 
 test('空正文的槽位是合法条目，值为空串', () => {
   const slots = parseSlotTemplates('## dev\n\n## review\n正文\n')
   assert.equal(slots.size, 2)
-  assert.equal(slots.get('dev'), '')
-  assert.equal(slots.get('review'), '正文')
+  assert.equal(slots.get('dev').body, '')
+  assert.equal(slots.get('review').body, '正文')
+})
+
+test('label 声明槽位显示名，并从正文中剥离', () => {
+  const slots = parseSlotTemplates([
+    '## dev',
+    'label: 开发',
+    '',
+    '你是实现者。',
+    '## review',
+    'label:  审核  ',
+    '你是评审者。',
+  ].join('\n'))
+  assert.equal(slots.get('dev').label, '开发')
+  assert.equal(slots.get('dev').body, '你是实现者。')
+  assert.equal(slots.get('review').label, '审核')
+  assert.equal(slots.get('review').body, '你是评审者。')
+})
+
+test('未声明或空 label 按未声明处理，正文首行的普通文字不剥离', () => {
+  const plain = parseSlotTemplates('## dev\n正文\n')
+  assert.equal(plain.get('dev').label, undefined)
+  const empty = parseSlotTemplates('## dev\nlabel:\n正文\n')
+  assert.equal(empty.get('dev').label, undefined)
+  assert.equal(empty.get('dev').body, '正文')
+  const long = parseSlotTemplates(`## dev\nlabel: ${'长'.repeat(65)}\n正文\n`)
+  assert.equal(long.get('dev').label, undefined)
+  assert.equal(long.get('dev').body, '正文')
+  const notLabel = parseSlotTemplates('## dev\nlabel 不是字段\n正文\n')
+  assert.equal(notLabel.get('dev').label, undefined)
+  assert.equal(notLabel.get('dev').body, 'label 不是字段\n正文')
 })
 
 test('文件缺失时回落默认槽位名，正文为空', async () => {
@@ -105,7 +135,8 @@ test('文件缺失时回落默认槽位名，正文为空', async () => {
   try {
     const slots = loadSlotTemplates(project.directory)
     assert.deepEqual([...slots.keys()], [...DEFAULT_SLOT_NAMES])
-    assert.equal(slots.get('dev'), '')
+    assert.equal(slots.get('dev').body, '')
+    assert.equal(slots.get('dev').label, undefined)
   } finally {
     await project.cleanup()
   }
@@ -125,7 +156,7 @@ test('有合法条目时读出正文', async () => {
   const project = await createProject('## dev\n你是实现者。\n')
   try {
     const slots = loadSlotTemplates(project.directory)
-    assert.equal(slots.get('dev'), '你是实现者。')
+    assert.equal(slots.get('dev').body, '你是实现者。')
   } finally {
     await project.cleanup()
   }

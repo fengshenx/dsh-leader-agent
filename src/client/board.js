@@ -30,6 +30,7 @@ import {
   BOARD_REFRESH_MS,
   boardViewState,
   fetchBoardCards,
+  fetchSlotLabels,
   isBoardViewable,
   resolveBoardAccess,
   sameProjectSummary,
@@ -79,6 +80,25 @@ export function BoardBody(props) {
  */
 function useNoSessionStatus() {
   return undefined
+}
+
+/**
+ * 两份槽位显示名字典是否等价。
+ *
+ * 项目复核每 30 秒重取一次标签，内容没变时保持旧引用，避免看板整棵重渲染。
+ *
+ * @param {Record<string, string>} left - 左快照
+ * @param {Record<string, string>} right - 右快照
+ * @returns {boolean} 是否等价
+ */
+function sameSlotLabels(left, right) {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+  for (const key of leftKeys) {
+    if (left[key] !== right[key]) return false
+  }
+  return true
 }
 
 /**
@@ -329,6 +349,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   // 会把另一方的错误清掉，错误页闪进闪出且提示与真实原因不符。
   const [projectError, setProjectError] = useState(null)
   const [cardsError, setCardsError] = useState(null)
+  // 槽位显示名：项目 `SLOTS.md` 的 `label:`，没声明的槽位由 locales 回落。
+  const [slotLabels, setSlotLabels] = useState(() => ({}))
   const [loaded, setLoaded] = useState(false)
   const [detail, setDetail] = useState(null)
   const [doneOpen, setDoneOpen] = useState(false)
@@ -354,6 +376,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     setCards([])
     setLoaded(false)
     setWorker(undefined)
+    setSlotLabels({})
     const load = () => {
       resolveBoardAccess(callRemote, sessionId)
         .then((access) => {
@@ -364,6 +387,17 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           setWorker(access.worker)
           setResolved(true)
           setProjectError(null)
+          if (access.project === undefined) {
+            setSlotLabels({})
+            return
+          }
+          // 显示名是装饰信息：取不到就回落 locale/原名，不把看板打进错误页。
+          fetchSlotLabels(callRemote, access.project.id)
+            .then((labels) => {
+              if (cancelled) return
+              setSlotLabels((previous) => (sameSlotLabels(previous, labels) ? previous : labels))
+            })
+            .catch(() => {})
         })
         .catch((cause) => {
           if (cancelled) return
@@ -542,6 +576,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               card,
               states,
               now,
+              slotLabels,
               t,
               onOpenDetail: openDetail,
               onOpenSession: openSession,
@@ -582,6 +617,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
                     card,
                     states,
                     now,
+                    slotLabels,
                     t,
                     onOpenDetail: openDetail,
                     onOpenSession: openSession,

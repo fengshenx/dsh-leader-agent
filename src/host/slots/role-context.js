@@ -35,14 +35,14 @@ export function renderRoleContext({ sessionId, slotIndex, resolveDirectory }) {
   if (slotName === undefined) return ''
   const directory = resolveDirectory(sessionId)
   if (directory === undefined || directory === '') return ''
-  const body = loadSlotTemplates(directory).get(slotName)
-  if (body === undefined || body === '') return ''
+  const slot = loadSlotTemplates(directory).get(slotName)
+  if (slot === undefined || slot.body === '') return ''
   return [
     '## 角色槽位',
     '',
     `你当前承担「${slotName}」槽位的角色。以下是该槽位在项目 ${directory} 中定义的方法与人设。`,
     '它只描述你的工作方法，不授予你任何工具权限——可用工具由宿主决定。',
     '',
-    body,
+    slot.body,
   ].join('\n')
 }

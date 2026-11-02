@@ -6,8 +6,9 @@
  * 界面上的名字不跟标识走——这里按当前界面语言翻译内置槽位名，卡面 chip 与
  * 提示文案都用翻译后的名字。
  *
- * 字典只覆盖内置槽位。项目自定义槽位没有翻译时显示原名：显示名不是配置的
- * 一部分，缺翻译就应当看见真实的键，而不是猜一个名字。
+ * 这里只放内置槽位的默认显示名。项目在 `SLOTS.md` 每节用 `label:` 声明自己
+ * 的名字，优先级高于这份字典（`slotDisplayName`）；两者都没有时显示槽位名本身
+ * ——不会因为缺翻译就看不见。
  *
  * @module dsh-leader-kit/client/locales
  */
@@ -54,4 +55,22 @@ export function slotLabel(name, t) {
   const key = SLOT_LABEL_KEYS[name]
   if (key === undefined || typeof t !== 'function') return name
   return t(key)
+}
+
+/**
+ * 卡面最终使用的槽位显示名。
+ *
+ * 优先级：项目 `SLOTS.md` 声明的 `label:` → 内置槽位的 locale 翻译 → 槽位名
+ * 本身。项目自己决定怎么称呼角色时以项目为准；没声明时内置角色按界面语言显示，
+ * 自定义槽位（新加的、字典里没有的）显示原名——不会因为缺翻译就看不见。
+ *
+ * @param {string} name - 槽位名（机器标识）
+ * @param {Record<string, string> | undefined} labels - 项目下发的槽位显示名字典
+ * @param {((key: string) => string) | undefined} t - 当前语言的翻译函数
+ * @returns {string} 显示名
+ */
+export function slotDisplayName(name, labels, t) {
+  const configured = labels?.[name]
+  if (typeof configured === 'string' && configured !== '') return configured
+  return slotLabel(name, t)
 }

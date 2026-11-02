@@ -9,14 +9,17 @@
 ## 决策
 
 - **key**：小写 ASCII slug（`[a-z0-9_-]{1,32}`），仍是 `SLOTS.md` 分节名、卡片 `slots` 键与注入反查键。大小写敏感且只允许小写，避免 `Dev` 与 `dev` 成为两个键。
-- **label**：客户端 locale 字典，`src/client/locales.js`，命名空间 `dsh-leader-kit`，zh / en 两份覆盖内置 `discuss` / `dev` / `review`（讨论 / 开发 / 审核）。看板面板在 slot 注册时声明 `locale` 席位，框架把当前语言的 `t` 注入组件 props；语言切换即时重渲染，不需要面板自己订阅。
-- **自定义槽位**：字典没有翻译时显示原名。显示名不是配置的一部分，缺翻译时看见真实的键比猜一个名字安全。项目级自定义 label 需要把 `SLOTS.md` 的配置经卡片或远程通道下发到浏览器，这次不做。
-- **`slotLabel` 容错**：`t` 缺失时回落原名。槽位芯片只是卡面信息，宿主没注入翻译席位不该让整块看板崩掉。
+- **label 的真源是项目配置**：`SLOTS.md` 每节第一条非空行可写 `label: 开发`。新增槽位的人自己声明显示名，不依赖插件预置翻译；插件内置的 locale 字典只是默认兜底。
+- **label 的数据通路**：宿主解析 `SLOTS.md` 后由远程方法 `projectSlots(projectId)` 下发（只下发了 `label` 的槽位）。浏览器侧在看板项目复核时取一次，失败静默回落；`SLOTS.md` 改动最多等一个复核周期（30s）生效。
+- **渲染优先级**：`slotDisplayName(name, labels, t)` = 项目 `label` → 内置 locale 翻译 → 槽位名本身。项目怎么称呼自己的角色，以项目为准。
+- **内置 locale 字典**：`src/client/locales.js`，命名空间 `dsh-leader-kit`，zh / en 两份覆盖 `discuss` / `dev` / `review`。看板面板注册时声明 `locale` 席位，宿主注入当前语言的 `t`；语言切换时宿主给新函数引用，`memo` 的卡片组件自然重渲染。
+- **注入文本用 key**：`renderRoleContext` 的「你当前承担「dev」槽位」保持键名，与模型在卡片 `slots` 字段里看到的键一致；label 只服务人看的界面，不进提示词。
 - **写卡校验**：`normalizeSlots` 用同一个 `isValidSlotName` 校验槽位名。此前写进非法名会成功落盘，`SLOTS.md` 解析器却整节忽略，注入静默变成空串——现在在写入前报错。
-- **注入文本用 key**：`renderRoleContext` 的「你当前承担「dev」槽位」保持键名，与模型在卡片 `slots` 字段里看到的键一致；label 只服务人看的界面。
 
 ## 边界
 
+- **`label:` 只在节内第一条非空行生效**，取到后从正文里剥离；空值、超长（>64）与不在首行都按未声明处理，正文照常注入。角色正文不会因为写了 `label:` 而丢一段。
+- **`projectSlots` 取不到时回落**：项目不存在、通道失败或返回脏数据都不让看板报错；槽位 chip 继续用 locale 或原名。
 - `locale/zh.json` / `locale/en.json` 是**包元信息**（市场卡片的标题与描述），不是运行时 UI 字典。运行时文案走宿主 ui-slots 的 locale 命名空间，字典在 `src/client/locales.js`。
 - 字典只注册 zh / en 两个基础 locale；其它语言沿宿主回退链到 en。
 - 本 PR 前一提交曾短暂允许中文 key，未发布，这里一并回退。存量卡片上的 ASCII 键全部仍在合法集合内，没有迁移动作。
