@@ -95,7 +95,7 @@ export function parseSlotTemplates(content) {
   const slots = new Map()
   if (typeof content !== 'string') return slots
   const { data, body } = parseFrontmatter(content)
-  const labels = new Map()
+  const labels = readSlotLabels(data.slots)
   /** @type {{ name: string, lines: string[] }[]} 已开启的合法节 */
   const sections = []
   /** @type {{ name: string, lines: string[] } | undefined} 当前正在收集的节 */
