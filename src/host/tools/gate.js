@@ -12,8 +12,9 @@
  *   （会话由 `agents.create` 建，会话头没有 `origin` 标记，只能按登记判）；
  * - **普通会话**：其余会话。
  *
- * 协调者拿到全部工具；普通会话与 worker 都没有 worker 编排与全库查询。worker 的
- * 完成回报不占工具面：由 `dispatch.js` 订阅会话事件自动结算。
+ * 协调者拿到全部工具；普通会话与 worker 都没有 worker 编排与全库查询，普通会话再
+ * 少掉卡片写入——它不在项目编排里，没有卡可写。worker 的完成回报不占工具面：由
+ * `dispatch.js` 订阅会话事件自动结算。
  */
 
 /** 只有协调者能用的工具：worker 编排与全库卡片查询。 */
@@ -21,6 +22,37 @@ export const COORDINATOR_ONLY_TOOLS = Object.freeze([
   'list_cards',
   'spawn_worker',
   'message_worker',
+])
+
+/**
+ * 卡片写入工具：只有协调者与 worker 能写卡。
+ *
+ * 卡片是项目里的任务事实，而普通会话不承担任何项目编排——它建出来的卡没有槽位、
+ * 没有协调者认领，只会污染看板；它也不该改别人的卡。读同样不给：`list_cards`
+ * 已经在 `COORDINATOR_ONLY_TOOLS` 里。
+ */
+export const CARD_WRITE_TOOLS = Object.freeze([
+  'create_card',
+  'update_card',
+])
+
+/** 普通会话要禁掉的：派工、全库查卡，加上卡片写入。 */
+export const PLAIN_SESSION_DENY_TOOLS = Object.freeze([
+  ...COORDINATOR_ONLY_TOOLS,
+  ...CARD_WRITE_TOOLS,
+])
+
+/**
+ * worker 要禁掉的：派工与全库查卡，外加建卡。
+ *
+ * worker 保留 `update_card`（写回自己挂的卡），但不建卡：建卡与派工是协调者的一条
+ * 动作链（`COORDINATOR.md` 的「一个 worker 一张卡」、`leader-mode` 的协调者动作表），
+ * `SLOTS.md` 的各槽位也没有让执行者建卡的步骤。worker 攒下的待办由它回报、协调者
+ * 建卡。执行时另有一道 `assertCardCreator`。
+ */
+export const WORKER_DENY_TOOLS = Object.freeze([
+  ...COORDINATOR_ONLY_TOOLS,
+  'create_card',
 ])
 
 /**
@@ -63,9 +95,30 @@ export const COORDINATOR_UNUSABLE_TOOLS = HOST_SUBAGENT_TOOLS
  */
 export function deniedToolsFor({ agent, isCoordinatorSession, isWorkerSession }) {
   const worker = typeof isWorkerSession === 'function' && isWorkerSession(agent?.id) === true
-  if (worker) return [...COORDINATOR_ONLY_TOOLS]
+  if (worker) return [...WORKER_DENY_TOOLS]
   if (isCoordinatorSession(agent?.id)) return [...COORDINATOR_UNUSABLE_TOOLS]
-  return [...COORDINATOR_ONLY_TOOLS]
+  return [...PLAIN_SESSION_DENY_TOOLS]
+}
+
+/**
+ * 写卡身份判定：当前协调者与 worker 可以写卡。
+ *
+ * 与派工的 `assertCoordinator` 同口径：索引未就绪时 `isCoordinatorSession()` 对
+ * 所有会话返回 true，而写卡会落盘并归属到项目，不能建立在这个宽松判定上——问不出
+ * 身份就不给写。worker 是进程内的内存集合，不依赖项目索引，先短路。
+ *
+ * @param {object} options - 选项
+ * @param {string | undefined} options.sessionId - 调用方会话 id
+ * @param {(sessionId: string | undefined) => boolean} options.isCoordinatorSession -
+ *   协调者判定（未就绪时宽松放行）
+ * @param {(sessionId: string | undefined) => boolean} options.isWorkerSession - worker 判定
+ * @param {() => Promise<boolean>} options.awaitIndex - 等项目索引就绪，报告它是否读出来
+ * @returns {Promise<boolean>} 是否允许写卡
+ */
+export async function canWriteCardsFor({ sessionId, isCoordinatorSession, isWorkerSession, awaitIndex }) {
+  if (isWorkerSession(sessionId) === true) return true
+  if ((await awaitIndex()) !== true) return false
+  return isCoordinatorSession(sessionId) === true
 }
 
 /**

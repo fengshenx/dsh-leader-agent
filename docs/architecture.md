@@ -28,8 +28,8 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 身份 | 判定 | 工具面 |
 |---|---|---|
 | 协调者 | 项目注册表 `coordinatorSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` |
-| 普通会话 | 其余会话 | 与 worker 相同，但保留宿主 subagent 三件工具 |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题与槽位） |
+| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card`；保留宿主 subagent 三件工具 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
 
@@ -49,7 +49,8 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 - 协调者拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；
-- `create_card` / `update_card` 对所有会话开放——worker 边干活边把状态写回卡片。
+- `create_card` 只给协调者：建卡与派工是协调者的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、协调者建卡。普通会话建卡同样没有槽位、没有协调者认领，一并收掉。
+- `update_card` 给协调者与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。换协调者不重建旧会话，退役者手里的写入工具要到下次会话重建（重启或冷恢复）才收走，所以每次写入都按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title`——完成、重开与换执行者归协调者，规格与标题是验收锚点，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡两面都关（取舍见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/2026-11-02-card-write-tools-scope.md)）。
 
 实现在 `src/host/tools/gate.js`，用宿主的 `tools.restrict({ deny })`，对 `agent.ctx` 调一次；已发布版本里 `tools.register()` 不接受按步条件，所以只能在会话创建时做。协调者身份来自项目注册表——**索引重建完成前不裁**，此时问不出谁是协调者，而少给工具会让协调者首轮干不成活。
 
@@ -69,7 +70,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 - **目录不可改**：目录是项目身份的一部分，改目录等于换项目。
 - **会话归属按 realpath**：会话头没有项目字段，`session-index.js` 按 cwd 与项目目录的 realpath 精确相等归到项目；两个项目指向同一目录时先注册的归属。项目树的名单在它之上再并两类：worker 看登记表，退役协调者看 `retiredCoordinatorSessionIds`。
 - **加项目就把它注册成 dsh 工作区**（幂等，已有则复用）：项目自建的工作区记下 `workspaceId`，删项目时一并摘掉；复用来的用户工作区不动。工作区被用户删掉后点项目行按需重建并归位会话。
-- **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，编排工具在调用时按当前身份判定并拒绝。
+- **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` / `create_card` / `update_card` 在调用时按当前身份判定并拒绝。
 
 项目注册表**只经左栏项目区块操作**（模型侧的工具缺口与目录校验的后果见[限制](limitations.md#项目树与工作区)）；打开与换协调者前先过 `assertUsableDirectory`。
 

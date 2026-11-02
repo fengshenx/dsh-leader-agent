@@ -99,10 +99,10 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 ### 五步上手
 
-1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个协调者会话；点项目行就是打开这个 Leader，当前会话属于该项目（协调者或它派出的 worker）时该行亮着选中底色（注册的工作区被删过的话会顺手重建并归位会话）。
+1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个协调者会话；点项目行就是打开这个 Leader（注册的工作区被删过的话会顺手重建并归位会话）。当前会话属于该项目时左栏按两层回执：打开的是协调者会话则项目行整行亮，打开的是它派出的 worker 则项目行只点亮行首文件夹、选中态落在那个 worker 自己的会话行上。行首槽位平时是目录图标，活动提示看协调者：它在跑就换成加载圈（协调者没有自己的行，项目展开着也照换），项目收起时名下有 worker 在跑也换成加载圈，展开后 worker 由会话行自己带加载圈。
 2. **加载协议**：协调者会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
 3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从协调者继承（协调者是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。
-4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。
+4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。`list_cards` 与 `create_card` 只给协调者，普通会话一件也没有；`update_card` 协调者与 worker 都有。worker 只能改自己挂着的卡，且只能挂 `links` 这类派生字段：`title` / `spec` / `status` / `slots` 都归协调者（前两者是验收锚点与注入内容，后两者决定谁在执行、卡是否算完成）。
 5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看详情（链接可编辑，其余只读），点槽位 chip 打开执行者会话。
 
 ## 编排：把规则写进文件
@@ -157,13 +157,14 @@ cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile）
 npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
+npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
 ```
 
 其余命令见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
 `npm run dev` 的数据根在工作树内的 `.dev/home`，不碰日常 `~/.dsh`，几个工作树可以同时跑；客户端产物由常驻 watch 重建，宿主侧代码重启实例即可。`npm start` 走日常那套，起之前逐项检查并给出可复制的修复命令。
 
-开发实例的覆盖项与凭据处理、worktree 清理守卫、构建契约与测试口径见[开发](docs/development.md)；浏览器侧取证流程见 [docs/e2e-testing.md](docs/e2e-testing.md)。
+开发实例的覆盖项与凭据处理、worktree 清理守卫、构建契约与测试口径见[开发](docs/development.md)；浏览器侧取证跑 `npm run e2e`（首次先 `npm run e2e:install`），场景与断言纪律见 [docs/e2e-testing.md](docs/e2e-testing.md)。
 
 ## 文档
 
@@ -175,7 +176,7 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 | [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |
 | [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器侧取证的执行规范 |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、断言纪律）与人工取证规范 |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
 

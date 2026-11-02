@@ -545,3 +545,54 @@ export function planNodeModules({ sourceEntries, existingEntries, sourceNodeModu
     .filter((name) => !sourceEntries.includes(name) && name !== LEADER_KIT_PACKAGE)
   return { links, removals }
 }
+
+/** `dsh web` 的就绪行；地址本身由 `connection.authenticatedUrl` 生成，带 `?token=`。 */
+const WEB_URL_LINE = /^dsh web: (\S+)$/
+
+/**
+ * 从 `dsh web` 的启动日志里取带 token 的访问地址。
+ *
+ * 端口用 `--port 0` 时由系统分配，token 每次启动都变——两者都只能从这一行读，
+ * 不能凭上一次运行的值猜（上一轮的值已经失效，会把人带到错误的结论上）。
+ *
+ * @param {string} line - 启动日志的一行
+ * @returns {{ url: string, origin: string, port: number, token: string } | null} 不是就绪行时为 null
+ */
+export function parseWebUrlLine(line) {
+  const match = WEB_URL_LINE.exec(String(line).trim())
+  if (match === null) return null
+  let url
+  try {
+    url = new URL(match[1])
+  } catch (error) {
+    throw new Error(`dsh web 打印的地址不是合法 URL：${match[1]}（${error.message}）`)
+  }
+  const token = url.searchParams.get('token')
+  if (token === null || token === '') {
+    throw new Error(`dsh web 打印的地址没有 token：${match[1]}——无 token 打不开需要鉴权的页面`)
+  }
+  const port = Number(url.port)
+  if (!Number.isInteger(port) || port <= 0) {
+    throw new Error(`dsh web 打印的地址没有端口：${match[1]}——端口 0 时宿主一定会给真实端口`)
+  }
+  return { url: url.href, origin: url.origin, port, token }
+}
+
+/** cordis 配置里的显式端点键；`baseURL` 是 llm-deepseek 的写法，`baseUrl` 是社区插件的写法。 */
+const EXPLICIT_ENDPOINT = /\bbase_?[uU]rl\s*:/i
+
+/**
+ * 找出把模型端点钉死在本地的 profile 配置文件。
+ *
+ * e2e 靠 `DEEPSEEK_BASE_URL` 把模型指向本地 mock，而显式配置的优先级比环境变量
+ * 高——命中时 mock 会被静默绕开，场景于是拿真实模型或真实网络跑，断言看起来
+ * 绿了却什么都没证明。这种情况必须报错，不能靠运气。
+ *
+ * @param {{ path: string, text: string | null }[]} files - profile 配置文件与其内容（不存在为 null）
+ * @returns {string[]} 含显式端点的文件路径
+ */
+export function explicitEndpointFiles(files) {
+  return files
+    .filter(({ text }) => typeof text === 'string' && EXPLICIT_ENDPOINT.test(text))
+    .map(({ path }) => path)
+}

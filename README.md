@@ -99,10 +99,10 @@ The profile must be named `web`. The plugin manifest declares `platform: web`, a
 
 ### Five steps
 
-1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is created immediately and bound to a coordinator session; clicking the project row opens that Leader, and the row lights up while the current session belongs to that project (a workspace the plugin registered and you deleted is recreated on the click, with the sessions put back).
+1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is created immediately and bound to a coordinator session; clicking the project row opens that Leader (a workspace the plugin registered and you deleted is recreated on the click, with the sessions put back). Selection comes in two layers: the whole row only lights up for the current Leader session, while opening a worker lights the folder at the row start and puts the row highlight on that worker's own session row. The slot at the row start is a folder icon by default: while the Leader is running it becomes a spinner (the Leader has no row of its own, so this holds whether the project is expanded or collapsed), and when the project is collapsed with a worker running under it, it becomes a spinner too — once expanded, each worker carries its own spinner.
 2. **Load the protocol.** In the coordinator session, have the model load `leader-mode`. It reads `playbooks/program.md` first, then the playbook for the current stage.
 3. **Dispatch.** `spawn_worker` requires `name` (a short role-task handle); `cardId` + `slot` optionally bind the card's executor slot in the same call. It returns a session id immediately and the worker has **not started yet**. Deliver the task body with `message_worker` (`sessionId` + `message`, optionally `rename`): the first message is what starts the turn, and a card-bound worker gets the card facts added to its request automatically, so you do not need to paste the spec. The worker's sandbox mode and approval policy are inherited from the Leader at dispatch time (an Auto Leader also passes on its review gate); the receipt states the permissions the worker actually runs with, and calls out full access by name.
-4. **Record task facts.** `create_card` opens a card (`title` required), `update_card` edits one (content changes carry `expectedRevision` for optimistic concurrency; links can be replaced wholesale with `links` or merged by id with `addLinks`), `list_cards` reads them. Cards belong to a project and are numbered globally; edits across projects are refused.
+4. **Record task facts.** `create_card` opens a card (`title` required), `update_card` edits one (content changes carry `expectedRevision` for optimistic concurrency; links can be replaced wholesale with `links` or merged by id with `addLinks`), `list_cards` reads them. Cards belong to a project and are numbered globally; edits across projects are refused. `list_cards` and `create_card` are the Leader's alone, and plain sessions get neither; `update_card` is shared with workers. A worker may only edit a card it is bound to, and only derived fields such as `links` — `title` / `spec` / `status` / `slots` belong to the Leader (the first two are the acceptance anchor and injected content, the last two decide who executes and whether the card counts as done).
 5. **Watch the board.** The Board tab in the right panel pulls cards for the project of the current session. It opens by itself when the coordinator creates a card; click a card for details (links editable, the rest read-only), click a slot chip to open the executor's session.
 
 ## Orchestration lives in files
@@ -157,13 +157,14 @@ cd .worktrees/<task>
 npm run dev                       # dsh instance mounting this worktree's plugin
 npm start                         # daily instance (the ~/.dsh data root and profile)
 npm run check                     # Agent Note gate, doc tool-name gate, doc budget gate, syntax check, all tests
+npm run e2e                       # build the client bundle + browser e2e (real host, local mock, no keys)
 ```
 
 The remaining commands are in [AGENTS.md](AGENTS.md#常用命令) (Chinese).
 
 `npm run dev` keeps its data root in the worktree's `.dev/home` and leaves the daily `~/.dsh` untouched, so several worktrees can run at once with their own plugin version and data; client changes are rebuilt by a resident watch, host-side changes need an instance restart. `npm start` runs the daily setup after checking each prerequisite and printing a copy-pasteable fix.
 
-Dev instance overrides and credentials handling, worktree cleanup guards, build constraints and the test policy live in [development](docs/development.md) (Chinese); browser-side evidence gathering is in [docs/e2e-testing.md](docs/e2e-testing.md) (Chinese).
+Dev instance overrides and credentials handling, worktree cleanup guards, build constraints and the test policy live in [development](docs/development.md) (Chinese); browser-side evidence is gathered with `npm run e2e` (`npm run e2e:install` once), and scenarios plus assertion rules are in [docs/e2e-testing.md](docs/e2e-testing.md) (Chinese).
 
 ## Docs
 
@@ -175,7 +176,7 @@ Dev instance overrides and credentials handling, worktree cleanup guards, build 
 | [docs/limitations.md](docs/limitations.md) | Full known limitations and trade-offs |
 | [docs/development.md](docs/development.md) | Dev environment, instances, build contract, test policy |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | Execution rules for browser-side evidence |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, assertion discipline) and manual evidence rules |
 | [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
 
