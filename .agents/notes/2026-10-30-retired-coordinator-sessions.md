@@ -28,6 +28,10 @@
 client 侧不用改：退役会话进了 `sessionsByProject` 就自动进排除集，也就自动从官方
 工作区树里藏掉——「项目下可见」与「工作区树不可见」是同一个集合的两面。
 
+**补正（2026-11-02）**：这句只对工作区树成立。看板那条通道拿同一张表判 worker 身份，
+退役会话因此拿到本项目看板入口；client 侧已改为按 `retiredCoordinatorSessionIds`
+再分一次身份，见 [2026-11-02-retired-session-boundaries.md](2026-11-02-retired-session-boundaries.md)。
+
 ## 测试
 
 - `tests/project-session-index.test.js`：换下后旧会话与 worker 同列、当前协调者不列；

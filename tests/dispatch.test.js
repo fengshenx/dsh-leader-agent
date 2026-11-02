@@ -1040,6 +1040,68 @@ test('非协调者会话派工被拒绝', async () => {
   assert.equal(fixture.spawned.length, 0)
 })
 
+test('换下的协调者不能再给原班 worker 发消息', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-9', parentSessionId: 'retired-1', name: '实现工' })
+  // 工具面只在建会话时裁一次，退役不重建会话：旧会话手里仍留着 message_worker，
+  // 身份必须在调用时再判一遍。索引里已经没有退役后的它。
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    coordinatorIndex: {
+      async awaitIndex() {
+        return true
+      },
+      isCoordinatorSession: (sessionId) => sessionId !== 'retired-1',
+    },
+  })
+
+  await assert.rejects(
+    () => dispatcher.message({
+      parent: createParent('retired-1', fixture.delivered),
+      sessionId: 'child-9',
+      message: '接着做',
+      signal: new AbortController().signal,
+    }),
+    /只有项目协调者能给 worker 发消息/,
+  )
+  // 拒绝发生在投递之前：既没冷恢复，也没往 worker 里塞消息。
+  assert.deepEqual(fixture.resumed, [])
+  assert.deepEqual(fixture.delivered, [])
+})
+
+test('注册表没读出来时 message_worker 不投递', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-9', parentSessionId: 'parent-1', name: '实现工' })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    coordinatorIndex: {
+      async awaitIndex() {
+        return false
+      },
+      isCoordinatorSession: () => true,
+    },
+  })
+
+  await assert.rejects(
+    () => dispatcher.message({
+      parent: createParent('parent-1', fixture.delivered),
+      sessionId: 'child-9',
+      message: '接着做',
+      signal: new AbortController().signal,
+    }),
+    /注册表尚未读出/,
+  )
+  assert.deepEqual(fixture.resumed, [])
+})
+
 test('投递途中 worker 报完工，不误报发不出去', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')

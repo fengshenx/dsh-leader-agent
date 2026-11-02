@@ -472,6 +472,29 @@ export function createDispatcher({
   }
 
   /**
+   * 校验调用方当前仍是项目协调者。
+   *
+   * 工具面在 `agent/created` 一次性裁，而换协调者不会重建旧会话：退役的那个会话
+   * 手里仍留着 `message_worker` / `list_cards`，直到进程重启才按普通会话重裁。
+   * 所以「换下的协调者不再能指挥」只能落在调用时再判一次身份。
+   *
+   * 判定先等一次索引重建结果：`isCoordinatorSession()` 在索引未就绪时一律放行
+   * （那是为了协调者首轮不至于没有工具），而放行意味着**任何**会话都被认成协调者。
+   * 高危操作不能建立在这个宽松判定上，读不出来就拒绝。
+   *
+   * @param {object} parent - 调用方 agent
+   * @param {object} messages - 报错正文
+   * @param {string} messages.pending - 索引读不出时的报错正文
+   * @param {string} messages.refused - 调用方不是协调者时的报错正文
+   * @returns {Promise<void>} 校验通过
+   */
+  async function assertCoordinator(parent, { pending, refused }) {
+    const ready = await coordinatorIndex.awaitIndex()
+    if (!ready) throw new Error(pending)
+    if (!coordinatorIndex.isCoordinatorSession(parent?.id)) throw new Error(refused)
+  }
+
+  /**
    * 给已派出的 worker 发后续消息。
    *
    * 会话还在内存时消息直接投进去（并入当前执行）；进程重启后会话不在内存，先
@@ -487,8 +510,14 @@ export function createDispatcher({
    * @returns {Promise<{ code: 'merged' | 'sent', name: string }>} 投递结果与 worker 显示名
    */
   async function message({ parent, sessionId, message, name, cardId, signal }) {
-    // 门禁在最前面：在跑的 worker 也不能被拉去干别的卡，否则同一条会话会把
-    // 两卡的产物混在一起。
+    // 换人之后原班 worker 归新协调者指挥：退役会话不能借「我是它的父会话」
+    // 继续下指令。
+    await assertCoordinator(parent, {
+      pending: 'message_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能给 worker 发消息',
+      refused: 'message_worker: 只有项目协调者能给 worker 发消息——这个会话已不是任何项目的协调者（换下的协调者降级为项目里的普通会话）',
+    })
+    // 卡门禁：在跑的 worker 也不能被拉去干别的卡，否则同一条会话会把两卡的
+    // 产物混在一起。
     await assertCardGateOpen(sessionId, cardId)
     const worker = await workers.get(sessionId)
     if (worker === undefined) {
@@ -538,16 +567,11 @@ export function createDispatcher({
    * @returns {Promise<object>} 派工记录
    */
   async function dispatch({ parent, initialMessage, name, force, signal }) {
-    // 派工是唯一会真的拉起一个会话的操作，不能建立在「索引没就绪就先放行」的
-    // 宽松判定上：注册表读不出来时，任何会话都会被当成协调者。这里等一次重建
-    // 结果，读不出来就拒绝，并要求调用方确实是项目协调者。
-    const ready = await coordinatorIndex.awaitIndex()
-    if (!ready) {
-      throw new Error('spawn_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能派工')
-    }
-    if (!coordinatorIndex.isCoordinatorSession(parent.id)) {
-      throw new Error('spawn_worker: 只有项目协调者能派工，请在左栏项目区块建项目并进入协调者会话')
-    }
+    // 派工是唯一会真的拉起一个会话的操作，身份判定必须比工具面严一档。
+    await assertCoordinator(parent, {
+      pending: 'spawn_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能派工',
+      refused: 'spawn_worker: 只有项目协调者能派工，请在左栏项目区块建项目并进入协调者会话',
+    })
     // 续聊是 worker 的既定能力：缺持久化后端（日志不落盘）或查询后端（冷恢复
     // 读不了日志）时 worker 只能跑一轮，拒绝派工而不是静默降级成一次性 worker。
     if (ctx.get('sessionPersistence') === undefined) {

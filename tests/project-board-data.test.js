@@ -3,11 +3,12 @@ import { test } from 'node:test'
 import {
   boardViewState,
   fetchBoardCards,
-  fetchProjectWorkers,
+  fetchProjectSessions,
   isBoardEntryVisible,
   isBoardViewable,
   isCoordinatorProject,
-  isProjectWorker,
+  isProjectSession,
+  isRetiredCoordinatorSession,
   newCardIds,
   resolveBoardAccess,
   resolveProject,
@@ -103,23 +104,50 @@ test('入口可见性：协调者失效时，三条会话出口各归各位', ()
   assert.equal(isBoardEntryVisible(dead, 'plain-1', false), false)
 })
 
-test('项目 worker 表：按项目归组，非数组当空表', async () => {
-  const table = await fetchProjectWorkers(async () => [
+test('退役协调者不是项目会话：没有看板入口，面板按普通会话处理', () => {
+  const base = {
+    id: 'p1',
+    name: '项目一',
+    coordinatorSessionId: 'coordinator-1',
+    coordinatorAlive: true,
+    retiredCoordinatorSessionIds: ['retired-1'],
+  }
+  assert.equal(isRetiredCoordinatorSession(base, 'retired-1'), true)
+  assert.equal(isRetiredCoordinatorSession(base, 'coordinator-1'), false)
+  assert.equal(isRetiredCoordinatorSession({ id: 'p1' }, 'retired-1'), false)
+  assert.equal(isRetiredCoordinatorSession(base, ''), false)
+  // 项目会话表把它和 worker 列在一起：身份不能再按 worker 用
+  assert.equal(boardViewState(base, 'retired-1', true), 'not-viewable')
+  assert.equal(boardViewState(base, 'retired-1', false), 'not-viewable')
+  // 退役身份来自项目摘要，不必等会话表问回来
+  assert.equal(boardViewState(base, 'retired-1', undefined), 'not-viewable')
+  // 协调者后来又失效了也不把它当项目会话：出口留给项目会话
+  assert.equal(boardViewState({ ...base, coordinatorAlive: false }, 'retired-1', true), 'not-viewable')
+  assert.equal(isBoardViewable(base, 'retired-1', true), false)
+  assert.equal(isBoardEntryVisible(base, 'retired-1', true), false)
+  assert.equal(isBoardEntryVisible(base, 'retired-1', undefined), false)
+  // 当前协调者与 worker 不受影响
+  assert.equal(isBoardEntryVisible(base, 'coordinator-1', false), true)
+  assert.equal(isBoardEntryVisible(base, 'worker-1', true), true)
+})
+
+test('项目会话表：按项目归组，非数组当空表', async () => {
+  const table = await fetchProjectSessions(async () => [
     { projectId: 'p1', sessionIds: ['w1', 'w2'] },
     { projectId: 'p2', sessionIds: ['w3'] },
     { projectId: '', sessionIds: ['bad'] },
     { projectId: 'p3', sessionIds: 'not-an-array' },
   ])
-  assert.equal(isProjectWorker('p1', 'w1', table), true)
-  assert.equal(isProjectWorker('p2', 'w1', table), false)
-  assert.equal(isProjectWorker('p1', 'plain-1', table), false)
-  assert.equal(isProjectWorker('missing', 'w1', table), false)
-  assert.equal(isProjectWorker('p1', '', table), false)
+  assert.equal(isProjectSession('p1', 'w1', table), true)
+  assert.equal(isProjectSession('p2', 'w1', table), false)
+  assert.equal(isProjectSession('p1', 'plain-1', table), false)
+  assert.equal(isProjectSession('missing', 'w1', table), false)
+  assert.equal(isProjectSession('p1', '', table), false)
   // 项目 id 为空、sessionIds 不是数组的条目都不进表
   assert.equal(table.has(''), false)
   assert.equal(table.has('p3'), false)
-  assert.deepEqual(await fetchProjectWorkers(async () => 'not-an-array'), new Map())
-  assert.deepEqual(await fetchProjectWorkers(async () => undefined), new Map())
+  assert.deepEqual(await fetchProjectSessions(async () => 'not-an-array'), new Map())
+  assert.deepEqual(await fetchProjectSessions(async () => undefined), new Map())
 })
 
 /**
@@ -154,6 +182,24 @@ test('解析看板访问权：协调者不问 worker 表，worker 与普通会�
 
   const plain = fakeRemote({ resolveProject: project, sessionsByProject: groups })
   assert.deepEqual(await resolveBoardAccess(plain.callRemote, 'plain-1'), { project, worker: false })
+})
+
+test('解析看板访问权：退役协调者虽在项目会话表里，也不算 worker', async () => {
+  const project = {
+    id: 'p1',
+    name: '项目一',
+    coordinatorSessionId: 'coordinator-1',
+    retiredCoordinatorSessionIds: ['retired-1'],
+  }
+  const groups = [{ projectId: 'p1', sessionIds: ['worker-1', 'retired-1'] }]
+
+  const retired = fakeRemote({ resolveProject: project, sessionsByProject: groups })
+  assert.deepEqual(await resolveBoardAccess(retired.callRemote, 'retired-1'), { project, worker: false })
+  // 退役身份来自项目摘要，不必再问会话表
+  assert.deepEqual(retired.calls, ['resolveProject'])
+
+  const worker = fakeRemote({ resolveProject: project, sessionsByProject: groups })
+  assert.deepEqual(await resolveBoardAccess(worker.callRemote, 'worker-1'), { project, worker: true })
 })
 
 test('解析看板访问权：不属于项目就不问 worker 表', async () => {

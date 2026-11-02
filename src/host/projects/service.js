@@ -233,6 +233,10 @@ export function createProjectService({
   /**
    * 项目摘要：客户端拿它判定看板可见性，以及协调者会话是否还在。
    *
+   * `retiredCoordinatorSessionIds` 要带出来：这些会话现在和 worker 一起列在
+   * `sessionsByProject` 里，但身份不同——它们已经被换下，不再是项目会话
+   * （看板入口与派工都不该给它们）。
+   *
    * @param {object} project - 项目记录
    * @returns {Promise<object>} 项目摘要
    */
@@ -243,6 +247,34 @@ export function createProjectService({
       directory: project.directory,
       coordinatorSessionId: project.coordinatorSessionId ?? '',
       coordinatorAlive: await coordinatorAliveOf(project.coordinatorSessionId),
+      retiredCoordinatorSessionIds: Array.isArray(project.retiredCoordinatorSessionIds)
+        ? [...project.retiredCoordinatorSessionIds]
+        : [],
+    }
+  }
+
+  /**
+   * 让协调者索引与刚落盘的记录对齐。
+   *
+   * 退役集取自已落盘的记录，不取进函数时的快照：并发换协调者时，前一次调用建的
+   * 会话会被后一次写进退役集，索引必须跟着摘掉它——否则它既不在退役列表之外的
+   * 任何位置、又仍是 `isCoordinatorSession()` 认定的协调者，直到进程重启都能
+   * 派工、都被注入协调者手册。
+   *
+   * @param {object} project - 刚落盘的项目记录
+   * @returns {void}
+   */
+  function syncCoordinatorIndex(project) {
+    for (const sessionId of Array.isArray(project.retiredCoordinatorSessionIds)
+      ? project.retiredCoordinatorSessionIds
+      : []) {
+      coordinatorIndex.delete(sessionId)
+    }
+    if (typeof project.coordinatorSessionId === 'string' && project.coordinatorSessionId !== '') {
+      coordinatorIndex.set(project.coordinatorSessionId, {
+        projectId: project.id,
+        directory: project.directory,
+      })
     }
   }
 
@@ -341,7 +373,8 @@ export function createProjectService({
      *
      * @param {string} sessionId - 会话 id
      * @returns {Promise<object | undefined>} 所属项目（`{ id, name, directory,
-     *   coordinatorSessionId, coordinatorAlive }`）；不归属时 undefined
+     *   coordinatorSessionId, coordinatorAlive, retiredCoordinatorSessionIds }`）；
+     *   不归属时 undefined
      */
     async resolveProjectOfSession(sessionId) {
       if (typeof sessionId !== 'string' || sessionId === '') return undefined
@@ -629,26 +662,25 @@ export function createProjectService({
         await store.update(id, { workspaceId: ensured.workspace.id })
       }
       const coordinatorSessionId = await openRegisteredCoordinatorSession(project.directory)
-      const previous = project.coordinatorSessionId
-      const retired = Array.isArray(project.retiredCoordinatorSessionIds)
-        ? project.retiredCoordinatorSessionIds
-        : []
-      // 退役列表与改绑同一次写入：分开写的话，中途失败会留下一条「协调者已换、
-      // 旧会话谁都不认」的记录。
-      const retirePrevious = typeof previous === 'string' && previous !== ''
-        && previous !== coordinatorSessionId && !retired.includes(previous)
       let updated
       try {
-        updated = await store.update(id, retirePrevious
-          ? { coordinatorSessionId, retiredCoordinatorSessionIds: [...retired, previous] }
-          : { coordinatorSessionId })
-        if (typeof previous === 'string') {
-          coordinatorIndex.delete(previous)
-        }
-        coordinatorIndex.set(coordinatorSessionId, {
-          projectId: id,
-          directory: project.directory,
+        // 退役列表与改绑同一次写入：分开写的话，中途失败会留下一条「协调者已换、
+        // 旧会话谁都不认」的记录。要退役的是**落盘记录里的**当前协调者，不是进
+        // 函数时读到的那个：两个客户端并发点击时，各读同一份快照、各建一个会话，
+        // 按快照算的话先建的那个既不在退役列表、又留在协调者索引里。函数形态的
+        // update 把读-改-写放进存储的串行链，后写的那次能看见前一次的落盘值。
+        updated = await store.update(id, (current) => {
+          const previous = current.coordinatorSessionId
+          const retired = Array.isArray(current.retiredCoordinatorSessionIds)
+            ? current.retiredCoordinatorSessionIds
+            : []
+          const retirePrevious = typeof previous === 'string' && previous !== ''
+            && previous !== coordinatorSessionId && !retired.includes(previous)
+          return retirePrevious
+            ? { coordinatorSessionId, retiredCoordinatorSessionIds: [...retired, previous] }
+            : { coordinatorSessionId }
         })
+        syncCoordinatorIndex(updated)
       } catch (error) {
         coordinatorIndex.delete(coordinatorSessionId)
         await abandonCoordinatorSession(coordinatorSessionId)
