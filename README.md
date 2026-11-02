@@ -1,118 +1,158 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/logo-en-dark.svg">
+    <img src="docs/assets/readme/logo-en.svg" alt="dsh-leader-kit: a Leader fanning out to several workers, with a project board on the right" width="560">
+  </picture>
+</p>
+
+<p align="center">
+  <strong>English</strong> | <a href="README_ZH.md">简体中文</a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
+  <img alt="dsh version" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
+  <img alt="status" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
+</p>
+
 # dsh-leader-kit
 
-DeepSeek Harness（dsh）的协调者/执行者编排 bundle：一个会话当协调者派活，多个后台 worker 并行干活并自动回报，任务事实落进按项目组织的交付看板。
+> One Leader drives the work and the review, so you can run ten features in parallel instead of babysitting each one.
+>
+> A coordinator / worker orchestration bundle for DeepSeek Harness (dsh). The Leader splits work, dispatches it, tracks every worker to completion, checks what comes back and runs review; workers do the work in their own worktrees, report back automatically, and every task fact lands on a board organized by project.
 
-适合长任务、多任务并行的开发场景：协调者只做拆解、派工与验收，具体实现交给常驻的后台 worker。
+## Highlights
 
-## 功能
+1. **One Leader drives development and review** — You state the goal once. The Leader opens cards, dispatches workers, watches each one finish, verifies the deliverable and organizes review. Your attention goes back to "what do I want" instead of "which agent is stuck"; the target is ten features in flight at once.
+2. **A right SidePanel board: see who is working at a glance** — One board per project. Each card carries its executor slot and a live status light. Click a card for the read-only spec (goal, scope, acceptance, links), click a slot to drill into that agent's session and keep talking.
+3. **Arrange your agents however you want** — Two files do the arranging. `COORDINATOR.md` holds the Leader's prompt and this project's orchestration rules: boundaries, dispatch requirements, acceptance criteria. `SLOTS.md` gives each worker role its own rules (discuss / dev / review / …). Both are injected every turn, so editing a file changes behavior without recreating sessions.
+4. **Many projects in parallel, one Leader each** — Adding a project binds a coordinator session to it, and the project tree lists the workers that Leader spawned. Projects stay out of each other's way. Swap in a new Leader and the existing workers plus undelivered reports move over, so it can dispatch immediately.
+5. **The `leader-mode` skill: an orchestration protocol for the Leader** — Not "you are a tech lead". Staged playbooks across discussion → design → implementation and delivery → review → merge, plus guidance on parallel collaboration and handoff.
 
-- **后台派工，完成自动唤醒**：`spawn_worker` 立即返回，worker 在后台跑；那一轮结束时协调者自动收到一条回报（会话里渲染成 worker 的发言气泡），不需要 worker 调工具交作业，也不需要协调者轮询。
-- **常驻 worker**：worker 是普通根会话，能同时跑多个；人可以直接打开它的会话接着聊，进程重启后能冷恢复，再用 `message_worker` 续派。
-- **项目作为一等实体**：左栏「项目」区块选目录即建项目，并绑定一个协调者会话；项目树列出该项目派出的 worker，会话可归档、可换新协调者。
-- **项目级提示词**：项目目录里的 `COORDINATOR.md`（协调者手册）与 `SLOTS.md`（角色槽位）每轮自动注入，改文件即改行为，不需要重新建会话。
-- **任务看板**：`create_card` / `update_card` / `list_cards` 记录任务事实；右栏看板按项目聚合协调者与 worker 建的卡，带槽位信号灯与只读详情。
-- **协议层 skill**：`leader-mode` 覆盖派工、接力、事件调度、卡片维护、验收裁决；`init-project` 把仓库工程约定写进目标项目的 `AGENTS.md` 受管区块。
-- **工具面按角色裁剪**：协调者、worker、普通会话各拿各的工具，不是靠提示词约束模型。
+## How it runs
 
-## 前提：先跑通多 worktree 并发
+```text
+you ──────▶ Leader (the coordinator session, sole commander of the project)
+             │  create_card    record what to build and how it is accepted
+             │  spawn_worker   dispatch to a worker, return immediately
+             ▼
+      worker ─ worker ─ worker        each runs in its own project directory
+             │                        (one worktree each is the project convention, see Prerequisites)
+             │  the turn end is settled by the runtime, workers submit nothing
+             ▼
+      Leader wakes up ──▶ board status lights update ──▶ open any worker and keep talking
+```
 
-**特别提醒**：这套架构的玩法，前提是把「多 worktree 并发」跑通——每个任务一个 worktree、一个独立 dsh 实例、一份独立数据根，任务之间互不覆盖插件版本、不抢会话与数据。没有这一层，协调者派出去的活会在同一个 checkout 上互相踩，看板上的项目也只是一堆共享工作区的会话，编排价值基本为零。本仓的 `scripts/worktree-*.mjs` 与 `scripts/dev.mjs` 就是为这件事准备的（见[开发](#开发)）。
+Three mechanisms make this more than "a smarter prompt":
 
-建议直接去**蒸馏 DeepSeek Harness 团队的工程实践**，本 bundle 与它们是同一套思路：
+- **Identity decides the tool surface.** The Leader gets `spawn_worker` / `message_worker`; workers don't. The host trims the tool surface when a session is created — the model is not trusted to hold back.
+- **Completion is settled by the runtime, which wakes the Leader.** When a worker's turn ends, the Leader receives a report (rendered as the worker speaking), with no polling from the Leader and no submit step from the worker.
+- **Workers are persistent root sessions.** Several run at once, you can open any of them and keep the conversation going, and they cold-resume after a restart. The cost: the Leader cannot stop one, see [Current limitations](#current-limitations).
 
-- **worktree 并发**：任务隔离在独立 checkout 里，开发实例的数据根也隔离，合并前不动主干。
-- **Agent Note 机制**：非平凡改动同 PR 携带决策笔记，只记永久决策与边界，不写流水账；结构交给机械门禁。
-- **AGENTS.md 渐进式披露**：根文件只放每个任务都适用的规则与「按任务查阅」入口，细节进归属文档，避免一次上下文塞进整仓规则。
-- **文档防腐化**：能机械判的交给 `npm run check`，行为变更在同 PR 同步文档，临时证据不入库。
+## Quick Start
 
-本仓已按这四条落地，机制与各自的落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。
+### Install
 
-如果把本 bundle 用到自己的项目里，也建议先把这四条搬进那个项目——编排协议能不能长期跑住，取决于项目自己的文档与隔离机制，而不是取决于协调者提示词写得多细。
-
-## 安装
-
-开发期用 profile link 安装（改代码即生效）：
+Profile link for development (changes take effect on reload):
 
 ```sh
 dsh plugin --profile web add ../dsh-leader-kit
+dsh web
 ```
 
-快速试跑（不装进 profile）：
+Try it without installing into a profile:
 
 ```sh
 cd /path/to/deepseek-harness
 pnpm dsh web --patch ../dsh-leader-kit/cordis.patch.yml
 ```
 
-分发到 npm 后：
+The profile must be named `web`. The plugin manifest declares `platform: web`, and custom names such as `dev` are absent from dsh's `PROFILE_TEMPLATES`: `dsh plugin` would build that profile from the default template with only `@deepseek-ai/dsh-base` installed, so there is no web-app bundle and the client half of the plugin never loads.
+
+`engines.dsh` declares the supported range (currently `>=0.2.1-rc.2 <0.3.0`); install and startup are refused outside it. dsh is in developer preview, so this range has to track it. Inside this repository you can run `npm start`: it builds `lib/client.js` first (the file is not committed, and a missed build still starts the instance with an empty right panel), then starts `dsh web` after checking that dsh is available and the daily profile has this plugin installed.
+
+### Five steps
+
+1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is created immediately and bound to a coordinator session; clicking the project row opens that Leader.
+2. **Load the protocol.** In the coordinator session, have the model load `leader-mode`. It reads `playbooks/program.md` first, then the playbook for the current stage.
+3. **Dispatch.** `spawn_worker` requires `name` (a short role-task handle) and `initialMessage`, and returns a session id immediately. Follow up with `message_worker` (`sessionId` + `message`, optionally `rename`).
+4. **Record task facts.** `create_card` opens a card (`title` required), `update_card` edits one (content changes carry `expectedRevision` for optimistic concurrency), `list_cards` reads them. Cards belong to a project and are numbered globally; edits across projects are refused.
+5. **Watch the board.** The Board tab in the right panel pulls cards for the project of the current session. It opens by itself when the coordinator creates a card; click a card for details, click a slot chip to open the executor's session.
+
+## Orchestration lives in files
+
+Three things, each covering one layer. All of them contribute prompt text only and grant no tool permissions:
+
+| File / skill | For whom | What it holds |
+|---|---|---|
+| `COORDINATOR.md` | The Leader of this project | How to command this project: boundaries, card and dispatch granularity, hard constraints every brief must carry, acceptance criteria. Injected into the coordinator session every turn, with no binding step |
+| `SLOTS.md` | Workers, by role | Per-role method and persona under `## <slot-name>` (`discuss` / `dev` / `review` / …). The card's `slots` field binds a slot to a session, and that session gets the section injected every turn |
+| `leader-mode` skill | The Leader's protocol | Staged playbooks for discussion → design → implementation and delivery → review → merge, plus parallel-collaboration and handoff guidance |
+
+Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default three roles `discuss` / `dev` / `review`.
+
+The `init-project` skill does something else: it merges the repository's engineering conventions (worktree discipline, verification requirements, documentation rules) into a managed block of the target project's `AGENTS.md`. The write takes effect for later sessions immediately, re-running only replaces the managed block, and it never overwrites the project's own content.
+
+For the full interaction — slot frontmatter details, archiving, swapping the Leader, how board status lights are derived — see the [usage manual](docs/usage.md) (Chinese).
+
+## Prerequisites: get multi-worktree parallelism working first
+
+Running ten features in parallel requires real isolation between tasks: one worktree per task, one dsh instance per task, one data root per task, so tasks never overwrite each other's plugin version or compete for sessions and data. Without that layer, the work the Leader dispatches tramples a single checkout, and the board is just a pile of sessions sharing one workspace. This repository's `scripts/worktree-*.mjs` and `scripts/dev.mjs` exist for exactly this ([Development](#development)).
+
+We recommend adopting the four engineering practices of the DeepSeek Harness team; this bundle is built on the same ideas:
+
+- **Worktree parallelism.** Tasks live in their own checkout, the dev instance gets its own data root, and the main branch stays untouched until merge.
+- **Agent Notes.** Non-trivial changes ship a decision note in the same PR, recording permanent decisions and boundaries only, never a play-by-play.
+- **Progressive disclosure in `AGENTS.md`.** The root file holds only rules that apply to every task plus a task-routed index; details live in their own documents.
+- **Documentation that resists rot.** Whatever can be checked mechanically runs in `npm run check`; behavior changes update the docs in the same PR; temporary evidence never enters the repository.
+
+Mechanisms and where each one lands: [collaboration and documentation](docs/architecture.md#协作与文档机制) (Chinese). When you bring this way of working to your own project, bring these four practices first — orchestration survives only as long as the project's own isolation and documentation do.
+
+## Current limitations
+
+- **Background orchestration needs a long-lived host** (web / desktop / sdk). headless is a one-shot CLI: the session is destroyed when the turn ends, and nothing is left to receive completion reports.
+- **The Leader cannot stop a worker.** Workers are ordinary root sessions, so the host's `list_agents` / `send_message` / `interrupt_agent` do not apply to them (`interrupt_agent` even returns a false success). A worker that goes off track has to be handled by a human in its own session. That is the price of persistence.
+- **Completion reports depend on the turn ending normally.** If the process dies before a worker finishes, that turn is never settled. After a restart, open the worker session and continue there.
+- **The board only shows for project sessions.** The coordinator and that project's workers see it; an ordinary session in the same directory, or a retired coordinator, only gets a notice, and sessions outside any project get no board at all.
+- **Card details are read-only.** Completing, pinning, renaming and deleting need new host remote methods and are not implemented. Card numbers increase globally and are never reused or reclaimed across projects.
+- **The project registry is only reachable from the left sidebar.** There are no project tools for the model; if the directory picker is unavailable you cannot create a project and need the web profile.
+- **The project tree coexists with the official workspace tree.** Project sessions are hidden from the official tree at render time only; official counts and search still include them.
+- **The client is coupled to the host version.** Dialogs, menus and icons are copied from host sources, and the Typert remote channel is a hand-written protocol shape, so host upgrades require syncing this repository.
+
+The full list and trade-offs (status-light sources, watermark collapsing, avatars, the archive entry point, DOM injection positioning and more) live in [known limitations and trade-offs](docs/architecture.md#已知限制与取舍) (Chinese).
+
+## Development
 
 ```sh
-dsh plugin --profile web add dsh-leader-kit
+npm run worktree:spawn <task>     # create .worktrees/<task> and feature/<task>
+cd .worktrees/<task>
+npm run dev                       # dsh instance mounting this worktree's plugin
+npm start                         # daily instance (the ~/.dsh data root and profile)
+npm run check                     # Agent Note gate, doc tool-name gate, syntax check, all tests
 ```
 
-profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类自定义名字不在 dsh 的 `PROFILE_TEMPLATES` 里，`dsh plugin` 会按默认模板只装 `@deepseek-ai/dsh-base`——没有 web-app bundle，插件客户端半边根本不加载。
+The remaining commands are in [AGENTS.md](AGENTS.md#常用命令) (Chinese).
 
-装好后用 `dsh web` 起日常实例。在本仓库里可以直接 `npm start`：它先 `npm run build:client` 再起 `dsh web`，起之前检查 dsh 是否可用、日常 profile 是否装了本插件——`lib/client.js` 不入库，漏了构建时实例照常起来、右栏却没有看板。
+`npm run dev` keeps its data root in the worktree's `.dev/home`; delete it to reset. It never touches the daily `~/.dsh`, so several worktrees can run at once with their own plugin version and data. Client changes need `npm run build:client` plus a refresh; host changes need an instance restart.
 
-`engines.dsh` 声明了支持的 dsh 版本范围（当前 `>=0.2.1-rc.2 <0.3.0`）；不满足时安装与启动会被拒绝。dsh 处于 developer preview，版本范围需随 dsh 跟进。
+`npm start` runs the daily setup (data root `~/.dsh`, the version linked into the daily profile) after checking each prerequisite and printing a copy-pasteable fix: dsh unavailable (`DSH_DSH` points elsewhere), profile missing, bundles missing web-app or this plugin, `node_modules/dsh-leader-kit` link missing. It has no isolation — inside a worktree it still loads whatever the link points at, so verify changes in this directory with `npm run dev`.
 
-## 基本使用
+Dev instance overrides, worktree cleanup guards, evidence gathering and build constraints are in [the architecture doc's development section](docs/architecture.md#开发) and [docs/e2e-testing.md](docs/e2e-testing.md) (both Chinese).
 
-1. **加载协议层**：`skill` 工具会列出 `leader-mode`。协调者会话先读 `playbooks/program.md`，再按阶段读对应 playbook。
-2. **建项目**：左栏「项目」区块点「加项目」选一个目录，项目当场建好并绑定一个协调者会话；点项目行打开协调者会话，拖项目行调整排列顺序，当前会话属于该项目（协调者或它派出的 worker）时该行亮着选中底色（注册的工作区被删过的话会顺手重建并归位会话）。删除项目会连插件注册的工作区一起移除，文件夹与会话记录保留。
-3. **初始化项目工程约定**：让模型加载 `init-project` skill，用宿主的文件能力把正文并入目标项目 `AGENTS.md` 的受管区块。dsh 把 `AGENTS.md` 读成系统提示段落，写入即生效；重复执行只替换受管区块。
-4. **派工**：调用 `spawn_worker`，`name`（角色-任务短名）与 `initialMessage` 必填。工具立即返回会话 id；worker 那一轮结束时协调者自动收到回报。续派用 `message_worker`（`sessionId` + `message`，可顺手 `rename`）。
-5. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡。卡片按项目归属、编号全局递增；跨项目改卡会被拒绝。
-6. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看只读详情，点槽位 chip 打开执行者会话。
-7. **写项目级提示词**：项目目录放 `COORDINATOR.md` 写这个项目怎么指挥；放 `SLOTS.md` 按 `## <槽位名>` 定义角色，再用卡片的 `slots` 字段绑到会话。两者都只贡献提示词，不授予工具权限，改动下一轮生效。
+## Docs
 
-建项目、项目树、归档、看板信号灯、槽位 frontmatter 等完整交互见[使用手册](docs/usage.md)；实现与取舍见[架构文档](docs/architecture.md)。
-
-## 当前限制
-
-- **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即销毁，没有载体接收完成通知。
-- **协调者不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。worker 卡住或跑偏只能请人去那个会话处理——这是常驻化换来的代价。
-- **完成回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算，协调者收不到通知；重启后可以自己打开 worker 会话看或续聊。
-- **看板只对项目会话展示**：协调者与该项目的 worker 能看到；同目录的普通会话与已换下的协调者只看到提示。不属于任何项目的会话也没有看板。
-- **卡片详情只读**：完成、置顶、重命名、删除需要新增宿主远程方法，当前不做。卡片编号全局递增，跨项目不复用、不回收。
-- **项目注册表只经左栏区块操作**：模型没有项目工具；目录选择器不可用时无法建项目，需换 web profile。
-- **项目树与官方工作区树并存**：项目会话从官方树里的隐藏是渲染层排除，官方计数与搜索仍包含它们；项目目录被额外注册成工作区，也在渲染层藏掉。
-- **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状，协调者会话形态依赖宿主的会话视图服务——宿主升级时要同步本仓。
-
-完整的限制清单与取舍（含信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[架构文档的已知限制](docs/architecture.md#已知限制与取舍)。
-
-## 开发
-
-```sh
-npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任务名>
-cd .worktrees/<任务名>
-npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
-npm start                         # 起日常实例（~/.dsh 的数据与 profile）
-npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
-```
-
-其余命令（`build:client` / `worktree:prune` 等）见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
-
-`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。改客户端代码要重建再刷新，宿主侧代码重启实例即可。
-
-`npm start` 起的是日常那套：数据根 `~/.dsh`，插件取日常 profile 里链接的版本，起之前先 `npm run build:client`。它会逐项检查并给出可复制的修复命令：dsh 不可用（没装或不在 PATH，`DSH_DSH` 可指定路径）、日常 profile 不存在、profile 的 bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有 `npm run dev` 的隔离——在 worktree 里跑，加载的仍是链接指向的那份代码（通常是主 checkout），脚本会提示，验证本目录改动请用 `npm run dev`。
-
-开发实例的覆盖项、worktree 清理守卫、取证流程与构建约束见[架构文档的开发一节](docs/architecture.md#开发)与 [docs/e2e-testing.md](docs/e2e-testing.md)。
-
-## 致谢
-
-本方案在设计时参考过 **Cursor 的 Project 实现**与 **PStack 的编排机制**：把项目当成一等实体、按项目聚合会话与交付物，以及「协调者派工 / 执行者回报 / 交付看板」这条主线。感谢两边的实践提供了对照。
-
-也感谢 **DeepSeek Harness 团队**：宿主的插件契约，以及 worktree 并发、Agent Note、AGENTS.md 渐进式披露、文档防腐化这套工程实践，是本仓直接对照的来源。
-
-## 文档
-
-| 文档 | 内容 |
+| Document | Contents |
 |---|---|
-| [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
-| [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
-| [docs/architecture.md](docs/architecture.md) | 分层、模块表、运行时模型、数据流、持久化布局、完整已知限制 |
-| [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器侧取证的执行规范 |
-| [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
-| [skills/leader-mode/](skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
+| [AGENTS.md](AGENTS.md) | Repository rules and the task-routed reading index |
+| [docs/usage.md](docs/usage.md) | Full interaction for dispatch, follow-ups, cards, board, project management, slots and manuals |
+| [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, full known limitations |
+| [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | Execution rules for browser-side evidence |
+| [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
+| [skills/leader-mode/](skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
+
+## Credits
+
+The design drew on **Cursor's Project implementation** and **PStack's orchestration mechanism**: treating a project as a first-class entity, aggregating sessions and deliverables per project, and the coordinator-dispatches / executor-reports / delivery-board line.
+
+Thanks also to the **DeepSeek Harness team**: the host plugin contract, and the worktree, Agent Note, progressive-disclosure and documentation practices this repository mirrors directly.

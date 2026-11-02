@@ -20,7 +20,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协�
 | 理解整体架构、查模块归属与完整限制 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、已知限制） |
 | 改 host 侧、加工具、动 `agent/created` | [docs/capability-gaps.md](docs/capability-gaps.md)（宿主能力边界，每条都有实测依据） |
 | 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/2026-10-23-client-side-findings-and-build-constraints.md) |
-| 起开发实例、多 worktree 并行 | [README 的开发一节](README.md#开发)、`scripts/dev.mjs` |
+| 起开发实例、多 worktree 并行 | [中文 README 的开发一节](README_ZH.md#开发)、`scripts/dev.mjs` |
 | worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/2026-10-23-dispatch-and-wakeup.md) |
 | 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/2026-10-27-project-bound-board.md) |
 | 项目级提示词（`COORDINATOR.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/coordinator-context.js`、`src/host/slots/` |
