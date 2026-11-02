@@ -1,8 +1,9 @@
 /**
  * worker 回报气泡的样式。
  *
- * 颜色与圆角全部走宿主 `--dsw-*` 令牌，不写死色值：宿主包的 CSS module 不对外
- * 暴露（组件能从基线模块 import，样式不能），跨 bundle 只有落在页面上的变量可用。
+ * 颜色与圆角全部走宿主 `--dsw-*` 令牌，不写死色值。组件能从基线模块 import，样式
+ * 拿不到：宿主包的 CSS module 在构建期编译成哈希类名、映射留在宿主产物里（包的
+ * `./src/*` 导出指向源码，`files` 只发 `lib/`），跨 bundle 能引用的只有 CSS 变量。
  *
  * @module dsh-leader-kit/client/worker-report-styles
  */

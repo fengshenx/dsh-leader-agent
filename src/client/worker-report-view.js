@@ -62,7 +62,8 @@ export function WorkerReportView({ node, openSession }) {
   const bubbleRef = useRef(null)
   const data = node?.data
   const body = data === undefined ? '' : workerReportBody(data)
-  // 哪些正文走纯文本（旧回报、失败原因、无块级结构的多行）由 shared 判，理由见 workerReportFormat。
+  // 哪些正文走纯文本（旧回报、失败原因、既无块级结构也无空行的多行）由 shared 判，
+  // 理由见 workerReportFormat。
   const markdown = data === undefined ? false : workerReportFormat(data) === 'markdown'
 
   // 样式必须在测量之前进 DOM，所以放在 layout 阶段而不是被动 effect：后者晚于
