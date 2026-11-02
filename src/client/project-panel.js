@@ -331,6 +331,13 @@ export function ProjectPanel(props) {
       showToast(result.message)
       return
     }
+    if (result.recreated === true) {
+      // 工作区被用户删过：这次打开重建了一个，并把会话挂回去。左栏看不到工作区行，
+      // 不提示的话用户会以为删除仍然生效。
+      showToast(result.reconnected > 0
+        ? `项目「${project.name}」的工作区已重建，${result.reconnected} 个会话已归位。`
+        : `项目「${project.name}」的工作区已重建。`)
+    }
     // 宿主可能刚注册了工作区：归属要同步回列表，否则删除时不知道它是插件注册
     // 的，工作区会被漏在宿主里。
     if (result.workspaceId !== project.workspaceId) {

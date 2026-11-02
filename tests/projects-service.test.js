@@ -680,6 +680,65 @@ test('attachCoordinator 对已挂载的会话是幂等的', async () => {
   assert.equal(registry.attached.length, 1)
 })
 
+test('工作区被用户删掉后重新打开项目：重建工作区并标出重建', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const factory = createSessionFactory()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await service.attachCoordinator(project.id)
+  // 用户从工作区管理面板把它删了：会话此时是松散会话，落官方树的「未分组」。
+  await registry.delete('ws-1')
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.attached, true)
+  assert.equal(result.recreated, true)
+  assert.equal(result.workspaceId, 'ws-2')
+  assert.equal(result.reconnected, 1)
+  assert.deepEqual(registry.attached.at(-1), { workspaceId: 'ws-2', sessionId: factory.ids[0] })
+})
+
+test('重建工作区时把登记过的 worker 会话一起挂回去', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const factory = createSessionFactory()
+  const sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => {
+        if (key === 'workspaceRegistry') return registry
+        if (key === 'sessionQuery') return { listSessions: async () => sessions }
+        return undefined
+      },
+    },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  const coordinatorId = project.coordinatorSessionId
+  sessions.push(
+    { header: { id: coordinatorId, cwd: workspace } },
+    { header: { id: 'worker-1', cwd: workspace } },
+  )
+  await registry.delete('ws-1')
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.recreated, true)
+  assert.equal(result.reconnected, 2)
+  assert.deepEqual(registry.attached.map((entry) => entry.sessionId), [coordinatorId, 'worker-1'])
+})
+
 test('attachCoordinator 在宿主没有工作区服务时不报错', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })

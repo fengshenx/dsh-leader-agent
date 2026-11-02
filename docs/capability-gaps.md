@@ -289,6 +289,10 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：第三方自建的会话（协调者会话就是这类）在官方 UI 里没有位置——调用 `uiWorkspace.openSession(sessionId)` 后主区域仍停在欢迎页，官方工作区树里也找不到它。要让会话能被官方 UI 打开，必须把它挂进工作区；目录还不是工作区时得先注册一个（副作用：用户的工作区列表里会多出该项目目录）。
 
+**后续复核（rc.2，2026-11-02）**：「不归属就打不开」这半句不成立——`openSession` 只按会话 id retain（`packages/client/ui-workspace/src/client/navigation.ts`），主区域不检查归属；不归属的会话在「未分组」里点开，`data-phase` 正常是 `active`。本仓仍然把项目会话挂进工作区，理由换成**分组**：不归属就落「未分组」，而本仓把项目会话行藏掉了，组头会留成一棵空组。归属是数据层能解决这件事的唯一手段——会话头没有「侧栏不显示」的字段，`origin` 只允许 `subagent`（`session-format-v3-to-v4/src/validation.ts:39`），归档会把会话拦在 `agent/pre-step` 之外（`api/session-controller/src/archived-session-gate.ts:22-30`）。
+
+**用户删掉那个工作区之后**（第 33 条的延伸）：`WorkspaceRegistry.delete` 只删记录（`packages/workspace/workspace/src/index.ts:585-601`），会话与文件都不动，于是项目会话变成松散会话、落回「未分组」。本仓在下次打开项目（点项目行）时按需重建：`create` 是幂等的，重建后会放进项目记录，并把协调者、退役协调者与该项目的 worker 会话挂回去（名单来自 `sessionQuery.listSessions()` 加 worker 登记表，用户在项目目录里手动开的会话不碰）。重建在左栏看不见（工作区行被藏着），所以客户端给一条顶部提示。
+
 ### 33. 官方工作区没有「隐藏」位——第三方注册的工作区只能从渲染层藏
 
 **dsh 实测**：工作区记录是封闭 schema（`packages/workspace/workspace/src/spec.ts` 的 `workspaceRecord`：只有 `path` / `title` / `sessionIds` / `createdAt` / `updatedAt`），没有备注、标签或可见性字段；归档只作用于会话（`workspaceDomainState.archivedSessionIds`），工作区级别没有归档。工作区实体的公开接口（`packages/workspace/workspace/src/types.ts`）也只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`，没有隐藏或删除可见性的方法。

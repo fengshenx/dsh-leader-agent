@@ -107,6 +107,8 @@ export function apply(ctx) {
     workerSessions,
     // worker 跑在项目目录里：协调者不能指定 worker 的工作目录。
     resolveWorkerCwd: (sessionId) => projectService.directoryOfCoordinator(sessionId),
+    // worker 与协调者同属项目工作区：不挂就落官方树的「未分组」。
+    resolveWorkerWorkspaceId: (sessionId) => projectService.workspaceIdOfCoordinator(sessionId),
     // 派工前要确认调用方是协调者，且索引真的读出来了，不能靠工具面的宽松放行。
     coordinatorIndex: projectService,
     // 名册上限与投递卡门禁都读宿主现状：归档集合来自工作区注册表，卡绑定来自

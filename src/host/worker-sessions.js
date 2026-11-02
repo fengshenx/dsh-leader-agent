@@ -100,6 +100,30 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   }
 
   /**
+   * 把新 worker 会话挂进项目工作区。
+   *
+   * 归属只决定它在官方左栏里落在哪个分组：不挂就是「未分组」，而它的协调者已经
+   * 挂在项目工作区里。挂失败不阻塞派工——会话已经建好并要收任务，少一层归属比
+   * 派工失败轻得多，所以这里只记日志。
+   *
+   * @param {object} ctx - Cordis 上下文
+   * @param {string | undefined} workspaceId - 目标工作区
+   * @param {string} sessionId - worker 会话 id
+   * @param {(message: string) => void} log - 日志输出
+   * @returns {void}
+   */
+  function attachToWorkspace(ctx, workspaceId, sessionId, log) {
+    if (typeof workspaceId !== 'string' || workspaceId === '') return
+    const workspace = ctx.get('workspaceRegistry')?.get?.(workspaceId)
+    if (workspace === undefined) return
+    if ((workspace.sessionIds ?? []).includes(sessionId)) return
+    void workspace.attachSession(sessionId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error)
+      log(`dsh-leader-kit: worker 会话 ${sessionId} 挂到工作区失败，它会留在官方树的「未分组」里：${message}`)
+    })
+  }
+
+  /**
    * 销毁一个 worker 会话。
    *
    * @param {string} sessionId - 会话 id
@@ -177,10 +201,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} options.name - 显示名（同时用作会话标题）
      * @param {string} options.initialMessage - 任务简报
      * @param {string} options.parentSessionId - 协调者会话 id
+     * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<string>} 新会话 id
      */
-    async spawn({ cwd, name, initialMessage, parentSessionId, signal }) {
+    async spawn({ cwd, name, initialMessage, parentSessionId, workspaceId, signal }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -210,6 +235,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
+      attachToWorkspace(ctx, workspaceId, sessionId, logger)
       renameTitle(handle, name)
       try {
         handle.agent.followup(taskMessage(initialMessage, name, parentSessionId))

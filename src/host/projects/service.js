@@ -327,6 +327,24 @@ export function createProjectService({
     },
 
     /**
+     * 取协调者会话所属项目的工作区。
+     *
+     * worker 与协调者跑在同一个项目目录里，二者都该归属同一个工作区——归属决定
+     * 官方树把它们放在哪个分组（不归属就落「未分组」）。协调者由 `create` 时挂好，
+     * worker 建完要用这条把它挂进去。
+     *
+     * @param {string} sessionId - 协调者会话 id
+     * @returns {Promise<string | undefined>} 工作区 id；没有对应工作区时 undefined
+     */
+    async workspaceIdOfCoordinator(sessionId) {
+      await indexReady
+      const projectId = coordinatorIndex.get(sessionId)?.projectId
+      if (projectId === undefined) return undefined
+      const project = await store.get(projectId)
+      return project === undefined ? undefined : recordedWorkspaceId(ctx, project)
+    },
+
+    /**
      * 解析某个会话所属的项目。
      *
      * 判据两条，先命中先用：
@@ -434,8 +452,14 @@ export function createProjectService({
      * 会话不归属任何工作区，见 `ensureWorkspace`）。目录还不是
      * 工作区时这里顺带注册一个——注册是幂等的，宿主侧已有同名工作区就直接复用。
      *
+     * 工作区被用户删掉后再点项目行会走到这里：重建一个（`recreated`）并把协调者、
+     * 退役协调者与本项目登记过的 worker 一起挂回去——工作区不在期间它们都是松散
+     * 会话，落在官方树的「未分组」里。只恢复插件自己建的会话，用户在项目目录里
+     * 手动开的会话不碰。
+     *
      * @param {string} id - 项目 id
-     * @returns {Promise<{attached: boolean, workspaceId?: string, reason?: string}>} 挂载结果
+     * @returns {Promise<{attached: boolean, workspaceId?: string, recreated?: boolean,
+     *   reconnected?: number, reason?: string}>} 挂载结果
      */
     async attachCoordinator(id) {
       const project = await store.get(id)
@@ -448,23 +472,74 @@ export function createProjectService({
         return { attached: false, reason: '当前宿主的工作区服务不支持注册目录。' }
       }
       const workspace = ensured.workspace
-      if (ensured.created) {
+      const recreated = ensured.created === true
+      if (recreated) {
         // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
         // 工作区，那不是我们的，不该被隐藏。
         await store.update(project.id, { workspaceId: workspace.id })
       }
       // 归属可能刚写进记录（工作区是这次新建的），重读一遍再报给调用方。
-      const recorded = await store.get(project.id)
-      if ((workspace.sessionIds ?? []).includes(project.coordinatorSessionId)) {
-        return { attached: true, workspaceId: recordedWorkspaceId(ctx, recorded ?? project) }
+      const recorded = await store.get(project.id) ?? project
+      const targets = await this.coordinatorAttachTargets(recorded)
+      const members = new Set(workspace.sessionIds ?? [])
+      let reconnected = 0
+      for (const sessionId of targets) {
+        if (members.has(sessionId)) {
+          reconnected += 1
+          continue
+        }
+        if (!(await coordinatorExists(sessionId))) continue
+        try {
+          await workspace.attachSession(sessionId)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          // 协调者挂不上就真的打不开项目，必须回传；worker 挂不上只是它会留在
+          // 「未分组」里，不该让整次打开失败。
+          if (sessionId === recorded.coordinatorSessionId) {
+            return { attached: false, reason: `协调者会话挂到工作区失败：${message}` }
+          }
+          logger(`dsh-leader-kit: worker 会话 ${sessionId} 挂回工作区失败：${message}`)
+          continue
+        }
+        members.add(sessionId)
+        reconnected += 1
       }
-      try {
-        await workspace.attachSession(project.coordinatorSessionId)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return { attached: false, reason: `协调者会话挂到工作区失败：${message}` }
+      return {
+        attached: true,
+        workspaceId: recordedWorkspaceId(ctx, recorded),
+        recreated,
+        reconnected,
       }
-      return { attached: true, workspaceId: recordedWorkspaceId(ctx, recorded ?? project) }
+    },
+
+    /**
+     * 列出该挂进项目工作区的会话：协调者、退役协调者与登记过的 worker。
+     *
+     * 用途只有一个——工作区被删后重建时把它们挂回去。用户在同一目录里手动开的
+     * 会话不在名单里：把别人的会话塞进一个被隐藏的工作区，等于让它们从界面上
+     * 消失。
+     *
+     * @param {object} project - 项目记录
+     * @returns {Promise<string[]>} 会话 id（去重，协调者在前）
+     */
+    async coordinatorAttachTargets(project) {
+      const targets = []
+      if (typeof project.coordinatorSessionId === 'string' && project.coordinatorSessionId !== '') {
+        targets.push(project.coordinatorSessionId)
+      }
+      const retired = Array.isArray(project.retiredCoordinatorSessionIds)
+        ? project.retiredCoordinatorSessionIds
+        : []
+      for (const sessionId of retired) {
+        if (typeof sessionId === 'string' && !targets.includes(sessionId)) targets.push(sessionId)
+      }
+      for (const entry of await this.sessionsByProject()) {
+        if (entry.projectId !== project.id) continue
+        for (const sessionId of entry.sessionIds) {
+          if (!targets.includes(sessionId)) targets.push(sessionId)
+        }
+      }
+      return targets
     },
 
     /**
