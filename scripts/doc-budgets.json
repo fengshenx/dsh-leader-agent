@@ -1,12 +1,12 @@
 {
-  "AGENTS.md": 3700,
+  "AGENTS.md": 3810,
   "README.md": 3300,
   "COORDINATOR.md": 1350,
   "SLOTS.md": 900,
   "docs/architecture.md": 5000,
   "docs/limitations.md": 5600,
   "docs/development.md": 1700,
-  "docs/capability-gaps.md": 15100,
+  "docs/capability-gaps.md": 15150,
   "docs/usage.md": 4600,
   "docs/e2e-testing.md": 1800
 }
