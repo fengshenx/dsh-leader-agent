@@ -29,6 +29,16 @@
 4. **Many projects in parallel, one Leader each** — Adding a project binds a coordinator session to it, and the project tree lists the workers that Leader spawned. Projects stay out of each other's way. Swap in a new Leader and the existing workers plus undelivered reports move over, so it can dispatch immediately.
 5. **The `leader-mode` skill: an orchestration protocol for the Leader** — Not "you are a tech lead". Staged playbooks across discussion → design → implementation and delivery → review → merge, plus guidance on parallel collaboration and handoff.
 
+## Preview
+
+<div align="center">
+  <img src="docs/assets/readme/board.png" alt="dsh-leader-kit: the project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
+</div>
+
+Left: projects and the workers each Leader spawned. Center: the Leader's session — the task, the dispatch, the worker reporting back, the verdict. Right: the delivery board for the project, with one card per task and a slot chip per executor.
+
+The screenshot uses a local mock provider and seeded projects, cards and sessions; no real model calls were made.
+
 ## How it runs
 
 ```text

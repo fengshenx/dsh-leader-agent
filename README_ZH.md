@@ -29,6 +29,16 @@
 4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个协调者会话，项目树列出它派出的 worker；项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
 
+## 预览
+
+<div align="center">
+  <img src="docs/assets/readme/board.png" alt="dsh-leader-kit：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
+</div>
+
+左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。
+
+截图用的是本地 mock provider 与 seed 的项目、卡片、会话，没有真实模型调用。
+
 ## 它是怎么跑起来的
 
 ```text
