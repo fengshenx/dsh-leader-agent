@@ -102,12 +102,12 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 ## 发布
 
 ```sh
-npm run release:check    # 门禁与单测 → 构建 lib/client.js → 校验发布包内容
+npm run release:check    # 门禁与单测 → 构建 lib/client.js → 校验发布包内容与装机加载
 ```
 
-发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致后执行 `npm publish --provenance --access public`，再建 GitHub Release；PR 与 `main` 上的 `.github/workflows/ci.yml` 跑的是同一条 `release:check`。
+发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 先校验 tag 与 version 一致、且 tag 提交在 `main` 上（`git merge-base --is-ancestor`，避免从未过门禁的分支发布），再执行 `npm publish --provenance --access public`，最后建 GitHub Release；PR 与 `main` 上的 `.github/workflows/ci.yml` 跑的是同一条 `release:check`，node 取 `engines.node` 的下限与最新 24.x 两档。
 
-`prepublishOnly` 挂的就是 `release:check`，所以手动 `npm publish` 与 CI 走同一条链路：漏构建客户端产物、`files` 白名单漏了 skill、包里混进测试或决策笔记，都会在发布前失败。包内容判定不复刻 npm 的收录规则，直接用 `npm pack --dry-run --json` 的真实文件清单比对（`scripts/pack-manifest.mjs` 只决定「该有的有没有」）。
+`prepublishOnly` 挂的就是 `release:check`，所以手动 `npm publish` 与 CI 走同一条链路：漏构建客户端产物、`files` 白名单漏了 skill、包里混进测试或决策笔记，都会在发布前失败。包内容判定不复刻 npm 的收录规则，直接打一次真实的包、用它的文件清单比对（`scripts/pack-manifest.mjs` 只决定「该有的有没有」）；最后把 tarball 装进临时目录、按包名把宿主侧模块加载一遍——清单只能证明文件在包里，装机加载才证明包能用（`files` 收窄时 `src/shared/*` 漏进包，清单全绿而装上即 `ERR_MODULE_NOT_FOUND`）。
 
 **只从 `npm publish`（不带路径参数）发布**：`npm publish dsh-leader-kit-0.1.0.tgz` 不跑生命周期脚本，整段门禁被跳过。
 

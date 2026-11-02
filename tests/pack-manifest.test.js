@@ -3,20 +3,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { FORBIDDEN_PATTERNS, checkPackEntries, requiredPackFiles } from '../scripts/pack-manifest.mjs'
+import { checkPackEntries, isForbiddenPath, requiredPackFiles } from '../scripts/pack-manifest.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
-
-/**
- * 只取某一条规则命中的路径，便于按规则断言。
- * @param {RegExp} pattern - 规则
- * @param {string[]} paths - 候选路径
- * @returns {string[]} 命中路径
- */
-function matched(pattern, paths) {
-  return paths.filter((path) => pattern.test(path))
-}
 
 test('必需文件从 main、exports 与 dsh.bundle.patch 推导，不抄第二份清单', () => {
   const files = requiredPackFiles({ manifest, skillFiles: [], localeFiles: [] })
@@ -110,15 +100,47 @@ test('files 放宽后，仓内文档与决策笔记仍进不了包', () => {
   ])
 })
 
-test('发布包要用的目录不被误判', () => {
+test('.agents 只放行 skills 子树：新增目录默认被拦', () => {
+  // 这个目录同时住着要发布的 skill 与仓内上下文，所以按「只允许 skills 前缀」正向
+  // 判定：哪天 files 写成 ".agents/**"，新目录也不会静默进用户的 node_modules。
+  const forbidden = [
+    '.agents/prompts/hidden.md',
+    '.agents/notes/2026-11-02-npm-publish-pipeline.md',
+    '.agents/README.md',
+    '.agents/config.json',
+    '.agents/skills-extra/leader-mode/SKILL.md',
+  ]
+  for (const path of forbidden) assert.equal(isForbiddenPath(path), true, `${path} 应被拦下`)
+
+  const published = [
+    '.agents/skills/leader-mode/SKILL.md',
+    '.agents/skills/leader-mode/playbooks/delivery.md',
+    '.agents/skills/init-project/references/conventions.md',
+  ]
+  for (const path of published) assert.equal(isForbiddenPath(path), false, `${path} 是发布文件`)
+})
+
+test('files 放宽到 .agents/** 时，notes 与新增目录仍被拦', () => {
+  const entries = [
+    'index.js',
+    '.agents/skills/leader-mode/SKILL.md',
+    '.agents/notes/2026-11-02-npm-publish-pipeline.md',
+    '.agents/prompts/hidden.md',
+  ]
+  const { forbidden, missing } = checkPackEntries({ entries, required: [] })
+  assert.deepEqual(forbidden, ['.agents/notes/2026-11-02-npm-publish-pipeline.md', '.agents/prompts/hidden.md'])
+  assert.deepEqual(missing, [])
+})
+
+test('发布包要用的路径不被误判', () => {
   const legit = [
     'src/host/index.js',
+    'src/shared/projects.js',
     'src/client/board.js',
     'locale/zh.json',
     '.agents/skills/leader-mode/playbooks/delivery.md',
     'lib/client.js',
+    'cordis.patch.yml',
   ]
-  for (const pattern of FORBIDDEN_PATTERNS) {
-    assert.deepEqual(matched(pattern, legit), [], `规则 ${pattern} 误伤了发布文件`)
-  }
+  for (const path of legit) assert.equal(isForbiddenPath(path), false, `${path} 不该被拦下`)
 })

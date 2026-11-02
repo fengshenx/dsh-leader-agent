@@ -9,20 +9,27 @@
  */
 
 /**
+ * `.agents/` 下唯一该发布的子树：协议层 skill。
+ *
+ * 这个目录同时住着仓内上下文（`notes/` 的决策记忆、将来的 `prompts/` 之类）与要发布
+ * 的 skill，所以按「只放行 skills 前缀」正向判定，而不是逐条禁止：新增 `.agents/<目录>`
+ * 时默认被拦，漏写一条规则不会让文件静默进用户 `node_modules`。
+ */
+export const AGENTS_SKILLS_PREFIX = '.agents/skills/'
+
+/**
  * 不该出现在发布包里的路径。
  *
- * 每条都对应一个具体的漂移风险：测试与决策笔记把仓内上下文带进用户的 node_modules
- * （`AGENTS.md` 里还写着本机凭据布局）；`scripts/` 与 `build/` 是开发工具，装了也
- * 用不上；`.dev/`、`.worktrees/` 是本地运行态；`.tgz` 与 `.DS_Store` 是打包过程与
- * macOS 的残留。
+ * 每条都对应一个具体的漂移风险：测试把仓内上下文带进用户的 node_modules；`scripts/`
+ * 与 `build/` 是开发工具，装了也用不上；`.dev/`、`.worktrees/` 是本地运行态；`.tgz` 与
+ * `.DS_Store` 是打包过程与 macOS 的残留。
  *
  * 这份名单是 `files` 白名单的补集，不是它的复述：白名单一旦放宽（比如有人写
- * `"docs/**"`、`"*.md"`），这里负责把不该发的东西拦下来。
+ * `"docs/**"`、`"*.md"`），这里负责把不该发的东西拦下来。`.agents/` 例外，走
+ * `isForbiddenPath` 的允许面。
  */
 export const FORBIDDEN_PATTERNS = Object.freeze([
   /(^|\/)tests\//,
-  /^\.agents\/notes\//,
-  /^\.agents\/[^/]+\.md$/,
   /^\.dev\//,
   /^\.worktrees\//,
   /^\.github\//,
@@ -37,6 +44,16 @@ export const FORBIDDEN_PATTERNS = Object.freeze([
   /(^|\/)\.DS_Store$/,
   /\.tgz$/,
 ])
+
+/**
+ * 判定一条包内路径是否不该发布。
+ * @param {string} path - 包内 POSIX 相对路径
+ * @returns {boolean} 不该出现时为 true
+ */
+export function isForbiddenPath(path) {
+  if (path.startsWith('.agents/') && !path.startsWith(AGENTS_SKILLS_PREFIX)) return true
+  return FORBIDDEN_PATTERNS.some((pattern) => pattern.test(path))
+}
 
 /** npm 强制随包发布的文件，与 `files` 白名单无关。 */
 const ALWAYS_SHIPPED = Object.freeze(['package.json', 'README.md', 'LICENSE'])
@@ -97,13 +114,13 @@ export function requiredPackFiles({ manifest, skillFiles, localeFiles }) {
  * @param {object} options - 输入
  * @param {string[]} options.entries - tarball 内的文件路径
  * @param {string[]} options.required - 必须存在的路径
- * @param {RegExp[]} [options.forbidden] - 不该出现的路径匹配
+ * @param {(path: string) => boolean} [options.forbidden] - 不该出现的路径判定
  * @returns {{missing: string[], forbidden: string[]}} 缺失的必需文件与不该出现的文件
  */
-export function checkPackEntries({ entries, required, forbidden = FORBIDDEN_PATTERNS }) {
+export function checkPackEntries({ entries, required, forbidden = isForbiddenPath }) {
   const present = new Set(entries)
   return {
     missing: required.filter((path) => !present.has(path)),
-    forbidden: entries.filter((path) => forbidden.some((pattern) => pattern.test(path))),
+    forbidden: entries.filter((path) => forbidden(path)),
   }
 }

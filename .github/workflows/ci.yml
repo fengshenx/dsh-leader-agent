@@ -5,15 +5,25 @@ on:
     branches: [main]
   pull_request:
 
+# 只读：CI 跑的是仓里的脚本与单测，不需要写权限。仓库默认 token 权限设成 write 时，
+# 不声明就等于把写权限交给任何改脚本的 PR。
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 下限与 package.json 的 engines.node 同一来源：只跑最新 24.x 时，用了更高
+        # 版本才有的 API 也发现不了，按声明下限装的用户拿到运行期 TypeError。
+        node: ['24.9.0', '24']
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - run: npm ci

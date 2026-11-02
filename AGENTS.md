@@ -56,7 +56,7 @@ npm run dev                       # 起一个挂当前工作树插件版本的 d
 npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
 npm run worktree:prune            # 清已合并的 worktree（默认只打印，--apply 才删）
-npm run verify:pack               # 打包一次（dry-run），校验发布包内容（需先 build:client）
+npm run verify:pack               # 打一次真实的包，校验内容清单并装机加载一遍（需先 build:client）
 npm run release:check             # 发版门禁：check + build:client + verify:pack，也是 prepublishOnly
 ```
 
