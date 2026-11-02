@@ -33,6 +33,8 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 交付做到 PR 为止。合并与 approve 需要用户明确指令，不要自行推进。向用户汇报时给：结论、当前 head 或 PR 链接、验证证据、未验证项与待决策。
 
+**卡片完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，检查点写明等合并。合并后跑 `worktree:prune --apply`（要删远端分支时带 `--delete-remote`），确认工作区干净再收尾。
+
 ## 不要做
 
 - 不要用宿主的 `list_agents` / `send_message` / `interrupt_agent` 管 worker——它们作用在 subagent 体系上，对常驻 worker 无效（工具面里本来也没有）。worker 卡住就请人去那个会话处理，或 `message_worker` 提醒收尾。
