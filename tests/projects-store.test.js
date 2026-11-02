@@ -47,6 +47,18 @@ test('只接受 name 与 coordinatorSessionId 两个可变字段', async () => {
   assert.equal(updated.id, draft.id)
 })
 
+test('退役协调者列表可写，落盘后可读回', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  await store.insert(draft)
+
+  await store.update(draft.id, { retiredCoordinatorSessionIds: ['session-1'] })
+  // 重开一个 store 实例读盘：写在内存里不算数
+  const stored = await createProjectStore({ home }).get(draft.id)
+  assert.deepEqual(stored.retiredCoordinatorSessionIds, ['session-1'])
+})
+
 test('改不存在的项目会报错', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })

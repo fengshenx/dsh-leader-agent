@@ -508,12 +508,16 @@ export function createProjectService({
     },
 
     /**
-     * 列项目下的 worker 会话。
+     * 列项目下的会话：worker，加上被换下的协调者。
      *
-     * 判据是会话跑的目录加上 worker 身份。worker 现在是普通根会话（由
+     * worker 的判据是会话跑的目录加上 worker 身份。worker 现在是普通根会话（由
      * `agents.create` 建），会话头没有 `origin: 'subagent'` 标记，身份由 worker
-     * 登记表给（`isWorkerSession`）。协调者会话（入口在项目行上）与用户在项目目录
+     * 登记表给（`isWorkerSession`）。当前协调者（入口在项目行上）与用户在项目目录
      * 里手动开的会话都不算。子目录里开的 worker 不算——那属于另一个目录。
+     *
+     * 退役协调者按记录里的 id 收，不按目录：它换下后就是项目里的普通会话（历史
+     * 还归项目），但目录判据认不出它——这条会话是本插件建的，用户手开的不该跟着
+     * 进来。不列它的话，它会既不在项目下、也不在（被排除的）官方工作区树里。
      *
      * `sessionQuery` 缺失时返回空映射：会话索引是增强能力，缺了不该让项目列表
      * 整体不可用。
@@ -538,6 +542,24 @@ export function createProjectService({
         canonicalize,
         isWorkerSession,
       })
+      // 退役会话已从会话库消失时不再列出：留下来只会得到一条点不开的行。
+      const known = new Set(sessions.map((session) => session.id))
+      for (const project of projects) {
+        const retired = Array.isArray(project.retiredCoordinatorSessionIds)
+          ? project.retiredCoordinatorSessionIds
+          : []
+        const extra = retired.filter((sessionId) => sessionId !== project.coordinatorSessionId
+          && known.has(sessionId))
+        if (extra.length === 0) continue
+        const bucket = grouped.get(project.id)
+        if (bucket === undefined) {
+          grouped.set(project.id, [...extra])
+          continue
+        }
+        for (const sessionId of extra) {
+          if (!bucket.includes(sessionId)) bucket.push(sessionId)
+        }
+      }
       return [...grouped.entries()].map(([projectId, sessionIds]) => ({ projectId, sessionIds }))
     },
 
@@ -590,6 +612,10 @@ export function createProjectService({
     /**
      * 换新协调者：建一个新会话并改绑，旧会话降级为项目里的普通会话。
      *
+     * 旧会话 id 记进 `retiredCoordinatorSessionIds`：它换下后既不是当前协调者
+     * （排除集不再覆盖它），也不是 worker（目录判据认不出插件建的会话），不记的话
+     * 会掉回官方工作区树里当普通会话，项目下反而看不到它的历史。
+     *
      * @param {string} id - 项目 id
      * @returns {Promise<object>} 更新后的项目
      */
@@ -603,11 +629,21 @@ export function createProjectService({
         await store.update(id, { workspaceId: ensured.workspace.id })
       }
       const coordinatorSessionId = await openRegisteredCoordinatorSession(project.directory)
+      const previous = project.coordinatorSessionId
+      const retired = Array.isArray(project.retiredCoordinatorSessionIds)
+        ? project.retiredCoordinatorSessionIds
+        : []
+      // 退役列表与改绑同一次写入：分开写的话，中途失败会留下一条「协调者已换、
+      // 旧会话谁都不认」的记录。
+      const retirePrevious = typeof previous === 'string' && previous !== ''
+        && previous !== coordinatorSessionId && !retired.includes(previous)
       let updated
       try {
-        updated = await store.update(id, { coordinatorSessionId })
-        if (typeof project.coordinatorSessionId === 'string') {
-          coordinatorIndex.delete(project.coordinatorSessionId)
+        updated = await store.update(id, retirePrevious
+          ? { coordinatorSessionId, retiredCoordinatorSessionIds: [...retired, previous] }
+          : { coordinatorSessionId })
+        if (typeof previous === 'string') {
+          coordinatorIndex.delete(previous)
         }
         coordinatorIndex.set(coordinatorSessionId, {
           projectId: id,

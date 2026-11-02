@@ -9,9 +9,11 @@
  * 两条领域规则：
  *
  * - **目录不可改**：项目目录是项目身份的一部分，改目录等于换项目。存储层只接受
- *   `name`、`coordinatorSessionId` 与 `workspaceId` 三个可变字段，其余字段原样保留。
- *   `workspaceId` 是插件自己注册的工作区 id——它标明了「这个工作区是我们的」，
- *   用户自己加的同目录工作区不会写进来。
+ *   `name`、`coordinatorSessionId`、`retiredCoordinatorSessionIds` 与 `workspaceId`
+ *   四个可变字段，其余字段原样保留。`workspaceId` 是插件自己注册的工作区 id——它
+ *   标明了「这个工作区是我们的」，用户自己加的同目录工作区不会写进来。
+ *   `retiredCoordinatorSessionIds` 是被换下的协调者会话，换下后它们作为项目里的
+ *   普通会话保留，项目列表按它把它们和 worker 列在一起。
  * - **协调者会话硬绑定**：项目与它的协调者会话是显式指针，不是「目录里最新的那个
  *   会话」这类软约定。
  *
@@ -34,7 +36,12 @@ const STORE_VERSION = 1
  * 白名单而非黑名单：展开 `updates` 会让 `{id}`、`{directory}` 之类字段绕过校验
  * 直接改写身份字段。
  */
-const MUTABLE_FIELDS = Object.freeze(['name', 'coordinatorSessionId', 'workspaceId'])
+const MUTABLE_FIELDS = Object.freeze([
+  'name',
+  'coordinatorSessionId',
+  'retiredCoordinatorSessionIds',
+  'workspaceId',
+])
 
 /**
  * 为项目名找一个没被占用的写法。
@@ -229,7 +236,7 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      * 传 `undefined` 表示清除该字段（`workspaceId` 移除工作区后要清空）。
      *
      * @param {string} id - 项目 id
-     * @param {object} updates - 待改字段，只接受 name、coordinatorSessionId 与 workspaceId
+     * @param {object} updates - 待改字段，只接受 name、coordinatorSessionId、retiredCoordinatorSessionIds 与 workspaceId
      * @returns {Promise<object>} 更新后的项目
      */
     async update(id, updates) {
