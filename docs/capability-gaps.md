@@ -406,6 +406,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - `ctx.layout` 的公开面只有 `selectPanel` / `beginNavigation` / `toggleSidebar` / `openRightbar(track, fullscreen)` / `closeRightbar`，没有设置右栏宽度的动作；存着 `rightbar` 偏好的 `layoutInfo` 是包内 store，第三方拿不到。
 - `dsh-client-ui-sidebar-right` 的 localStorage（`dsh.sidebar-right.v1.<sessionId>`）只存每会话的 tab / 分栏比例 / 浮窗矩形 / 呈现方式，不存列宽；右栏座收到的 `width` 是宿主解析后的只读值（`RightbarOwnerProps.width`）。
 - 本插件没有撑开它的样式：看板面板根节点是 `width: 100%`，`board-styles.js` 里唯一的 380px 是 guide 入口胶囊且带 `max-width: 100%`；自动弹出只调用 `sidebarRight.openTab` / `focus`。
+- **真机读数**（本机 Chrome，视口 1556×952 CSS px，DPI 96）：右栏面板实测 434×952 px——这是窗口更窄时（约 964 px）首次打开留下的 px 偏好；同一视口按首开公式应为 700 px。宽度跟着首次打开时的视口走、之后只按像素保留，不随窗口缩放，也不落 localStorage。
 
 **结论**：右栏默认宽度 = `max(300, round(视口宽 × 45%))`——1920px 宽窗口下约 864px，与「启动时太宽」的观感一致。第三方要改成 400 只有三条路，都不该走：改宿主默认值（本仓不改宿主）、用 `!important` 覆盖面板 inline 宽度（轨道内联在 frame 的 `grid-template-columns` 上，拖拽把手位置与 dockkit 测宽也按同一宽度算，盖一处会三处不一致）、派发合成 pointer 事件去拖宿主把手（依赖宿主内部 DOM 与手势实现）。**需要宿主提供宽度偏好入口**（例如 `ctx.layout.setRightbarWidth(px)`，或一个公开 CSS 变量）；在那之前本仓的看板只能跟随宿主默认宽度，用户手动拖出来的宽度刷新后也会弹回 45%。
 
