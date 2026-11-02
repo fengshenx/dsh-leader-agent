@@ -420,7 +420,7 @@ function ensureStyles() {
  */
 export function ProjectSection(props) {
   const {
-    projects, busy, notice,
+    projects, busy, remoteStatus,
     onAdd,
     naming, onConfirmNaming, onCancelNaming, onNamingChange,
     onOpen, onRename, onReplace, onRemove,
@@ -483,13 +483,19 @@ export function ProjectSection(props) {
       ),
     ),
     listExpanded
-      ? (projects.length === 0
+      ? (remoteStatus !== ''
           ? createElement(
               'div',
               { className: 'dsh-leader-kit-project-notice' },
-              '还没有项目。加一个即在它的目录里建好协调者会话。',
+              remoteStatus,
             )
-          : createElement(
+          : projects.length === 0
+            ? createElement(
+                'div',
+                { className: 'dsh-leader-kit-project-notice' },
+                '还没有项目。加一个即在它的目录里建好协调者会话。',
+              )
+            : createElement(
               'div',
               null,
               projects.map((project) => createElement(ProjectRow, {
@@ -544,11 +550,6 @@ export function ProjectSection(props) {
       naming.error === '' || naming.error === undefined
         ? null
         : createElement('div', { className: 'dsh-leader-kit-project-notice' }, naming.error),
-    ),
-    notice === '' ? null : createElement(
-      'div',
-      { className: 'dsh-leader-kit-project-notice' },
-      notice,
     ),
   )
 }

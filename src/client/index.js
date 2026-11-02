@@ -21,6 +21,7 @@ import { mountCoordinatorView, watchCoordinatorSessions } from './coordinator-vi
 import { callProjectRemote, mountProjectRemote, reportProjectRemoteError } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
+import { ToastOverlay } from './toast-view.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from './worker-report-definition.js'
 import { WorkerReportView } from './worker-report-view.js'
 
@@ -107,6 +108,16 @@ export function apply(ctx) {
       onWorkspacesReady: (listener) => workspacesReady.subscribe(listener),
     }),
   }, ProjectPanel)), 'dsh-leader-kit 左栏项目区块')
+
+  // 一次性提示走跨栏浮层：`shell.overlay` 是宿主留给「徽标、toast 栈、状态
+  // 药丸」这类全局表面的座位，浮在每一栏之上；窄侧栏收起项目浮层时提示仍在。
+  // 宿主没有提供一行式的 toast API（`workspace.toast` 的 key 只认工作区自己的
+  // 通知），所以这里自带一条，形态照宿主 Toast。
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'dsh-leader-kit-toast',
+    order: 20,
+  }, ToastOverlay)), 'dsh-leader-kit 提示浮层')
 
   // 协调者视图目标：让协调者会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调

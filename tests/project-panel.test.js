@@ -251,11 +251,15 @@ test('没有插件工作区时删除说明不提工作区', () => {
   assert.doesNotMatch(text, /工作区/)
 })
 
-test('删除成功的提示只在工作区没摘掉时出现', () => {
-  // 项目行消失就是回执，成功不留常驻提示。
-  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: true }), '')
-  // 没有工作区可摘（宿主报 skipped）是正常删除，同样静默。
-  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, skipped: true }), '')
+test('删除成功的提示固定一句回执，工作区摘除失败才带原因', () => {
+  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: true }), '已删除项目「demo」。')
+  // 没有工作区可摘（宿主报 skipped）是正常删除，回执不提工作区。
+  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, skipped: true }), '已删除项目「demo」。')
+  // 项目已不存在（幂等成功）：它的 reason 是「项目不存在」，不能当工作区告警。
+  assert.equal(
+    describeDeletionNotice({ name: 'demo' }, { notFound: true, reason: '项目不存在。' }),
+    '已删除项目「demo」。',
+  )
   const failed = describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, reason: '宿主不支持删除工作区。' })
   assert.match(failed, /工作区未移除/)
   assert.match(failed, /宿主不支持删除工作区/)

@@ -270,23 +270,25 @@ export function describeProjectRemoval(project) {
 }
 
 /**
- * 删除成功后要不要留提示。
+ * 删除成功后给哪一句提示。
  *
- * 成功一律静默：项目行当场消失，行消失本身就是回执（与建项目同一口径），
- * 常驻一句「已删除项目」只会长期挂在侧栏里。`notFound` 走幂等成功，同样静默
- * ——它的 `reason` 是给失败支用的，不能拿来当工作区告警。
+ * 成功固定一句回执，走 4 秒就消失的提示条——常驻才算噪音，一次性回执不是。
+ * `notFound` 走幂等成功，回执一样：它的 `reason` 是「项目不存在」，不能拿来当
+ * 工作区告警。
  *
- * 只有工作区真摘除失败才报：项目记录已经没了，用户再也看不到这个工作区属于谁，
- * 只能去官方面板手动删。
+ * 工作区真摘除失败要在回执后面带上原因：项目记录已经没了，用户再也看不到这个
+ * 工作区属于谁，只能去官方面板手动删。
  *
  * @param {object} project - 被删的项目
  * @param {{notFound?: boolean, reason?: string}} result - 宿主返回的删除结果
- * @returns {string} 提示文字；成功时为空字符串
+ * @returns {string} 提示文字
  */
 export function describeDeletionNotice(project, result) {
-  if (result?.notFound === true) return ''
-  if (typeof result?.reason !== 'string' || result.reason === '') return ''
-  return `已删除项目「${project.name}」。工作区未移除：${result.reason}`
+  const reason = result?.reason
+  if (result?.notFound !== true && typeof reason === 'string' && reason !== '') {
+    return `已删除项目「${project.name}」。工作区未移除：${reason}`
+  }
+  return `已删除项目「${project.name}」。`
 }
 
 /**
