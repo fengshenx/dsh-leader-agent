@@ -28,10 +28,9 @@ export const SLOT_TEMPLATE_FILE = 'SLOTS.md'
  * 槽位名是**机器标识**：`SLOTS.md` 的分节名、卡片 `slots` 的 JSON 键、槽位
  * 注入的反查键都用它。界面上的显示名不在这一层——项目在 frontmatter 的
  * `slots:` 下声明，没声明时由 client 回落 locale 字典（`src/client/locales.js`）。
- * 限制为小写 ASCII，保证同一份配置在任何语言环境下都是同一个键。卡片工具的
- * JSON Schema 复用它的 `.source` 做 `propertyNames.pattern`，两边不会漂移。
+ * 限制为小写 ASCII，保证同一份配置在任何语言环境下都是同一个键。
  */
-export const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
+const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
 
 /** 显示名的长度上限。它只进界面，不需要容纳长句。 */
 const MAX_SLOT_LABEL_LENGTH = 64
@@ -89,13 +88,18 @@ function readSlotLabels(slots) {
  * ——「槽位存在但没写内容」与「槽位不存在」是两回事。frontmatter 里声明了但
  * 正文没有节的槽位不成立：正文才是槽位存在的依据。
  *
+ * 非法分节名与 frontmatter 冲突不在这里报：本模块只解析，报不报、怎么报由
+ * `loadSlotTemplates` 决定（那里有按目录去重的控制）。
+ *
  * @param {string} content - 文件内容
- * @returns {Map<string, { label?: string, body: string }>} 槽位名到显示名与正文
+ * @returns {{ slots: Map<string, { label?: string, body: string }>, invalidNames: string[], warnings: string[] }} 槽位配置、被忽略的非法节名与 frontmatter 冲突
  */
 export function parseSlotTemplates(content) {
   const slots = new Map()
-  if (typeof content !== 'string') return slots
-  const { data, body } = parseFrontmatter(content)
+  /** @type {string[]} */
+  const invalidNames = []
+  if (typeof content !== 'string') return { slots, invalidNames, warnings: [] }
+  const { data, body, warnings } = parseFrontmatter(content)
   const labels = readSlotLabels(data.slots)
   /** @type {{ name: string, lines: string[] }[]} 已开启的合法节 */
   const sections = []
@@ -105,8 +109,13 @@ export function parseSlotTemplates(content) {
     const heading = /^##[ \t]+(.+?)[ \t]*$/.exec(line)
     if (heading !== null) {
       const name = heading[1].trim()
-      if (!isValidSlotName(name) || slots.has(name)) {
-        // 非法名或重复名：该节整体不属于任何槽位，正文不得归到上一节。
+      if (!isValidSlotName(name)) {
+        // 非法名：该节整体不属于任何槽位，正文不得归到上一节。
+        if (!invalidNames.includes(name)) invalidNames.push(name)
+        current = undefined
+        continue
+      }
+      if (slots.has(name)) {
         current = undefined
         continue
       }
@@ -125,34 +134,50 @@ export function parseSlotTemplates(content) {
       body: section.lines.join('\n').trim(),
     })
   }
-  return slots
+  return { slots, invalidNames, warnings }
 }
 
 /**
- * 已告警过的目录。
+ * 目录 → 已告警的问题签名。
  *
- * `loadSlotTemplates` 走两条热路径：每轮注入（`role-context`）与看板每 30 秒复核
- * （`projects/remote` 的 `projectSlots`）。配置坏了是静态事实，重复告警只会刷日志。
+ * 按签名而不是按目录去重：`loadSlotTemplates` 走两条热路径（每轮注入与看板每
+ * 30 秒复核），同一问题不该反复刷日志；但按目录永久去重会让「修好又坏」和「后
+ * 来新增的非法节」再也不报。没有问题时清掉该目录的记录，再坏时会重新报。
  */
-const warnedDirectories = new Set()
+const reportedIssues = new Map()
 
 /**
- * 同一目录只告警一次。
+ * 报一次每个新问题。
  * @param {string} directory - 项目目录
- * @param {string} message - 告警内容
+ * @param {{ signature: string, message: string }[]} issues - 本轮发现的问题
  */
-function warnOnce(directory, message) {
-  if (warnedDirectories.has(directory)) return
-  warnedDirectories.add(directory)
-  console.warn(message)
+function reportIssues(directory, issues) {
+  if (issues.length === 0) {
+    reportedIssues.delete(directory)
+    return
+  }
+  let reported = reportedIssues.get(directory)
+  if (reported === undefined) {
+    reported = new Set()
+    reportedIssues.set(directory, reported)
+  }
+  for (const issue of issues) {
+    if (reported.has(issue.signature)) continue
+    reported.add(issue.signature)
+    console.warn(issue.message)
+  }
 }
 
 /**
  * 读取项目目录下的槽位配置。
  *
  * 文件缺失、读失败或零合法条目时回落到默认槽位名（正文为空、无显示名）。回落是
- * 刻意的：槽位配置缺失是常态，不该让整个插件报错。但「文件不存在」与「文件在、
- * 却一个合法节都没有」是两回事：后者是配置错误，会让注入静默变空串，告警一次。
+ * 刻意的：槽位配置缺失是常态，不该让整个插件报错。但下面这些是配置错误，会让
+ * 注入静默变空串或显示名静默丢失，必须留痕：
+ *
+ * - 非法分节名（中文、大写、超长）：整节忽略，列出全部非法名；
+ * - frontmatter 里同一槽位给了两个不同的 `label`：合并时后者覆盖，报冲突；
+ * - 文件在但一个合法节都没有：回落默认槽位。
  *
  * @param {string} directory - 项目目录绝对路径
  * @returns {Map<string, { label?: string, body: string }>} 槽位名到配置
@@ -168,14 +193,34 @@ export function loadSlotTemplates(directory) {
   } catch (error) {
     // 文件不存在是常态，不告警；其它读失败（权限、路径是目录）是异常。
     if (error.code !== 'ENOENT') {
-      warnOnce(directory, `dsh-leader-kit: 读取 ${file} 失败（${error.code ?? error.message}），已回落默认槽位。`)
+      reportIssues(directory, [{
+        signature: `read:${error.code ?? error.message}`,
+        message: `dsh-leader-kit: 读取 ${file} 失败（${error.code ?? error.message}），已回落默认槽位。`,
+      }])
     }
     return fallback
   }
-  const parsed = parseSlotTemplates(content)
-  if (parsed.size === 0) {
-    warnOnce(directory, `dsh-leader-kit: ${file} 存在但没有合法的「## <槽位名>」分节，已回落默认槽位 ${DEFAULT_SLOT_NAMES.join(' / ')}。槽位名须为小写 ASCII（字母、数字、下划线、连字符，最长 32 字符）。`)
-    return fallback
+  const { slots, invalidNames, warnings } = parseSlotTemplates(content)
+  /** @type {{ signature: string, message: string }[]} */
+  const issues = []
+  if (invalidNames.length > 0) {
+    issues.push({
+      signature: `invalid:${invalidNames.join(',')}`,
+      message: `dsh-leader-kit: ${file} 里这些分节名不合法、整节已忽略：${invalidNames.map((name) => `「${name}」`).join(' ')}。槽位名须为小写 ASCII（字母、数字、下划线、连字符，最长 32 字符）。`,
+    })
   }
-  return parsed
+  for (const warning of warnings) {
+    issues.push({
+      signature: `frontmatter:${warning}`,
+      message: `dsh-leader-kit: ${file} 的 frontmatter ${warning}。`,
+    })
+  }
+  if (slots.size === 0) {
+    issues.push({
+      signature: 'zero',
+      message: `dsh-leader-kit: ${file} 存在但没有合法的「## <槽位名>」分节，已回落默认槽位 ${DEFAULT_SLOT_NAMES.join(' / ')}。`,
+    })
+  }
+  reportIssues(directory, issues)
+  return slots.size === 0 ? fallback : slots
 }

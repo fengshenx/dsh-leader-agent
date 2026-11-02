@@ -47,31 +47,35 @@ function parseScalar(raw) {
  * 这类两层结构照常解析。
  *
  * 重复键在 YAML 里非法，这里不抛错：同名的嵌套容器合并（两段 `slots:` 各写各的
- * 槽位时，后一段不该把前一段的 label 抹掉），同名标量后者覆盖。
+ * 槽位时，后一段不该把前一段的 label 抹掉），同名标量后者覆盖。合并里唯一的例外
+ * 是**冲突**——同一路径两次给了不同的值，后者覆盖会静默丢掉前一个，这种情况记进
+ * `warnings` 交给调用方决定怎么报（本仓的 SLOTS.md 读侧会告警）。
  *
  * @param {string} text - 文件全文
- * @returns {{ data: Record<string, unknown>, body: string }} frontmatter 字段与剩余正文
+ * @returns {{ data: Record<string, unknown>, body: string, warnings: string[] }} frontmatter 字段、剩余正文与冲突告警
  */
 export function parseFrontmatter(text) {
   const normalized = text.replaceAll('\r\n', '\n')
   if (!normalized.startsWith('---\n')) {
-    return { data: {}, body: normalized }
+    return { data: {}, body: normalized, warnings: [] }
   }
   const end = normalized.indexOf('\n---', 3)
   if (end === -1) {
-    return { data: {}, body: normalized }
+    return { data: {}, body: normalized, warnings: [] }
   }
   const header = normalized.slice(4, end)
   const body = normalized.slice(end + 4).replace(/^\n+/, '')
   /** @type {Record<string, unknown>} */
   const data = {}
+  /** @type {string[]} */
+  const warnings = []
   /**
    * 缩进栈：每层是「已确认的容器 map」与它的缩进。根层缩进为 -1。
    *
    * 容器要等第一个缩进更深的子行出现才能确认——顶层 `key:` 后面没有子键时，
    * 它仍是空串标量，不能凭空变成 `{}`。
    */
-  /** @type {Array<{ indent: number, map: Record<string, unknown> }>} */
+  /** @type {Array<{ indent: number, map: Record<string, unknown>, key?: string }>} */
   const stack = [{ indent: -1, map: data }]
   /**
    * 上一个没有值的键，等待后续行确认它是不是容器。
@@ -96,7 +100,7 @@ export function parseFrontmatter(text) {
         const existing = pending.parent[pending.key]
         const child = existing !== null && typeof existing === 'object' ? existing : {}
         pending.parent[pending.key] = child
-        stack.push({ indent: pending.indent, map: /** @type {Record<string, unknown>} */ (child) })
+        stack.push({ indent: pending.indent, map: /** @type {Record<string, unknown>} */ (child), key: pending.key })
       } else {
         pending.parent[pending.key] = ''
       }
@@ -110,8 +114,13 @@ export function parseFrontmatter(text) {
       pending = { key, indent, parent: container }
       continue
     }
+    const previous = container[key]
+    if (typeof previous === 'string' && previous !== '' && previous !== value) {
+      const path = [...stack.slice(1).map((entry) => entry.key), key].join('.')
+      warnings.push(`重复键 ${path}：先「${previous}」后「${value}」，后者覆盖`)
+    }
     container[key] = value
   }
   if (pending !== undefined) pending.parent[pending.key] = ''
-  return { data, body }
+  return { data, body, warnings }
 }

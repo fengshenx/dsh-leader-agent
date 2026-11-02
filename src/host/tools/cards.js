@@ -15,7 +15,7 @@ import {
   parseListQuery,
   renderCardList,
 } from '../cards/card-list-view.js'
-import { isValidSlotName, SLOT_NAME_PATTERN } from '../slots/slot-templates.js'
+import { isValidSlotName } from '../slots/slot-templates.js'
 
 /**
  * 校验可选字符串字段。
@@ -72,15 +72,21 @@ function linkSchema() {
  *
  * 槽位名是机器标识：小写 ASCII 字母、数字、下划线、连字符，最长 32 字符（显示名
  * 走 `SLOTS.md` 的 `label`）。名字不是固定枚举——`properties` 里的 dev / review
- * 只是常见示例，其余名字由 `additionalProperties` 接受。合法性由 `propertyNames`
- * 在 schema 层先挡一道，落盘前再由 `normalizeSlots` 用解析器同一条规则复核。
+ * 只是常见示例，其余名字由 `additionalProperties: true` 放行。
+ *
+ * 只能用宿主执行子集里的关键字（`type` / `properties` / `required` /
+ * `additionalProperties` 布尔值 / `items` / `enum` / `const` 与注释字段）：本 schema
+ * 同时进 `output.schema`（`cardSchema()` 复用它），而 `tools.register` 会校验
+ * output schema——`propertyNames`、`pattern`，或把 `additionalProperties` 写成
+ * schema 对象，都会在注册时抛 `UNSUPPORTED_SCHEMA`（见 capability-gaps 第 40 条）。
+ * 入参 schema 宿主既不校验子集也不执行约束，槽位名的合法性只有 `normalizeSlots`
+ * 一条执行路径。
  *
  * @returns {object} schema
  */
 function slotsSchema() {
   return {
     type: 'object',
-    propertyNames: { pattern: SLOT_NAME_PATTERN.source },
     properties: {
       dev: {
         type: 'object',
@@ -93,11 +99,7 @@ function slotsSchema() {
         required: ['sessionId'],
       },
     },
-    additionalProperties: {
-      type: 'object',
-      properties: { sessionId: { type: 'string' } },
-      required: ['sessionId'],
-    },
+    additionalProperties: true,
   }
 }
 
