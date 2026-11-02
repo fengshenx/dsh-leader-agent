@@ -104,3 +104,26 @@ test('DSH_HOME 优先于默认家目录', () => {
   assert.equal(resolveDshHome({ DSH_HOME: '/custom/dsh' }, () => '/home/user'), '/custom/dsh')
   assert.equal(resolveDshHome({}, () => '/home/user'), '/home/user/.dsh')
 })
+
+test('换协调者后只改未投递通知的接收者', async () => {
+  const { store, home } = await createStore()
+  try {
+    await store.enqueue({ ...SAMPLE, id: 'note-pending', childId: 'child-1' })
+    await store.enqueue({ ...SAMPLE, id: 'note-other', childId: 'child-2', parentSessionId: 'parent-2' })
+    // 已投出的一条：属于旧会话的历史，不该跟着改投
+    await store.enqueue({ ...SAMPLE, id: 'note-delivered', childId: 'child-3' })
+    await store.markDelivered('note-delivered')
+
+    const moved = await store.reassignParent('parent-1', 'parent-new')
+    assert.equal(moved, 1)
+    const pending = await store.listPending()
+    assert.deepEqual(pending.map((item) => [item.id, item.parentSessionId]), [
+      ['note-pending', 'parent-new'],
+      ['note-other', 'parent-2'],
+    ])
+    // 再改一次：没有可动的条目，计数为 0
+    assert.equal(await store.reassignParent('parent-1', 'parent-new'), 0)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

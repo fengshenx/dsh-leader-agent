@@ -171,6 +171,34 @@ export function createWorkerRegistry({
     },
 
     /**
+     * 把一个父会话派出的工改绑到另一个父会话（换协调者后的接管）。
+     *
+     * 只改「现在还归它」的记录：`parentSessionId` 等于 `fromId` 的那些。改过的
+     * 记录追加一条 `reassignedFrom`（按顺序记历史父会话 id），不抹掉「谁派的工」。
+     * 已在别处的记录不动——改绑是幂等的，重复调用不会叠记录。
+     *
+     * @param {string} fromId - 退役的父会话 id
+     * @param {string} toId - 接手的父会话 id
+     * @returns {Promise<string[]>} 改绑的 worker 会话 id
+     */
+    async reassignParent(fromId, toId) {
+      if (typeof fromId !== 'string' || fromId === '' || typeof toId !== 'string' || toId === '') return []
+      if (fromId === toId) return []
+      return serialize((registry) => {
+        const moved = []
+        for (const record of registry.workers) {
+          if (record.parentSessionId !== fromId) continue
+          record.reassignedFrom = Array.isArray(record.reassignedFrom)
+            ? [...record.reassignedFrom, fromId]
+            : [fromId]
+          record.parentSessionId = toId
+          moved.push(record.childId)
+        }
+        return moved
+      })
+    },
+
+    /**
      * 删掉一个 worker 记录。
      *
      * 归档的会话不再能被续聊——宿主的归档闸门会拒绝对它的模型步——记录留着只会

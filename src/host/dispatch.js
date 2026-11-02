@@ -510,10 +510,9 @@ export function createDispatcher({
    * @returns {Promise<{ code: 'merged' | 'sent', name: string }>} 投递结果与 worker 显示名
    */
   async function message({ parent, sessionId, message, name, cardId, signal }) {
-    // 退役会话不能借「我是它的父会话」继续下指令。这不等于「原班 worker 转归新
-    // 协调者」：登记表里的父会话仍是那个退役 id，新协调者过不了下面的父会话校验，
-    // 所以换人之后这批 worker 对谁都投不进去——继续用只有两条路，人下钻直接对话，
-    // 或归档后在新协调者会话里重新派工。
+    // 退役会话不能借「我是它的父会话」继续下指令：换人时登记表里的归属已经改投
+    // 新协调者（见 `coordinator-handover`），这道身份校验挡的是「换人之前就在飞」
+    // 的那个会话本身。
     await assertCoordinator(parent, {
       pending: 'message_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能给 worker 发消息',
       refused: 'message_worker: 只有项目协调者能给 worker 发消息——这个会话已不是任何项目的协调者（换下的协调者降级为项目里的普通会话）',
@@ -526,7 +525,7 @@ export function createDispatcher({
       throw new Error(`message_worker: 没有会话 ${sessionId} 的派工记录，它不是本协调体系派出的 worker`)
     }
     if (worker.parentSessionId !== parent.id) {
-      throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息（换协调者后原班 worker 的父会话仍是旧会话：要续用就在新的协调者会话里重新派工，或请人下钻直接对话）')
+      throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息')
     }
     const displayName = name ?? (typeof worker.name === 'string' ? worker.name : sessionId)
     // worker 活着就直接投，不在内存就冷恢复后再投——两种形态对调用方是同一步。
@@ -758,6 +757,28 @@ export function createDispatcher({
     },
 
     /**
+     * 补投队列里属于某个父会话的通知（换协调者后的接管用）。
+     *
+     * 与 `redeliverPending` 同一套投递路径，区别是只持有会话 id：接管的通知是刚
+     * 改投过来的，而新会话可能早过了 `agent/created`（那一刻队列里还没它的事），
+     * 总得有人推一把。新会话可达就直接投，正忙就进等待表等空闲检测。
+     *
+     * @param {string} parentSessionId - 父会话 id
+     * @returns {Promise<number>} 成功补投的条数
+     */
+    async redeliverPendingFor(parentSessionId) {
+      if (typeof parentSessionId !== 'string' || parentSessionId === '') return 0
+      const pending = await store.listPending()
+      let delivered = 0
+      for (const notification of pending) {
+        if (notification.parentSessionId !== parentSessionId) continue
+        if (await deliver(notification, undefined) === DELIVERED) delivered += 1
+      }
+      if (delivered > 0) waiting.delete(parentSessionId)
+      return delivered
+    },
+
+    /**
      * 释放定时器。
      * @returns {void}
      */
@@ -771,6 +792,48 @@ export function createDispatcher({
         idleTimer = undefined
       }
       waiting.clear()
+    },
+
+    /**
+     * 换协调者：把按父会话归集的内存态改到接手的会话上。
+     *
+     * 三处都以父会话 id 为键，只改落盘归属的话，回报仍会投给退役会话：
+     *
+     * - 等待表（`waiting`）：退役会话没投出去的通知挪给接手会话，排在它已有条目
+     *   之前——这些通知对应更早完成的工；
+     * - 续行计数（`resumeCounts`）：取两者较大值。这批通知已经消耗过旧会话的自动
+     *   续行额度，换人不清零，护栏不会因为换人而重置；人工在新会话里开口才复位。
+     * - 在飞记录（`inflight`）：父会话改到接手会话，并丢掉 `parent` 活对象——那是
+     *   退役会话的 agent，投递回退到它等于把回报送进一个已经不能动手的会话。
+     *
+     * 改绑是幂等的：没有对应键时什么都不动。
+     *
+     * @param {string} fromId - 退役的父会话 id
+     * @param {string} toId - 接手的父会话 id
+     * @returns {number} 改绑的在飞记录数
+     */
+    reassignParent(fromId, toId) {
+      if (typeof fromId !== 'string' || fromId === '' || typeof toId !== 'string' || toId === '') return 0
+      if (fromId === toId) return 0
+      const list = waiting.get(fromId)
+      if (list !== undefined && list.length > 0) {
+        waiting.delete(fromId)
+        waiting.set(toId, [...list, ...(waiting.get(toId) ?? [])])
+        ensureIdleTimer()
+      }
+      const used = resumeCounts.get(fromId)
+      if (used !== undefined) {
+        resumeCounts.delete(fromId)
+        resumeCounts.set(toId, Math.max(used, resumeCounts.get(toId) ?? 0))
+      }
+      let moved = 0
+      for (const record of inflight.values()) {
+        if (record.parentSessionId !== fromId) continue
+        record.parentSessionId = toId
+        record.parent = undefined
+        moved += 1
+      }
+      return moved
     },
 
     /**

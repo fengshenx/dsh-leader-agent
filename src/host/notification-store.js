@@ -120,6 +120,34 @@ export function createNotificationStore({ home, logger = () => {} } = {}) {
     },
 
     /**
+     * 把未投递的通知改投另一个父会话（换协调者后的接管）。
+     *
+     * 只动还在队列里的条目：已投出的通知已经进了旧会话的历史，改它等于篡改历史。
+     * 队列按 `id` 去重、不按父会话分组，改绑不影响去重键，也不改排队顺序（旧会话
+     * 没投出去的那些更早完成，仍排在接手会话已有条目前面）。
+     *
+     * @param {string} fromId - 退役的父会话 id
+     * @param {string} toId - 接手的父会话 id
+     * @returns {Promise<number>} 改绑的条数
+     */
+    reassignParent(fromId, toId) {
+      if (typeof fromId !== 'string' || fromId === '' || typeof toId !== 'string' || toId === '') return Promise.resolve(0)
+      if (fromId === toId) return Promise.resolve(0)
+      return serialize(async () => {
+        const queue = await read()
+        let moved = 0
+        for (const item of queue.pending) {
+          if (item.parentSessionId !== fromId) continue
+          item.parentSessionId = toId
+          moved += 1
+        }
+        // 没改到任何一条时不写盘：串行链上的每次写都要读改写整表，白写一次只是噪声。
+        if (moved > 0) await write(queue)
+        return moved
+      })
+    },
+
+    /**
      * 标记通知已投递并移出队列。
      * @param {string} id - 通知 id
      * @returns {Promise<void>} 落盘完成

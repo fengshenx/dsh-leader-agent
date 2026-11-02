@@ -351,6 +351,38 @@ test('并发换协调者：索引对齐落盘记录，不依赖两次写入的�
   }
 })
 
+test('换协调者成功后触发接管，改绑失败时不触发', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const changes = []
+  const service = makeService({
+    store,
+    ctx: createContext(),
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+    onCoordinatorReplaced: async (change) => { changes.push(change) },
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  // 建项目不是换人，接管不该跑
+  assert.deepEqual(changes, [])
+  await service.replaceCoordinator(project.id)
+  // 只给项目 id：接管要按当前落盘记录算退役集与接手方，不吃调用方那次写下的值
+  assert.deepEqual(changes, [{ projectId: project.id }])
+
+  const failingStore = { ...store, update: async () => { throw new Error('改绑失败') } }
+  const failingChanges = []
+  const failing = makeService({
+    store: failingStore,
+    ctx: createContext(),
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+    onCoordinatorReplaced: async (change) => { failingChanges.push(change) },
+  })
+  await failing.loadIndex()
+  await assert.rejects(() => failing.replaceCoordinator(project.id), /改绑失败/)
+  assert.deepEqual(failingChanges, [])
+})
+
 test('目录不存在时拒绝建项目', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })

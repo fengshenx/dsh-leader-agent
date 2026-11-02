@@ -1102,6 +1102,123 @@ test('注册表没读出来时 message_worker 不投递', async () => {
   assert.deepEqual(fixture.resumed, [])
 })
 
+test('换协调者后新协调者接管原班 worker，退役会话仍然投不进去', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const workers = createWorkerRegistry({ home })
+  await workers.register({ childId: 'child-9', parentSessionId: 'retired-1', name: '实现工' })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers,
+    coordinatorIndex: {
+      async awaitIndex() {
+        return true
+      },
+      isCoordinatorSession: (sessionId) => sessionId === 'coordinator-2',
+    },
+  })
+  const send = (parentId) => dispatcher.message({
+    parent: createParent(parentId, fixture.delivered),
+    sessionId: 'child-9',
+    message: '接着做',
+    signal: new AbortController().signal,
+  })
+
+  // 换人前：新协调者过不了父会话校验（登记表里还是退役会话派的工）
+  await assert.rejects(() => send('coordinator-2'), /别的会话派的/)
+
+  // 接管：登记表归属与派工器内存态一起改投
+  assert.deepEqual(await workers.reassignParent('retired-1', 'coordinator-2'), ['child-9'])
+  dispatcher.reassignParent('retired-1', 'coordinator-2')
+  assert.equal((await send('coordinator-2')).code, 'sent')
+
+  // 退役会话自己仍然被身份闸挡住
+  await assert.rejects(() => send('retired-1'), /只有项目协调者能给 worker 发消息/)
+})
+
+test('换协调者后，在飞 worker 的回报投给新协调者', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const workers = createWorkerRegistry({ home })
+  // 接手会话能被 `sessionController` 解析出来：换人后投递靠这条路取新 agent
+  // （在飞记录里那个是退役会话的活对象，已随改绑丢掉）。
+  const handedOverMessages = []
+  const handedOver = createParent('parent-2', handedOverMessages)
+  const ctx = {
+    ...fixture.ctx,
+    get(key) {
+      if (key === 'sessionController') {
+        return {
+          async resolveAgent(sessionId) {
+            return sessionId === 'parent-2' ? { agent: handedOver } : { error: '会话不在内存' }
+          },
+        }
+      }
+      return fixture.ctx.get(key)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx, store, workers })
+  await dispatcher.dispatch({
+    parent: createParent('parent-1', fixture.delivered),
+    initialMessage: '做一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  const workerId = fixture.spawned.at(-1).sessionId
+
+  // 换协调者：登记表与内存态改绑之后这批在飞记录才跟着换父会话
+  await workers.reassignParent('parent-1', 'parent-2')
+  assert.equal(dispatcher.reassignParent('parent-1', 'parent-2'), 1)
+  await fixture.finishTurn(workerId, { text: '改完了' })
+
+  // 回报投给了新协调者，退役会话那边一条都没有
+  assert.equal(handedOverMessages.length, 1)
+  assert.match(handedOverMessages[0].content?.[0]?.text ?? '', /实现派工/)
+  assert.equal(fixture.delivered.length, 0)
+  // 已投出：队列清空
+  assert.deepEqual(await store.listPending(), [])
+})
+
+test('接管后按会话 id 补投：改投过来的通知直接送到新协调者', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  // 队列里躺着一条已改投给新协调者的通知：它没有对应的在飞记录，也没人在等
+  await store.enqueue({
+    id: 'note-1',
+    childId: 'child-1',
+    parentSessionId: 'coordinator-2',
+    name: '实现工',
+    text: '任务「实现工」已结束。',
+    createdAt: 1,
+    attempts: 0,
+  })
+  const messages = []
+  const parent2 = createParent('coordinator-2', messages)
+  const ctx = {
+    ...fixture.ctx,
+    get(key) {
+      if (key === 'sessionController') {
+        return {
+          async resolveAgent(sessionId) {
+            return sessionId === 'coordinator-2' ? { agent: parent2 } : { error: '会话不在内存' }
+          },
+        }
+      }
+      return fixture.ctx.get(key)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx, store, workers: createWorkerRegistry({ home }) })
+
+  assert.equal(await dispatcher.redeliverPendingFor('coordinator-2'), 1)
+  assert.equal(messages.length, 1)
+  assert.match(messages[0].content?.[0]?.text ?? '', /实现工/)
+  assert.deepEqual(await store.listPending(), [])
+})
+
 test('投递途中 worker 报完工，不误报发不出去', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')

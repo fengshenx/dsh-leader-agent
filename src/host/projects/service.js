@@ -79,6 +79,9 @@ export function assertUsableName(name) {
  * @param {(sessionId: string) => Promise<boolean | undefined>} [options.sessionExists] - 判断会话是否仍存在
  * @param {(sessionId: string) => boolean} options.isWorkerSession - worker 会话判定。
  *   会话头看不出身份（worker 是普通根会话），列项目的会话树只能按登记表判。
+ * @param {(change: { projectId: string }) => Promise<void>} [options.onCoordinatorReplaced] -
+ *   换协调者成功后的接管动作（派工归属与未投递通知改投新会话）。参数只给项目 id：
+ *   接管要按**当前落盘记录**算退役集与接手方，两次并发换人不至于各按自己那次写。
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 项目服务接口
  */
@@ -88,6 +91,7 @@ export function createProjectService({
   createCoordinatorSession,
   sessionExists,
   isWorkerSession,
+  onCoordinatorReplaced,
   logger = () => {},
 }) {
   if (typeof isWorkerSession !== 'function') {
@@ -654,6 +658,9 @@ export function createProjectService({
      * （排除集不再覆盖它），也不是 worker（目录判据认不出插件建的会话），不记的话
      * 会掉回官方工作区树里当普通会话，项目下反而看不到它的历史。
      *
+     * 改绑之后跑 `onCoordinatorReplaced`：派工归属与未投递的完成通知要从旧会话改投
+     * 新会话，否则新协调者对着原班 worker 什么都做不了（见 `coordinator-handover`）。
+     *
      * @param {string} id - 项目 id
      * @returns {Promise<object>} 更新后的项目
      */
@@ -693,6 +700,10 @@ export function createProjectService({
       // 对齐放在失败路径之外：这次写已经落盘、新会话就是记录里的协调者，重读失败
       // 不该把它连带撤销（那会留下「记录指向一条被停掉的会话」）。
       await syncCoordinatorIndex(id)
+      // 接管：新会话要接过原班 worker 与未投递的回报，否则「新会话立刻接手项目」
+      // 只成立在项目记录上。每次都跑一遍而不是只在本轮真退役时跑——它按记录里的
+      // 退役集幂等推进，顺带补上早先漏迁的记录。
+      await onCoordinatorReplaced?.({ projectId: id })
       return updated
     },
 
