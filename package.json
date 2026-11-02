@@ -18,7 +18,8 @@
     "lib/client.js",
     ".agents/skills/**",
     "locale/*.json",
-    "README.md"
+    "README.md",
+    "README_ZH.md"
   ],
   "scripts": {
     "test": "node --test tests/*.test.js",
