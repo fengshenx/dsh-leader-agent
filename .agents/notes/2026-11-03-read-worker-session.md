@@ -57,6 +57,8 @@
 
 `COORDINATOR_ONLY_TOOLS` 加入 `read_worker_session`：worker 与普通会话都禁掉。它和 `spawn_worker` / `message_worker` 不同——读自己的会话没有意义，读别人的会话属于越界。
 
+工具面这条承诺由字面量断言守着，不比 `WORKER_DENY_TOOLS` 常量：比对名单的用例会跟着名单一起缩，把工具从 `COORDINATOR_ONLY_TOOLS` 里删掉时仍然全绿（复审实测 30 例全绿）。执行时另有 `assertCoordinator` 兜越权，但它管不到「工具面根本没发下去」这件事。
+
 ## 边界
 
 - **不是会话导出**。正文有总量上限、工具参数不返回；要完整日志用宿主的会话导出，要任意会话的读取口装 `tool-session-query`（experimental）。
@@ -71,16 +73,17 @@
 
 ## 验证
 
-- `npm run check`：841 例，832 pass，0 fail（9 skipped）。
+- `npm run check`：886 例，877 pass，0 fail（9 skipped）。
 - 新增用例分两层：
   - `tests/worker-transcript.test.js`（21 例）：回合切分、工具失败原因与兜底、未配对结果、进行中标记、`turn/end` 后的独立消息段、turns 裁剪、总上限、空日志、无关事件过滤；注入上下文与任务正文分开（不冒充用户、不占任务预算）；三层上限各自的代理对截断（单条正文 / 失败原因 / 总上限硬截断）；CJK 与组合字符截断；体积溢出时的提示不承诺调 `turns` 可达（`turns=2/3/4` 三种取值都断言）。
   - `tests/read-worker-tool.test.js`（17 例）：正常读取、turns 只影响渲染、非协调者/索引未就绪被拒、未登记与跨会话归属被拒、缺 `sessionQuery` / 缺 `readSession`、读失败转述、日志形状不符、`turns` 与 `sessionId` 校验、`owners` 兜底、schema 子集；**读路径与读失败/授权拒绝路径的写调用记录为空**。
-- `tests/tool-gate.test.js` 的 agent 假件补上 `read_worker_session`：缺它时 `restrict()` 会抛「unknown global tool」，逐件重试会把一次 deny 拆成三次——夹具比宿主真实面更窄会掩盖裁剪逻辑。
+- `tests/tool-gate.test.js` 的 agent 假件补上 `read_worker_session`：缺它时 `restrict()` 会抛「unknown global tool」，逐件重试会把一次 deny 拆成三次——夹具比宿主真实面更窄会掩盖裁剪逻辑。另加一条用例按字面量断言它在 worker 与普通会话的 deny 集合里、不在协调者的 deny 集合里。
 - 双向验证（精确撤销对应代码 → 对应用例红 → 还原 → 全绿），四条都实测：
   - `clip()` 改回按码元切：三条截断用例红（17 pass / 3 fail），还原后 20 绿；
   - 丢弃标注改回单一成因 + 「调大 turns」：`worker-transcript` + `read-worker-tool` 4 红（33 pass / 4 fail），还原后 37 绿；
   - `user/message` 不看 `source.kind`（全部记用户）：4 红（33 pass / 4 fail），还原后 37 绿；
   - 体积溢出的提示改回「调小 turns 可以装进上限」：2 红（19 pass / 2 fail），还原后 21 绿；
   - `transcript()` 读路径插入 `workerSessions.send()` + `sessionPersistence.append()`：只读护栏用例红（16 pass / 1 fail），还原后 17 绿。
+  - 把 `read_worker_session` 从 `COORDINATOR_ONLY_TOOLS` 移除：工具面用例红（13 pass / 1 fail），还原后 14 绿——其余用例只比名单推导，感知不到这次删除。
 - 另有三条既有双向验证保留：放大 `TOTAL_LIMIT`、去掉 `assertCoordinator`、去掉 `turns` 校验，各自都能让对应用例变红。
 - `docs/capability-gaps.md` 第 16 条的工具名按 rc.2 源码改正（`session_search` / `session_event_search` / `session_trace` / `session_event_trace` / `session_event_read`），其余 `docs/` 工具名逐个核过无漂移。

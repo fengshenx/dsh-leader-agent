@@ -85,6 +85,30 @@ test('普通会话没有派工、全库查询与卡片写入', () => {
   assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
 })
 
+test('read_worker_session 只给协调者：worker 与普通会话的工具面都摘掉它', () => {
+  const workerDenied = deniedToolsFor({
+    agent: makeAgent('worker-1'),
+    isCoordinatorSession: () => false,
+    isWorkerSession: (id) => id === 'worker-1',
+  })
+  const plainDenied = deniedToolsFor({
+    agent: makeAgent('plain-1'),
+    isCoordinatorSession: () => false,
+    isWorkerSession: () => false,
+  })
+  // 断言写字面量而不是比 WORKER_DENY_TOOLS：名单推导的断言会跟着名单一起缩，
+  // 把工具从 COORDINATOR_ONLY_TOOLS 里删掉时仍然全绿，钉不住工具面这条承诺。
+  assert.ok(workerDenied.includes('read_worker_session'))
+  assert.ok(plainDenied.includes('read_worker_session'))
+
+  const coordinatorDenied = deniedToolsFor({
+    agent: makeAgent('coordinator-1'),
+    isCoordinatorSession: (id) => id === 'coordinator-1',
+    isWorkerSession: () => false,
+  })
+  assert.ok(!coordinatorDenied.includes('read_worker_session'))
+})
+
 test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('whatever'),
