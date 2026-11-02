@@ -37,24 +37,36 @@
 
 回滚只针对**这次新登记**的身份（`known` 为假才删）：已收编的 worker id 必须留着，`forget()` 的约定就是「会话 id 不复用，留着不会误判」。无条件删会让一次临时恢复失败抹掉合法 worker 的身份，它下次在 GUI 里被打开时（宿主自己的 resume 路径）会被裁成普通会话。
 
+### worker 只改自己挂着的卡
+
+身份闸回答「能不能写卡」，回答不了「能写哪张」：worker 的 cwd 就是项目目录，同项目里别的 worker 的卡它一样能改，也能整卡替换 `slots`。后者正是投递门禁（`dispatch.js` 的 `assertCardGateOpen`）认定必须拦下的坏状态——一个会话同时挂多张 active 卡，产物无从归属。`update_card` 因此加一道 `assertWorkerCardScope`：worker 的目标卡必须在 `bindingsOf(sessionId)` 里，且本次不能带 `slots`。协调者不受限，换执行者归它。
+
+范围校验放在跨项目校验之后、`store.update` 之前：跨项目先给出更准确的原因，范围闸只在同项目内兜「哪张卡」。
+
+### 并发冷恢复共用一次 resume
+
+`send()` 原本在 `live` 未命中时各自 `agents.resume()`：同一会话被并发唤醒会建出两个作用域，后一个经 `live.set` 覆盖前一个，被覆盖的那个再没有 dispose——泄漏一个 agent。改为按会话 id 收敛到一次恢复（`resumeOnce` 的 in-flight promise），两条消息投到同一个 handle；恢复失败时两条调用各自拿到原错误，身份回滚仍只发生一次。
+
 ## 边界
 
 - **普通会话读写都没有**：`list_cards` 早就在 `COORDINATOR_ONLY_TOOLS` 里；本次把写也收掉，两侧规则一致。
 - **退役协调者立刻失去写卡**：调用时判身份，与 `spawn_worker` / `message_worker` / 跨项目 `list_cards` 同口径；工具面要到下次冷恢复才收走，两者并存不冲突。
 - **启动瞬间的旧 worker 仍可能误判**：`workerSessions.adopt()` 在装配时异步读登记表，窗口内冷恢复的老 worker 会被判成普通会话（既有窗口）。本次未消除它，只是让 `send()` 这条主动恢复路径先登记。
 - **索引未就绪时同样拒绝写卡**：`isCoordinatorSession()` 在索引读不出来时对所有会话返回 true（`projects/service.js:354-357`），写卡闸等一次 `awaitIndex()`，问不出身份就不写。协调者在同一状态下也会被拒，与派工/续聊的 `assertCoordinator` 一致——宁可让协调者晚一轮再建卡，也不给普通会话一个真实落盘的越权窗口。索引失败后 `index.js` 重试 3 次（2s/4s），之后保持拒绝。项目存储本身对损坏文件做恢复（重写空表），所以索引失败实际只剩 IO 与装配异常这两条路径。
-- **装配漏传判定直接失败**：`createBundleTools` 在 `cards` 有值而 `canWriteCards` 不是函数时抛错。缺省放行只剩「文档门禁无参取名字」与「单测直接调工具工厂」两个合法场景，这两条都不需要「有 cards 但没判定」这个组合。旧版本下漏传是静默失效：工具面照裁、执行时却对所有会话开放，全量用例不会红。
+- **装配漏传判定直接失败**：`createBundleTools` 在 `cards` 有值而 `canWriteCards`、`isWorkerSession`、`cardBindingsOf` 有任一不是函数时抛错。缺省放行只剩「文档门禁无参取名字」与「单测直接调工具工厂」两个合法场景，这两条都不需要「有 cards 但没判定」这个组合。旧版本下漏传是静默失效：工具面照裁、执行时却对所有会话开放，全量用例不会红。
+- **worker 仍能 `create_card`**：本次只收 `update_card` 的范围。worker 建的卡同样没有槽位、没人认领，但它是「边干边补一张待办」的既有用法，没有证据表明该断，留给后续单独判断。
+- **worker 标完 done 后再改同一张卡会被拒**：`done` 会释放槽位上的执行者，卡随即不在它的绑定里。完成后再补链接没有意义，协调者能改。
 - **产品行为变更**：在普通会话里对模型说「把这个记成卡」不再能落盘，需要切到项目协调者会话。这是有意的取舍——普通会话没有项目归属，卡落盘后看板上没人认领。
 - **文档门禁仍认三件**：`documentedToolNames()` 从 `createBundleTools()` 取名字，工具名没有变化，`scripts/verify-doc-tool-names.mjs` 的允许集不用改。
 
 ## 验证
 
-- 单测：合 main（`98891c8`）后全量 `npm run check` 815 例（806 pass / 9 skip / 0 fail）。
+- 单测：合 main（`98891c8`）后全量 `npm run check` 819 例（810 pass / 9 skip / 0 fail）。
 - 本轮新增用例：
   - `tool-gate`：普通会话禁掉三组工具、`applyToolGate` 对普通会话留下完整限制、三组名单互不重叠；`canWriteCardsFor` 的三态——worker 短路不碰索引、索引未就绪拒绝（不吃 `isCoordinatorSession()` 的宽松）、就绪后只认当前协调者；
-  - `cards-tools`：普通会话建卡与改卡都被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验、`createBundleTools` 把判定透传给两件工具、传了 `cards` 不传判定时抛错；
+  - `cards-tools`：普通会话建卡与改卡都被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验、`createBundleTools` 把判定透传给两件工具、传了 `cards` 不传判定时抛错、worker 只能改自己挂着的卡且不能改 `slots`（协调者不受限）；
   - `coordinator-wiring`（装配层，跑真实 `apply`）：普通会话写卡被拒且协调者能建卡、真实 `replaceCoordinator` 之后退役会话的 `create_card` / `update_card` 都被拒而新协调者通过；
-  - `worker-sessions`：resume 期间已登记为 worker、resume 失败只回滚这次新登记的身份（已收编的 worker 保留、未登记 id 清掉）。
+  - `worker-sessions`：resume 期间已登记为 worker、resume 失败只回滚这次新登记的身份（已收编的 worker 保留、未登记 id 清掉）、同一会话并发续聊只恢复一次（两个 handle 泄漏成唯一一个、两条消息投同一 handle）、并发恢复失败时两条调用都拿到同一个错误。
 - 双向验证（逐条撤销 → 对应用例变红 → 还原 → 全绿）：
   1. `deniedToolsFor` 普通会话分支改回 `COORDINATOR_ONLY_TOOLS` → `tool-gate` 3 例变红（普通会话没有派工/全库查询与卡片写入、缺 worker 判定按普通会话、applyToolGate 留下限制）。
   2. 删掉两处 `assertCardWriter` 调用 → `cards-tools` 3 例变红（建卡与改卡被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验）。
@@ -64,4 +76,7 @@
   6. 删掉 `index.js` 装配处的 `canWriteCards` 实参 → 4 条装配层用例变红（`createBundleTools` 当场拒绝启动），还原后全绿。
   7. `canWriteCardsFor` 去掉 `awaitIndex()` 判断（回到 fail-open）→ 「索引未就绪时拒绝」变红，还原后绿。
   8. 写卡判定改成恒放行 → 装配层两条用例变红（普通会话、退役协调者都能写卡），还原后绿。
+  9. 删掉 `update_card` 的 `assertWorkerCardScope` 调用 → 「worker 只能改自己挂着的卡」变红，还原后绿。
+  10. 删掉 `index.js` 装配处的 `isWorkerSession` / `cardBindingsOf` 实参 → 4 条装配层用例变红（`createBundleTools` 拒绝启动），还原后绿。
+  11. `send()` 改回「每条各自 resume」→ 两条并发用例与身份回滚用例变红（resume 调了 2 次），还原后绿。
 - 未做真机取证：工具面变化需要在隔离 `DSH_HOME` + mock provider 的实例里看普通会话的工具列表，本次只验证了判定与执行闸；留待下一次 GUI 取证。

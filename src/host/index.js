@@ -68,19 +68,40 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
  * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWriteCards] -
  *   写卡身份判定；传了 `cards` 就必须传它
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   与 `cardBindingsOf` 一起限定 worker 的写卡范围
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡
  * @returns {object[]} 工具定义
  */
-export function createBundleTools({ dispatcher, cards, resolveProject, canWriteCards } = {}) {
+export function createBundleTools({
+  dispatcher,
+  cards,
+  resolveProject,
+  canWriteCards,
+  isWorkerSession,
+  cardBindingsOf,
+} = {}) {
   // 漏传判定会让写卡闸静默失效：工具面照裁，执行时却对所有会话放行。文档门禁走
   // 无参调用（没有 cards），单测直接调工具工厂，都不受这条约束。
-  if (cards !== undefined && typeof canWriteCards !== 'function') {
-    throw new Error('createBundleTools: 传了 cards 就必须传 canWriteCards——否则卡片写入闸对所有会话放行')
+  if (cards !== undefined) {
+    if (typeof canWriteCards !== 'function') {
+      throw new Error('createBundleTools: 传了 cards 就必须传 canWriteCards——否则卡片写入闸对所有会话放行')
+    }
+    if (typeof isWorkerSession !== 'function' || typeof cardBindingsOf !== 'function') {
+      throw new Error('createBundleTools: 传了 cards 就必须传 isWorkerSession 与 cardBindingsOf——否则 worker 的写卡范围闸失效')
+    }
   }
   return [
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
     createCreateCardTool({ store: cards, resolveProject, canWrite: canWriteCards }),
-    createUpdateCardTool({ store: cards, resolveProject, canWrite: canWriteCards }),
+    createUpdateCardTool({
+      store: cards,
+      resolveProject,
+      canWrite: canWriteCards,
+      isWorkerSession,
+      cardBindingsOf,
+    }),
     createListCardsTool({ store: cards, resolveProject }),
   ]
 }
@@ -200,7 +221,14 @@ export function apply(ctx) {
   // 卡片写入只给协调者与 worker（见 `applyToolGate`）：普通会话不在项目编排里，
   // 建出来的卡没有槽位、没人认领，改别人的卡更没有依据。查全库卡片、派工与续聊
   // 同样只给协调者。
-  for (const tool of createBundleTools({ dispatcher, cards, resolveProject, canWriteCards })) ctx.tools.register(tool)
+  for (const tool of createBundleTools({
+    dispatcher,
+    cards,
+    resolveProject,
+    canWriteCards,
+    isWorkerSession: workerSessions.isWorkerSession,
+    cardBindingsOf: (sessionId) => cards.bindingsOf(sessionId),
+  })) ctx.tools.register(tool)
 
   // 角色槽位注入：会话被卡片绑到某个槽位时，每轮请求组装时求值该槽位在项目
   // `SLOTS.md` 里的正文，正文变化才追加一份新快照。槽位不注册工具、不改工具可见性。

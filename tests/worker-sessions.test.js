@@ -763,3 +763,73 @@ test('挂载失败不拖累派工，只在日志里说明后果', async () => {
 })
 
 
+
+test('同一会话并发续聊只冷恢复一次，不泄漏第二个 agent', async () => {
+  const fixture = createFixture()
+  let resumeCalls = 0
+  const ctx = {
+    ...fixture.ctx,
+    get: (key) => {
+      const value = fixture.ctx.get(key)
+      if (key !== 'agents') return value
+      return {
+        ...value,
+        async resume(options) {
+          resumeCalls += 1
+          // 让两条 send 真正并发：第一次恢复悬着时第二条已经进来。
+          await new Promise((resolve) => { setTimeout(resolve, 10) })
+          return value.resume(options)
+        },
+      }
+    },
+  }
+  const sessions = createWorkerSessions({ ctx })
+  const signal = new AbortController().signal
+  const results = await Promise.all([
+    sessions.send({ sessionId: 'worker-1', text: '一', parentSessionId: 'c', signal }),
+    sessions.send({ sessionId: 'worker-1', text: '二', parentSessionId: 'c', signal }),
+  ])
+
+  assert.equal(resumeCalls, 1)
+  assert.deepEqual(results, ['resumed', 'resumed'])
+  // 两次恢复会建出两个作用域，被 live 覆盖的那个没人 dispose——这里只能有一个。
+  const resumedEntries = fixture.created.filter((entry) => entry.options.resumeSessionId === 'worker-1')
+  assert.equal(resumedEntries.length, 1)
+  // 两条消息都投到了同一个 handle
+  assert.equal(resumedEntries[0].messages.length, 2)
+  assert.equal(sessions.isWorkerSession('worker-1'), true)
+})
+
+test('并发冷恢复失败时两条调用都拿到同一个错误，身份只回滚一次', async () => {
+  const fixture = createFixture()
+  let resumeCalls = 0
+  const ctx = {
+    ...fixture.ctx,
+    get: (key) => {
+      const value = fixture.ctx.get(key)
+      if (key !== 'agents') return value
+      return {
+        ...value,
+        async resume() {
+          resumeCalls += 1
+          await new Promise((resolve) => { setTimeout(resolve, 10) })
+          throw new Error('恢复失败')
+        },
+      }
+    },
+  }
+  const sessions = createWorkerSessions({ ctx })
+  const signal = new AbortController().signal
+  const outcomes = await Promise.allSettled([
+    sessions.send({ sessionId: 'worker-unknown', text: '一', parentSessionId: 'c', signal }),
+    sessions.send({ sessionId: 'worker-unknown', text: '二', parentSessionId: 'c', signal }),
+  ])
+
+  assert.equal(resumeCalls, 1)
+  for (const outcome of outcomes) {
+    assert.equal(outcome.status, 'rejected')
+    assert.match(outcome.reason.message, /恢复失败/)
+  }
+  // 失败后不留身份：下一次还能重新恢复
+  assert.equal(sessions.isWorkerSession('worker-unknown'), false)
+})

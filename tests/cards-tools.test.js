@@ -872,6 +872,8 @@ test('createBundleTools 把写卡身份判定透传给卡片工具', async () =>
       cards: store,
       resolveProject: async () => undefined,
       canWriteCards: (sessionId) => sessionId === 'coordinator-1',
+      isWorkerSession: () => false,
+      cardBindingsOf: async () => [],
     })
     const createCard = tools.find((tool) => tool.name === 'create_card')
     const updateCard = tools.find((tool) => tool.name === 'update_card')
@@ -900,4 +902,55 @@ test('createBundleTools 传了 cards 却不传写卡判定时直接报错，不�
     () => createBundleTools({ cards: {} }),
     /传了 cards 就必须传 canWriteCards/,
   )
+})
+
+test('createBundleTools 缺 worker 写卡范围依赖时同样直接报错', () => {
+  // 漏传只影响 worker 的写卡范围：身份闸还在，能写卡的 worker 仍能改任意卡。
+  assert.throws(
+    () => createBundleTools({ cards: {}, canWriteCards: () => true }),
+    /必须传 isWorkerSession 与 cardBindingsOf/,
+  )
+})
+
+test('worker 只能改自己挂着的卡，且不能改槽位绑定', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const mine = await store.create({ title: '我的卡', slots: { dev: { sessionId: 'worker-1' } } })
+    const other = await store.create({ title: '别人的卡', slots: { dev: { sessionId: 'worker-2' } } })
+    const updateCard = createUpdateCardTool({
+      store,
+      canWrite: () => true,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+      cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+    })
+    const worker = { agent: { id: 'worker-1' }, signal: undefined }
+
+    // 自己的卡：标题、状态、链接都能写
+    const renamed = await updateCard.execute({ id: mine.id, title: '改了我的标题' }, worker)
+    assert.equal(renamed.card.title, '改了我的标题')
+
+    // 槽位绑定会换执行者、也能制造「一个会话挂多张 active 卡」的坏状态
+    await assert.rejects(
+      () => updateCard.execute({ id: mine.id, slots: { dev: { sessionId: 'worker-2' } } }, worker),
+      /worker 不能改卡片的槽位绑定/,
+    )
+
+    // 同项目里别的 worker 的卡：不在自己的绑定里
+    await assert.rejects(
+      () => updateCard.execute({ id: other.id, title: '越权改' }, worker),
+      /只能改自己挂着的卡/,
+    )
+
+    // 协调者不受范围限制
+    const coordinator = { agent: { id: 'coordinator-1' }, signal: undefined }
+    const byCoordinator = await updateCard.execute({ id: other.id, title: '协调者改的' }, coordinator)
+    assert.equal(byCoordinator.card.title, '协调者改的')
+
+    // 把自己的卡标 done：写入时仍在绑定里，释放槽位发生在写入之后
+    const done = await updateCard.execute({ id: mine.id, status: 'done' }, worker)
+    assert.equal(done.card.status, 'done')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
 })

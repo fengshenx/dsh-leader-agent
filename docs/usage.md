@@ -20,7 +20,7 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 
 ## 卡片
 
-调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。`list_cards` 只给协调者；`create_card` / `update_card` 协调者与 worker 都有（worker 用它收回本卡状态、挂产物链接），普通会话一件也没有——它不在项目编排里，建出来的卡没有槽位、没有协调者认领。
+调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。`list_cards` 只给协调者；`create_card` / `update_card` 协调者与 worker 都有（worker 用它收回本卡状态、挂产物链接），普通会话一件也没有——它不在项目编排里，建出来的卡没有槽位、没有协调者认领。worker 的 `update_card` 只作用于自己挂着的卡，且不能改槽位绑定（换执行者由协调者做）。
 
 链接有两种写法：`links` 整体替换，`addLinks` 增量追加（同 `id` 原位更新字段，无 `id` 按 label+url 去重），两者互斥。worker 建出 PR/Issue 后用 `addLinks` 自己挂，不会覆盖协调者刚写的条目，也不依赖它先读整卡。
 
