@@ -917,7 +917,7 @@ test('createBundleTools 缺 worker 写卡范围依赖时同样直接报错', () 
   )
 })
 
-test('worker 只能改自己挂着的卡，且不能改槽位与状态', async () => {
+test('worker 只能改自己挂着的卡，且不能改槽位、状态与规格', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   try {
     const store = createCardStore({ home })
@@ -959,9 +959,18 @@ test('worker 只能改自己挂着的卡，且不能改槽位与状态', async (
         /worker 不能改卡片状态/,
       )
     }
-    // 协调者能关自己的卡
-    const done = await updateCard.execute({ id: mine.id, status: 'done' }, coordinator)
+    // 规格归协调者：spec 是验收锚点，worker 往回报与 links 里写
+    await assert.rejects(
+      () => updateCard.execute({ id: mine.id, spec: 'worker 自己改的验收标准' }, worker),
+      /worker 不能改卡片规格/,
+    )
+    // 协调者能关自己的卡、能改规格
+    const done = await updateCard.execute(
+      { id: mine.id, status: 'done', spec: '协调者写的验收标准' },
+      coordinator,
+    )
     assert.equal(done.card.status, 'done')
+    assert.equal(done.card.spec, '协调者写的验收标准')
   } finally {
     await rm(home, { recursive: true, force: true })
   }
