@@ -159,17 +159,40 @@ export function currentSessionIdOf(byId) {
 }
 
 /**
- * 判定项目行是否处于选中态。
+ * 判定项目行是否代表主区域里正在看的协调者会话。
  *
- * 协调者会话不在项目树下单独出行，项目行就是它的入口；点项目行打开协调者之后
+ * 协调者会话不在项目树下单独出行，项目行就是它的入口：点项目行打开协调者之后
  * 主区域里放着那条会话，这一行必须跟着亮起来，否则「我现在在哪个项目里」只能
- * 靠会话标题猜。项目下的 worker 会话被打开时同样点亮所属项目——那一行代表的
- * 就是这一组会话。
+ * 靠会话标题猜。
+ *
+ * 只有协调者算数：被打开的 worker 会话在列表里有自己的一行，选中态归它；项目
+ * 行这时只点亮行首文件夹（`isProjectCurrent`）。两行同时铺整行底色会看成选了
+ * 两个，而它们层级不同。
+ *
+ * 归档协调者在项目树里没有可点的行，不算。
+ *
+ * @param {object} project - 项目记录
+ * @param {string | undefined} currentSessionId - 主区域当前会话 id
+ * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
+ * @returns {boolean} 是否选中
+ */
+export function isCoordinatorCurrent(project, currentSessionId, archivedSessionIds) {
+  if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
+  if (project?.coordinatorSessionId !== currentSessionId) return false
+  return archivedSessionIds?.has(currentSessionId) !== true
+}
+
+/**
+ * 判定主区域里的当前会话是否属于这个项目（协调者或 worker）。
+ *
+ * 这一层不画整行底色——那是协调者会话的选中态（`isCoordinatorCurrent`），只
+ * 点亮行首文件夹：整行底色的语义是「你现在看的就是这一行」，而被打开的 worker
+ * 是列表里的另一行。
  *
  * 口径与看板的「项目会话」判定一致（`boardViewState` 的 `coordinator` / `worker`）：
  * 退役协调者仍解析得到项目、也仍列在 `sessionsByProject` 里，归档会话的行还留在
  * 会话索引里——但它们都不是项目会话。算进来的话，点开退役会话或归档会话时项目
- * 行也会亮，而点这一行去的是现任协调者：选中态承诺的「你正在看的就是这一组」
+ * 行也会亮，而点这一行去的是现任协调者：这个点亮承诺的「你正在看的就是这一组」
  * 就成了谎。
  *
  * @param {object} project - 项目记录

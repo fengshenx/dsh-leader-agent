@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isCoordinatorCurrent, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -106,6 +106,12 @@ const STYLE_TEXT = `
 /* 选中态与官方会话行同款：hover 用的那层底色常驻。 */
 .dsh-leader-kit-project-row[data-selected='true'] {
   background: var(--dsw-alias-interactive-bg-hover);
+}
+/* 组里有当前会话（被打开的 worker）：点亮行首文件夹，与宿主工作区树的
+   folderActive 同色。整行底色留给协调者会话的选中态——两层同时铺色会看成
+   选了两个。 */
+.dsh-leader-kit-project-row[data-active='true'] .dsh-leader-kit-project-lead-folder {
+  color: var(--dsw-alias-state-business-primary);
 }
 .dsh-leader-kit-project-row[data-dead='true'] {
   color: var(--dsw-alias-label-secondary);
@@ -340,6 +346,11 @@ const STYLE_TEXT = `
   .dsh-leader-kit-session-row:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
+}
+/* 选中态与官方会话行同款（宿主 Rows.module.css 的 sessionRow.selected）：主区域
+   正在看的那一条常驻 hover 底色，其余行只有指针停在上面时才亮。 */
+.dsh-leader-kit-session-row[data-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 /* 状态位：尺寸照官方会话行的 slot（16×20）。官方在这里放运行状态圆点或加载器，
    我们只区分「运行中」，所以只放加载器。 */
@@ -719,8 +730,11 @@ function ProjectRow(props) {
     coordinatorSessionId: project.coordinatorSessionId,
     archivedSessionIds,
   })
-  // 当前会话是协调者或本项目下的 worker 时，这一行就是用户正在看的那一组。
-  const selected = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
+  // 整行底色只给协调者会话：那一行就是它的入口。worker 会话被打开时选中的是
+  // 下面列表里的那一行，项目行只点亮行首文件夹——分层与宿主工作区树一致
+  // （工作区分组亮文件夹图标，会话行铺整行底色）。
+  const selected = isCoordinatorCurrent(project, currentSessionId, archivedSessionIds)
+  const active = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -768,6 +782,7 @@ function ProjectRow(props) {
         onDragEnd: onDragFinish,
         'data-dead': openable ? undefined : 'true',
         'data-selected': selected ? 'true' : undefined,
+        'data-active': active ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
         'aria-current': selected ? 'true' : undefined,
         title: `${project.name} · ${project.directory}`,
@@ -892,6 +907,7 @@ function ProjectRow(props) {
                 ...folded.rows.map((row) => createElement(SessionRow, {
                   key: row.id,
                   row,
+                  selected: row.id === currentSessionId,
                   onOpenSession,
                   onArchiveSession,
                   busy,
@@ -1004,12 +1020,14 @@ function ProjectMenu(props) {
  * @returns {object} React 元素
  */
 function SessionRow(props) {
-  const { row, onOpenSession, onArchiveSession, busy } = props
+  const { row, selected, onOpenSession, onArchiveSession, busy } = props
   return createElement(
     'div',
     {
       className: 'dsh-leader-kit-session-row',
       'data-session-id': row.id,
+      'data-selected': selected ? 'true' : undefined,
+      'aria-current': selected ? 'page' : undefined,
       onClick: () => onOpenSession(row.id),
       title: row.displayTitle ?? row.title ?? row.id,
     },

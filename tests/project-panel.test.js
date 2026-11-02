@@ -10,8 +10,9 @@ import {
   defaultProjectName,
   describeDeletionNotice,
   describeProjectRemoval,
-  isProjectOpenable,
+  isCoordinatorCurrent,
   isProjectCurrent,
+  isProjectOpenable,
   moveProjectBefore,
   openCoordinatorSession,
   planProjectRename,
@@ -135,7 +136,23 @@ test('当前会话取主区域持有的那条', () => {
   assert.equal(currentSessionIdOf(undefined), undefined)
 })
 
-test('当前会话是协调者或项目下的 worker 时点亮项目行', () => {
+test('整行选中态只给协调者会话', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  assert.equal(isCoordinatorCurrent(project, 'session-coordinator'), true)
+  // worker 会话被打开时选中态归它自己那一行，项目行只点亮文件夹。
+  assert.equal(isCoordinatorCurrent(project, 'session-worker'), false)
+  assert.equal(isCoordinatorCurrent(project, 'session-other'), false)
+  assert.equal(isCoordinatorCurrent(project, undefined), false)
+  assert.equal(isCoordinatorCurrent(project, ''), false)
+  assert.equal(isCoordinatorCurrent({}, 'session-coordinator'), false)
+  // 归档协调者在项目树里没有可点的行，整行不能亮。
+  assert.equal(
+    isCoordinatorCurrent(project, 'session-coordinator', new Set(['session-coordinator'])),
+    false,
+  )
+})
+
+test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {
   const project = {
     coordinatorSessionId: 'session-coordinator',
     retiredCoordinatorSessionIds: ['session-retired'],
