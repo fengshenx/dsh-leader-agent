@@ -24,6 +24,10 @@
 
 本仓只有 `node:test`。宿主本身也是「runner 与浏览器库分离」（vitest + `playwright`），本仓等价物是 `node:test` + `playwright` core。`npm run e2e` 先 `npm run build:client`——`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错，这是本仓最容易静默回退的一条。
 
+### 截图走同一套夹具，不另开一条手工路径
+
+「想看一眼界面上是什么样」过去只能手工开浏览器去点，这正是证据不可复现的来源。`e2e.screenshot(label)` 存到 `.dev/e2e-artifacts/<场景名>/`，`stop()` 前自动存一张 `final.png`（失败时它是唯一能看的东西），路径打到 stdout 供人或 agent 直接用 Read 打开。目录在 `.dev/` 下、已 gitignore：截图不入库，PR 里写读数而不是贴图。截图只是证据，回归仍靠断言——不写「截图里有某个字」这种断言。
+
 ### e2e 不进 `npm run check`
 
 check 的门禁只跑纯函数与假件，不能依赖真实 `dsh` 与 chromium。可判定的部分（标记解析、脚本游标、SSE 事件序列、就绪行解析、显式端点检测）抽成纯函数进 `npm run check`，需要真浏览器的留在 `tests/e2e/*.e2e.js`。
@@ -44,3 +48,4 @@ check 的门禁只跑纯函数与假件，不能依赖真实 `dsh` 与 chromium�
 - **双向验证 1**：把 `plugin.e2e.js` 的标题断言从 `'项目'` 改成 `'不存在的标题'` → 该用例 30s 超时变红；还原 → 变绿。
 - **双向验证 2**：把 `mock-llm.mjs` 的 `cursor.take(resolveMarker(parsed))` 改成 `cursor.take(null)`（等于撤掉标记处理）→ `session.e2e.js` 在等回复时 90s 超时变红；还原 → 变绿。
 - 真机读数：实例就绪行形如 `dsh web: http://127.0.0.1:<port>/?token=<...>`；新会话的 composer 在启动早期是 `data-phase="inert"`（`aria-label="选择工作区"`），等 `contenteditable="true"` 才是可输入状态；一条消息会带来两次模型请求（`scenario` + `title`）。
+- 截图读数：`.dev/e2e-artifacts/session/reply.png` 里左栏有本插件的「项目」区块，会话消息是 `MOCK-E2E-REPLY 收工即可`，回复为 `mock 回执已收到`，会话标题是 mock 回的「e2e 会话」——标题请求被单独归类这一点也在图上。

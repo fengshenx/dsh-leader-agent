@@ -10,8 +10,10 @@
  * @module dsh-leader-kit/tests/e2e/harness
  */
 
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { chromium } from 'playwright'
-import { startInstance } from './instance.mjs'
+import { WORKTREE, startInstance } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
 
 /**
@@ -20,10 +22,11 @@ import { startMockProvider } from './mock-llm.mjs'
  * @param {object} [options] - 选项
  * @param {Record<string, object[]>} [options.scripts] - mock 脚本，见 `mock-script.mjs`
  * @param {string} [options.locale] - 浏览器语言，默认 `zh-CN`（断言中文文案的场景）
+ * @param {string} [options.name] - 场景名，截图目录用它；默认 `scenario`
  * @param {Record<string, string>} [options.env] - 额外的实例环境变量
- * @returns {Promise<object>} 场景句柄：页面、实例、mock、问题列表与幂等停止函数
+ * @returns {Promise<object>} 场景句柄：页面、实例、mock、问题列表、截图与幂等停止函数
  */
-export async function launchE2E({ scripts = {}, locale = 'zh-CN', env = {} } = {}) {
+export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenario', env = {} } = {}) {
   const mock = await startMockProvider({ scripts })
   let instance = null
   let browser = null
@@ -47,6 +50,23 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', env = {} } = {
     if (message.type() === 'error') problems.push(`console.error: ${message.text()}`)
   })
 
+  // 截图落在工作树的 .dev/（已 gitignore）：给人看的证据，不入库、不替代断言。
+  const artifactsDir = join(WORKTREE, '.dev', 'e2e-artifacts', name)
+
+  /**
+   * 存一张当前页面截图，路径打到 stdout 供人或 agent 直接打开。
+   *
+   * @param {string} label - 文件名（不含扩展名），描述这一步要证明什么
+   * @returns {Promise<string>} 截图路径
+   */
+  const screenshot = async (label) => {
+    mkdirSync(artifactsDir, { recursive: true })
+    const file = join(artifactsDir, `${label}.png`)
+    await page.screenshot({ path: file })
+    console.log(`[e2e] 截图 ${file}`)
+    return file
+  }
+
   let stopped = false
   return {
     page,
@@ -54,6 +74,7 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', env = {} } = {
     instance,
     mock,
     problems,
+    screenshot,
     /** 打开实例首页；token 在 query 上，宿主换 cookie 后会重定向到干净地址。 */
     async open() {
       await page.goto(instance.url, { waitUntil: 'domcontentloaded' })
@@ -70,6 +91,8 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', env = {} } = {
           failures.push(`${label}: ${error.message}`)
         }
       }
+      // 关浏览器前先留最后一帧：断言失败时这张图往往就是唯一能看的东西。
+      await attempt('保存结尾截图', () => screenshot('final'))
       // 顺序固定：先关浏览器（它连着实例），再停实例，最后停 mock 与删数据根。
       await attempt('关闭浏览器', () => browser.close())
       await attempt('停止实例', () => instance.stop())

@@ -24,7 +24,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协�
 | worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/2026-10-23-dispatch-and-wakeup.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
 | 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/2026-10-27-project-bound-board.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
 | 项目级提示词（`COORDINATOR.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/coordinator-context.js`、`src/host/slots/` |
-| 真机 / GUI 取证、写浏览器 e2e 场景 | [docs/e2e-testing.md](docs/e2e-testing.md)（`npm run e2e` 车道、mock 标记约定、断言纪律；脚本化不了的才走人工取证） |
+| 写浏览器 e2e 场景、跑 `npm run e2e`、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、场景模板、mock 标记约定、截图落点、断言纪律；脚本化不了的才走人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
@@ -63,8 +63,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 ## 测试
 
 - 只有 `node:test`，**没有 lint**：未使用的 import、死代码、拼写错误都抓不到，改完要手扫。
-- 可判定逻辑抽成纯函数模块再测（`*-logic.js`、`dev-plan.mjs` 这类）；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 e2e 或人工取证（[docs/e2e-testing.md](docs/e2e-testing.md)）。
-- **浏览器 e2e 不进 `npm run check`**：它要真实 `dsh` 与 chromium，跑 `npm run e2e`。场景只写在 `tests/e2e/*.e2e.js`，夹具与 mock 在同一目录；能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
+- 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——命令、场景写法、截图落点与断言纪律见 [docs/e2e-testing.md](docs/e2e-testing.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。

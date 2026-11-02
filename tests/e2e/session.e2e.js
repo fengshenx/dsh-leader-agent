@@ -16,7 +16,7 @@ const MARKER = 'MOCK-E2E-REPLY'
 const REPLY = 'mock 回执已收到'
 
 test('一条带标记的消息走完真实宿主链，回复上屏并落盘', { timeout: 180_000 }, async (t) => {
-  const e2e = await launchE2E({ scripts: { [MARKER]: [{ text: REPLY }] } })
+  const e2e = await launchE2E({ name: 'session', scripts: { [MARKER]: [{ text: REPLY }] } })
   t.after(() => e2e.stop())
 
   await e2e.open()
@@ -31,6 +31,7 @@ test('一条带标记的消息走完真实宿主链，回复上屏并落盘', { 
 
   // 等状态而不是等时间：回复文本出现在页面上才算这一轮结束。
   await e2e.page.getByText(REPLY).first().waitFor({ state: 'visible', timeout: 90_000 })
+  await e2e.screenshot('reply')
 
   // 宿主会额外用同一模型给会话起标题（`kind: 'title'`），它不算这一轮。
   const scenarioRequests = e2e.mock.requests.filter((request) => request.kind === 'scenario')

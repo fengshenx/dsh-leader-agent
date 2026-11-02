@@ -13,7 +13,7 @@ import { join } from 'node:path'
 import { launchE2E } from './harness.mjs'
 
 test('左栏项目区块在真实宿主里挂载，且浏览器不写盘', { timeout: 180_000 }, async (t) => {
-  const e2e = await launchE2E()
+  const e2e = await launchE2E({ name: 'plugin' })
   t.after(() => e2e.stop())
 
   await e2e.open()
@@ -28,6 +28,8 @@ test('左栏项目区块在真实宿主里挂载，且浏览器不写盘', { tim
     /还没有项目/,
     '空数据时应显示插件的空态文案',
   )
+  // 回归靠断言；截图只给人看「插件确实在界面上」，路径打印在 stdout。
+  await e2e.screenshot('project-section')
 
   // 浏览器的读写边界：看板数据来自会话事件，客户端不直接写卡片库。
   assert.equal(
