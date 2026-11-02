@@ -226,6 +226,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 `npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 
+- 凭据文件跟着数据根独立，新工作树第一次起实例本来要在界面上重填 API key：启动前会把源 HOME `.credentials.yaml` 的 `refs` 并进开发实例那一份。只搬 `refs`（按环境变量名存的密钥），不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录。目标里已有的条目不动，界面里改过的值优先；要重新跟随源就删掉 `.dev/home/.credentials.yaml` 里那一条。块式与行内（`refs: {}`）两种 `refs` 节形态都认，写回替换该节；认不出、重复 `refs:`、锁超时都直接报错，不猜拼接位置。目标凭据文档不是 version 1 布局时不动——pre-release 扁平布局由宿主启动时自行迁移，先追加 `refs:` 会让它两种布局都不成立。写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。没走 `DEEPSEEK_API_KEY` 启动环境那条路：它在 dsh 的凭据解析顺序里排在存储文件之后本来就能用，但 key 会留在 agent 工具进程的环境里。
 - 端口默认交给系统分配，启动日志里打印带 token 的 URL；要固定就 `DEV_PORT=3210 npm run dev`。
 - 改客户端代码（`src/client/`）要重跑 `npm run dev` 或 `npm run build:client` 再刷新；宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
