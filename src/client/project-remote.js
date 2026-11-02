@@ -59,14 +59,21 @@ function linksCodec() {
 }
 
 /**
+ * 线上类型 → codec 工厂。
+ *
+ * 类型表是 `src/shared/projects.js` 的静态字面量，只有这两种；查表比逐个
+ * `if` 少一条永远走不到的 throw，拼错的类型名会在这里抛 TypeError，不会
+ * 静默退回某个默认 codec。
+ */
+const CODEC_FACTORIES = { string: stringCodec, links: linksCodec }
+
+/**
  * 按契约里的线上类型取 codec。
  * @param {string} type - `string` / `links`
  * @returns {object} codec
  */
 function codecFor(type) {
-  if (type === 'string') return stringCodec()
-  if (type === 'links') return linksCodec()
-  throw new Error(`未知的远程参数类型：${String(type)}`)
+  return CODEC_FACTORIES[type]()
 }
 
 /**

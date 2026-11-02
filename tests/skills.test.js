@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { readFile, readdir } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
@@ -35,6 +36,23 @@ test('未知候选返回 undefined', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const definition = await provider.get({ locator: { directory: '/nonexistent' } })
   assert.equal(definition, undefined)
+})
+
+test('候选的 locator 不是目录描述时 get 返回 undefined', async () => {
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
+  assert.equal(await provider.get({ locator: null }), undefined)
+  assert.equal(await provider.get({}), undefined)
+})
+
+test('目录里没有 SKILL.md 时跳过，不当作 skill', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-skills-'))
+  try {
+    await mkdir(join(root, 'empty-skill'), { recursive: true })
+    const provider = createSkillProvider({ skillsRoot: root, providerName: 'dsh-leader-kit' })
+    assert.deepEqual(await provider.list(), [])
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('协议层引用的是 bundle 内的相对路径', async () => {

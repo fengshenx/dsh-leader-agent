@@ -60,6 +60,13 @@ function fakeService() {
       calls.push(['replaceCoordinator', id])
       return { id, name: 'demo', directory: '/tmp/demo', coordinatorSessionId: 's4' }
     },
+    async reorder(id, beforeId) {
+      calls.push(['reorder', id, beforeId])
+    },
+    async attachCoordinator(id) {
+      calls.push(['attachCoordinator', id])
+      return { attached: true, workspaceId: 'w1' }
+    },
     async sessionsByProject() {
       calls.push(['sessionsByProject'])
       return [{ projectId: 'p1', sessionIds: ['s1', 's5'] }]
@@ -182,6 +189,11 @@ test('方法把调用转给项目服务', async () => {
   assert.deepEqual(await remote.replaceCoordinator('p1'), {
     id: 'p1', name: 'demo', directory: '/tmp/demo', coordinatorSessionId: 's4',
   })
+  // 拖拽改序与「把协调者会话挂到项目工作区」都是纯转发，返回值形态一并守住
+  await remote.reorder('p1', 'p2')
+  assert.deepEqual(service.calls.at(-1), ['reorder', 'p1', 'p2'])
+  assert.deepEqual(await remote.attachCoordinator('p1'), { attached: true, workspaceId: 'w1' })
+  assert.deepEqual(service.calls.at(-1), ['attachCoordinator', 'p1'])
   assert.deepEqual(await remote.sessionsByProject(), [
     { projectId: 'p1', sessionIds: ['s1', 's5'] },
   ])

@@ -43,6 +43,8 @@
 - 分母完整性只能由入口脚本守：`tests/coverage-gate.test.js` 判解析、判定逻辑与清单自身合法性，「报告里缺了谁」要跑测试才知道，单测判不了。
 - 覆盖率与 e2e 是两条证据：登记进 `unmeasured` 不等于该文件被验证过，client 组件的行为仍归 `npm run e2e`。
 - 客户端组件一旦抽出纯函数、能被单测 import，就该从 `unmeasured` 移到 `thresholds` 或直接 100%——清单过期会由「登记了却出现在报告里」这条判据当场报出来。
+- Node 24.22 不支持 `/* node:coverage ignore next */`（实测该行仍计入未覆盖），所以不可达的防御分支按死代码删掉，不为凑覆盖率写走不到该行的测试。第一批里 `codecFor` 的未知类型 throw 就是这样处理的：改成静态映射查表，拼错的类型名在模块初始化时抛 TypeError，仍然 Fail Loud。
+- 「常量文件测不了」这个判断要分开看：CSS 模板（`board-styles.js`、`worker-report-styles.js`）只要给 `document` 一个桩就能加载到 100%，不该登记成不可加载；真正拿不到的是依赖宿主模块表的文件（`icons.js` 的 `react`、`markdown.js` 的 `MarkdownText`、`client/index.js` 的注册链）。
 
 ## 验证
 
@@ -54,4 +56,6 @@
   - C 把 `src/client/markdown.js` 从 `unmeasured` 挪进 `thresholds` → 「登记了门槛但这个文件没被任何单测加载」、exit 1；还原绿。
   - D 把已加载的 `src/host/message.js` 登记进 `unmeasured` → 「登记为单测不可加载，但它出现在覆盖率报告里」、exit 1；还原绿。
 - 文档体量：`AGENTS.md` 3,680 → 天花板 3,930 抬到 4,050（3680 × 1.10，10% 余量）；`docs/development.md` 1,828 → 天花板 1,780 抬到 1,930（1828 × 1.05）。两者都是新增一节机制说明，不是把细节塞进现有规则。
-- `npm run check`：913 tests / 904 pass / 9 skipped / 0 fail；Agent Note 门禁、文档工具名、文档预算、语法检查与覆盖率门禁全过。
+- 第一批存量清零（同 PR）：10 个 ≤8 行缺口的文件（`project-remote`、`cards/store`、`projects/remote`、`skills`、`read-worker`、`coordinator-session-index`、`notification-store`、`worker-registry`、`worker-sessions`、`projects/store`）与两个 CSS 常量文件一起清零。判据是「先看未覆盖行是死代码还是缺用例」：`codecFor` 的 throw 删掉，其余 12 处都是可构造的错误分支或转发方法，补了 16 条用例（929 tests 总数）。
+- 第一批后的读数：`verify-coverage: 920 个用例通过（9 跳过），68 个源文件，53 个被单测加载（45 个行覆盖 100%），15 个登记为单测不可加载`；被加载部分行覆盖 97.60%，全 `src` 口径 ≈ 70.9%（此前 64.0%），`thresholds` 从 18 条降到 8 条。
+- `npm run check`：929 tests / 920 pass / 9 skipped / 0 fail；Agent Note 门禁、文档工具名、文档预算、语法检查与覆盖率门禁全过。

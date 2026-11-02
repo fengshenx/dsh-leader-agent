@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { readFile, writeFile } from 'node:fs/promises'
-import { createProjectStore } from '../src/host/projects/store.js'
+import { createProjectStore, uniqueProjectName } from '../src/host/projects/store.js'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 
 after(cleanupTempDirs)
@@ -123,6 +123,13 @@ test('注册表结构非法时按损坏处理', async () => {
   await store.insert(store.draft({ name: 'alpha', directory: '/work/alpha' }))
   await writeFile(store.file, JSON.stringify({ version: 1 }), 'utf8')
   assert.deepEqual(await store.list(), [])
+})
+
+test('同名项目占满序号空间时明确报错，不返回重名', () => {
+  // 序号从 2 数到 999：998 个候选全部被占满后没有可用的新名字。
+  const taken = [{ name: 'alpha' }, ...Array.from({ length: 998 }, (_, index) => ({ name: `alpha-${index + 2}` }))]
+  assert.equal(uniqueProjectName([{ name: 'alpha' }], 'alpha'), 'alpha-2')
+  assert.throws(() => uniqueProjectName(taken, 'alpha'), /同名项目过多/)
 })
 
 test('按协调者会话反查项目', async () => {

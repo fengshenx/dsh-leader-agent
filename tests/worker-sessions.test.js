@@ -12,10 +12,10 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
 /**
  * 造一个假的宿主上下文：记录建/恢复/投递/销毁。
  *
- * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, workspaceExists?: boolean, attachError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
+ * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, workspaceExists?: boolean, attachError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError, permissions } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError, renameError, permissions } = {}) {
   const created = []
   const resumed = []
   /** 挂进工作区的记录：`{ workspaceId, sessionId }` */
@@ -96,6 +96,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       if (key === 'sessionTitle') {
         return {
           rename(session, title) {
+            if (renameError !== undefined) throw renameError
             titles.push({ sessionId: session.id, title })
           },
         }
@@ -654,6 +655,21 @@ test('缺 agents 服务时报错说清是哪个缺口', async () => {
       return true
     },
   )
+})
+
+test('会话标题改名被拒时只记日志，worker 照样建成', async () => {
+  const fixture = createFixture({ renameError: new Error('TITLE_LOCKED') })
+  const warnings = []
+  const sessions = createWorkerSessions({ ctx: fixture.ctx, logger: (message) => warnings.push(message) })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.ok(sessionId)
+  assert.ok(warnings.some((message) => message.includes('标题改名被拒') && message.includes('TITLE_LOCKED')))
+  await sessions.dispose(sessionId)
 })
 
 test('宿主销毁失败只记日志，不改判成没销毁', async () => {

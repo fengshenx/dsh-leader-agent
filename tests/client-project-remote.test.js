@@ -3,8 +3,11 @@ import { test } from 'node:test'
 import {
   PROJECT_REMOTE_CONTRIBUTION,
   callProjectRemote,
+  isProjectRemoteReady,
   mountProjectRemote,
   onProjectRemoteReady,
+  projectRemoteError,
+  reportProjectRemoteError,
 } from '../src/client/project-remote.js'
 import {
   PROJECT_REMOTE_METHODS,
@@ -130,6 +133,32 @@ test('通道已挂好时订阅就绪事件会立刻补一次通知', async () =>
   const unsubscribe = onProjectRemoteReady(() => { notified += 1 })
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert.equal(notified, 1)
+
+  unsubscribe()
+})
+
+test('挂载成功后通道读数变为就绪', async () => {
+  const ctx = {
+    get(key) {
+      return key === 'remote'
+        ? { $mount: async () => {} }
+        : undefined
+    },
+  }
+  await mountProjectRemote(ctx)
+  assert.equal(isProjectRemoteReady(), true)
+  assert.equal(projectRemoteError(), '')
+})
+
+test('报告挂载失败后能读回原因，并通知订阅者刷新界面', async () => {
+  let notified = 0
+  const unsubscribe = onProjectRemoteReady(() => { notified += 1 })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const baseline = notified
+
+  reportProjectRemoteError('$mount 被拒：缺严格 codec')
+  assert.equal(projectRemoteError(), '$mount 被拒：缺严格 codec')
+  assert.equal(notified, baseline + 1)
 
   unsubscribe()
 })
