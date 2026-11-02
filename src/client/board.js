@@ -21,6 +21,9 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  mergeCardSnapshot,
+  mergeCardUpdate,
+  mergeDetailCard,
   mergeSessionState,
   slotBindingsOf,
   sortActiveCards,
@@ -429,7 +432,9 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       fetchBoardCards(callRemote, project.id)
         .then((next) => {
           if (cancelled) return
-          setCards(next)
+          // 保存链接后本地回填的卡版本更高：在这一刻之前发出的取数请求，响应
+          // 晚到时不能把刚保存的内容打回旧值。
+          setCards((current) => mergeCardSnapshot(current, next))
           setLoaded(true)
           // 成功就清掉上一次的错误：项目通道比面板晚就绪、或一次 RPC 抖动，
           // 都不该把面板判死在错误页上——2 秒轮询本来就是干这个的。
@@ -470,6 +475,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }, [getUiWorkspace])
 
   const openDetail = useCallback((card, anchor) => { setDetail({ card, anchor }) }, [])
+
+  // 链接改完立刻回填：浮层里的卡片是打开瞬间的快照，不回填的话刚保存的内容要
+  // 等关掉重开才看得见。列表一起换掉，卡面 chip 也不必等下一轮轮询。
+  const cardUpdated = useCallback((updated) => {
+    if (updated === null || typeof updated !== 'object') return
+    setCards((current) => mergeCardUpdate(current, updated))
+    setDetail((current) => mergeDetailCard(current, updated))
+  }, [])
 
   // 取卡条件与下面的展示分支读同一个判定，避免两处守卫各写一套。
   const view = boardViewState(project, sessionId, worker)
@@ -632,6 +645,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       : createElement(CardDetail, {
           card: detail.card,
           onClose: () => { setDetail(null) },
+          callRemote,
+          onUpdated: cardUpdated,
           restoreFocus: detail.anchor,
         }),
   )

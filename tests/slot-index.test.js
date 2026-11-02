@@ -64,7 +64,7 @@ test('重启后能从卡片库重建槽位索引', async () => {
     // 另一个进程实例：内存索引是空的，只能从落盘的卡片库恢复。
     const reopened = createCardStore({ home })
     assert.equal(reopened.slotIndex.has('session-dev'), false)
-    await reopened.loadSlotIndex()
+    await reopened.loadIndexes()
     assert.equal(reopened.slotIndex.get('session-dev'), 'dev')
   } finally {
     await rm(home, { recursive: true, force: true })
@@ -120,7 +120,7 @@ test('启动重建与写卡交错时不丢最新槽位绑定', async () => {
   const store = createCardStore({ home: '/tmp/dsh-leader-kit-slot-index', io: controlled.io })
 
   // 进程启动时的索引重建：读盘被卡住。
-  const loading = store.loadSlotIndex()
+  const loading = store.loadIndexes()
   // 重建还没读完时，落盘一次新的槽位绑定。
   const creating = store.create({ title: '新卡片', slots: { review: { sessionId: 'session-review' } } })
   // 让写卡的链路先跑完（微任务跑完才轮到定时器）。

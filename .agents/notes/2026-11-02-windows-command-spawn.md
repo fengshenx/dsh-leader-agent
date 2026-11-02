@@ -38,6 +38,12 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 引号与反斜杠按 MS C runtime 的规则写，不按 cmd 的 `""`：外层 `"${line}"` 被 `/s` 剥掉一层之后，剩下那段字符串原样进了目标程序的 argv 解析——引号前的反斜杠按 `2n` 个留 `n` 个、`2n+1` 个留 `n` 个再补一个字面引号，收尾的反斜杠翻倍。照搬 cmd 的 `""` 时 `a\"b`、`a b\\` 这类参数会丢字符（旧实现实测 10 组里 4 组不等）。
 
+### dev 用异步版 `spawnCommand`：watch 与信号处理器不能被同步等待卡住
+
+`npm run dev` 挂着常驻的 `build/client.mjs --watch` 与 SIGINT/SIGTERM 处理器。同步等 dsh 会卡住事件循环，信号处理器跑不到、watcher 成了孤儿（main 上就是这么改的）。所以 `spawn-command.mjs` 另给一个异步 `spawnCommand`：复用同一套 `resolveExecutable` / `buildCommandLine` / `cmdPath`，win32 上照样是 `cmd /d /s /c "…"` + `windowsVerbatimArguments`，只是返回 `ChildProcess`。
+
+解析失败同步抛 `CommandNotFoundError`；进程起不来的 `error` 事件交给 `commandLaunchError`——win32 上 `ENOENT` / `EFTYPE` 归成 `CommandShellError`（解析已成功，只可能是 cmd），非 Windows 的 `ENOENT` 仍归 `CommandNotFoundError`，其余错误原样交回调用方。`build:client` 那次仍用同步版：它必须跑完才继续。
+
 ### 语法门禁改成脚本，Windows 上也能跑 `npm run check`
 
 原来的语法检查是 `check` 里一段 POSIX shell 循环（`for f in … $(find …)`），Windows 的 cmd 下直接报 `f was unexpected at this time`，整套门禁在本地跑不起来。改成 `scripts/check-syntax.mjs`：遍历 `index.js` 与 `src` / `scripts` / `build` 下的 `.js` / `.mjs` 逐个 `node --check`，失败时打印相对路径与 `node` 的输出并以 1 退出；门禁顺序不变。
@@ -55,7 +61,7 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 ## 验证
 
-`tests/spawn-command.test.js` 24 条：解析（`.cmd` 优先于无扩展名、PATHEXT 顺序、多 PATH 目录、显式路径不回落 PATHEXT、带引号的 PATH 条目、空条目、PATH 大小写与精确优先、同名的目录不算命中）、引号（普通、含空格、空串、结尾反斜杠翻倍、引号前反斜杠按 CRT 计数、`%` 不加处理）、`buildCommandLine`、真实起进程（`process.execPath` 在 `C:\Program Files\…`，顺带验证带空格路径）、`CommandNotFoundError`，以及 Windows 上七条（非 Windows 跳过）：经 `cmd.exe` 起带空格的 `.cmd` shim 且参数原样到达、按 PATH 解析出的 `.cmd` shim 真的被起起来、解析结果与 cmd 自行 PATHEXT 顺序不一致时起的是解析结果、参数里的 `%VAR%` 被展开（已知边界）、调用方收窄 env 时仍能起 cmd、cmd 自身起不来时抛 `CommandShellError`、参数超过命令行上限时抛的不是 `CommandShellError`。
+`tests/spawn-command.test.js` 27 条：解析（`.cmd` 优先于无扩展名、PATHEXT 顺序、多 PATH 目录、显式路径不回落 PATHEXT、带引号的 PATH 条目、空条目、PATH 大小写与精确优先、同名的目录不算命中）、引号（普通、含空格、空串、结尾反斜杠翻倍、引号前反斜杠按 CRT 计数、`%` 不加处理）、`buildCommandLine`、真实起进程（`process.execPath` 在 `C:\Program Files\…`，顺带验证带空格路径）、`CommandNotFoundError`，Windows 上八条（非 Windows 跳过）：经 `cmd.exe` 起带空格的 `.cmd` shim 且参数原样到达、按 PATH 解析出的 `.cmd` shim 真的被起起来、解析结果与 cmd 自行 PATHEXT 顺序不一致时起的是解析结果、参数里的 `%VAR%` 被展开（已知边界）、调用方收窄 env 时仍能起 cmd、cmd 自身起不来时抛 `CommandShellError`、参数超过命令行上限时抛的不是 `CommandShellError`、异步 `spawnCommand` 起的 `.cmd` shim 参数原样到达且解析不到命令时同步抛 `CommandNotFoundError`；另有一条跨平台的 `commandLaunchError` 三分支。
 
 双向验证（Windows 11 / node 24.18.1）：
 
@@ -67,6 +73,7 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 | `cmdPath()` 换回 `env.ComSpec ?? 'cmd.exe'` | `调用方收窄 env 时仍能起 cmd` 红（22 绿 1 红） |
 | 删掉 win32 分支的 `CommandShellError` 一行 | `cmd 自己起不来时抛 CommandShellError` 红（22 绿 1 红） |
 | 撤掉 `CommandShellError` 的 `ENOENT` / `EFTYPE` 归类 | `参数超过命令行上限时抛原始错误` 红（23 绿 1 红），`ENAMETOOLONG` 被包成 `CommandShellError` |
+| 把 `commandLaunchError` 改成直接返回原错误 | `commandLaunchError 把「cmd 起不来」与「命令不存在」分开` 红（26 绿 1 红） |
 | `scripts/check-syntax.mjs` 前，把 `src/shared/frontmatter.js` 写坏 | 门禁 exit 1，打印 `src\shared\frontmatter.js` 与 `SyntaxError: Unexpected end of input`；还原后 exit 0 |
 | 把 `check-syntax` 里的 `process.execPath` 换成 `no-such-node-xyz` | exit 1，一行 `check-syntax: 起不了 no-such-node-xyz --check：spawnSync no-such-node-xyz ENOENT`；修复前同样操作只打印 80 行裸路径、`ENOENT` 一次都不出现 |
 
@@ -74,7 +81,9 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 用例比较子进程 stdout 前统一剥 ANSI 转义（`plain()`）：调用方环境可能通过 `NODE_OPTIONS` 里的 require hook、`FORCE_COLOR` 等途径给 node 子进程注入着色，`node -e` 那条实测收到 `'\x1B[33m2\x1B[39m'`。按名字清 `NODE_OPTIONS` / `FORCE_COLOR` 只能挡住已知途径，所以按内容剥。着色场景读数（`NODE_OPTIONS=--require .telov/colorize.cjs` 把子进程 stdout 全包成黄色）：修复前 22/24（`起一个真实进程并拿到输出`、`%VAR% 展开` 两条红），修复后 24/24；无注入同样 24/24。
 
-`npm run check` 整条（Windows 11）：Agent Note 格式 47 篇、文档工具名 11 篇、语法检查 80 文件、单测 714 用例 / 703 通过 / 10 失败 / 1 跳过；`main` 基线 690 / 679 / 同样那 10 条，失败用例名逐条比对相同。
+`npm run check` 整条（Windows 11，合入 main 之后）：Agent Note 格式 50 篇、文档工具名 11 篇、语法检查 84 文件、单测 784 用例 / 781 通过 / **0 失败** / 3 跳过，exit 0；平台适配前是 714 用例 / 10 失败（那 10 条与 main 基线逐条相同）。
+
+真机 `npm run dev`（win32）：`DEV_DSH=<临时 .cmd shim> node scripts/dev.mjs` → exit 0，最后一行是 `fake-dsh web --port 0 --no-open`——dsh 经 cmd 封装起来，参数原样到达，没有 ENOENT。
 
 ### 平台差异只在测试侧处理
 

@@ -14,7 +14,7 @@
  * @module dsh-leader-kit/scripts/spawn-command
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
@@ -222,6 +222,47 @@ export function spawnCommandSync({ command, args = [], platform = process.platfo
     throw result.error
   }
   return checkSpawned(result, command)
+}
+
+/**
+ * 异步起一条命令，返回子进程。
+ *
+ * 与 `spawnCommandSync` 同一套解析与命令行拼装，只是不等它结束：`npm run dev` 要同时
+ * 挂 watcher 与信号处理器，同步等待会卡住事件循环。解析失败同步抛
+ * `CommandNotFoundError`；进程起不来的 `error` 事件交给 `commandLaunchError` 归一。
+ *
+ * @param {object} options - 选项，同 `spawnCommandSync`
+ * @returns {import('node:child_process').ChildProcess} 子进程
+ */
+export function spawnCommand({ command, args = [], platform = process.platform, env = process.env, exists = isFile, extensions = WINDOWS_EXTENSIONS, ...options }) {
+  const spawnOptions = { env, ...options }
+  if (platform !== 'win32') return spawn(command, args, spawnOptions)
+
+  const file = resolveExecutable({ command, pathValue: pathValueOf(env), exists, extensions })
+  if (file === null) throw new CommandNotFoundError(command)
+  const line = buildCommandLine({ file, args })
+  return spawn(cmdPath(), ['/d', '/s', '/c', `"${line}"`], {
+    windowsVerbatimArguments: true,
+    ...spawnOptions,
+  })
+}
+
+/**
+ * 把子进程 `error` 事件给的错误归一。
+ *
+ * `spawnCommand` 已经解析出绝对路径，所以 win32 上起不来只可能是 cmd 本身；非 Windows
+ * 没有解析步骤，`ENOENT` 仍是「命令不存在」。
+ *
+ * @param {Error & { code?: string }} error - `error` 事件给的错误
+ * @param {object} options - 选项
+ * @param {string} options.command - 原始命令名
+ * @param {string} [options.platform] - 平台，测试用
+ * @returns {Error} 归一后的错误
+ */
+export function commandLaunchError(error, { command, platform = process.platform }) {
+  if (error.code !== 'ENOENT' && error.code !== 'EFTYPE') return error
+  if (platform === 'win32') return new CommandShellError(cmdPath(), error)
+  return error.code === 'ENOENT' ? new CommandNotFoundError(command) : error
 }
 
 /**

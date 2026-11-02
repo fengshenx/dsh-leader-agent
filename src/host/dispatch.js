@@ -117,6 +117,10 @@ export function buildWorkerReport(outcome) {
  * @param {(parentSessionId: string) => Promise<string | undefined>} [options.resolveWorkerWorkspaceId] - 取 worker 该挂的工作区
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
+ * @param {() => Promise<Map<string, { cardId: string, number: number, title: string, status: string, slot: string }[]>>} [options.cardBindingsBySession] - 一次读盘取全部会话的绑定；名册用它避免逐 worker 读卡
+ * @param {(input: { cardId: string, slot: string, sessionId: string }) => Promise<object>} [options.bindCardSlot] - 派工时把卡槽位绑到新会话；缺省时传了 cardId 就报错
+ * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 调用方会话所属项目；与 `getCard` 一起校验绑卡归属
+ * @param {(cardId: string) => Promise<object | undefined>} [options.getCard] - 按 id 读卡；派工绑卡前校验归属与状态
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 派工器接口
  */
@@ -132,6 +136,10 @@ export function createDispatcher({
   resolveWorkerWorkspaceId,
   archivedSessionIds,
   listCardBindings,
+  cardBindingsBySession,
+  bindCardSlot,
+  resolveProject,
+  getCard,
   logger = () => {},
 }) {
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
@@ -143,8 +151,22 @@ export function createDispatcher({
   if (typeof workerSessions?.spawn !== 'function' || typeof workerSessions?.send !== 'function') {
     throw new Error('dsh-leader-kit: createDispatcher 缺少 workerSessions，无法创建或唤醒 worker 会话')
   }
+  // 绑卡归属校验要同时读调用方项目与卡片；只给一半会静默少一道闸。
+  if ((typeof resolveProject === 'function') !== (typeof getCard === 'function')) {
+    throw new Error('dsh-leader-kit: createDispatcher 的 resolveProject 与 getCard 必须成对提供，否则跨项目绑卡校验会静默失效')
+  }
   /** @type {Map<string, object>} 派工记录，key 为 worker 会话 id */
   const inflight = new Map()
+  /**
+   * 本进程派出的 worker 归属，key 为会话 id。
+   *
+   * 派工两段化后，第一条消息要过 `message` 的归属校验，而那条校验原本只读落盘
+   * 登记表。登记失败（磁盘满等）时会话已经建好、同一轮里还要立刻投递，不能因为
+   * 落盘失败就拒绝这次投递。登记表仍是跨进程的真源，这里只补本进程的窗口。
+   *
+   * @type {Map<string, { parentSessionId: string, name: string }>}
+   */
+  const owners = new Map()
   /** @type {Map<string, string>} 各 worker 本轮的 assistant 文本（同一 turn 取最后一条非空），key 为会话 id */
   const turnText = new Map()
   /** @type {Map<string, number>} 每个父会话的连续自动续行次数 */
@@ -441,19 +463,44 @@ export function createDispatcher({
     if (typeof archivedSessionIds !== 'function') return null
     const archived = new Set(archivedSessionIds())
     const active = (await workers.list()).filter((item) => !archived.has(item.childId))
-    return {
-      total: active.length,
-      // 在跑的记录不算可复用：它这一轮还没回报完，再投一条只会排在后面。
-      idle: active.filter((item) => !inflight.has(item.childId)),
+    // 绑定一次读盘取全量再分组：逐 worker 读 `cards.json` 会让一次派工付 O(N × 文件体积)。
+    // 两个提供方都没有时不做分类，与投递门禁的降级口径一致。
+    let bindingsFor
+    if (typeof cardBindingsBySession === 'function') {
+      const all = await cardBindingsBySession()
+      bindingsFor = (sessionId) => all.get(sessionId) ?? []
+    } else if (typeof listCardBindings === 'function') {
+      bindingsFor = (sessionId) => listCardBindings(sessionId)
     }
+    /** 空闲但挂着未完成卡的 worker：不能接新活，关闭卡后槽位才会释放。 */
+    const bound = []
+    const idle = []
+    for (const item of active) {
+      // 在跑的记录不算可复用：它这一轮还没回报完，再投一条只会排在后面。
+      if (inflight.has(item.childId)) continue
+      const cards = bindingsFor === undefined
+        ? []
+        : (await bindingsFor(item.childId)).filter((binding) => binding.status === 'active')
+      if (cards.length > 0) {
+        bound.push({ ...item, cards })
+        continue
+      }
+      idle.push(item)
+    }
+    return { total: active.length, idle, bound }
   }
 
   /**
    * 投递卡门禁：worker 挂着未完成的卡时，只允许同卡续跑。
    *
-   * 我们的槽位绑定是「卡 → 槽位 → 会话」的投影，一个会话可能被多张卡绑到不同
-   * 槽位上，所以按「任一 active 卡匹配」放行，而不是只看最新那张。挂 done /
-   * archived 卡、或者不挂卡时不拦——那时卡已经不是它当前在服务的工作。
+   * 我们的槽位绑定是「卡 → 槽位 → 会话」的投影，同一个会话可能被多张卡绑到
+   * 不同槽位上。挂 done / archived 卡、或者不挂卡时不拦——那时卡已经不是它
+   * 当前在服务的工作。
+   *
+   * 同时挂多张 `active` 卡是必须拦下的坏状态：它意味着会话在并行服务多条
+   * 工作线，产物无从归属，而角色槽位注入本来就只按一张卡算（`slotIndex` 后绑
+   * 胜出），上下文与实际服务对象已经不一致。只有整卡替换 `slots` 才会造成这种
+   * 状态，正常派工与关卡释放都不会。
    *
    * @param {string} sessionId - worker 会话 id
    * @param {string | undefined} cardId - 本次投递声明的卡
@@ -463,11 +510,14 @@ export function createDispatcher({
     if (typeof listCardBindings !== 'function') return
     const active = (await listCardBindings(sessionId)).filter((item) => item.status === 'active')
     if (active.length === 0) return
-    if (cardId !== undefined && active.some((item) => item.cardId === cardId)) return
     const refs = active
       .map((item) => `#${item.number} ${item.title}（cardId: ${item.cardId}，槽位 ${item.slot}）`)
       .join('、')
-    const way = '同卡续跑：带 cardId 重发本消息；该卡已完成：先 update_card 标 done 再投递；新任务：spawn_worker 新建 worker 并把卡槽位绑到它。'
+    if (active.length > 1) {
+      throw new Error(`message_worker: worker ${sessionId} 同时挂着 ${active.length} 张未完成的卡（${refs}），无法判断这次产物属于哪一张，已拒绝投递：先用 update_card 关掉多余的卡（done / archived 会释放槽位上的执行者），只留一张 active 卡再派活。`)
+    }
+    if (cardId !== undefined && active[0].cardId === cardId) return
+    const way = '同卡续跑：带 cardId 重发本消息；该卡已完成：先 update_card 标 done（会释放槽位上的执行者）再投递；新任务：spawn_worker 新建 worker 并把卡槽位绑到它。'
     if (cardId === undefined) {
       throw new Error(`message_worker: worker ${sessionId} 挂着未完成的卡 ${refs}，本次投递未声明同卡，已拒绝：挂未完成卡的 worker 不得接别的工作，否则会话同时服务两张卡、产物会落错卡。${way}`)
     }
@@ -498,6 +548,40 @@ export function createDispatcher({
   }
 
   /**
+   * 派工绑卡前的归属与状态校验。
+   *
+   * 与 `update_card` 同口径：卡有归属时，调用方所属项目必须与它一致；无归属的
+   * 存量卡不拦（没有归属可冲突）。`bindSlot` 自己只看得见「卡在不在、是不是
+   * 归档」，拿不到调用方是谁——跨项目写会作废对方持有的 `expectedRevision`，
+   * 还会让 A 项目的 worker 每轮上下都带着 B 项目的 spec 全文。
+   *
+   * 已关闭（done）的卡同样拒绝：关闭即释放执行者，再把它绑到新会话会让门禁按
+   * `active` 过滤时看不见这条绑定，worker 却能靠 `cardIndex` 继续读到卡的事实。
+   * 归档是终态，另有一条更明确的报错。
+   *
+   * @param {string} cardId - 卡片 id
+   * @param {object} parent - 发起派工的父 agent
+   * @returns {Promise<void>} 校验通过
+   */
+  async function assertCardAssignable(cardId, parent) {
+    if (typeof getCard !== 'function') return
+    const card = await getCard(cardId)
+    if (card === undefined) throw new Error(`spawn_worker: 卡片 ${cardId} 不存在`)
+    if (card.status === 'archived') {
+      throw new Error(`spawn_worker: 卡片 ${cardId} 已归档，归档是终态，不能再绑执行者`)
+    }
+    if (card.status === 'done') {
+      throw new Error(`spawn_worker: 卡片 ${cardId} 已关闭（done），关闭即释放执行者，不能再绑新 worker；要重新指派请先 update_card 把状态改回 active`)
+    }
+    const project = await resolveProject?.(parent?.id)
+    const owner = typeof card.projectId === 'string' ? card.projectId : ''
+    const scope = typeof project?.id === 'string' ? project.id : ''
+    if (owner !== '' && owner !== scope) {
+      throw new Error(`spawn_worker: 卡片 ${cardId} 属于另一个项目，不能跨项目把它绑给 worker；请用本项目的卡片，或让那个项目的协调者派工`)
+    }
+  }
+
+  /**
    * 给已派出的 worker 发后续消息。
    *
    * 会话还在内存时消息直接投进去（并入当前执行）；进程重启后会话不在内存，先
@@ -523,7 +607,9 @@ export function createDispatcher({
     // 卡门禁：在跑的 worker 也不能被拉去干别的卡，否则同一条会话会把两卡的
     // 产物混在一起。
     await assertCardGateOpen(sessionId, cardId)
-    const worker = await workers.get(sessionId)
+    // 登记表是跨进程真源；本进程刚派出、登记落盘失败的会话靠 `owners` 兜底，
+    // 否则同一个协调者在本轮里都投不进自己刚建的 worker。
+    const worker = await workers.get(sessionId) ?? owners.get(sessionId)
     if (worker === undefined) {
       throw new Error(`message_worker: 没有会话 ${sessionId} 的派工记录，它不是本协调体系派出的 worker`)
     }
@@ -546,6 +632,7 @@ export function createDispatcher({
       parentSessionId: parent.id,
       parent,
       name: displayName,
+      task: message,
       startedAt: Date.now(),
     })
     if (name !== undefined) {
@@ -560,17 +647,29 @@ export function createDispatcher({
   }
 
   /**
-   * 派一个 worker。立即返回，不等待 worker 完成。
+   * 建一个 worker 会话并登记，**不投递任务、不产生模型调用**。
+   *
+   * 开工由协调者随后的 `message` 触发。分成两步是为了让槽位绑定先落盘：第一条
+   * 任务请求组装时，角色槽位与卡片事实都能读到；否则首轮只能靠简报里的口头
+   * 交代，role / card 上下文要晚一个请求才出现。
+   *
+   * 这里不建在飞记录：没有 turn 就不会有 `turn/end`，先挂一条在飞记录只会让
+   * 结算路径等一个永远不来的事件。在飞记录由 `message` 首次投递时建立。
    *
    * @param {object} options - 派工参数
    * @param {object} options.parent - 发起派工的父 agent
-   * @param {string} options.initialMessage - 交给 worker 的任务正文
    * @param {string} options.name - worker 显示名
+   * @param {string} [options.cardId] - 要绑的卡片 id；与 `slot` 成对
+   * @param {string} [options.slot] - 要绑的槽位名；与 `cardId` 成对
    * @param {string} [options.force] - 名册到顶时的逃逸理由；非空才放行新建
    * @param {AbortSignal} options.signal - 取消信号
    * @returns {Promise<object>} 派工记录
    */
-  async function dispatch({ parent, initialMessage, name, force, signal }) {
+  async function dispatch({ parent, name, cardId, slot, force, signal }) {
+    // 绑定参数成对出现：只给一半会让调用方以为绑上了，实际什么都没发生。
+    if ((cardId === undefined) !== (slot === undefined)) {
+      throw new Error('spawn_worker: cardId 与 slot 必须成对传入（要绑卡就两者都给，不绑就都不给）')
+    }
     // 派工是唯一会真的拉起一个会话的操作，身份判定必须比工具面严一档。
     await assertCoordinator(parent, {
       pending: 'spawn_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能派工',
@@ -584,6 +683,9 @@ export function createDispatcher({
     if (ctx.get('sessionQuery') === undefined) {
       throw new Error('dsh-leader-kit: 当前组合缺少会话查询后端，worker 无法冷恢复续聊，拒绝派工')
     }
+    // 绑卡前先校验归属与状态：跨项目写会污染对方的看板与上下文，已关闭的卡绑上去
+    // 会绕过投递门禁。校验放在建会话之前，被拒时磁盘上连会话都不会留下。
+    if (cardId !== undefined) await assertCardAssignable(cardId, parent)
     // 名册上限：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
     // 一条干净上下文时才值得。`force` 非空是明确的逃逸声明，理由随工具调用进
     // 会话历史，可审计。
@@ -591,15 +693,23 @@ export function createDispatcher({
       const roster = await describeRoster()
       if (roster !== null && roster.total >= activeWorkerLimit) {
         const candidates = roster.idle.slice(0, 10)
+        const bound = roster.bound.slice(0, 10)
         throw new Error([
           `spawn_worker: 未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
           candidates.length === 0
-            ? '当前没有可复用的 worker（都在跑）：等它们结算后再派，或归档不再需要的会话。'
-            : `可复用的 worker（当前不在跑，用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
+            ? '当前没有可复用的 worker（都在跑，或都挂着未完成的卡）：等它们结算，或关闭手上的卡释放执行者。'
+            : `可复用的 worker（当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
               candidates.map((item) => `- ${item.childId} ${item.name ?? item.label ?? ''}`.trimEnd()).join('\n')
             }`,
+          bound.length === 0
+            ? ''
+            : `挂着未完成卡、不能接新活的 worker（先 update_card 把卡标 done / archived，槽位会自动释放）：\n${
+              bound.map((item) => `- ${item.childId} ${item.name ?? item.label ?? ''}：${
+                item.cards.map((card) => `#${card.number} ${card.title}（cardId: ${card.cardId}，槽位 ${card.slot}）`).join('、')
+              }`.trimEnd()).join('\n')
+            }`,
           '确实要新建：传 force 说明为什么现有 worker 都不适合。',
-        ].join('\n'))
+        ].filter((line) => line !== '').join('\n'))
       }
     }
     // worker 的工作目录由项目决定：协调者不能指定 worker 跑在哪，也不该让
@@ -608,31 +718,40 @@ export function createDispatcher({
     // worker 与协调者同属项目工作区：不挂就落官方树的「未分组」，而它由项目区块
     // 呈现，两处都在就是重复。
     const workspaceId = await resolveWorkerWorkspaceId?.(parent.id)
-    const childId = await workerSessions.spawn({
-      cwd,
-      workspaceId,
-      name,
-      initialMessage,
-      parentSessionId: parent.id,
-      signal,
-    })
+    // 「呈现」（改名、挂工作区）推到绑定成功之后：改名会追加 `session/title`
+    // 事件、让会话在磁盘上 materialize，先做就没有东西可回滚了。
+    const childId = await workerSessions.spawn({ cwd, workspaceId, name, signal, deferPresentation: true })
+    // 绑卡必须在返回前完成：协调者接下来投递的第一条消息就该带着角色与卡片事实。
+    // 绑不上就销毁刚建的会话——它还没 materialize，磁盘上不会留下半成品。
+    if (cardId !== undefined && slot !== undefined) {
+      if (typeof bindCardSlot !== 'function') {
+        await workerSessions.dispose(childId)
+        throw new Error('dsh-leader-kit: 当前装配没有提供 bindCardSlot，无法在派工时绑卡')
+      }
+      try {
+        await bindCardSlot({ cardId, slot, sessionId: childId })
+      } catch (error) {
+        await workerSessions.dispose(childId)
+        throw error
+      }
+    }
+    workerSessions.present(childId, { name, workspaceId })
     const record = {
       childId,
       parentSessionId: parent.id,
       parent,
       name,
-      task: initialMessage,
       startedAt: Date.now(),
     }
-    inflight.set(record.childId, record)
+    // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
+    owners.set(childId, { parentSessionId: parent.id, name })
     // 派工落登记表：协调者可能在任何时刻（含本进程重启后）续聊，归属与父会话
-    // 映射不能只活在内存里。
+    // 映射不能只活在内存里。任务正文此时还没有，等 `message` 投递后才有。
     try {
       await workers.register({
         childId: record.childId,
         parentSessionId: parent.id,
         name,
-        task: initialMessage,
       })
     } catch (error) {
       logger(`dsh-leader-kit: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
@@ -842,6 +961,11 @@ export function createDispatcher({
         resumeCounts.delete(fromId)
         resumeCounts.set(toId, Math.max(used, resumeCounts.get(toId) ?? 0))
       }
+      // 本进程派出的归属也要改投：只改落盘登记表的话，接手会话在同一轮里
+      // 给原班 worker 投消息会被归属校验拒绝。
+      for (const owner of owners.values()) {
+        if (owner.parentSessionId === fromId) owner.parentSessionId = toId
+      }
       let moved = 0
       for (const record of inflight.values()) {
         if (record.parentSessionId !== fromId) continue
@@ -907,6 +1031,9 @@ export function createDispatcher({
      */
     markDisposed(sessionId) {
       disposed.add(sessionId)
+      // 会话已经没了：本进程归属也一并摘掉，后续投递改走登记表判断，
+      // 避免「认得出归属却投不进」的半死状态。
+      owners.delete(sessionId)
     },
 
     /**

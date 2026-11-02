@@ -108,6 +108,143 @@ test('改卡工具拒绝空 id', async () => {
   }
 })
 
+test('改卡工具用 addLinks 追加链接，不覆盖已有条目', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', links: [{ label: 'Issue', url: 'https://example.test/1' }] },
+      exec,
+    )
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/2' }] },
+      exec,
+    )
+    assert.deepEqual(updated.card.links.map((link) => link.label), ['Issue', 'PR'])
+    assert.equal(updated.card.revision, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具重复 addLinks 同一条链接不会长出重复条目', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    const link = { label: 'PR', url: 'https://example.test/pr/2' }
+    await tools.update_card.execute({ id: created.card.id, addLinks: [link] }, exec)
+    const again = await tools.update_card.execute({ id: created.card.id, addLinks: [link] }, exec)
+    // 工具层不能给增量追加补 id：补了每次都算新条目，去重永远不生效。
+    assert.equal(again.card.links.length, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 与整体替换共用 URL 归一化，且不补 id', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: '单斜杠', url: 'https:/example.com' }] },
+      exec,
+    )
+    // 归一化在落盘前做：增量路径不能绕过 #53 的写入边界。
+    assert.equal(updated.card.links[0].url, 'https://example.com/')
+    // 不补 id 是增量路径的语义：store 靠 label+url 判重。
+    assert.equal('id' in updated.card.links[0], false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 的非法 URL 与整体替换同口径拒绝', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, addLinks: [{ label: '本地文件', url: 'docs/report.md' }] },
+        exec,
+      ),
+      /第 1 条.*http\(s\) 绝对地址/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具拒绝同次传 links 与 addLinks', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        {
+          id: created.card.id,
+          links: [{ label: 'PR', url: 'https://example.test/pr/2' }],
+          addLinks: [{ label: 'Issue' }],
+        },
+        exec,
+      ),
+      /不能同时传/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具拒绝缺标签的 addLinks 条目', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute({ id: created.card.id, addLinks: [{ url: 'https://example.test' }] }, exec),
+      /label/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具拒绝关闭卡片的同时绑定槽位', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, status: 'done', slots: { dev: { sessionId: 'worker-1' } } },
+        exec,
+      ),
+      /会释放槽位上的执行者/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具关闭卡片时释放原有槽位', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { dev: { sessionId: 'worker-1' } } },
+      exec,
+    )
+    const done = await tools.update_card.execute({ id: created.card.id, status: 'done' }, exec)
+    assert.deepEqual(done.card.slots, {})
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具的入参 schema 暴露 addLinks，模型才用得到', async () => {
+  const { home, tools } = await createTools()
+  try {
+    assert.equal(tools.update_card.parameters.properties.addLinks.type, 'array')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('查卡工具默认只列 active，归档卡要显式要', async () => {
   const { home, tools } = await createTools()
   try {
@@ -171,12 +308,103 @@ test('查卡工具显式指定 archived 时返回归档卡，不被默认排除�
   }
 })
 
-test('建卡工具拒绝缺 label 的链接条目', async () => {
+test('建卡工具拒绝缺 label 的链接条目，报错说清是哪一条、带了什么 url', async () => {
   const { home, tools } = await createTools()
   try {
     await assert.rejects(
       () => tools.create_card.execute({ title: '任务', links: [{ url: 'https://example.test/mr/1' }] }, exec),
-      /links 条目缺 label/,
+      (error) => {
+        assert.match(error.message, /links 第 1 条缺 label/)
+        // 模型要能照着改：告诉它这一条其实带了 url、以及规则是什么
+        assert.match(error.message, /https:\/\/example\.test\/mr\/1/)
+        assert.match(error.message, /每条链接都要有非空 label/)
+        return true
+      },
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('建卡与改卡工具拒绝非 http(s) 的 url，并告知是第几条、哪个标签、怎么改', async () => {
+  const { home, tools } = await createTools()
+  try {
+    for (const url of ['javascript:alert(1)', 'ftp://example.test/mr/1', 'docs/report.md', 'example.test/mr/1']) {
+      await assert.rejects(
+        () => tools.create_card.execute({
+          title: '任务',
+          links: [{ label: 'MR', url: 'https://example.test/mr/1' }, { label: 'Issue', url }],
+        }, exec),
+        (error) => {
+          assert.match(error.message, /links 第 2 条/)
+          assert.match(error.message, /label「Issue」/)
+          assert.match(error.message, /http\(s\) 绝对地址/)
+          assert.match(error.message, /https:\/\/…/)
+          return true
+        },
+      )
+    }
+
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute({
+        id: created.card.id,
+        links: [{ label: '危险', url: 'javascript:alert(1)' }],
+      }, exec),
+      /label「危险」[\s\S]*http\(s\) 绝对地址/,
+    )
+    // 被拒的写入不能落盘
+    const listed = await tools.list_cards.execute({ cardId: created.card.id }, exec)
+    assert.equal(listed.cards[0].links, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('链接字段 trim 后落盘，空 url / purpose 不落空串，重复 id 被换成新 id', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({
+      title: '任务',
+      links: [
+        { id: 'same', label: ' MR ', url: ' https://example.test/mr/1 ', purpose: ' 交付 ' },
+        { id: 'same', label: 'Issue', url: '   ', purpose: '  ' },
+      ],
+    }, exec)
+
+    const [first, second] = created.card.links
+    assert.equal(first.id, 'same')
+    assert.equal(first.label, 'MR')
+    assert.equal(first.url, 'https://example.test/mr/1')
+    assert.equal(first.purpose, '交付')
+    assert.notEqual(second.id, 'same')
+    assert.equal(second.label, 'Issue')
+    assert.equal('url' in second, false)
+    assert.equal('purpose' in second, false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('工具写入边界把非规范 http(s) 地址归一化后落盘', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({
+      title: '任务',
+      links: [
+        { label: '简写', url: 'http:example.test/mr/1' },
+        { label: '单斜杠', url: 'https:/example.test/mr/2' },
+        { label: '换行', url: 'https://exa\nmple.test/mr/3' },
+      ],
+    }, exec)
+
+    assert.deepEqual(
+      created.card.links.map(({ label, url }) => ({ label, url })),
+      [
+        { label: '简写', url: 'http://example.test/mr/1' },
+        { label: '单斜杠', url: 'https://example.test/mr/2' },
+        { label: '换行', url: 'https://example.test/mr/3' },
+      ],
     )
   } finally {
     await rm(home, { recursive: true, force: true })

@@ -30,7 +30,7 @@ test('渲染固定用 compact 变体：两处调用点都是窄容器', () => {
 })
 
 test('构建期把 ui-primitives 留在产物外，与 react 同列', () => {
-  const source = read('build/client.mjs')
+  const source = read('build/client-bundle.mjs')
   const match = /const BASELINE_EXTERNALS = \[(.*?)\]/s.exec(source)
   assert.notEqual(match, null, '找不到 BASELINE_EXTERNALS')
   const externals = match[1].split(',').map((item) => item.trim().replace(/^'|'$/g, '')).filter(Boolean)

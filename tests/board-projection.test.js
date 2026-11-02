@@ -6,6 +6,9 @@ import {
   fitLinkChips,
   formatDuration,
   isCardStalled,
+  mergeCardSnapshot,
+  mergeCardUpdate,
+  mergeDetailCard,
   mergeSessionState,
   slotBindingsOf,
   slotViewsForCard,
@@ -310,4 +313,54 @@ test('链接 chip 排布：间距非法时全量展示，不藏链接', () => {
     overflowWidth: 20,
     gap: -1,
   }), 2)
+})
+
+test('改卡结果只替换同 id 的那张，其余保持原引用', () => {
+  const first = { id: 'c1', revision: 0, links: [] }
+  const second = { id: 'c2', revision: 0, links: [] }
+  const updated = { id: 'c2', revision: 1, links: [{ label: 'PR' }] }
+
+  const merged = mergeCardUpdate([first, second], updated)
+  assert.equal(merged[0], first)
+  assert.equal(merged[1], updated)
+  // 不是对象（宿主异常返回）时原样返回同一份列表，不把列表打坏
+  const cards = [first, second]
+  assert.equal(mergeCardUpdate(cards, undefined), cards)
+  assert.equal(mergeCardUpdate(cards, null), cards)
+})
+
+test('保存期间切到另一张卡，旧卡结果不落到新卡', () => {
+  const cardA = { id: 'c1', revision: 1, links: [] }
+  const cardB = { id: 'c2', revision: 1, links: [] }
+  const detailB = { card: cardB, anchor: { x: 1 } }
+  const savedA = { id: 'c1', revision: 2, links: [{ label: 'PR' }] }
+
+  // A 的保存响应晚到，浮层已经是 B：原样保留 B，连对象引用都不变
+  const kept = mergeDetailCard(detailB, savedA)
+  assert.equal(kept, detailB)
+  assert.equal(kept.card.id, 'c2')
+
+  // 浮层仍是 A 时才替换卡片，anchor 跟着保留
+  const detailA = { card: cardA, anchor: { x: 2 } }
+  const merged = mergeDetailCard(detailA, savedA)
+  assert.notEqual(merged, detailA)
+  assert.equal(merged.card, savedA)
+  assert.equal(merged.anchor, detailA.anchor)
+
+  // 浮层已经关掉
+  assert.equal(mergeDetailCard(null, savedA), null)
+})
+
+test('轮询快照不覆盖版本更高的本地回填', () => {
+  const local = { id: 'c1', revision: 3, links: [{ label: '刚保存的' }] }
+  const fresh = { id: 'c2', revision: 0, links: [] }
+
+  // 在途请求是保存之前发出的，晚到时带回的是旧版本
+  const merged = mergeCardSnapshot([local], [{ id: 'c1', revision: 2, links: [] }, fresh])
+  assert.equal(merged[0], local)
+  assert.equal(merged[1], fresh)
+
+  // 同版本以宿主快照为准：别处（协调者）的改动照样能落到看板
+  const equal = mergeCardSnapshot([local], [{ id: 'c1', revision: 3, links: [{ label: '别处改的' }] }])
+  assert.equal(equal[0].links[0].label, '别处改的')
 })

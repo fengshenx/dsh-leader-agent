@@ -4,7 +4,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  CommandNotFoundError, CommandShellError, buildCommandLine, pathValueOf, quoteForCmd, resolveExecutable, spawnCommandSync,
+  CommandNotFoundError, CommandShellError, buildCommandLine, commandLaunchError, pathValueOf, quoteForCmd,
+  resolveExecutable, spawnCommand, spawnCommandSync,
 } from '../scripts/spawn-command.mjs'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 
@@ -212,4 +213,33 @@ test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）',
   })
   assert.equal(result.status, 0)
   assert.equal(plain(result.stdout).trim(), 'expanded')
+})
+
+test('Windows 上 spawnCommand 经 cmd 起 .cmd shim，参数原样到达', { skip: process.platform !== 'win32' }, async () => {
+  const dir = await makeTempDir('dsh-leader-kit spawn async-')
+  writeFileSync(join(dir, 'probe-async.cmd'), '@echo off\r\necho async [%~1]\r\n')
+  const child = spawnCommand({
+    command: 'probe-async', args: ['a b'], env: { ...process.env, PATH: dir }, stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  const chunks = []
+  child.stdout.on('data', (chunk) => chunks.push(chunk))
+  const code = await new Promise((resolve) => child.once('close', resolve))
+  assert.equal(code, 0)
+  assert.equal(plain(Buffer.concat(chunks).toString()).trim(), 'async [a b]')
+})
+
+test('spawnCommand 解析不到命令时同步抛 CommandNotFoundError', { skip: process.platform !== 'win32' }, () => {
+  assert.throws(
+    () => spawnCommand({ command: 'dsh-leader-kit-async-missing', args: [], stdio: 'ignore' }),
+    CommandNotFoundError,
+  )
+})
+
+test('commandLaunchError 把「cmd 起不来」与「命令不存在」分开', () => {
+  const enoent = Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })
+  assert.ok(commandLaunchError(enoent, { command: 'dsh', platform: 'win32' }) instanceof CommandShellError)
+  assert.ok(commandLaunchError(enoent, { command: 'dsh', platform: 'linux' }) instanceof CommandNotFoundError)
+  // 与 cmd 无关的错误原样交给调用方，别包装。
+  const tooLong = Object.assign(new Error('spawn ENAMETOOLONG'), { code: 'ENAMETOOLONG' })
+  assert.equal(commandLaunchError(tooLong, { command: 'dsh', platform: 'win32' }), tooLong)
 })

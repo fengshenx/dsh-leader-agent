@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { normalizeHttpUrl } from '../../shared/card-links.js'
 import {
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -59,9 +60,9 @@ function linkSchema() {
     type: 'object',
     properties: {
       id: { type: 'string' },
-      label: { type: 'string' },
-      url: { type: 'string' },
-      purpose: { type: 'string' },
+      label: { type: 'string', description: '链接标签，必填且非空' },
+      url: { type: 'string', description: '能归一化为 http(s) 绝对地址的完整地址（如 https://…）；没有可跳转地址时省略这个字段' },
+      purpose: { type: 'string', description: '这个链接的用途（可选）' },
     },
     required: ['label'],
   }
@@ -133,38 +134,100 @@ function cardSchema() {
  *
  * 工具是手写的 ToolDefinition，宿主只校验输出 schema，入参 schema 里的
  * `required` 在运行时不生效——链接条目的 label 缺了就会以 `undefined` 落盘，
- * 序列化后静默丢字段。因此这里显式校验形状。
+ * 序列化后静默丢字段。因此这里显式校验形状与 URL。
+ *
+ * 报错是写给模型看的：每条都带上「第几条、哪个标签、收到的原值、该怎么改」。
+ * 只说「url 非法」会让模型原地重试，而它需要知道的是「要 http(s) 绝对地址
+ * （如 https://… 的完整地址），或者干脆不传 url」。
+ *
+ * 整体替换（`links`）会给缺 id 的条目补一个稳定 id，条目以后能按 id 原位更新。
+ * 增量追加（`addLinks`）**不能补**：补了每次都生成新 id，同一份链接会被重复
+ * 追加，去重也就永远不生效——调用方没给 id 时就留空，交给 store 按
+ * `label + url` 判重。
  *
  * @param {object[]} links - 原始链接条目
+ * @param {{ assignIds?: boolean }} [options] - `assignIds` 为 false 时不给缺 id 的条目补 id
  * @returns {object[]} 规范化后的链接条目
  */
-function normalizeLinks(links) {
+function normalizeLinks(links, { assignIds = true } = {}) {
   if (!Array.isArray(links)) {
-    throw new Error('卡片工具: links 必须是数组')
+    throw new Error(`卡片工具: links 必须是数组，收到 ${describeValue(links)}`)
   }
-  return links.map((link) => {
+  const seenIds = new Set()
+  return links.map((link, index) => {
+    const where = `links 第 ${index + 1} 条`
     if (link === null || typeof link !== 'object' || Array.isArray(link)) {
-      throw new Error('卡片工具: links 条目必须是对象')
+      throw new Error(`卡片工具: ${where}必须是对象，收到 ${describeValue(link)}`)
     }
     if (typeof link.label !== 'string' || link.label.trim() === '') {
-      throw new Error('卡片工具: links 条目缺 label')
+      const hint = typeof link.url === 'string' && link.url.trim() !== ''
+        ? `（这一条带了 url ${JSON.stringify(link.url)}，但链接必须有非空 label）`
+        : ''
+      throw new Error(`卡片工具: ${where}缺 label${hint}；每条链接都要有非空 label`)
     }
+    const label = link.label.trim()
     if (link.id !== undefined && (typeof link.id !== 'string' || link.id === '')) {
-      throw new Error('卡片工具: links 条目的 id 必须是非空字符串')
+      throw new Error(`卡片工具: ${where}（label「${label}」）的 id 必须是非空字符串，收到 ${describeValue(link.id)}`)
     }
     if (link.url !== undefined && typeof link.url !== 'string') {
-      throw new Error('卡片工具: links 条目的 url 必须是字符串')
+      throw new Error(`卡片工具: ${where}（label「${label}」）的 url 必须是字符串，收到 ${describeValue(link.url)}`)
     }
     if (link.purpose !== undefined && typeof link.purpose !== 'string') {
-      throw new Error('卡片工具: links 条目的 purpose 必须是字符串')
+      throw new Error(`卡片工具: ${where}（label「${label}」）的 purpose 必须是字符串，收到 ${describeValue(link.purpose)}`)
     }
+    const rawUrl = typeof link.url === 'string' ? link.url.trim() : ''
+    let url = ''
+    if (rawUrl !== '') {
+      const normalizedUrl = normalizeHttpUrl(rawUrl)
+      if (normalizedUrl === null) {
+        throw new Error(
+          `卡片工具: ${where}（label「${label}」）的 url 必须是 http(s) 绝对地址，`
+          + `收到 ${JSON.stringify(link.url)}；请改成 https://… 这样的完整地址，或者去掉 url 字段`,
+        )
+      }
+      url = normalizedUrl
+    }
+    const purpose = typeof link.purpose === 'string' ? link.purpose.trim() : ''
+    // 重复 id 会让看板把两条链接当成同一条（改一行动两行）：后面那条换新 id。
+    // `addLinks` 不补 id：补了每次都是新 id，去重永远不生效，交给 store 按
+    // `label + url` 判重。重复且不能补时同样留空，避免两条链接撞同一个 id。
+    const hasId = typeof link.id === 'string' && link.id !== ''
+    const id = hasId && !seenIds.has(link.id)
+      ? link.id
+      : assignIds ? randomUUID() : undefined
+    if (id !== undefined) seenIds.add(id)
     return {
-      id: typeof link.id === 'string' ? link.id : randomUUID(),
-      label: link.label,
-      ...link.url === undefined ? {} : { url: link.url },
-      ...link.purpose === undefined ? {} : { purpose: link.purpose },
+      ...id === undefined ? {} : { id },
+      label,
+      ...url === '' ? {} : { url },
+      ...purpose === '' ? {} : { purpose },
     }
   })
+}
+
+/**
+ * 把收到的值描述成一句能放进报错里的话。
+ *
+ * 模型看到 `[object Object]` 或 `undefined` 都无从下手；给出类型与 JSON 片段
+ * 才能让它自己改对。
+ *
+ * @param {unknown} value - 收到的值
+ * @returns {string} 描述
+ */
+function describeValue(value) {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return `数组（${value.length} 项）`
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'object') {
+    try {
+      const text = JSON.stringify(value)
+      return text.length > 120 ? `${text.slice(0, 120)}…` : text
+    } catch {
+      // 循环引用之类序列化不了的值，退回类型说明。
+      return '对象'
+    }
+  }
+  return `${typeof value} ${String(value)}`
 }
 
 /**
@@ -235,7 +298,7 @@ export function createCreateCardTool({ store, resolveProject }) {
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '外部引用条目（MR、Issue、设计文档等）。',
+          description: '外部引用条目（MR、Issue、设计文档等）。每条要有非空 label；url 若是 http(s) 绝对地址才会在卡上可点，传错会报错并指出是第几条。',
         },
         slots: {
           ...slotsSchema(),
@@ -301,7 +364,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
   return {
     name: 'update_card',
     description:
-      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡。',
+      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡。',
     parameters: {
       type: 'object',
       properties: {
@@ -317,7 +380,16 @@ export function createUpdateCardTool({ store, resolveProject }) {
           enum: ['active', 'done', 'archived'],
           description: '新状态。active 与 done 可逆，archived 是终态。',
         },
-        links: { type: 'array', items: linkSchema(), description: '新的链接条目（整体替换）。' },
+        links: {
+          type: 'array',
+          items: linkSchema(),
+          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。',
+        },
+        addLinks: {
+          type: 'array',
+          items: linkSchema(),
+          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。',
+        },
         slots: {
           ...slotsSchema(),
           description: '新的槽位绑定（整体替换）。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，是小写 ASCII 机器标识（字母、数字、下划线、连字符，最长 32 字符），不是显示名。',
@@ -343,7 +415,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
       if (typeof input.id !== 'string' || input.id.trim() === '') {
         throw new Error('update_card: id 不能为空')
       }
@@ -361,7 +433,19 @@ export function createUpdateCardTool({ store, resolveProject }) {
       }
       const spec = optionalString(input.spec, 'spec')
       const links = input.links === undefined ? undefined : normalizeLinks(input.links)
+      const addLinks = input.addLinks === undefined ? undefined : normalizeLinks(input.addLinks, { assignIds: false })
+      // 整体替换与增量追加是两种意图；同次传会让「不覆盖别人刚写的链接」
+      // 这个承诺落空，调用方却以为自己在追加。
+      if (links !== undefined && addLinks !== undefined) {
+        throw new Error('update_card: links 与 addLinks 不能同时传（整体替换与增量追加互斥）')
+      }
       const slots = input.slots === undefined ? undefined : normalizeSlots(input.slots)
+      // 关闭卡片会释放槽位上的执行者；同次再传槽位是自相矛盾的意图，收下会让
+      // 调用方以为绑定生效，实际被释放。
+      if ((input.status === 'done' || input.status === 'archived')
+        && slots !== undefined && Object.keys(slots).length > 0) {
+        throw new Error('update_card: 关闭卡片（done / archived）会释放槽位上的执行者，同次不能再绑定槽位')
+      }
       const sortOrder = optionalNumber(input.sortOrder, 'sortOrder')
       // 卡片按项目归属：改别人项目的卡要拒绝。无归属的存量卡不拦——没有归属可
       // 冲突，拦下来只会让存量卡永远改不动。
@@ -382,6 +466,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
         ...spec === undefined ? {} : { spec },
         ...input.status === undefined ? {} : { status: input.status },
         ...links === undefined ? {} : { links },
+        ...addLinks === undefined ? {} : { addLinks },
         ...slots === undefined ? {} : { slots },
         ...sortOrder === undefined ? {} : { sortOrder },
       })

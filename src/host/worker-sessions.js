@@ -124,6 +124,20 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   }
 
   /**
+   * 补做建会话时的「呈现」：改标题、挂项目工作区。
+   *
+   * @param {object} handle - AgentHandle
+   * @param {string} sessionId - 会话 id
+   * @param {string | undefined} name - 显示名
+   * @param {string | undefined} workspaceId - 目标工作区
+   * @returns {void}
+   */
+  function presentOne(handle, sessionId, name, workspaceId) {
+    if (typeof name === 'string' && name !== '') renameTitle(handle, name)
+    attachToWorkspace(ctx, workspaceId, sessionId, logger)
+  }
+
+  /**
    * 销毁一个 worker 会话。
    *
    * @param {string} sessionId - 会话 id
@@ -194,18 +208,20 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     },
 
     /**
-     * 新建一个 worker 会话并即刻派活。
+     * 新建一个 worker 会话，但**不投递任务**。
+     *
+     * 开工由协调者随后的 `message_worker` 触发：这样槽位绑定可以先落盘，第一条
+     * 任务请求组装时角色槽位与卡片事实才读得到。建会话本身不产生任何模型调用。
      *
      * @param {object} options - 派工参数
      * @param {string | undefined} options.cwd - 工作目录
-     * @param {string} options.name - 显示名（同时用作会话标题）
-     * @param {string} options.initialMessage - 任务简报
-     * @param {string} options.parentSessionId - 协调者会话 id
+     * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
      * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
+     * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<string>} 新会话 id
      */
-    async spawn({ cwd, name, initialMessage, parentSessionId, workspaceId, signal }) {
+    async spawn({ cwd, name, workspaceId, signal, deferPresentation = false }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -235,19 +251,27 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
-      renameTitle(handle, name)
-      try {
-        handle.agent.followup(taskMessage(initialMessage, name, parentSessionId))
-      } catch (error) {
-        // 会话建起来了却没收到任务：它不在任何登记表与在飞表里，协调者与名册都
-        // 看不见它。留着就是一个没人管的常驻会话，直接销毁并把原错误抛回去。
-        await disposeOne(sessionId)
-        throw error
-      }
-      // 挂在工作区这一步放在投递之后：挂载是异步落地，会话在这之前被销毁时它
-      // 不该再出现在工作区里。
-      attachToWorkspace(ctx, workspaceId, sessionId, logger)
+      if (!deferPresentation) presentOne(handle, sessionId, name, workspaceId)
       return sessionId
+    },
+
+    /**
+     * 补做建会话时的「呈现」：改标题、挂项目工作区。
+     *
+     * `renameTitle` 会追加 `session/title` 事件，这是让一条零 turn 会话在磁盘上
+     * materialize 的步骤；派工把它推后到绑卡成功之后，绑定失败回滚时磁盘上就
+     * 不会留下一条空会话。
+     *
+     * @param {string} sessionId - 会话 id
+     * @param {object} options - 呈现参数
+     * @param {string} [options.name] - 显示名
+     * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
+     * @returns {void}
+     */
+    present(sessionId, { name, workspaceId }) {
+      const handle = live.get(sessionId)
+      if (handle === undefined) throw new Error(`dsh-leader-kit: 会话 ${sessionId} 不在活表里，无法补做标题与工作区归属`)
+      presentOne(handle, sessionId, name, workspaceId)
     },
 
     /**

@@ -1,8 +1,8 @@
 /**
  * 卡片详情浮层的内容分段。
  *
- * 浮层只读，展示什么由卡片决定：说明与链接。哪几段该出现是纯判定，拆出来是为了
- * 能直接断言「没有说明就不出现说明段」，而不是靠肉眼数 DOM。
+ * 展示什么由卡片决定：说明与链接。哪几段该出现、链接能不能编辑是纯判定，拆出来
+ * 是为了能直接断言「没有说明就不出现说明段」，而不是靠肉眼数 DOM。
  *
  * @module dsh-leader-kit/client/card-detail-view
  */
@@ -34,4 +34,17 @@ export function detailSections(card) {
     spec,
     links: Array.isArray(card?.links) ? card.links : [],
   }
+}
+
+/**
+ * 链接能否在详情里编辑。
+ *
+ * 归档是终态，卡片库会拒改；界面不给出一个必然失败的入口。已完成卡可改——
+ * 收尾后发现漏挂链接是常态。
+ *
+ * @param {object} card - 卡片
+ * @returns {boolean} 能否编辑
+ */
+export function canEditCardLinks(card) {
+  return card?.status !== 'archived'
 }

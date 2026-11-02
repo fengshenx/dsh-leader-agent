@@ -133,6 +133,7 @@ test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默�
     '--dsw-alias-bg-skeleton',
     '--dsw-alias-border-l3',
     '--dsw-alias-border-l4',
+    '--dsw-alias-button-elevated-fill',
     '--dsw-alias-interactive-bg-hover',
     '--dsw-alias-label-caption',
     '--dsw-alias-label-primary',
