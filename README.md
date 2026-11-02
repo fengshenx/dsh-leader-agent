@@ -115,4 +115,4 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器侧取证的执行规范 |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
-| [skills/leader-mode/](skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
+| [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |

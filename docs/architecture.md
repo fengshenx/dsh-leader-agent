@@ -13,7 +13,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
 | 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、worker 回报气泡、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
-| 协议层 | `skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-project` 初始化方法 |
+| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-project` 初始化方法 |
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
@@ -157,8 +157,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 | 来源 | 注入对象 | 生效时机 |
 |---|---|---|
-| `skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
-| `skills/init-project/` | 初始化方法 | 模型调用 `skill` 工具时 |
+| `.agents/skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
+| `.agents/skills/init-project/` | 初始化方法 | 模型调用 `skill` 工具时 |
 | `COORDINATOR.md` | 该项目的协调者会话 | 每轮 turn 读文件，改动下一轮生效 |
 | `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮 turn 读文件，改动下一轮生效 |
 
@@ -166,14 +166,14 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 `SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 声明界面显示名，只影响界面，不进入注入正文。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`（正文为空）。
 
-协议层也随 bundle 分发到 `skills/` 下；项目内若自行放置 `.agents/skills/leader-mode/`，项目副本优先（dsh 的 skill 发现按来源层级取优）。
+协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-kit/.agents/skills/`）。这个路径同时是 dsh 的项目级 skill 目录：任何项目在自己的 `.agents/skills/` 放同名副本即可覆盖，项目副本优先——dsh 的 skill 发现按来源层级取优，项目级 rank 200 低于 bundle 的 600。
 
 ## 模块表
 
 | 部件 | 位置 | 说明 |
 |---|---|---|
-| 协议层 skill | `skills/leader-mode/` | `SKILL.md` + 4 个 playbook + 2 份参考：派工、接力、事件调度、卡片维护、传话纪律、验收裁决、进度说明 |
-| 初始化 skill | `skills/init-project/` | 一次性把仓库工程约定写入目标项目：skill 给出方法与正文，模型用宿主的文件能力写 `AGENTS.md` 受管区块，幂等 |
+| 协议层 skill | `.agents/skills/leader-mode/` | `SKILL.md` + 4 个 playbook + 2 份参考：派工、接力、事件调度、卡片维护、传话纪律、验收裁决、进度说明 |
+| 初始化 skill | `.agents/skills/init-project/` | 一次性把仓库工程约定写入目标项目：skill 给出方法与正文，模型用宿主的文件能力写 `AGENTS.md` 受管区块，幂等 |
 | `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话并即刻派活，**立即返回**会话 id，不等结果 |
 | `message_worker` 工具 | `src/host/tools/message-worker.js` | 给 worker 续聊：活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
 | worker 会话 | `src/host/worker-sessions.js` | worker 的创建、投递、销毁：`agents.create` 建的**普通根会话**，常驻、可被人下钻对话、进程重启后能冷恢复 |
