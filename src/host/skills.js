@@ -66,16 +66,20 @@ async function readCandidate(directory, providerName) {
  * @param {object} options - 提供者选项
  * @param {string} options.skillsRoot - bundle 内 skills 目录绝对路径
  * @param {string} options.providerName - provider 名称
+ * @param {(message: string) => void} [options.logger] - 告警出口
  * @returns {object} dsh skill provider
  */
-export function createSkillProvider({ skillsRoot, providerName }) {
+export function createSkillProvider({ skillsRoot, providerName, logger }) {
   return {
     name: providerName,
     async list() {
       let entries
       try {
         entries = await readdir(skillsRoot, { withFileTypes: true })
-      } catch {
+      } catch (error) {
+        // 抛错会连累整个 skill catalog（其他 provider 也拿不到结果），所以吞掉；
+        // 但发布包漏了目录时没有别的信号，缺件必须靠这条 warn 暴露。
+        logger?.(`读不到 bundle skill 目录，协议层 skill 全部不可用：${skillsRoot}（${error.message}）`)
         return []
       }
       const candidates = []

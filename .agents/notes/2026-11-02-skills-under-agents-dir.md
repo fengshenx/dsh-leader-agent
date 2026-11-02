@@ -33,16 +33,26 @@
 
 真正需要特化的场景发生在用户自己的项目里：把改动副本放进那个项目的 `.agents/skills/`，rank 200 对 600 天然覆盖。在源仓复制一份只会制造双份漂移，而文档工具名门禁只扫一处路径，另一处漏改不会被抓。
 
+### `files` 与 `skillsRoot` 由用例绑定
+
+`package.json` 的 `files` 与 `src/host/index.js` 的 `SKILLS_DIR` 原本互不相干：任一侧漂移，`src/host/skills.js` 的读盘失败只会返回空候选，装机后协议层 skill 全部消失且无任何报错——目录藏进点前缀让肉眼更难发现。
+
+`tests/skills.test.js` 现在读 `SKILLS_DIR`（目录名只此一处，装配与用例共用），递归列出该目录下的真实文件，按 npm `files` 的匹配语义（`**` 跨目录、`*` 只在段内、整段目录名递归收录、`!` 排除）断言每个文件都被覆盖。它守的是「`files` 支撑 `skillsRoot`」，而不是「源码树里有一个目录」——后者由装配层用例管。
+
+同一处读盘失败补一条 warn：`skills.js` 不能抛错（会连累整个 skill catalog，其他 provider 也拿不到结果），但缺件需要信号，所以 `apply` 注入 `logger`，吞的时候把路径与原因打出来。
+
 ## 边界
 
 - 本仓自己作为项目打开时，项目级 root 与 bundle root 指向同一目录，没法再用"项目副本"临时覆盖某个 skill 做调试。要验证改动就在 worktree 里改文件。
-- 包内是隐藏目录：`package.json` 的 `files` 必须显式写 `.agents/skills/**`，漏了会让发布包缺 skill，而单测仍绿（测试读的是源码树）。
+- 包内是隐藏目录：`package.json` 的 `files` 必须显式写 `.agents/skills/**`，漏了发布包就缺 skill。`tests/skills.test.js` 的覆盖断言会红，但那只管 `files` 与 `SKILLS_DIR` 的对齐；tarball 本身仍靠发版前跑 `npm pack --dry-run`。
 - 这是路径搬迁，不改 skill 正文与发现逻辑：`src/host/skills.js` 的读取、rank、候选结构都不变。
 - 已发布版本没有兼容垫片：本仓未发布，旧路径不做读取退回。
 
 ## 验证
 
-- `npm run check`：640 tests / 640 pass / 0 fail（新增 1 条），Agent Note 门禁、文档工具名门禁与语法检查全过。
+- `npm run check`：642 tests / 642 pass / 0 fail（本次新增 2 条），Agent Note 门禁、文档工具名门禁与语法检查全过。
 - `npm pack --dry-run`：tarball 含 `.agents/skills/` 下全部 9 个文件（2 个 `SKILL.md`、4 个 playbook、3 份参考），共 77 个文件。
 - 新增用例「装配层：skill provider 读包内 `.agents/skills`」：在 `tests/coordinator-wiring.test.js` 的假 host 里捕获 `registerProvider` 的工厂，调 `list()` 断言发现 `init-project` 与 `leader-mode`。原 `tests/skills.test.js` 自己拼 `skillsRoot`，`index.js` 漏改不会红——这条补的是装配层的真实路径。
 - 双向验证：把 `src/host/index.js:99` 临时改回 `join(bundleRoot, 'skills')` → 新用例红（provider 读盘失败静默返回空候选）；还原 → 2 / 2 绿。
+- 新增用例「package.json 的 files 覆盖宿主读取的 skillsRoot」：三种漂移各自变红，还原后 6 / 6 绿——`files` 改回旧路径 `skills/**`（1 条红）、删掉该条（1 条红）、收窄成 `.agents/skills/*`（1 条红，嵌套文件漏 pack）；`SKILLS_DIR` 改成 `.agents/skill` 则 4 条红。
+- 新增用例「skillsRoot 不可读时返回空候选并告警」：logger 收到 1 条含缺目录路径的告警，候选为空。

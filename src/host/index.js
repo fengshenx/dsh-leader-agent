@@ -38,6 +38,12 @@ const here = dirname(fileURLToPath(import.meta.url))
 /** bundle 根目录（src/host 的上两级）。 */
 const bundleRoot = join(here, '..', '..')
 
+/**
+ * 协议层 skill 在包内的目录，相对 `bundleRoot`。
+ * `package.json` 的 `files` 必须覆盖它，漏写时装机后 skill 全部失效且无报错——`tests/skills.test.js` 守着这一对。
+ */
+export const SKILLS_DIR = '.agents/skills'
+
 export const name = 'dsh-leader-kit-host'
 // `systemPrompt` 必须声明：角色槽位靠它注册运行时上下文，服务不在作用域内时
 // 注入静默失效（实测：不声明时上下文不进组装结果）。该服务由 base bundle 提供，
@@ -96,8 +102,9 @@ export function apply(ctx) {
 
   ctx.skills.registerProvider(() =>
     createSkillProvider({
-      skillsRoot: join(bundleRoot, '.agents', 'skills'),
+      skillsRoot: join(bundleRoot, SKILLS_DIR),
       providerName: 'dsh-leader-kit',
+      logger,
     }),
   )
 
