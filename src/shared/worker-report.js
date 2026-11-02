@@ -13,6 +13,9 @@
 /** worker 回报消息的 source kind。 */
 export const WORKER_REPORT_SOURCE_KIND = 'dsh-leader-kit/worker-report'
 
+/** 包名还是 `dsh-coordinator` 时写下的 source kind：读侧认它，写侧只产新值。 */
+const LEGACY_WORKER_REPORT_SOURCE_KIND = 'dsh-coordinator/worker-report'
+
 /** `notice` 摘要的长度上限，与宿主的 `CONTEXT_SUMMARY_MAX_CHARS` 同值。 */
 export const CONTEXT_SUMMARY_MAX_CHARS = 120
 
@@ -105,6 +108,19 @@ function isRecord(value) {
 }
 
 /**
+ * 判断 kind 是不是本插件的 worker 回报。
+ *
+ * 认旧 kind：改名之前落盘的完成通知是会话事件，属于运行时用户数据、不可重建，
+ * 读成 null 会让气泡静默降级成宿主普通 notice（无头像、无名字、无跳转）。
+ *
+ * @param {unknown} kind - source 的 kind
+ * @returns {boolean} 是否 worker 回报
+ */
+function isWorkerReportKind(kind) {
+  return kind === WORKER_REPORT_SOURCE_KIND || kind === LEGACY_WORKER_REPORT_SOURCE_KIND
+}
+
+/**
  * 从消息的 source 里读出 worker 回报信息。
  *
  * 宿主不校验 source 的内部形状（只认 kind 是非空字符串），所以读的时候必须
@@ -114,7 +130,7 @@ function isRecord(value) {
  * @returns {{ name: string, childSessionId: string, report: string, outcome: string } | null} worker 信息；不是 worker 回报时为 null
  */
 export function readWorkerReportSource(source) {
-  if (!isRecord(source) || source.kind !== WORKER_REPORT_SOURCE_KIND) return null
+  if (!isRecord(source) || !isWorkerReportKind(source.kind)) return null
   const worker = source.worker
   if (!isRecord(worker)) return null
   // 改名（label → name）之前落盘的消息只有 label，读旧消息时退回它。

@@ -33,7 +33,17 @@
 
 ## 数据目录
 
-运行时数据目录随之变为 `$DSH_HOME/dsh-leader-kit/`。旧的 `$DSH_HOME/dsh-coordinator/` 未做迁移（确认只是测试数据）。若将来有真实部署要升级，需要 `mv` 旧目录或加读取退回。
+运行时数据目录随之变为 `$DSH_HOME/dsh-leader-kit/`。旧的 `$DSH_HOME/dsh-coordinator/` 不做迁移、也不加读取退回。判据可复核：
+
+- 包从未发布到 registry：`npm view dsh-coordinator version` 返回 404，不存在需要升级的外部安装。
+- 本机逐个数据根检查 `ls -d ~/.dsh/dsh-coordinator .worktrees/*/.dev/home/dsh-coordinator .dev/home/dsh-coordinator`：只有主 checkout 的 `.dev/home/dsh-coordinator/` 存在，那是 `npm run dev` 的调试数据（README：删掉即重置），且同根下已有新的 `dsh-leader-kit/`；日常实例根 `~/.dsh/` 与其他 worktree 的开发实例都没有旧目录。
+
+将来真有旧版本部署要升级时，按 README 安装段的 `mv` 手工迁移，或再加读取退回。
+
+## 读取退回与旧包剔除
+
+- **worker 回报消息的 `source.kind`**：读侧认新值与旧值 `dsh-coordinator/worker-report`，写侧只产新值。已落盘的完成通知是会话事件（运行时用户数据、不可重建），只认新值会让旧会话里的气泡静默降级成宿主普通 notice——无头像、无 worker 名、无跳转。回归用例：`tests/worker-report.test.js` 的「旧 kind 的 worker 回报仍能读出 source」「节点定义认领旧 kind 的回报消息」。
+- **`scripts/dev-plan.mjs` 派生 profile 时剔除旧包名**：旧包与本包各带一行 patch（`coordinator-host` / `leader-kit-host`），行 id 不同不去重，留在同一 profile 里会得到两个插件实例。`bundles`、`dependencies` 与 `node_modules` 链接三处都剔除。
 
 ## 验证
 

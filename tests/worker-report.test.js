@@ -81,6 +81,37 @@ test('读 worker 回报的 source 时逐层判型', () => {
   assert.equal(readWorkerReportSource(undefined), null)
 })
 
+test('旧 kind 的 worker 回报仍能读出 source', () => {
+  // 改名（dsh-coordinator → dsh-leader-kit）之前落盘的完成通知是会话事件，属于
+  // 运行时用户数据、不可重建；读成 null 会让气泡静默降级成宿主普通 notice。
+  assert.deepEqual(
+    readWorkerReportSource({ kind: 'dsh-coordinator/worker-report', worker: { name: 'a', childSessionId: 'b' } }),
+    { name: 'a', childSessionId: 'b', report: '', outcome: 'completed' },
+  )
+  // 读旧不等于写旧：新产出的 source 只用新 kind。
+  assert.equal(workerReportSource('a', 'b').kind, WORKER_REPORT_SOURCE_KIND)
+})
+
+test('节点定义认领旧 kind 的回报消息', () => {
+  // 降级发生在 match 上：认领不到，消息就退回宿主的普通 notice 渲染。
+  const event = {
+    type: 'user/message',
+    seq: 3,
+    time: 1700,
+    surfaceOp: 'append',
+    data: {
+      id: 'm-old',
+      source: { kind: 'dsh-coordinator/worker-report', worker: { name: 'a', childSessionId: 'child-1' } },
+      content: [{ type: 'text', text: '任务「a」已结束。' }],
+    },
+  }
+  assert.deepEqual(workerReportDefinition.match(event), { id: 'm-old', role: 'start', exclusive: true })
+  const state = workerReportDefinition.start({}, { event, location: { kind: 'turn' } })
+  assert.equal(state.name, 'a')
+  assert.equal(state.childSessionId, 'child-1')
+  assert.equal(state.text, '任务「a」已结束。')
+})
+
 test('从内容块里取纯文本', () => {
   assert.equal(workerReportText([{ type: 'text', text: '一' }, { type: 'text', text: '二' }]), '一\n二')
   assert.equal(workerReportText([{ type: 'image', url: 'x' }]), '')
