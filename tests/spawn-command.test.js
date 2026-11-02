@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { mkdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  CommandNotFoundError, buildCommandLine, pathValueOf, quoteForCmd, resolveExecutable, spawnCommandSync,
+  CommandNotFoundError, CommandShellError, buildCommandLine, pathValueOf, quoteForCmd, resolveExecutable, spawnCommandSync,
 } from '../scripts/spawn-command.mjs'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 
@@ -153,6 +154,30 @@ test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己
   })
   assert.equal(result.status, 0)
   assert.equal(result.stdout.trim(), 'from-cmd')
+})
+
+test('调用方收窄 env 时仍能起 cmd：cmd 的定位不依赖子进程环境', { skip: process.platform !== 'win32' }, async () => {
+  const dir = await makeTempDir('dsh-leader-kit spawn env-')
+  writeFileSync(join(dir, 'probe-env.cmd'), '@echo off\r\necho env-ok\r\n')
+  const env = { ...process.env, PATH: dir }
+  delete env.ComSpec
+  const result = spawnCommandSync({ command: 'probe-env', encoding: 'utf8', env })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout.trim(), 'env-ok')
+})
+
+test('cmd 自己起不来时抛 CommandShellError，不误报成命令找不到', { skip: process.platform !== 'win32' }, () => {
+  const original = process.env.ComSpec
+  process.env.ComSpec = join(tmpdir(), 'no-such-cmd.exe')
+  try {
+    assert.throws(
+      () => spawnCommandSync({ command: 'cmd', encoding: 'utf8', env: { ...process.env } }),
+      (error) => error instanceof CommandShellError && error.message.includes('起不了 Windows 命令解释器'),
+    )
+  } finally {
+    if (original === undefined) delete process.env.ComSpec
+    else process.env.ComSpec = original
+  }
 })
 
 test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）', { skip: process.platform !== 'win32' }, () => {

@@ -50,11 +50,12 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 - **引号只对付 runtime 的转义，不对抗 cmd 语义**：`%VAR%` 会被展开——cmd 在双引号内同样做变量替换，加引号也拦不住，所以 `quoteForCmd` 不试图拦；参数来自用户自己的命令行，不是外部输入。用例把展开行为固化成已知边界，`start.mjs` 头注释提示参数含 `%` 会被改写。
 - **参数里的换行会被 cmd 截断**：`'line1\nline2'` 到目标程序只剩 `'line1'`——cmd 把换行当命令分隔符。实测借它执行不了第二条命令（`'a\necho INJECTED>文件'` 没有创建文件、argv 只有 `['a']`），是「参数被吃掉」而不是注入面。
 - **语法门禁跟随符号链接目录**：`check-syntax.mjs` 用 `statSync` 判断目录（与顶层一致），`Dirent.isDirectory()` 不跟随会让链接进来的目录被静默漏检；按 `realpath` 去重，成环的链接不会让递归停不下来。实测 junction 指向 `tests` 时文件数 80 → 133，重复指向 `src` 与自环仍是 80。
+- **cmd.exe 的定位不依赖调用方给的 env**：优先父进程的 `process.env.ComSpec`（且必须绝对路径），否则 `%SystemRoot%\System32\cmd.exe`。libuv 起 `cmd.exe` 时按 `options.env` 的 PATH 找它，调用方把 PATH 收窄（测试里只留一个临时目录）就找不到——这条曾把「起不了 cmd」误报成「找不到你的命令」。cmd 自身起不来现在抛 `CommandShellError`，与 `CommandNotFoundError` 分开。
 - **PATH 顺序决定用哪个 dsh**：npm 会把祖先目录的 `node_modules/.bin` 插到 PATH 前面，那里有 `dsh.cmd` 时它赢过全局安装的那一份。这是 npm 脚本的既有语义，不特殊处理；排查「版本不对」时先看 `node_modules/.bin`。
 
 ## 验证
 
-`tests/spawn-command.test.js` 21 条：解析（`.cmd` 优先于无扩展名、PATHEXT 顺序、多 PATH 目录、显式路径不回落 PATHEXT、带引号的 PATH 条目、空条目、PATH 大小写与精确优先、同名的目录不算命中）、引号（普通、含空格、空串、结尾反斜杠翻倍、引号前反斜杠按 CRT 计数、`%` 不加处理）、`buildCommandLine`、真实起进程（`process.execPath` 在 `C:\Program Files\…`，顺带验证带空格路径）、`CommandNotFoundError`，以及 Windows 上四条（非 Windows 跳过）：经 `cmd.exe` 起带空格的 `.cmd` shim 且参数原样到达、按 PATH 解析出的 `.cmd` shim 真的被起起来、解析结果与 cmd 自行 PATHEXT 顺序不一致时起的是解析结果、参数里的 `%VAR%` 被展开（已知边界）。
+`tests/spawn-command.test.js` 23 条：解析（`.cmd` 优先于无扩展名、PATHEXT 顺序、多 PATH 目录、显式路径不回落 PATHEXT、带引号的 PATH 条目、空条目、PATH 大小写与精确优先、同名的目录不算命中）、引号（普通、含空格、空串、结尾反斜杠翻倍、引号前反斜杠按 CRT 计数、`%` 不加处理）、`buildCommandLine`、真实起进程（`process.execPath` 在 `C:\Program Files\…`，顺带验证带空格路径）、`CommandNotFoundError`，以及 Windows 上六条（非 Windows 跳过）：经 `cmd.exe` 起带空格的 `.cmd` shim 且参数原样到达、按 PATH 解析出的 `.cmd` shim 真的被起起来、解析结果与 cmd 自行 PATHEXT 顺序不一致时起的是解析结果、参数里的 `%VAR%` 被展开（已知边界）、调用方收窄 env 时仍能起 cmd、cmd 自身起不来时抛 `CommandShellError`。
 
 双向验证（Windows 11 / node 24.18.1）：
 
@@ -63,10 +64,14 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 | `quoteForCmd` 换回 cmd 的 `""` 实现 | 2 条引号用例红（`结尾反斜杠翻倍`、`按 C runtime 规则处理引号前的反斜杠`） |
 | `buildCommandLine({ file })` 换回 `command` | `解析结果决定起哪个文件` 红：actual `from-bat` / expected `from-cmd`；只传 PATH 的那条仍绿——cmd 自己也能解析，守不住「解析结果被用上」，所以另加了 PATHEXT 顺序一条 |
 | `exists` 默认换回 `existsSync` | `PATH 上与命令同名的目录不算可执行文件` 红 |
+| `cmdPath()` 换回 `env.ComSpec ?? 'cmd.exe'` | `调用方收窄 env 时仍能起 cmd` 红（22 绿 1 红） |
+| 删掉 win32 分支的 `CommandShellError` 一行 | `cmd 自己起不来时抛 CommandShellError` 红（22 绿 1 红） |
 | `scripts/check-syntax.mjs` 前，把 `src/shared/frontmatter.js` 写坏 | 门禁 exit 1，打印 `src\shared\frontmatter.js` 与 `SyntaxError: Unexpected end of input`；还原后 exit 0 |
 | 把 `check-syntax` 里的 `process.execPath` 换成 `no-such-node-xyz` | exit 1，一行 `check-syntax: 起不了 no-such-node-xyz --check：spawnSync no-such-node-xyz ENOENT`；修复前同样操作只打印 80 行裸路径、`ENOENT` 一次都不出现 |
 
 引号探针（`.telov/probe-quote.mjs` 那 10 组 `a\"b` / `a b\\` / `x\\"y` / `tail two\\` 等）：修复前 6/10 相等，修复后 10/10 相等。另测 33 组元字符与边缘形态（制表符、单双引号、`&` / `|` / `;` / 括号、超长串、emoji、换行），不等的只有两类：`%OS%`（cmd 层展开）与含换行的参数（`'line1\nline2'` 只收到 `'line1'`）。换行是截断不是注入：`'a\necho INJECTED>文件'` 实测 argv 只有 `['a']`、目标文件没有被创建。
+
+`npm run check` 整条（Windows 11）：Agent Note 格式 47 篇、文档工具名 11 篇、语法检查 80 文件、单测 713 用例 / 702 通过 / 10 失败 / 1 跳过；`main` 基线 690 / 679 / 同样那 10 条，失败用例名逐条比对相同。
 
 真机（Windows 11 / node 24.18.1 / dsh 0.2.1-rc.5）：
 

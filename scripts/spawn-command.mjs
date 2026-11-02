@@ -16,7 +16,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { statSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 /** Windows 上可以直接起进程的扩展名，按 PATHEXT 的默认顺序。 */
 export const WINDOWS_EXTENSIONS = Object.freeze(['.exe', '.cmd', '.bat', '.com'])
@@ -70,6 +70,39 @@ function isFile(path) {
     // statSync 对不存在的路径抛 ENOENT，「不存在」正是这里要回答的。
     return false
   }
+}
+
+/**
+ * 起不来 Windows 的命令解释器。
+ *
+ * 与 `CommandNotFoundError` 分开：那一个说的是「用户的命令没装」，按提示查 PATH 能修；
+ * 这一个说的是 `cmd.exe` 本身起不来，修法完全不同。混在一起会把用户引到自己的命令上。
+ */
+export class CommandShellError extends Error {
+  /**
+   * @param {string} shell - cmd.exe 的路径
+   * @param {Error} cause - `spawnSync` 给出的错误
+   */
+  constructor(shell, cause) {
+    super(`起不了 Windows 命令解释器 ${shell}：${cause.message}`)
+    this.name = 'CommandShellError'
+    this.shell = shell
+  }
+}
+
+/**
+ * 取 cmd.exe 的绝对路径。
+ *
+ * 只读父进程的 `process.env`，不读调用方传给子进程的 `env`：libuv 起 `cmd.exe` 时按
+ * `options.env` 的 PATH 查找，调用方把 PATH 收窄（比如只留一个临时目录）就找不到它，
+ * 而错误会落到「找不到你的命令」上。相对路径的 `ComSpec` 同理不可用。
+ *
+ * @returns {string} cmd.exe 的绝对路径
+ */
+function cmdPath() {
+  const configured = process.env.ComSpec
+  if (configured !== undefined && isAbsolute(configured)) return configured
+  return join(process.env.SystemRoot ?? 'C:\\Windows', 'system32', 'cmd.exe')
 }
 
 /**
@@ -176,10 +209,13 @@ export function spawnCommandSync({ command, args = [], platform = process.platfo
   // `shell: true` 在 Windows 上就是把整条命令行加引号后 verbatim 交给 cmd，
   // 这里照做，参数才按自己拼的样子落地。
   const line = buildCommandLine({ file, args })
-  const result = spawnSync(env.ComSpec ?? 'cmd.exe', ['/d', '/s', '/c', `"${line}"`], {
+  const shell = cmdPath()
+  const result = spawnSync(shell, ['/d', '/s', '/c', `"${line}"`], {
     windowsVerbatimArguments: true,
     ...spawnOptions,
   })
+  // 命令已经解析成功，这里再失败只可能是 cmd 自己起不来——不能归成「找不到命令」。
+  if (result.error !== undefined) throw new CommandShellError(shell, result.error)
   return checkSpawned(result, command)
 }
 
