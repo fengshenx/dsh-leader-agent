@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import {
   existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, renameSync, rmSync,
   symlinkSync, writeFileSync,
@@ -65,10 +65,15 @@ test('win32 上 prune --apply 先拆 junction，共享依赖不被跟穿', WIN32
   )
 })
 
-test('win32 上别的 prune 持锁时直接退出，不碰 worktree', WIN32, (t) => {
+test('win32 上活 PID + 旧 startedAt 的锁不会被回收', WIN32, (t) => {
   const { repo, shared, worktree } = makeFixture(t)
   const lock = join(repo, '.worktrees', '.prune.lock')
-  writeFileSync(lock, JSON.stringify({ pid: process.pid, token: 'test-holder', startedAt: Date.now() }))
+  // 活着的持有者即使跑了超过 TTL，也不能被另一个 prune 抢锁
+  writeFileSync(lock, JSON.stringify({
+    pid: process.pid,
+    token: 'test-holder',
+    startedAt: Date.now() - 60 * 60 * 1000,
+  }))
   const result = runPrune(repo)
   const output = `${result.stdout}\n${result.stderr}`
   assert.equal(result.status, 1, `持锁时没有退出:\n${output}`)
@@ -76,7 +81,7 @@ test('win32 上别的 prune 持锁时直接退出，不碰 worktree', WIN32, (t)
   assert.equal(existsSync(worktree), true, '持锁时仍然动了 worktree')
   assert.equal(readlinkSync(join(worktree, 'node_modules')), shared, '持锁时拆了链接')
   assert.equal(existsSync(join(shared, 'esbuild', 'marker.txt')), true, '持锁时删了共享依赖')
-  assert.equal(JSON.parse(readFileSync(lock, 'utf8')).token, 'test-holder')
+  assert.equal(JSON.parse(readFileSync(lock, 'utf8')).token, 'test-holder', '锁被回收了')
 })
 
 test('win32 上回收 stale 锁后继续', WIN32, (t) => {
@@ -116,6 +121,42 @@ test('win32 上 remove 失败时按原 target 恢复链接', WIN32, (t) => {
   assert.equal(existsSync(join(shared, 'esbuild', 'marker.txt')), true, '共享依赖被跟穿删除')
   assert.equal(existsSync(join(repo, '.worktrees', '.dev-stash-wt-int')), false, '暂存没有清掉')
   assert.equal(existsSync(join(repo, '.worktrees', '.prune.lock')), false, 'prune 锁没有释放')
+})
+
+test('win32 上 remove 失败且 git 已注销时提示目录与分支', WIN32, async (t) => {
+  const { repo, shared, worktree } = makeFixture(t)
+  // 让一个进程把 worktree 作为 cwd：Windows 删不掉仍被当作 cwd 的目录，git 会
+  // 先注销登记、再在删目录时失败，稳定复现 S2 分支。
+  const holder = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+    cwd: worktree,
+    stdio: 'ignore',
+  })
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    const result = runPrune(repo)
+    const output = `${result.stdout}\n${result.stderr}`
+    assert.equal(result.status, 0, `prune 异常退出:\n${output}`)
+    assert.match(output, /\[失败\] wt-int/)
+    assert.match(output, /git 已注销该 worktree/)
+    assert.match(output, /重跑 prune 不会处理/)
+    assert.match(output, /手工删除目录/)
+    assert.match(output, /分支 feature\/int 仍在/)
+    assert.match(output, /git branch -D feature\/int/)
+    assert.equal(existsSync(worktree), true, 'worktree 目录应当保留')
+    assert.equal(existsSync(join(worktree, '.dev', 'home', 'session.json')), true, '.dev 没有挪回')
+    assert.equal(existsSync(join(worktree, 'node_modules')), false, '注销后不应恢复链接')
+    assert.equal(existsSync(join(shared, 'esbuild', 'marker.txt')), true, '共享依赖被跟穿删除')
+    assert.match(
+      execFileSync('git', ['branch', '--list', 'feature/int'], { cwd: repo, encoding: 'utf8' }),
+      /feature\/int/,
+      '注销后分支应当保留',
+    )
+  } finally {
+    holder.kill()
+    if (holder.exitCode === null && holder.signalCode === null) {
+      await new Promise((resolve) => holder.once('close', resolve))
+    }
+  }
 })
 
 test('win32 上 .dev 与暂存同时存在时拒绝且两边都在', WIN32, (t) => {

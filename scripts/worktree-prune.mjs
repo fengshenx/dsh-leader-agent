@@ -9,10 +9,12 @@
  * POSIX 符号链接用 unlink），最后 `git worktree remove --force` 清目录。不先拆的话，
  * git 在 Windows 上会跟随 junction 递归删掉主 checkout 的依赖（实测）；`.dev` 里
  * dev 实例的逐条链接同理。删除成功后才删暂存；失败路径恢复链接、把 `.dev` 挪回，
- * 恢复不了时在错误信息里写明残留位置。已合并的分支一并删本地引用；远端分支默认保留，
+ * 恢复不了时在错误信息里写明残留位置；git 已注销时不再重建链接，提示手工删目录与分支。
+ * 已合并的分支一并删本地引用；远端分支默认保留，
  * `--delete-remote` 才删（远端名由 `--remote` 指定，默认 origin）。
  *
- * `--apply` 全程持有 `.worktrees/.prune.lock`（`wx` 创建，stale 锁按 PID/TTL 回收）：
+ * `--apply` 全程持有 `.worktrees/.prune.lock`（`wx` 创建；活 PID 的锁绝不回收，
+ * 没有可用 PID 才按 TTL 回收）：
  * 同一仓库同时只允许一个 prune。否则两个进程会一边拆链接、一边在恢复分支重建链接，
  * 正在 `git worktree remove` 的那个会把刚恢复的 junction 一起跟穿。
  *
@@ -249,7 +251,11 @@ function readPruneLock() {
 }
 
 /**
- * 锁是否可回收：PID 不存在、超过 TTL，或写了一半的锁文件已存在足够久。
+ * 锁是否可回收。
+ *
+ * PID 存活判断必须在 TTL 之前：一次 `--apply` 可能超过 10 分钟（远端 push 挂起、
+ * 超大 worktree 删除、机器休眠），活着的持有者绝不能因为 `startedAt` 旧就被抢锁。
+ * 只有没有可用 PID 时才退回 TTL，避免崩溃留下的锁永久卡住。
  *
  * @param {ReturnType<typeof readPruneLock>} lock - 锁内容
  * @returns {boolean} 是否可回收
@@ -257,15 +263,17 @@ function readPruneLock() {
 function lockIsStale(lock) {
   if (lock === null) return true
   if (lock.invalid) return Date.now() - lock.mtimeMs > 5000
-  if (!Number.isInteger(lock.pid) || lock.pid <= 0) return true
-  if (typeof lock.startedAt !== 'number' || Date.now() - lock.startedAt > LOCK_TTL_MS) return true
-  try {
-    process.kill(lock.pid, 0)
-    return false
-  } catch (error) {
-    // EPERM 说明进程还在，只是没权限发信号；ESRCH 才是真没了
-    return error.code !== 'EPERM'
+  if (Number.isInteger(lock.pid) && lock.pid > 0) {
+    try {
+      process.kill(lock.pid, 0)
+      return false
+    } catch (error) {
+      // EPERM 说明进程还在，只是没权限发信号；其余错误按进程已退出处理
+      return error.code !== 'EPERM'
+    }
   }
+  if (typeof lock.startedAt !== 'number') return true
+  return Date.now() - lock.startedAt > LOCK_TTL_MS
 }
 
 /**
@@ -407,9 +415,12 @@ try {
     if (removed.status !== 0) {
       const registered = worktreeRegistered(row.dir)
       const devNote = restoreDevStatus(devState)
+      const branchNote = row.branch === ''
+        ? ''
+        : `；分支 ${row.branch} 仍在，确认不需要后可 git branch -D ${row.branch}`
       if (registered === false) {
         // git 可能已经先注销再失败；此时恢复链接等于制造一个没人管理的 junction
-        console.error(`[失败] ${row.name}: git worktree remove 失败（${removed.stderr.trim()}）；git 已注销该 worktree，重跑 prune 不会处理，请手工删除目录${devNote}${hadLink ? '，node_modules 链接已拆且不恢复' : ''}`)
+        console.error(`[失败] ${row.name}: git worktree remove 失败（${removed.stderr.trim()}）；git 已注销该 worktree，重跑 prune 不会处理，请手工删除目录${branchNote}${devNote}${hadLink ? '，node_modules 链接已拆且不恢复' : ''}`)
       } else if (registered === undefined) {
         console.error(`[失败] ${row.name}: git worktree remove 失败（${removed.stderr.trim()}）；无法确认 worktree 是否仍登记，重跑前先检查；node_modules 链接未恢复${devNote}`)
       } else {
@@ -431,7 +442,8 @@ try {
       try {
         teardown(row.dir, () => rmSync(row.dir, { recursive: true, force: true }))
       } catch (error) {
-        console.error(`[失败] ${row.name}: 清理残留目录失败（${error.message}）；worktree 已注销，重跑 prune 不会处理，请手工删除目录`)
+        const branchNote = row.branch === '' ? '' : `；分支 ${row.branch} 仍在`
+        console.error(`[失败] ${row.name}: 清理残留目录失败（${error.message}）；worktree 已注销，重跑 prune 不会处理，请手工删除目录${branchNote}`)
         continue
       }
     }
