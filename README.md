@@ -157,6 +157,7 @@ cd .worktrees/<task>
 npm run dev                       # dsh instance mounting this worktree's plugin
 npm start                         # daily instance (the ~/.dsh data root and profile)
 npm run check                     # Agent Note gate, doc tool-name gate, syntax check, all tests
+npm run e2e                       # build the client bundle + browser e2e (real host, local mock, no keys)
 ```
 
 The remaining commands are in [AGENTS.md](AGENTS.md#常用命令) (Chinese).
@@ -167,6 +168,8 @@ The remaining commands are in [AGENTS.md](AGENTS.md#常用命令) (Chinese).
 
 Dev instance overrides, worktree cleanup guards, evidence gathering and build constraints are in [the architecture doc's development section](docs/architecture.md#开发) and [docs/e2e-testing.md](docs/e2e-testing.md) (both Chinese).
 
+Browser-side behavior is proven with `npm run e2e`: a real `dsh` instance + a local mock model + chromium, no keys, no network, one command (run `npm run e2e:install` once to download the browser). Scenarios live in `tests/e2e/*.e2e.js`; how to write them, what counts as evidence and what is not allowed is in [docs/e2e-testing.md](docs/e2e-testing.md) (Chinese).
+
 ## Docs
 
 | Document | Contents |
@@ -175,7 +178,7 @@ Dev instance overrides, worktree cleanup guards, evidence gathering and build co
 | [docs/usage.md](docs/usage.md) | Full interaction for dispatch, follow-ups, cards, board, project management, slots and manuals |
 | [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, full known limitations |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | Execution rules for browser-side evidence |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, assertion discipline) and manual evidence rules |
 | [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
 

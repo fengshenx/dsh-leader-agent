@@ -157,6 +157,7 @@ cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile）
 npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
+npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
 ```
 
 其余命令见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
@@ -167,6 +168,8 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 
 开发实例的覆盖项、worktree 清理守卫、取证流程与构建约束见[架构文档的开发一节](docs/architecture.md#开发)与 [docs/e2e-testing.md](docs/e2e-testing.md)。
 
+浏览器侧的行为用 `npm run e2e` 证明：真实 `dsh` 实例 + 本地 mock 模型 + chromium，无密钥、无网络，一条命令跑完（首次先 `npm run e2e:install` 下载浏览器）。场景写在 `tests/e2e/*.e2e.js`，怎么写、什么算证据、哪些不行，见 [docs/e2e-testing.md](docs/e2e-testing.md)。
+
 ## 文档
 
 | 文档 | 内容 |
@@ -175,7 +178,7 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 | [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
 | [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、完整已知限制 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器侧取证的执行规范 |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、断言纪律）与人工取证规范 |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
 

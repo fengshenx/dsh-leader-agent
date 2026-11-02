@@ -10,7 +10,8 @@
  * - 数据根（`DSH_HOME`）默认落在工作树内的 `.dev/home`，删掉即重置，工作树删掉
  *   时一起消失；
  * - profile 从源 HOME 的 `profiles/web` 派生：`package.json` 照抄依赖与 bundle
- *   列表（复现日常组合），只把 `dsh-leader-kit` 换成工作树链接；
+ *   列表（复现日常组合），只把 `dsh-leader-kit` 换成工作树链接；派生与依赖链接的
+ *   实现在 `dev-instance.mjs`，浏览器 e2e 用同一份（两边组合必须一致）；
  * - `node_modules` 不复制，逐条符号链接到源 profile 的同名条目——依赖仍由源里那
  *   一份承担，源里升级 dsh 或增删插件时开发实例自动跟随；
  * - 凭据文件里的 `refs` 从源 HOME 继承：数据根独立，凭据也跟着独立，新工作树第一次
@@ -35,17 +36,14 @@
  */
 
 import { spawn } from 'node:child_process'
-import {
-  copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
+import { prepareProfileDir } from './dev-instance.mjs'
 import {
-  COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, devWebBundleHint,
-  mergeCredentialRefs, planNodeModules, resolveDevPaths,
+  assertSeparateHome, assertWebBundle, devWebBundleHint, mergeCredentialRefs, resolveDevPaths,
 } from './dev-plan.mjs'
 import { CommandNotFoundError, CommandShellError, commandLaunchError, spawnCommand, spawnCommandSync } from './spawn-command.mjs'
 
@@ -126,50 +124,13 @@ try {
   process.exit(1)
 }
 
-mkdirSync(paths.profileDir, { recursive: true })
-
-// 源 profile 的 cordis 配置照抄一次：之后开发实例里的改动不再被覆盖（那里是调试
-// 界面开关、主题这类会随时改的东西）。cordis.patch.yml 是可选的覆盖层——用户没
-// 定制过就没有这个文件，跳过即可；cordis.yml 是 dsh 生成的骨架，缺了说明源 profile
-// 本身不完整，报一句能看懂的。
-for (const name of COPIED_PROFILE_FILES) {
-  const target = join(paths.profileDir, name)
-  if (existsSync(target)) continue
-  const from = join(paths.sourceProfileDir, name)
-  if (!existsSync(from)) {
-    if (name === 'cordis.patch.yml') continue
-    console.error(`源 profile 缺少 ${name}: ${from}（源 HOME 里的 dsh 可能没起过）`)
-    process.exit(1)
-  }
-  copyFileSync(from, target)
-}
-
-writeFileSync(
-  join(paths.profileDir, 'package.json'),
-  `${JSON.stringify(deriveProfilePackage(sourcePackage, worktree), null, 2)}\n`,
-)
-
-const nodeModulesDir = join(paths.profileDir, 'node_modules')
-const sourceNodeModules = paths.sourceNodeModules
-if (!existsSync(sourceNodeModules)) {
-  console.error(`源 profile 没有 node_modules: ${sourceNodeModules}（先在源 HOME 里跑一次 dsh）`)
+// profile 派生、依赖链接在 dev-instance.mjs：e2e 夹具用同一份，两个调用方的
+// 组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
+try {
+  prepareProfileDir({ worktree, paths, sourcePackage })
+} catch (error) {
+  console.error(`错误: ${error.message}`)
   process.exit(1)
-}
-mkdirSync(nodeModulesDir, { recursive: true })
-
-const plan = planNodeModules({
-  sourceEntries: readdirSync(sourceNodeModules),
-  existingEntries: readdirSync(nodeModulesDir),
-  sourceNodeModules,
-  worktree,
-})
-for (const name of plan.removals) rmSync(join(nodeModulesDir, name), { recursive: true, force: true })
-for (const { name, target } of plan.links) {
-  const linkPath = join(nodeModulesDir, name)
-  const current = lstatSync(linkPath, { throwIfNoEntry: false })
-  if (current?.isSymbolicLink() && readlinkSync(linkPath) === target) continue
-  rmSync(linkPath, { recursive: true, force: true })
-  symlinkSync(target, linkPath, 'junction')
 }
 
 // 凭据继承失败要挡住启动：静默继续会让人以为 key 已经带过来了，实际上一进界面
@@ -186,7 +147,7 @@ console.log('')
 console.log('== dsh-leader-kit 开发实例 ==')
 console.log(`  工作树    ${worktree}`)
 console.log(`  数据根    ${paths.home}  （会话、项目、卡片都在这里；删掉即重置）`)
-console.log(`  插件链接  ${join(nodeModulesDir, 'dsh-leader-kit')} -> ${worktree}`)
+console.log(`  插件链接  ${join(paths.profileDir, 'node_modules', 'dsh-leader-kit')} -> ${worktree}`)
 if (inheritedCredentials.keys.length > 0) {
   console.log(`  凭据引用  ${paths.sourceCredentialsPath} -> ${paths.credentialsPath}（${inheritedCredentials.keys.join(', ')}）`)
 }
@@ -237,9 +198,11 @@ watcher.on('exit', (code, signal) => {
 const port = process.env.DEV_PORT || '0'
 const args = ['web', '--port', port]
 if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
+
+// dsh 用 spawnCommand 而不是 spawnCommandSync：同步等待会卡住事件循环，上面的信号
+// 处理器根本跑不到（父进程会一直挂到 dsh 自己退出），watcher 就成了孤儿。解析与
+// 拼装仍走 spawn-command，win32 上 `spawn('dsh')` 只会 ENOENT。
 const dshCommand = process.env.DEV_DSH || 'dsh'
-// 异步起 dsh：同步等待会卡住事件循环，上面的信号处理器根本跑不到，watcher 就成了
-// 孤儿。解析与拼装仍走 spawn-command，win32 上 `spawn('dsh')` 只会 ENOENT。
 try {
   dsh = spawnCommand({
     command: dshCommand, args, cwd: worktree, env: { ...process.env, DSH_HOME: paths.home }, stdio: 'inherit',
