@@ -11,9 +11,8 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { createBundleTools } from '../src/host/index.js'
-import { COORDINATOR_UNUSABLE_TOOLS } from '../src/host/tools/gate.js'
-import { PROMPT_DOCS, PROMPT_SKILLS_DIR, unknownToolNames } from './doc-tool-names.mjs'
+import { documentedToolNames } from '../src/host/index.js'
+import { PROMPT_DOCS, PROMPT_SKILLS_DIR, scanToolNames } from './doc-tool-names.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 
@@ -35,24 +34,23 @@ const docs = [
   ...markdownFiles(join(root, PROMPT_SKILLS_DIR)).sort(),
 ]
 
-// 工具名两处取，都是登记处、不是副本：本 bundle 注册的（装配列表）与宿主提供、
-// 本仓文档会引用的三件（`COORDINATOR_UNUSABLE_TOOLS` 就是这份登记）。宿主三件
-// 不在本 bundle 的注册面上，门禁只能验到「文档与本仓登记一致」。
-const known = new Set([
-  ...createBundleTools().map((tool) => tool.name),
-  ...COORDINATOR_UNUSABLE_TOOLS,
-])
+const known = new Set(documentedToolNames())
 
-const violations = docs.flatMap((file) =>
-  unknownToolNames(readFileSync(file, 'utf8'), known)
-    .map(({ line, name }) => `${relative(root, file)}:${line}: \`${name}\` 不是已注册的工具名`),
-)
+const problems = docs.flatMap((file) => {
+  const { violations, unclosedFence } = scanToolNames(readFileSync(file, 'utf8'), known)
+  const path = relative(root, file)
+  const found = violations.map(({ line, name }) => `${path}:${line}: \`${name}\` 不是已注册的工具名`)
+  if (unclosedFence !== undefined) {
+    found.push(`${path}:${unclosedFence}: 代码围栏没有闭合，后面的内容没被校验`)
+  }
+  return found
+})
 
-if (violations.length === 0) {
+if (problems.length === 0) {
   console.log(`verify-doc-tool-names: ${docs.length} 篇文档的工具名全部存在`)
   process.exit(0)
 }
 
-console.error('verify-doc-tool-names: 文档引用了不存在的工具：')
-for (const violation of violations) console.error(`  ${violation}`)
+console.error('verify-doc-tool-names: 文档门禁未通过：')
+for (const problem of problems) console.error(`  ${problem}`)
 process.exit(1)

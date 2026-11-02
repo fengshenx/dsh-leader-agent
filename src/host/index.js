@@ -28,7 +28,7 @@ import { createProjectService } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { createDispatcher } from './dispatch.js'
 import { createCoordinatorHandover } from './coordinator-handover.js'
-import { applyToolGate } from './tools/gate.js'
+import { applyToolGate, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyCoordinatorContext } from './coordinator-context.js'
 
@@ -68,6 +68,19 @@ export function createBundleTools({ dispatcher, cards, resolveProject } = {}) {
     createUpdateCardTool({ store: cards, resolveProject }),
     createListCardsTool({ store: cards, resolveProject }),
   ]
+}
+
+/**
+ * 文档里可以引用的工具名：本 bundle 注册的，加上宿主 subagent 组合提供的三件。
+ *
+ * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主三件不进本 bundle 的
+ * 注册面，但文档会写它们——所以从 `HOST_SUBAGENT_TOOLS` 这个语义来源取，而不是
+ * 借用 deny 名单：那份名单的变化理由是「协调者能不能用」，与「文档能不能写」不同。
+ *
+ * @returns {string[]} 工具名
+ */
+export function documentedToolNames() {
+  return [...createBundleTools().map((tool) => tool.name), ...HOST_SUBAGENT_TOOLS]
 }
 
 /**

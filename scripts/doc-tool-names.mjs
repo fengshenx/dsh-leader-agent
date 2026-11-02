@@ -19,28 +19,29 @@ export const PROMPT_SKILLS_DIR = 'skills'
 const SNAKE_CASE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/
 
 /**
- * 找出文档里引用了、但不在已注册集合中的工具名。
+ * 扫一篇文档里的工具名引用，并报告没闭合的围栏。
  *
- * 围栏代码块整段跳过：里面的反引号是示例代码，不是文档在让会话去调工具。
+ * 围栏代码块整段跳过：里面的反引号是示例代码，不是文档在让会话去调工具。围栏
+ * 不配对时不能静默——那样后半篇会整段跳过、门禁照样绿，等于给了个假的通过。
  *
  * @param {string} text - 文档全文
  * @param {ReadonlySet<string>} known - 已注册的工具名
- * @returns {{line: number, name: string}[]} 违规引用，空数组表示全部存在
+ * @returns {{violations: {line: number, name: string}[], unclosedFence?: number}} 违规引用与未闭合围栏的起始行
  */
-export function unknownToolNames(text, known) {
+export function scanToolNames(text, known) {
   const violations = []
-  let inFence = false
+  let fenceLine
   text.split('\n').forEach((content, index) => {
     if (content.trimStart().startsWith('```')) {
-      inFence = !inFence
+      fenceLine = fenceLine === undefined ? index + 1 : undefined
       return
     }
-    if (inFence) return
+    if (fenceLine !== undefined) return
     for (const [, name] of content.matchAll(INLINE_CODE)) {
       if (SNAKE_CASE.test(name) && !known.has(name)) {
         violations.push({ line: index + 1, name })
       }
     }
   })
-  return violations
+  return fenceLine === undefined ? { violations } : { violations, unclosedFence: fenceLine }
 }
