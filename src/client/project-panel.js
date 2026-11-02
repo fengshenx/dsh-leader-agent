@@ -164,6 +164,9 @@ export function ProjectPanel(props) {
     const sessions = getSessions?.()
     if (sessions?.list?.subscribe === undefined) return undefined
     let pending = null
+    /** 上一次同步时的当前会话；切换它要跳过防抖，见下。 */
+    let lastCurrent
+    let primed = false
     const sync = () => {
       const snapshot = sessions.list.getSnapshot()
       const rows = {}
@@ -177,7 +180,21 @@ export function ProjectPanel(props) {
         }
       }
       setSessionRows(rows)
-      setCurrentSessionId(currentSessionIdOf(snapshot.byId))
+      const nextCurrent = currentSessionIdOf(snapshot.byId)
+      setCurrentSessionId(nextCurrent)
+      // 打开刚派工的 worker 时，归属表里可能还没有它：等防抖意味着先渲染一帧
+      // 「哪个项目都不亮」，项目行要晚一秒才亮。切会话这一次值一次远程调用。
+      const switched = primed && nextCurrent !== undefined && nextCurrent !== lastCurrent
+      primed = true
+      lastCurrent = nextCurrent
+      if (switched) {
+        if (pending !== null) {
+          clearTimeout(pending)
+          pending = null
+        }
+        void refreshSessionIndex()
+        return
+      }
       // 归属重算要过宿主，合并到一次延迟刷新里，避免每条事件都打一次远程调用。
       if (pending !== null) clearTimeout(pending)
       pending = setTimeout(() => { pending = null; void refreshSessionIndex() }, 1000)

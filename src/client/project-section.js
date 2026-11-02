@@ -510,7 +510,7 @@ export function ProjectSection(props) {
     layout.showList
       ? createElement(
           'div',
-          { role: 'tree', 'aria-label': '项目' },
+          null,
           projects.map((project) => createElement(ProjectRow, {
             key: project.id,
             project,
@@ -624,7 +624,7 @@ function ProjectRow(props) {
     archivedSessionIds,
   })
   // 当前会话是协调者或本项目下的 worker 时，这一行就是用户正在看的那一组。
-  const selected = isProjectCurrent(project, sessions, currentSessionId)
+  const selected = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -646,8 +646,7 @@ function ProjectRow(props) {
         'data-dead': openable ? undefined : 'true',
         'data-selected': selected ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
-        role: 'treeitem',
-        'aria-selected': selected,
+        'aria-current': selected ? 'true' : undefined,
         'aria-expanded': expanded,
         title: `${project.name} · ${project.directory}`,
         onClick: (event) => {
