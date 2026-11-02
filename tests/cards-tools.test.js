@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createCardStore } from '../src/host/cards/store.js'
+import { createBundleTools } from '../src/host/index.js'
 import {
   createCreateCardTool,
   createUpdateCardTool,
@@ -14,9 +15,10 @@ import {
  * 建一组卡片工具与它们共用的存储。
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [resolveProject] -
  *   解析调用方会话所属项目；不传则卡片没有归属
+ * @param {(sessionId: string | undefined) => boolean} [canWrite] - 写卡身份判定；不传则放行
  * @returns {Promise<{ home: string, tools: Record<string, object> }>} 工具集与 home 目录
  */
-async function createTools(resolveProject) {
+async function createTools(resolveProject, canWrite) {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   // 可控时钟：卡片排序按更新时间戳，两次写入落在同一毫秒会退回插入序，
   // 断言「最近更新的排前面」就成了碰运气的 flaky 用例。
@@ -25,8 +27,8 @@ async function createTools(resolveProject) {
   return {
     home,
     tools: {
-      create_card: createCreateCardTool({ store, resolveProject }),
-      update_card: createUpdateCardTool({ store, resolveProject }),
+      create_card: createCreateCardTool({ store, resolveProject, canWrite }),
+      update_card: createUpdateCardTool({ store, resolveProject, canWrite }),
       list_cards: createListCardsTool({ store, resolveProject }),
     },
   }
@@ -795,6 +797,96 @@ test('项目外的会话改不了有归属的卡', async () => {
     await assert.rejects(
       () => tools.update_card.execute({ id: owned.id, title: '改它' }, exec),
       /属于另一个项目/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('普通会话不能写卡：建卡与改卡都被身份闸拒绝，且不落盘', async () => {
+  // 工具面在 agent/created 裁，换协调者不重建旧会话——退役者手里仍有写入工具，
+  // 所以执行时再判一次身份。
+  const { home, tools } = await createTools(async () => undefined, () => false)
+  try {
+    const store = createCardStore({ home })
+    const existing = await store.create({ title: '协调者建的卡' })
+
+    await assert.rejects(
+      () => tools.create_card.execute({ title: '普通会话的卡' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    await assert.rejects(
+      () => tools.update_card.execute({ id: existing.id, title: '改协调者的卡' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    // 被拒的写入不能落盘：卡库里仍只有那一张，标题没变
+    const cards = await store.list()
+    assert.deepEqual(cards.map((card) => card.title), ['协调者建的卡'])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('协调者与 worker 都过写卡身份闸', async () => {
+  const { home, tools } = await createTools(async () => undefined, (sessionId) => sessionId !== 'plain-1')
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    assert.equal(created.card.title, '任务')
+
+    const worker = { agent: { id: 'worker-1' }, signal: undefined }
+    const updated = await tools.update_card.execute({ id: created.card.id, status: 'done' }, worker)
+    assert.equal(updated.card.status, 'done')
+
+    const plain = { agent: { id: 'plain-1' }, signal: undefined }
+    await assert.rejects(
+      () => tools.create_card.execute({ title: '普通会话的卡' }, plain),
+      /只有协调者与 worker 能写卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('身份闸先于入参校验：普通会话传空标题也报身份错误', async () => {
+  const { home, tools } = await createTools(async () => undefined, () => false)
+  try {
+    await assert.rejects(
+      () => tools.create_card.execute({ title: '  ' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    await assert.rejects(
+      () => tools.update_card.execute({ id: '' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('createBundleTools 把写卡身份判定透传给卡片工具', async () => {
+  // 漏传就是闸静默失效：装配出来的工具看起来正常，写卡不校验身份。
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const tools = createBundleTools({
+      cards: store,
+      resolveProject: async () => undefined,
+      canWriteCards: (sessionId) => sessionId === 'coordinator-1',
+    })
+    const createCard = tools.find((tool) => tool.name === 'create_card')
+    const updateCard = tools.find((tool) => tool.name === 'update_card')
+
+    await assert.rejects(
+      () => createCard.execute({ title: '普通会话的卡' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    const created = await createCard.execute(
+      { title: '协调者的卡' },
+      { agent: { id: 'coordinator-1' }, signal: undefined },
+    )
+    await assert.rejects(
+      () => updateCard.execute({ id: created.card.id, status: 'done' }, exec),
+      /只有协调者与 worker 能写卡/,
     )
   } finally {
     await rm(home, { recursive: true, force: true })

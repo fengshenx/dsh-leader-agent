@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  CARD_WRITE_TOOLS,
   COORDINATOR_ONLY_TOOLS,
   COORDINATOR_UNUSABLE_TOOLS,
+  PLAIN_SESSION_DENY_TOOLS,
   applyToolGate,
   deniedToolsFor,
 } from '../src/host/tools/gate.js'
@@ -21,7 +23,7 @@ import {
  */
 function makeAgent(id, registered = [
   'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
-  'spawn_worker', 'message_worker', 'list_cards',
+  'spawn_worker', 'message_worker', 'list_cards', 'create_card', 'update_card',
 ]) {
   const restrictions = []
   const names = new Set(registered)
@@ -66,13 +68,15 @@ test('worker 看不到派工与全库查询', () => {
   assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
 })
 
-test('普通会话禁掉派工与全库查询', () => {
+test('普通会话没有派工、全库查询与卡片写入', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('plain-1'),
     isCoordinatorSession: () => false,
     isWorkerSession: () => false,
   })
-  assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
+  // 卡片是项目里的任务事实：普通会话建的卡没有槽位、没有协调者认领，只会污染看板。
+  assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
+  assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
 })
 
 test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {
@@ -80,7 +84,7 @@ test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {
     agent: makeAgent('whatever'),
     isCoordinatorSession: () => false,
   })
-  assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
+  assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
 })
 
 test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限制', () => {
@@ -100,6 +104,15 @@ test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限
   })
   assert.deepEqual(worker.restrictions, [{ deny: [...COORDINATOR_ONLY_TOOLS] }])
   assert.deepEqual(workerDenied, [...COORDINATOR_ONLY_TOOLS])
+
+  const plain = makeAgent('p')
+  const plainDenied = applyToolGate({
+    agent: plain,
+    isCoordinatorSession: () => false,
+    isWorkerSession: () => false,
+  })
+  assert.deepEqual(plain.restrictions, [{ deny: [...PLAIN_SESSION_DENY_TOOLS] }])
+  assert.deepEqual(plainDenied, [...PLAIN_SESSION_DENY_TOOLS])
 })
 
 test('三件宿主工具改由 preset 子树注册时仍然被 deny', () => {
@@ -158,7 +171,10 @@ test('只依赖 engines 下限的 tools 方法面', () => {
   }))
 })
 
-test('两组名单不重叠，改名时不会悄悄互相覆盖', () => {
+test('三组名单互不重叠，改名时不会悄悄互相覆盖', () => {
   const overlap = COORDINATOR_ONLY_TOOLS.filter((name) => COORDINATOR_UNUSABLE_TOOLS.includes(name))
   assert.deepEqual(overlap, [])
+  // 卡片写入与「只有协调者能用」是两条独立的规则：worker 保留前者、没有后者。
+  const cardOverlap = CARD_WRITE_TOOLS.filter((name) => COORDINATOR_ONLY_TOOLS.includes(name))
+  assert.deepEqual(cardOverlap, [])
 })

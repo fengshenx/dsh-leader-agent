@@ -295,9 +295,20 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         }
         // 冷恢复建的是新的作用域，preset 组合不会自己回来；按会话投影里记的
         // preset 重新挂（宿主 resume 路径同样走 composeAgent）。
-        handle = await agents.resume({ resumeSessionId: sessionId, signal, ...agentPresetResumeSetup(ctx, logger) })
-        live.set(sessionId, handle)
+        //
+        // 先登记再恢复：`agent/created` 在 resume 内部就发出来了，晚一步这个会话
+        // 会被裁成普通会话——worker 于是丢掉卡片写入，再也汇报不了自己的卡。
+        const known = workerIds.has(sessionId)
         workerIds.add(sessionId)
+        try {
+          handle = await agents.resume({ resumeSessionId: sessionId, signal, ...agentPresetResumeSetup(ctx, logger) })
+        } catch (error) {
+          // 只回滚这次新登记的身份：已收编的 worker id 不能被抹掉，会话 id 不复用、
+          // 留着不会误判（见 `forget`），抹掉反而让它下次被判成普通会话。
+          if (!known) workerIds.delete(sessionId)
+          throw error
+        }
+        live.set(sessionId, handle)
       }
       const displayName = name ?? handle.agent.session?.header?.title ?? sessionId
       if (name !== undefined) renameTitle(handle, name)

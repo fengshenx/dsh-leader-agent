@@ -12,8 +12,9 @@
  *   （会话由 `agents.create` 建，会话头没有 `origin` 标记，只能按登记判）；
  * - **普通会话**：其余会话。
  *
- * 协调者拿到全部工具；普通会话与 worker 都没有 worker 编排与全库查询。worker 的
- * 完成回报不占工具面：由 `dispatch.js` 订阅会话事件自动结算。
+ * 协调者拿到全部工具；普通会话与 worker 都没有 worker 编排与全库查询，普通会话再
+ * 少掉卡片写入——它不在项目编排里，没有卡可写。worker 的完成回报不占工具面：由
+ * `dispatch.js` 订阅会话事件自动结算。
  */
 
 /** 只有协调者能用的工具：worker 编排与全库卡片查询。 */
@@ -21,6 +22,24 @@ export const COORDINATOR_ONLY_TOOLS = Object.freeze([
   'list_cards',
   'spawn_worker',
   'message_worker',
+])
+
+/**
+ * 卡片写入工具：只有协调者与 worker 能写卡。
+ *
+ * 卡片是项目里的任务事实，而普通会话不承担任何项目编排——它建出来的卡没有槽位、
+ * 没有协调者认领，只会污染看板；它也不该改别人的卡。读同样不给：`list_cards`
+ * 已经在 `COORDINATOR_ONLY_TOOLS` 里。
+ */
+export const CARD_WRITE_TOOLS = Object.freeze([
+  'create_card',
+  'update_card',
+])
+
+/** 普通会话要禁掉的：派工、全库查卡，加上卡片写入。 */
+export const PLAIN_SESSION_DENY_TOOLS = Object.freeze([
+  ...COORDINATOR_ONLY_TOOLS,
+  ...CARD_WRITE_TOOLS,
 ])
 
 /**
@@ -65,7 +84,7 @@ export function deniedToolsFor({ agent, isCoordinatorSession, isWorkerSession })
   const worker = typeof isWorkerSession === 'function' && isWorkerSession(agent?.id) === true
   if (worker) return [...COORDINATOR_ONLY_TOOLS]
   if (isCoordinatorSession(agent?.id)) return [...COORDINATOR_UNUSABLE_TOOLS]
-  return [...COORDINATOR_ONLY_TOOLS]
+  return [...PLAIN_SESSION_DENY_TOOLS]
 }
 
 /**

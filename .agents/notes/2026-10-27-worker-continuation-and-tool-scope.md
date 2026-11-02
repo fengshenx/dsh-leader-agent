@@ -31,7 +31,7 @@
 
 **用 `tools.restrict()`，不用 `register(def, { when })`**。已发布的最新 dsh（`0.2.1-rc.4`）里 `tools.register()` 仍只收一个参数；按步求值的 `when` 只在源码仓 HEAD 上，装不进去。`restrict` 要求 scoped context（`agent.ctx`），所以在 `agent/created` 时对每个 agent 调一次 `restrict({ deny })`——会话每次创建（含冷恢复）都重算，作用域是新建的，不会带着上一次的限制。
 
-**分配**：协调者全有；普通会话没有 `spawn_worker` / `message_worker` / `list_cards`；worker 再少掉项目注册表的五个工具（`list_projects` / `add_project` / `switch_project` / `remove_project` / `init_project`）。`create_card` / `update_card` 对所有会话开放——worker 边干活边把状态写回卡片，普通会话也能为项目登记待办。
+**分配**：协调者全有；普通会话没有 `spawn_worker` / `message_worker` / `list_cards`；worker 再少掉项目注册表的五个工具（`list_projects` / `add_project` / `switch_project` / `remove_project` / `init_project`）。`create_card` / `update_card` 对所有会话开放——worker 边干活边把状态写回卡片，普通会话也能为项目登记待办。（2026-11-02 改为只给协调者与 worker，另加执行时身份闸，见 [card-write-tools-scope](2026-11-02-card-write-tools-scope.md)。）
 
 **协调者身份在建项目时就定下**。`projects.json` 的 `coordinatorSessionId` 是唯一真源，建项目时自动建的协调者会话直接写进去，不需要运行时从会话内容推断。
 

@@ -275,14 +275,36 @@ function cardMeta(scope, cards) {
 }
 
 /**
+ * 卡片写入的身份闸。
+ *
+ * 工具面在 `agent/created` 一次性裁，而换协调者不重建旧会话：退役的那个会话手里
+ * 仍留着 `create_card` / `update_card`，直到进程重启才按普通会话重裁。因此每次
+ * 写入再判一次当前身份——退役者与普通会话同档，不能写卡。
+ *
+ * 索引未就绪时 `isCoordinatorSession()` 保守放行，闸随之放行：这时问不出谁是
+ * 协调者，宁可多放一轮，也不让协调者的建卡失败。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean) | undefined} canWrite - 写卡身份判定
+ * @returns {void}
+ * @throws {Error} 调用方不是协调者也不是 worker
+ */
+function assertCardWriter(sessionId, canWrite) {
+  if (typeof canWrite !== 'function' || canWrite(sessionId) === true) return
+  throw new Error('卡片工具: 只有协调者与 worker 能写卡——普通会话不在任何项目编排里，没有卡可写')
+}
+
+/**
  * 创建 `create_card` 工具定义。
  * @param {object} options - 工具选项
  * @param {{ create: (input: object) => Promise<object> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目；卡片按项目归属，模型不传项目参数
+ * @param {(sessionId: string | undefined) => boolean} [options.canWrite] - 写卡身份判定；
+ *   省略时放行，仅供文档取名字与单测构造
  * @returns {object} dsh 工具定义
  */
-export function createCreateCardTool({ store, resolveProject }) {
+export function createCreateCardTool({ store, resolveProject, canWrite }) {
   return {
     name: 'create_card',
     description:
@@ -325,6 +347,7 @@ export function createCreateCardTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const input = /** @type {{ title: string, spec?: string, links?: object[], slots?: object, checkpoint?: unknown }} */ (args)
+      assertCardWriter(exec.agent?.id, canWrite)
       if (typeof input.title !== 'string' || input.title.trim() === '') {
         throw new Error('create_card: title 不能为空')
       }
@@ -358,9 +381,11 @@ export function createCreateCardTool({ store, resolveProject }) {
  * @param {{ update: (input: object) => Promise<object> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目；跨项目改卡会被拒绝
+ * @param {(sessionId: string | undefined) => boolean} [options.canWrite] - 写卡身份判定；
+ *   省略时放行，仅供文档取名字与单测构造
  * @returns {object} dsh 工具定义
  */
-export function createUpdateCardTool({ store, resolveProject }) {
+export function createUpdateCardTool({ store, resolveProject, canWrite }) {
   return {
     name: 'update_card',
     description:
@@ -416,6 +441,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      assertCardWriter(exec.agent?.id, canWrite)
       if (typeof input.id !== 'string' || input.id.trim() === '') {
         throw new Error('update_card: id 不能为空')
       }

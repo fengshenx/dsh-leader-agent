@@ -28,8 +28,8 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 身份 | 判定 | 工具面 |
 |---|---|---|
 | 协调者 | 项目注册表 `coordinatorSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` |
-| 普通会话 | 其余会话 | 与 worker 相同，但保留宿主 subagent 三件工具 |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards`；保留 `create_card` / `update_card` |
+| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card`；保留宿主 subagent 三件工具 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
 
@@ -84,7 +84,7 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 
 - 协调者拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；
-- `create_card` / `update_card` 对所有会话开放——worker 边干活边把状态写回卡片。
+- `create_card` / `update_card` 只给协调者与 worker：worker 边干活边把状态写回卡片，普通会话不承担项目编排，建的卡没有槽位、没有协调者认领。这条规则在工具之外还有一道执行时校验（`src/host/tools/cards.js` 的 `assertCardWriter`）：换协调者不重建旧会话，退役者手里的写入工具要到进程重启才收走，所以每次写入都按当前身份再判一次。
 
 完成回报不占工具面。普通会话保留那三件宿主工具：它可能真的用官方 subagent，那时它们是有效的。
 
@@ -101,7 +101,7 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 - **会话归属按 realpath**：`session-index.js` 把会话按 cwd 与项目目录的 realpath 精确相等归到项目；两个项目指向同一目录时先注册的归属。子目录里的 worker 不算项目下的 worker。项目树的名单在它之上再并两类：worker 看登记表，退役协调者看项目记录的 `retiredCoordinatorSessionIds`。
 - **worker 建完挂进同一工作区**：`agents.create` 不接受 `workspaceId`，派工器按父会话反查项目的 `workspaceId`，在会话建好后调 `attachToWorkspace` 挂进去。fire-and-forget：归属只影响分组，挂失败只记日志，下次点项目行自愈。
 - **派工两段化**：`spawn_worker` 只建会话、登记、可选把卡片槽位绑到它身上，随后立即返回，**不投递任务、不产生模型调用**；开工由 `message_worker` 的第一条消息触发。这样绑定先于第一条任务请求，角色槽位与卡片事实都能在首轮上下文中出现。派工本身不建在飞记录（没有 turn 就没有 `turn/end`），在飞记录由首次投递建立。绑卡前按当前身份校验卡属于协调者所在项目且状态为 `active`（跨项目、已关闭/归档都拒绝）；改名与挂工作区推迟到绑定成功之后，绑定失败回滚时磁盘上不会留下空会话。名册分类一次读盘取全量绑定再分组，不逐 worker 读 `cards.json`。
-- **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` 在调用时按当前身份判定并拒绝。
+- **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` / `create_card` / `update_card` 在调用时按当前身份判定并拒绝。
 
 项目注册表**只经左栏项目区块操作**，模型没有 `add_project` / `list_projects` / `switch_project` / `remove_project`。
 

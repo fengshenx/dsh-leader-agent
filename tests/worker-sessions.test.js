@@ -289,6 +289,83 @@ test('组合里没有 agent preset 服务时不传 setup', async () => {
   assert.equal('setup' in fixture.created[0].options, false)
 })
 
+test('冷恢复前先登记 worker 身份：agent/created 在 resume 内部就发出了', async () => {
+  const fixture = createFixture()
+  // resume 的回调里读身份判定：resume 内部会发 agent/created，晚一步登记就会
+  // 把 worker 裁成普通会话，它随之丢掉卡片写入。
+  const observed = []
+  let sessions
+  const ctx = {
+    ...fixture.ctx,
+    get: (key) => {
+      const value = fixture.ctx.get(key)
+      if (key !== 'agents') return value
+      return {
+        ...value,
+        resume: async (options) => {
+          observed.push(sessions.isWorkerSession(options.resumeSessionId))
+          return value.resume(options)
+        },
+      }
+    },
+  }
+  sessions = createWorkerSessions({ ctx })
+
+  await sessions.send({
+    sessionId: 'worker-1',
+    text: '继续',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.deepEqual(observed, [true])
+})
+
+test('冷恢复失败只回滚这次新登记的身份，不抹掉已收编的 worker', async () => {
+  const fixture = createFixture()
+  const agents = fixture.ctx.get('agents')
+  let sessions
+  const ctx = {
+    ...fixture.ctx,
+    get: (key) => {
+      if (key !== 'agents') return fixture.ctx.get(key)
+      return {
+        ...agents,
+        resume: async () => {
+          throw new Error('恢复失败')
+        },
+      }
+    },
+  }
+  sessions = createWorkerSessions({ ctx })
+
+  // 已收编的 worker：恢复失败后身份照旧——会话 id 不复用，抹掉只会让它下次被
+  // 判成普通会话、丢掉卡片写入。
+  sessions.adopt('worker-known')
+  await assert.rejects(
+    () => sessions.send({
+      sessionId: 'worker-known',
+      text: '继续',
+      parentSessionId: 'c',
+      signal: new AbortController().signal,
+    }),
+    /恢复失败/,
+  )
+  assert.equal(sessions.isWorkerSession('worker-known'), true)
+
+  // 没登记过的 id 走同一个 send：失败后不能留下身份。
+  await assert.rejects(
+    () => sessions.send({
+      sessionId: 'worker-unknown',
+      text: '继续',
+      parentSessionId: 'c',
+      signal: new AbortController().signal,
+    }),
+    /恢复失败/,
+  )
+  assert.equal(sessions.isWorkerSession('worker-unknown'), false)
+})
+
 test('冷恢复也挂 agent preset：新作用域不会自己带着 preset 回来', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
