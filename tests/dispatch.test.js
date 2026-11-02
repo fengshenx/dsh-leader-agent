@@ -31,8 +31,8 @@ async function waitFor(predicate, timeoutMs = 3000) {
  * 构造一个假的 dsh 上下文与会话工厂。
  * @returns {object} 测试夹具
  */
-function createFixture() {
-  /** 建过的 worker 会话：{ sessionId, messages, disposed } */
+function createFixture({ permissions } = {}) {
+  /** 建过的 worker 会话：{ sessionId, messages, disposed, appends } */
   const spawned = []
   /** 冷恢复过的会话 id */
   const resumed = []
@@ -53,9 +53,15 @@ function createFixture() {
    * @returns {object} 句柄
    */
   function createHandle(sessionId) {
-    const entry = { sessionId, messages: [], disposed: false }
+    const entry = { sessionId, messages: [], disposed: false, appends: [] }
     spawned.push(entry)
-    const session = { id: sessionId, header: { id: sessionId } }
+    const session = {
+      id: sessionId,
+      header: { id: sessionId },
+      append(type, data) {
+        entry.appends.push({ type, data })
+      },
+    }
     sessions.set(sessionId, session)
     return {
       entry,
@@ -131,6 +137,19 @@ function createFixture() {
       }
       if (key === 'sessionPersistence') return { append() {} }
       if (key === 'sessionQuery') return { observeSession() {} }
+      // 权限服务照 rc.2 的方法面；默认不提供，只有权限继承用例打开。
+      if (key === 'sandboxPolicy' && permissions !== undefined) {
+        return {
+          resolve: ({ session }) => ({ mode: permissions.sandbox?.[session.id] ?? 'workspace-write' }),
+          overrideOf: (session) => permissions.sandbox?.[session.id] ?? 'workspace-write',
+        }
+      }
+      if (key === 'approval' && permissions !== undefined) {
+        return {
+          config: { policy: 'ask' },
+          overrideOf: (session) => permissions.approval?.[session.id] ?? 'ask',
+        }
+      }
       return undefined
     },
   }
@@ -941,6 +960,32 @@ test('spawn_worker 只建会话并返回子会话 id，不开工', async () => {
     assert.equal(dispatcher.inflightCount(), 0)
   } finally {
   }
+})
+
+test('派工时 worker 继承协调者的权限（沙箱模式 + 审批策略）', async () => {
+  const fixture = createFixture({
+    permissions: {
+      sandbox: { 'coordinator-1': 'danger-full-access' },
+      approval: { 'coordinator-1': 'never' },
+    },
+  })
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  // 权限来源是协调者会话本身：宿主的默认 preset 不一定是用户当前选的那套。
+  const parent = { ...createParent('coordinator-1', []), session: { id: 'coordinator-1' } }
+
+  const record = await dispatcher.dispatch({
+    parent,
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(record.childId, fixture.spawned[0].sessionId)
+  assert.deepEqual(fixture.spawned[0].appends, [
+    { type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
+    { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
+  ])
 })
 
 test('派工带 cardId 与 slot 时，绑定先于开工完成', async () => {

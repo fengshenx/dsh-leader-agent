@@ -12,14 +12,16 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
 /**
  * 造一个假的宿主上下文：记录建/恢复/投递/销毁。
  *
- * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, createError?: Error, followupError?: Error }} [options] - 夹具选项
+ * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, workspaceExists?: boolean, attachError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError, permissions } = {}) {
   const created = []
   const resumed = []
   /** 挂进工作区的记录：`{ workspaceId, sessionId }` */
   const attached = []
+  /** 追加到会话上的 knob 事件（权限继承） */
+  const appended = []
   /** 每次冷恢复传给 `agents.resume` 的完整 options */
   const resumeOptions = []
   const titles = []
@@ -42,7 +44,13 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       return {
         agent: {
           id: sessionId,
-          session: { id: sessionId, header: { id: sessionId } },
+          session: {
+            id: sessionId,
+            header: { id: sessionId },
+            append(type, data) {
+              appended.push({ id: sessionId, type, data })
+            },
+          },
           followup(message) {
             if (followupError !== undefined) throw followupError
             entry.messages.push(message)
@@ -115,6 +123,20 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       }
       // 冷恢复的 preset 从会话投影读（rc.2 的 registry 也走这条路）。投影值与
       // 默认 id 故意不同，否则用例区分不出「读了投影」和「用了默认」。
+      // 权限服务照 rc.2 的方法面：sandboxPolicy 只有 resolve / overrideOf，
+      // approval 只有 overrideOf 与 config.policy。默认不提供（大多数用例与权限无关）。
+      if (key === 'sandboxPolicy' && permissions !== undefined) {
+        return {
+          resolve: ({ session }) => ({ mode: permissions.sandbox?.[session.id] ?? 'workspace-write' }),
+          overrideOf: (session) => permissions.sandbox?.[session.id] ?? 'workspace-write',
+        }
+      }
+      if (key === 'approval' && permissions !== undefined) {
+        return {
+          config: { policy: 'ask' },
+          overrideOf: (session) => permissions.approval?.[session.id] ?? 'ask',
+        }
+      }
       if (key === 'sessionProjections' && brokenProjections) return {}
       if (key === 'sessionProjections' && !missingProjections) {
         return {
@@ -124,7 +146,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       return undefined
     },
   }
-  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, attached }
+  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, attached, appended }
 }
 
 test('建会话时用带前缀的会话 id，且不投递任务——开工等协调者的消息', async () => {
@@ -144,6 +166,38 @@ test('建会话时用带前缀的会话 id，且不投递任务——开工等�
   assert.equal(entry.options.meta.cwd, '/repo')
   // 建会话不产生模型调用：任务正文由协调者的 `message_worker` 投递。
   assert.equal(entry.messages.length, 0)
+})
+
+test('建会话时继承协调者的权限，而不是宿主的默认 preset', async () => {
+  const fixture = createFixture({
+    permissions: {
+      sandbox: { 'coordinator-1': 'danger-full-access' },
+      approval: { 'coordinator-1': 'never' },
+    },
+  })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const sessionId = await sessions.spawn({
+    cwd: '/repo',
+    permissionFrom: { id: 'coordinator-1' },
+    signal: new AbortController().signal,
+  })
+
+  // 宿主的 permissionPresets 在 `agent/created` 上给新会话 pin 的是用户默认 preset
+  // （夹具默认 workspace-write + ask）；协调者的覆盖必须在首轮之前落到 worker 上。
+  assert.deepEqual(fixture.appended, [
+    { id: sessionId, type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
+    { id: sessionId, type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
+  ])
+})
+
+test('没有权限来源时不碰 worker 会话的权限事件', async () => {
+  const fixture = createFixture({ permissions: {} })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  await sessions.spawn({ signal: new AbortController().signal })
+
+  assert.deepEqual(fixture.appended, [])
 })
 
 test('建会话时把显示名钉成会话标题', async () => {
