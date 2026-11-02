@@ -15,6 +15,7 @@ import {
   parseListQuery,
   renderCardList,
 } from '../cards/card-list-view.js'
+import { isValidSlotName } from '../slots/slot-templates.js'
 
 /**
  * 校验可选字符串字段。
@@ -68,6 +69,12 @@ function linkSchema() {
 
 /**
  * 槽位绑定的 JSON Schema。
+ *
+ * 槽位名由项目 `SLOTS.md` 决定，不是固定枚举——中文、日文等 Unicode 字母
+ * 数字都可以。`properties` 里的 dev / review 只是常见示例，其余名字由
+ * `additionalProperties` 接受。名字的合法性在 `normalizeSlots` 里校验，
+ * 与解析 `SLOTS.md` 共用同一条规则。
+ *
  * @returns {object} schema
  */
 function slotsSchema() {
@@ -84,6 +91,11 @@ function slotsSchema() {
         properties: { sessionId: { type: 'string' } },
         required: ['sessionId'],
       },
+    },
+    additionalProperties: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
     },
   }
 }
@@ -155,6 +167,9 @@ function normalizeLinks(links) {
 /**
  * 校验槽位绑定结构。
  *
+ * 槽位名必须与 `SLOTS.md` 解析器接受的名字一致：名字合法但解析器不认，绑定
+ * 会落盘成功、注入却是空串——这种静默失效只能在写入前拦住。
+ *
  * 每个槽位项必须带非空的 `sessionId`——否则槽位看起来绑上了，实际没有对应
  * 会话，后续按槽位找执行者会拿到空值。
  *
@@ -166,6 +181,9 @@ function normalizeSlots(slots) {
     throw new Error('卡片工具: slots 必须是对象')
   }
   for (const [name, binding] of Object.entries(slots)) {
+    if (!isValidSlotName(name)) {
+      throw new Error(`卡片工具: 槽位名 ${JSON.stringify(name)} 不合法（只允许字母、数字、下划线、连字符，最长 32 字符）`)
+    }
     if (binding === null || typeof binding !== 'object' || Array.isArray(binding)) {
       throw new Error(`卡片工具: 槽位 ${name} 必须是对象`)
     }
@@ -218,7 +236,7 @@ export function createCreateCardTool({ store, resolveProject }) {
         },
         slots: {
           ...slotsSchema(),
-          description: '槽位绑定：把执行或评审会话挂到卡片上。',
+          description: '槽位绑定：把执行或评审会话挂到卡片上。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，可用中文。',
         },
       },
       required: ['title'],
@@ -297,7 +315,10 @@ export function createUpdateCardTool({ store, resolveProject }) {
           description: '新状态。active 与 done 可逆，archived 是终态。',
         },
         links: { type: 'array', items: linkSchema(), description: '新的链接条目（整体替换）。' },
-        slots: { ...slotsSchema(), description: '新的槽位绑定（整体替换）。' },
+        slots: {
+          ...slotsSchema(),
+          description: '新的槽位绑定（整体替换）。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，可用中文。',
+        },
         sortOrder: { type: 'number', description: '手动排序序号（小的在前）。' },
       },
       required: ['id'],

@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import {
   DEFAULT_SLOT_NAMES,
   SLOT_TEMPLATE_FILE,
+  isValidSlotName,
   loadSlotTemplates,
   parseSlotTemplates,
 } from '../src/host/slots/slot-templates.js'
@@ -53,6 +54,47 @@ test('同名槽位先见为准，后一节整节忽略', () => {
   assert.equal(slots.get('dev'), '第一个定义')
 })
 
+test('槽位名可用中文等 Unicode 字母数字', () => {
+  const slots = parseSlotTemplates([
+    '## 开发',
+    '你是开发者。',
+    '## 审核',
+    '你是审查者。',
+    '## 開発',
+    '日语槽位正文。',
+  ].join('\n'))
+  assert.equal(slots.size, 3)
+  assert.equal(slots.get('开发'), '你是开发者。')
+  assert.equal(slots.get('审核'), '你是审查者。')
+  assert.equal(slots.get('開発'), '日语槽位正文。')
+})
+
+test('槽位名接受字母数字下划线连字符，拒绝空白、标点与超长', () => {
+  for (const name of ['开发', 'review', 'dev_1', 'dev-1', '開発', '１２３']) {
+    assert.equal(isValidSlotName(name), true, name)
+  }
+  for (const name of ['', 'Bad Name', ' 开发', '开发 ', '开发/审核', '开发、审核', 'a'.repeat(33)]) {
+    assert.equal(isValidSlotName(name), false, JSON.stringify(name))
+  }
+  assert.equal(isValidSlotName(undefined), false)
+  assert.equal(isValidSlotName(42), false)
+})
+
+test('中文槽位名绑定后注入对应正文', async () => {
+  const project = await createProject('## 开发\n你是开发者。\n')
+  try {
+    const text = renderRoleContext({
+      sessionId: 'session-a',
+      slotIndex: new Map([['session-a', '开发']]),
+      resolveDirectory: () => project.directory,
+    })
+    assert.match(text, /「开发」槽位/)
+    assert.match(text, /你是开发者。/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
 test('非法槽位名整节忽略，正文不归到上一节', () => {
   const slots = parseSlotTemplates([
     '## dev',
@@ -86,7 +128,7 @@ test('文件缺失时回落默认槽位名，正文为空', async () => {
 })
 
 test('零合法条目时回落默认槽位名', async () => {
-  const project = await createProject('## 非法名\n正文\n')
+  const project = await createProject('## Bad Name\n正文\n')
   try {
     const slots = loadSlotTemplates(project.directory)
     assert.deepEqual([...slots.keys()], [...DEFAULT_SLOT_NAMES])

@@ -196,6 +196,47 @@ test('改卡工具拒绝空标题', async () => {
   }
 })
 
+test('建卡与改卡工具接受中文槽位名', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { 开发: { sessionId: 's1' } } },
+      exec,
+    )
+    assert.deepEqual(Object.keys(created.card.slots), ['开发'])
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, slots: { 开发: { sessionId: 's1' }, 审核: { sessionId: 's2' } } },
+      exec,
+    )
+    assert.deepEqual(Object.keys(updated.card.slots), ['开发', '审核'])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('建卡与改卡工具拒绝非法槽位名', async () => {
+  const { home, tools } = await createTools()
+  try {
+    await assert.rejects(
+      () => tools.create_card.execute(
+        { title: '任务', slots: { 'Bad Name': { sessionId: 's1' } } },
+        exec,
+      ),
+      /槽位名 "Bad Name" 不合法/,
+    )
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, slots: { '开发/审核': { sessionId: 's1' } } },
+        exec,
+      ),
+      /槽位名 "开发\/审核" 不合法/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('建卡与改卡工具拒绝缺 sessionId 的槽位绑定', async () => {
   const { home, tools } = await createTools()
   try {

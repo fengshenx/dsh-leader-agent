@@ -19,10 +19,25 @@ export const SLOT_TEMPLATE_FILE = 'SLOTS.md'
 /**
  * 槽位名的合法形态。
  *
- * 槽位名会进入卡片字段与提示词文本，限制为小写字母、数字、下划线与连字符，
- * 避免出现需要转义的字符。
+ * 槽位名只作 JSON 键、Map 键与提示词文本使用，不进文件名、URL 或 CSS class，
+ * 所以没有「需要转义」的字符——中文、日文等 Unicode 字母与数字都可以直接用。
+ * 被拒的是空白与标点：它们会让 `## <槽位名>` 的标题与卡片键对不上（解析器会
+ * trim 标题），或留下肉眼难以区分的重复键。
  */
-const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
+const SLOT_NAME_PATTERN = /^[\p{L}\p{N}_-]{1,32}$/u
+
+/**
+ * 判断槽位名是否合法。
+ *
+ * 卡片工具与 `SLOTS.md` 解析共用这一条规则：两边对合法名的口径必须一致，
+ * 否则卡片上绑了一个名字、解析器却整节忽略，注入静默变成空串。
+ *
+ * @param {unknown} name - 候选槽位名
+ * @returns {boolean} 是否合法
+ */
+export function isValidSlotName(name) {
+  return typeof name === 'string' && SLOT_NAME_PATTERN.test(name)
+}
 
 /**
  * 零合法槽位时回落的默认槽位名。
@@ -53,7 +68,7 @@ export function parseSlotTemplates(content) {
     const heading = /^##[ \t]+(.+?)[ \t]*$/.exec(line)
     if (heading !== null) {
       const name = heading[1].trim()
-      if (!SLOT_NAME_PATTERN.test(name) || slots.has(name)) {
+      if (!isValidSlotName(name) || slots.has(name)) {
         // 非法名或重复名：该节整体不属于任何槽位，正文不得归到上一节。
         current = undefined
         continue
