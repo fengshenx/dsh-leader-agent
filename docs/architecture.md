@@ -1,6 +1,6 @@
 # dsh-leader-kit 架构
 
-本文是 dsh-leader-kit 的架构文档：分层与模块职责、运行时模型、数据流、持久化布局、宿主契约与取舍。安装与入门见 [README](../README.md)，每个动作的完整交互见[使用手册](usage.md)；宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)；设计决策与实测记录见 [.agents/notes/](../.agents/notes/)。
+本文是 dsh-leader-kit 的架构文档：分层与模块职责、运行时模型、数据流、持久化布局、宿主契约与取舍。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)；宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)；设计决策与实测记录见 [.agents/notes/](../.agents/notes/)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)，再看自己要改的那一块；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
@@ -46,6 +46,8 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 `agents.create` 不会自己挂 **agent preset**，而内建工具（`bash` / `read` / `write`…）就在 preset 组合里——建 worker 与冷恢复 worker 都要显式把 `agentPresets.mount()` 交给 `setup`，并把 preset id 写进 `meta.agentPreset`（宿主从会话投影读回），漏了就只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。
 
 挂上的是**整个标准组合**，不只一两个工具：persona、`agent-instructions`（会读项目 `AGENTS.md`）、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web` 等一起进来。worker 是常驻后台会话，因此它也能向用户提问。
+
+worker 的**权限**（沙箱模式 + 审批策略）在派工时从协调者继承。宿主的 `permissionPresets` 会按用户默认 preset 给每个新会话钉权限，协调者自己切过的 `danger-full-access` / `never` 不会跟过来（[capability-gaps 第 41 条](capability-gaps.md)）；于是 worker 建好之后、首轮之前追加两条 `source: 'delegation'` 的覆盖事件（`permission-inherit.js`）。协调者是 `auto` 时再补一条 `permission/preset`：auto 的身份不在 knob 值里（bundle 不匹配任何配置 preset），只写 knobs 会让 `derive()` 落到 `custom`，审查门关闭而沙箱已经放开。不继承的后果不对称：worker 在后台跑，审批 answerer 按会话 UI 作用域注册，没人应答的 `ask` 一律落到 `unavailable`——需要审批的调用直接被拒（继承 `ask` 给后台 worker 仍是死路，只有打开这个会话才可能应答）。继承是一次性快照，协调者之后切换 preset 不影响已派出的 worker：权限在宿主里本来就是逐会话的。`spawn_worker` 的回执带的是**回读到的实际权限**（写失败或放弃继承时如实说 worker 停在哪，而不是报继承目标）与未继承的缺口，完全权限会被点名——worker 的输入含项目文件、issue 与 PR 正文，静默给完全权限等于把 prompt injection 变成任意代码执行。
 
 ### 派工与唤醒
 
@@ -185,6 +187,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话，**不开工、立即返回**会话 id；可选带 `cardId` + `slot` 把卡槽位绑到它身上（卡必须是本项目的 `active` 卡），绑定在返回前完成 |
 | `message_worker` 工具 | `src/host/tools/message-worker.js` | 投递任务与续聊：第一条消息即开工；活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
 | worker 会话 | `src/host/worker-sessions.js` | worker 的创建、投递、销毁：`agents.create` 建的**普通根会话**，常驻、可被人下钻对话、进程重启后能冷恢复 |
+| 权限继承 | `src/host/permission-inherit.js` | 派工时把协调者的有效沙箱模式与审批策略写到新 worker 会话上（`source: 'delegation'` 的两条覆盖事件）；协调者是 `auto` 时补写 `permission/preset` 保住审查门；宿主默认 preset 不等于协调者当前那套 |
 | worker 登记表 | `src/host/worker-registry.js` | 会话 id → 父会话与名字的落盘映射（`workers.json`）：续聊跨进程也要找得到归属 |
 | 派工与唤醒 | `src/host/dispatch.js` | 建会话、在 worker 轮次结束时从会话事件结算产出、落盘完成通知、唤醒父会话开新 turn |
 | 通知落盘队列 | `src/host/notification-store.js` | 完成通知先写盘再唤醒；投递失败留队，父会话重开时补投 |
@@ -232,7 +235,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ### 多 worktree 并发
 
-每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见 README 的[前提](../README.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
+每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见[中文 README 的前提](../README_ZH.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
 
 `npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 

@@ -382,6 +382,20 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：map 形状的参数在子集里只能用 `additionalProperties: true` 放行任意键，条目形状靠 `properties` 里的示例（`dev` / `review`）与工具描述表达；键级校验只能写在执行路径上（`normalizeSlots`）。`cardSchema()` 复用了同一个 `slotsSchema()`，所以一处越界同时污染三个工具的 output schema——schema 层「兜底校验」的直觉在这里是负收益。
 
+### 41. 新建会话的权限取部署默认 preset，不继承父会话
+
+**目标形态**：worker 与协调者用同一套沙箱模式与审批策略——同一个命令，协调者能跑，worker 也能跑。
+
+**dsh 实测**（`0.2.1-rc.2`）：
+
+- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,428`、`pinInitialPermission()`）。
+- **preset 身份不编码在 knob 值里**：`permissionPresets.current(session)` 是 `derive()` 的结果，把 knob 值折回配置表。`auto` 的 bundle（`danger-full-access` + `ask`）不匹配任何配置 preset，所以只写 knobs 时 `derive()` 落到 `custom`；而 auto-review 的审查门判据正是 `permissionPresets.current(session) === 'auto'`（`packages/experimental/auto-review/src/index.ts:689`）。宿主 subagent 因此只在父会话的显式身份是 `auto` / `danger-full-access` 时额外写 `permission/preset`（`packages/subagent/subagent/src/child-agent.ts:248-278` 的 `captureDelegatedPolicyOverrides` / `appendDelegatedPolicyOverrides`）。`pinInitialPermission()` 对已有 `auto` 身份的会话要求 auto 集成在场（`autoAdmit` 缺失时抛错），这是宿主自身契约。
+- 有效值 = 会话覆盖 ?? 部署默认：`sandboxPolicy.resolve({ session })`（`packages/sandbox/sandbox-policy/src/index.ts:197-205`）与 `approval.overrideOf(session) ?? approval.config.policy`（`packages/interaction/user-approval/src/index.ts:244-253`），两处在 rc.2 就有。
+- 会话覆盖的写路径是 `sandbox/mode` 与 `approval/policy` 两条 session event，都接受 `source: 'delegation'`（宿主 subagent 就给子会话钉 `approvalPolicy: 'never'`，`packages/subagent/subagent/src/child-agent.ts:271-277`）。仓外插件可以直接 append 这两条**已知**事件，不违反「不能新增 session event 类型」（第 8 条）。
+- 审批 answerer 按**会话 UI 作用域**注册（`ctx.sessions.scopeOf(owner)`，`packages/client/ui-approval/src/client/index.ts:45`）：会话没在界面上打开时没有 answerer，`ask` 落到 `unavailable` → 工具被拒（`packages/core/tools/src/pipeline.ts:436-469`）。所以继承 `ask` 给后台 worker 仍是死路：卡上「协调者切 `never` 后 worker 被拒」那一半修好了，`ask` 方向没修，除非用户打开这个 worker 会话去应答。
+
+**影响**：`agents.create` 建的 worker 拿到的是默认 preset（web profile 下 `workspace-write` + `ask`）。协调者切到 `danger-full-access` / `never` 之后，worker 的同一个命令会被沙箱拒绝；需要审批的调用在后台无人应答，同样被拒——两个方向的偏差都表现为「协调者能干、worker 干不了」。本仓在派工建会话后、首轮之前按协调者的有效值追加两条 `source: 'delegation'` 覆盖，协调者是 `auto` 时再补一条 `permission/preset`（`src/host/permission-inherit.js`）。读不到协调者的 preset 身份时整体放弃继承——排除不了 auto 就不能只写裸 knobs，否则得到的是无沙箱、无审查门的 worker；此时 worker 停在**部署默认 preset** 上，默认可能是任意一档，不保证比协调者更严。继承是派工那一刻的快照，协调者之后切换 preset 不影响已派出的 worker。`spawn_worker` 回执带的是**回读到的实际值**（`resolve` / `overrideOf` / `permissionPresets.current`），不是继承目标：写失败时如实报告 worker 真正跑的权限；读不到的键不写——值为 `undefined` 的键过不了工具结果的 lossless JSON 判定（`snapshotJsonValue` 返回 `undefined`），而报错发生在派工完成之后，会留下挂卡的孤儿 worker。
+
 ---
 
 ## 四、工具级（已验证可用，无缺口）
