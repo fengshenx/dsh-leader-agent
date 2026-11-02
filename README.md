@@ -134,7 +134,7 @@ We recommend adopting the four engineering practices of the DeepSeek Harness tea
 - **Progressive disclosure in `AGENTS.md`.** The root file holds only rules that apply to every task plus a task-routed index; details live in their own documents.
 - **Documentation that resists rot.** Whatever can be checked mechanically runs in `npm run check`; behavior changes update the docs in the same PR; temporary evidence never enters the repository.
 
-Mechanisms and where each one lands: [collaboration and documentation](docs/architecture.md#协作与文档机制) (Chinese). When you bring this way of working to your own project, bring these four practices first — orchestration survives only as long as the project's own isolation and documentation do.
+Mechanisms and where each one lands: [collaboration and documentation](docs/architecture.md#协作与文档机制) (Chinese). When you bring this way of working to your own project, bring these four practices first — orchestration survives only as long as the project's own isolation and documentation do. This repository is already laid out that way: the tiering rules and editing discipline are in [AGENTS.md](AGENTS.md#编辑本文件与文档分层) (Chinese).
 
 ## Current limitations
 
@@ -147,7 +147,7 @@ Mechanisms and where each one lands: [collaboration and documentation](docs/arch
 - **The project tree coexists with the official workspace tree.** Project sessions are hidden from the official tree at render time only; official counts and search still include them. The project directory itself also shows up as a workspace row there, so the same directory is reachable from both places.
 - **The client is coupled to the host version.** Dialogs, menus and icons are copied from host sources, the Typert remote channel is a hand-written protocol shape, and the coordinator session layout depends on the host's session view service, so host upgrades require syncing this repository.
 
-The full list and trade-offs (status-light sources, watermark collapsing, avatars, the archive entry point, DOM injection positioning and more) live in [known limitations and trade-offs](docs/architecture.md#已知限制与取舍) (Chinese).
+The full list and trade-offs (status-light sources, watermark collapsing, avatars, the archive entry point, DOM injection positioning and more) live in [known limitations and trade-offs](docs/limitations.md) (Chinese).
 
 ## Development
 
@@ -156,19 +156,15 @@ npm run worktree:spawn <task>     # create .worktrees/<task> and feature/<task>
 cd .worktrees/<task>
 npm run dev                       # dsh instance mounting this worktree's plugin
 npm start                         # daily instance (the ~/.dsh data root and profile)
-npm run check                     # Agent Note gate, doc tool-name gate, syntax check, all tests
+npm run check                     # Agent Note gate, doc tool-name gate, doc budget gate, syntax check, all tests
 npm run e2e                       # build the client bundle + browser e2e (real host, local mock, no keys)
 ```
 
 The remaining commands are in [AGENTS.md](AGENTS.md#常用命令) (Chinese).
 
-`npm run dev` keeps its data root in the worktree's `.dev/home`; delete it to reset. It never touches the daily `~/.dsh`, so several worktrees can run at once with their own plugin version and data. On startup it merges the `refs` in `~/.dsh/.credentials.yaml` (API keys stored by environment-variable name) into the dev instance's credentials file, so a fresh worktree does not ask you to paste them again; only `refs` move, account authorizations stay put. Client changes are rebuilt by a resident esbuild watch and the host's `client-hmr` swaps the running plugin — no page reload (in-plugin React state resets, session and connection data survives); host-side changes need an instance restart.
+`npm run dev` keeps its data root in the worktree's `.dev/home` and leaves the daily `~/.dsh` untouched, so several worktrees can run at once with their own plugin version and data; client changes are rebuilt by a resident watch, host-side changes need an instance restart. `npm start` runs the daily setup after checking each prerequisite and printing a copy-pasteable fix.
 
-`npm start` runs the daily setup (data root `~/.dsh`, the version linked into the daily profile) after checking each prerequisite and printing a copy-pasteable fix: dsh unavailable (`DSH_DSH` points elsewhere), profile missing, bundles missing web-app or this plugin, `node_modules/dsh-leader-kit` link missing. It has no isolation — inside a worktree it still loads whatever the link points at, so verify changes in this directory with `npm run dev`.
-
-Dev instance overrides, worktree cleanup guards, evidence gathering and build constraints are in [the architecture doc's development section](docs/architecture.md#开发) and [docs/e2e-testing.md](docs/e2e-testing.md) (both Chinese).
-
-Browser-side behavior is proven with `npm run e2e`: a real `dsh` instance + a local mock model + chromium, no keys, no network, one command (run `npm run e2e:install` once to download the browser). Scenarios live in `tests/e2e/*.e2e.js`; how to write them, what counts as evidence and what is not allowed is in [docs/e2e-testing.md](docs/e2e-testing.md) (Chinese).
+Dev instance overrides and credentials handling, worktree cleanup guards, build constraints and the test policy live in [development](docs/development.md) (Chinese); browser-side evidence is gathered with `npm run e2e` (`npm run e2e:install` once), and scenarios plus assertion rules are in [docs/e2e-testing.md](docs/e2e-testing.md) (Chinese).
 
 ## Docs
 
@@ -176,7 +172,9 @@ Browser-side behavior is proven with `npm run e2e`: a real `dsh` instance + a lo
 |---|---|
 | [AGENTS.md](AGENTS.md) | Repository rules and the task-routed reading index |
 | [docs/usage.md](docs/usage.md) | Full interaction for dispatch, follow-ups, cards, board, project management, slots and manuals |
-| [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, full known limitations |
+| [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, host-contract landing spots |
+| [docs/limitations.md](docs/limitations.md) | Full known limitations and trade-offs |
+| [docs/development.md](docs/development.md) | Dev environment, instances, build contract, test policy |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, assertion discipline) and manual evidence rules |
 | [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |

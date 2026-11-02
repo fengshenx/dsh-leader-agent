@@ -1,6 +1,6 @@
 # 能力缺口清单（P0–P5 实测）
 
-本清单由 P0–P5 阶段在真实 dsh（0.2.1-rc.2）上实测得出，不是文档推断。每条给出对比形态、dsh 实测现状、证据与影响。**目标形态**指希望达成的能力，**参照形态**指已有实现的实际做法；本仓是否已达成，看条目结论。
+本清单由 P0–P5 阶段在真实 dsh（0.2.1-rc.2）上实测得出，不是文档推断。每条给出对比形态、dsh 实测现状、证据与影响。**目标形态**指希望达成的能力，**参照形态**指已有实现的实际做法；本仓是否已达成，看条目结论。条目里的 P0–P5 是早期交付阶段编号，此后不再维护，保留原样只为读懂当时的分期。
 
 复现环境：macOS arm64，dsh `0.2.1-rc.2`，web、headless 与 sdk 三个 profile。
 
@@ -129,7 +129,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 | `@deepseek-ai/dsh-tool-subagent-control`（base bundle 默认启用） | 父子 | `agent_id` 即子会话 id | 调用者派出的子会话 |
 | `@deepseek-ai/dsh-tool-agent-team`（experimental，base bundle 未启用） | 同伴 | teammate 名字 | team 成员 |
 
-**影响**：本流程两者都不用。worker 是本 bundle 用 `ctx.agents.create` 建的普通根会话，不在任何 subagent 目录里：`list_agents` 列不到它；`send_message` 的 `authorizeLineage` 要求子会话头的 `parentSession`（根会话没有），走不通；`interrupt_agent` 对非 resident 目标静默 `return`，工具却仍报成功。worker 的所有交互只经本 bundle 的 `spawn_worker` / `message_worker`，协调者的工具面也把这三件 deny 掉了（普通会话保留：它可能真的用官方 subagent）——也因此协调者没有中止常驻 worker 的手段，worker 卡住只能请人去那个会话处理（见[架构文档的已知限制](architecture.md#已知限制与取舍)）。早期方案文档按 team 工具写过映射表，同样不适用于本流程。
+**影响**：本流程两者都不用。worker 是本 bundle 用 `ctx.agents.create` 建的普通根会话，不在任何 subagent 目录里：`list_agents` 列不到它；`send_message` 的 `authorizeLineage` 要求子会话头的 `parentSession`（根会话没有），走不通；`interrupt_agent` 对非 resident 目标静默 `return`，工具却仍报成功。worker 的所有交互只经本 bundle 的 `spawn_worker` / `message_worker`，协调者的工具面也把这三件 deny 掉了（普通会话保留：它可能真的用官方 subagent）——也因此协调者没有中止常驻 worker 的手段，worker 卡住只能请人去那个会话处理（见[已知限制的 worker 控制面](limitations.md#worker-的控制面)）。早期方案文档按 team 工具写过映射表，同样不适用于本流程。
 
 ### 14. 工具的结构化结果不进事件流 content，只在 `presentationMeta` 投影的 `meta` 里
 
