@@ -39,6 +39,21 @@ export function checkBudgets(entries) {
 }
 
 /**
+ * 找出长期文档目录里没登记的文档。
+ *
+ * 只校验清单内文件会留一条旁路：新增长期文档忘了登记就绕过整套预算。所以按目录
+ * 枚举与清单比对，漏登记同样是红的。
+ *
+ * @param {string[]} registered - 清单里的路径（仓内相对 POSIX 路径）
+ * @param {string[]} discovered - 枚举到的候选文档路径
+ * @returns {string[]} 未登记的路径，按字典序
+ */
+export function findUnregisteredDocs(registered, discovered) {
+  const known = new Set(registered)
+  return discovered.filter((path) => !known.has(path)).sort()
+}
+
+/**
  * 渲染判定结果的一行。
  *
  * @param {{ path: string, ceiling: number, units: number | null, status: string }} result - 单项判定结果

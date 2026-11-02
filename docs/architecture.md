@@ -35,13 +35,13 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 ### 派工与唤醒
 
-worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走宿主 subagent 机制：生命周期由本 bundle 持有的 `AgentHandle` 决定，人可以直接打开它说话，进程重启后由 `agents.resume()` 冷恢复。宿主的 subagent 换不来这件事——结算即销毁、界面只读。
+worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走宿主 subagent 机制：生命周期由本 bundle 持有的 `AgentHandle` 决定，人可以直接打开它说话；会话各有一份独立 JSONL，进程重启后由 `agents.resume()` 冷恢复。宿主的 subagent 换不来这件事——结算即销毁、界面只读。
 
 建 worker 与冷恢复都要显式把 `agentPresets.mount()` 交给 `setup` 并把 preset id 写进 `meta.agentPreset`，否则只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。挂上的是整个标准组合（persona、`agent-instructions`、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web`…），因此 worker 也能向用户提问。worker 的沙箱模式与审批策略在派工时从协调者继承，回执写回读到的实际权限（[capability-gaps 第 41 条](capability-gaps.md)、[限制](limitations.md#worker-的控制面)）。
 
 派工分两步：`spawn_worker` 建会话、登记、可选绑卡槽位后**立即返回且不开工**；开工由 `message_worker` 的第一条消息触发。这样槽位绑定与卡片事实先落盘，首轮请求就带着它们。`message_worker` 既是开工入口也是续聊入口：会话活着直接投（`merged`），进程重启后先冷恢复再投（`sent`），可选 `rename` 改名。
 
-完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让协调者卡在等待里。唤醒走 `agent.followup()`，补上 dsh 原生缺失的「worker 结束 → 协调者自动被唤醒」。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步），且父会话空闲才投（否则会和人的消息混在输入框上方的队列面板里）。人下钻到 worker 会话直接对话不经过这条路径：那种轮次不登记在飞记录，不结算。
+完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让协调者卡在等待里。唤醒走 `agent.followup()`，补上 dsh 原生缺失的「worker 结束 → 协调者自动被唤醒」。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步）且父会话空闲才投；为什么这样定、代价是什么见[限制](limitations.md#宿主语义与运行形态)。人下钻到 worker 会话直接对话不经过这条路径：那种轮次不登记在飞记录，不结算。
 
 ### 工具面分配
 
@@ -71,7 +71,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 - **加项目就把它注册成 dsh 工作区**（幂等，已有则复用）：项目会话必须归属工作区，否则会落进官方树的「未分组」。项目自建的工作区记下 `workspaceId`，删项目时一并摘掉；复用来的用户工作区不动。工作区被用户删掉后点项目行按需重建并归位会话。
 - **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，编排工具在调用时按当前身份判定并拒绝。
 
-项目注册表**只经左栏项目区块操作**，模型没有 `add_project` / `list_projects` / `switch_project` / `remove_project`。打开与换协调者前先过 `assertUsableDirectory`：宿主注册工作区不校验目录，挂在已删目录上会抛英文技术错。
+项目注册表**只经左栏项目区块操作**，模型侧没有项目注册表工具（缺口见[限制](limitations.md#项目树与工作区)）。打开与换协调者前先过 `assertUsableDirectory`——宿主注册工作区不校验目录。
 
 ## 卡片与看板
 
@@ -79,7 +79,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 看板是**项目的看板**：一个项目一个看板，跨会话聚合，协调者与 worker 建的卡在同一处。数据源是宿主的卡片库（经项目远程通道读取），不是会话事件流——事件流是会话维度的，一个项目的卡散在多个会话里，重放既慢又会漏。卡片仍随 `tool/result` 事件的 `meta` 投影进 session log（历史完整），但那是历史，不是看板的数据源。
 
-看板只对**项目会话**（协调者与该项目派出的 worker）展示；同目录的普通会话与已退役的协调者只看到提示。协调者建卡后右栏自动打开（或聚焦）看板 tab，只有出现新卡才打断。卡面信号灯七档由槽位会话状态实时投影，不落盘。
+看板只对**项目会话**（协调者与该项目派出的 worker）展示，其余会话的呈现面归属见[限制](limitations.md#看板与卡片)。协调者建卡后右栏自动打开（或聚焦）看板 tab，只有出现新卡才打断。卡面信号灯七档由槽位会话状态实时投影，不落盘。
 
 ## 客户端注入面
 
@@ -102,7 +102,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 | 文件 | 内容 |
 |---|---|
-| `projects.json` | 项目注册表：名字、目录、协调者会话、退役协调者会话列表、自建工作区 id；数组顺序即左栏显示顺序 |
+| `projects.json` | 项目注册表：名字、目录、协调者会话、退役协调者会话列表、自建工作区 id；数组顺序即左栏显示顺序（拖拽改，见[笔记](../.agents/notes/2026-11-02-project-row-drag-order.md)） |
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
 | `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
@@ -123,7 +123,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 `COORDINATOR.md`、`SLOTS.md` 与卡片事实都**只贡献提示词文本，不授予工具权限**。`COORDINATOR.md` 按身份注入（项目注册表指针），不需要卡片绑定；`SLOTS.md` 与卡片事实按卡片绑定注入。文件缺失、读失败或正文为空时注入空串，不阻断会话；配置错误大声告警，且同一问题只报一次。
 
-卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**。重新打开不恢复绑定——那是新的指派，要显式再绑一次。投递门禁按绑定卡的 `status === 'active'` 判断；同时挂多张 `active` 卡一律拒绝投递（角色注入只按一张卡算），要把卡先收敛到一张。
+卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**。重新打开不恢复绑定——那是新的指派，要显式再绑一次。投递门禁按绑定卡的 `status === 'active'` 判断；同时挂多张 `active` 卡一律拒绝投递（角色注入只按一张卡算），要把卡先收敛到一张。名册到顶给候选时，挂卡 worker 单列、不当作可复用。
 
 `SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`。
 
@@ -165,8 +165,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 身份先于会话（[第 37 条](capability-gaps.md)） | `src/host/tools/gate.js` 在 `agent/created` 上按身份 `restrict({ deny })`；协调者身份先写进项目注册表，再建会话 |
 | 不能新增 session event 类型（[第 8 条](capability-gaps.md)） | 卡片、通知、项目状态各自独立落盘（`cards/`、`notification-store.js`、`projects/`），会话侧只做 projection |
 | client 产物不能用 `node:`、不引 React / jsdom（[第 23 条](capability-gaps.md)） | `src/client/` 只用宿主模块表与 `React.createElement`，产物由 `build/client.mjs`（薄入口）与 `build/client-bundle.mjs`（配置）打 |
-| 浏览器侧 → 宿主侧只有 Typert 远程通道 | `src/host/projects/remote.js`：`connection.rpc.handle` 对仓外插件不可用，`/api` 被官方 gateway 占用；代价是手写的协议形状与宿主版本耦合（标记属性名、`version:1` 描述符、`typertRemote` 绑定字段），宿主改契约时要同步 |
+| 浏览器侧 → 宿主侧只有 Typert 远程通道 | `src/host/projects/remote.js`：`connection.rpc.handle` 对仓外插件不可用，`/api` 被官方 gateway 占用。代价与版本耦合面见[限制](limitations.md#客户端与宿主耦合) |
 
 ## 协作与文档机制
 
-本仓的长期记忆分三层，各管一件事：常驻规则在 `AGENTS.md`（每个任务都适用的铁律与按任务查阅入口），决策记忆在 `.agents/notes/`（非平凡改动的永久决策与边界），长期文档在 `docs/`（架构、限制、宿主能力边界、开发与取证）。分层规则、编辑纪律与文档预算见 [AGENTS.md 的编辑本文件与文档分层](../AGENTS.md#编辑本文件)。
+本仓的长期记忆分三层，各管一件事：常驻规则在 `AGENTS.md`（每个任务都适用的铁律与按任务查阅入口），决策记忆在 `.agents/notes/`（非平凡改动的永久决策与边界），长期文档在 `docs/`（架构、限制、宿主能力边界、开发与取证）。分层规则、编辑纪律与文档预算见 [AGENTS.md 的编辑本文件与文档分层](../AGENTS.md#编辑本文件与文档分层)。

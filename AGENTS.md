@@ -128,7 +128,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 | `docs/usage.md` | 使用者视角的完整交互 | 实现与取舍 |
 | `.agents/notes/` | 永久决策与边界（why、放弃了什么、怎么验证） | 迁移计划、验收清单、状态播报 |
 
-- 文档体量由 `scripts/doc-budgets.json` 管，`npm run check` 里的 `scripts/verify-doc-budgets.mjs` 超限变红。红了按顺序处理：**搬到对的层 → 压缩 → 抬天花板**；抬天花板要在 PR 里写明为什么。（计数口径：CJK 字符逐个算 1，非 CJK 按空白分词，代码块与表格一并计入。）
+- 文档体量由 `scripts/doc-budgets.json` 管，`npm run check` 里的 `scripts/verify-doc-budgets.mjs` 超限变红。`docs/` 与根目录的 Markdown 必须全部登记，漏登记同样变红。红了按顺序处理：**搬到对的层 → 压缩 → 抬天花板**；抬天花板要在 PR 里写明为什么，并按同一比例重算余量。（计数口径：CJK 字符逐个算 1，非 CJK 按空白分词，代码块与表格一并计入；天花板按当前值留至少 5% 余量，每个任务都要改的 `AGENTS.md` 与高频追加的 `capability-gaps.md` 留 10%，不贴线。）
 - 每条规则自包含，或一行断言加链接指向归属文档；背景与理由链到归属，不就地展开。
 - 别处已有的规则不复制：在归属处改，此处只放链接（宿主限制归 `docs/capability-gaps.md`，构建约束归 `docs/development.md` 与对应 Agent Note）。
 - 清晰度不损时优先压缩。

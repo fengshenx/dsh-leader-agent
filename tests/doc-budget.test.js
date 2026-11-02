@@ -1,7 +1,22 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { existsSync, readFileSync } from 'node:fs'
-import { checkBudgets, countDocUnits, formatBudgetRow } from '../scripts/doc-budget.mjs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { checkBudgets, countDocUnits, findUnregisteredDocs, formatBudgetRow } from '../scripts/doc-budget.mjs'
+
+const root = fileURLToPath(new URL('../', import.meta.url))
+
+/**
+ * 列出某个目录下一层的 Markdown 文件。
+ * @param {string} dir - 仓内相对目录，`.` 表示根
+ * @returns {string[]} 仓内相对路径
+ */
+function markdownIn(dir) {
+  return readdirSync(join(root, dir), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => (dir === '.' ? entry.name : `${dir}/${entry.name}`))
+}
 
 test('计数口径：CJK 逐字算 1，非 CJK 按空白分词', () => {
   assert.equal(countDocUnits(''), 0)
@@ -16,6 +31,18 @@ test('计数口径：代码块、表格与标点一并计入', () => {
   assert.equal(countDocUnits('```sh\nnpm run check\n```'), 5)
   // CJK 先逐字计数再从分词输入里剔除：三个汉字 + 三个竖线
   assert.equal(countDocUnits('| 层 | 位置 |'), 6)
+})
+
+test('计数口径：大表格与长代码块按实际字符计', () => {
+  const table = [
+    '| 层 | 位置 | 职责 |',
+    '|---|---|---|',
+    ...Array.from({ length: 100 }, () => '| 宿主侧 | `src/host/` | 工具 |'),
+  ].join('\n')
+  assert.equal(countDocUnits(table), 1010)
+
+  const code = ['```js', ...Array.from({ length: 50 }, () => 'const value = compute(input)'), '```'].join('\n')
+  assert.equal(countDocUnits(code), 202)
 })
 
 test('判定：未超限为 ok，超限为 over', () => {
@@ -43,12 +70,31 @@ test('输出行带状态、读数与天花板', () => {
   assert.match(row, /docs\/a\.md$/)
 })
 
+test('输出行：缺失文件的读数显示为破折号', () => {
+  const row = formatBudgetRow({ path: 'docs/a.md', ceiling: 100, units: null, status: 'missing' })
+  assert.match(row, /^MISS/)
+  assert.match(row, /—/)
+})
+
+test('未登记的长期文档被报出，已登记的不报', () => {
+  assert.deepEqual(
+    findUnregisteredDocs(['docs/a.md', 'README.md'], ['README.md', 'docs/a.md', 'docs/orphan.md', 'AGENTS.md']),
+    ['AGENTS.md', 'docs/orphan.md'],
+  )
+  assert.deepEqual(findUnregisteredDocs(['docs/a.md'], ['docs/a.md']), [])
+})
+
 test('真实清单：声明的文件都在，且读数都是正整数', () => {
-  const root = new URL('../', import.meta.url)
-  const manifest = JSON.parse(readFileSync(new URL('scripts/doc-budgets.json', root), 'utf8'))
+  const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
   assert.ok(Object.keys(manifest).length > 0)
   for (const [path, ceiling] of Object.entries(manifest)) {
-    assert.ok(existsSync(new URL(path, root)), `清单里的 ${path} 不存在，改名或删除时同步 scripts/doc-budgets.json`)
+    assert.ok(existsSync(join(root, path)), `清单里的 ${path} 不存在，改名或删除时同步 scripts/doc-budgets.json`)
     assert.ok(Number.isInteger(ceiling) && ceiling > 0, `${path} 的天花板必须是正整数`)
   }
+})
+
+test('真实清单：根目录与 docs/ 下的 Markdown 全部登记', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
+  const discovered = [...markdownIn('.'), ...markdownIn('docs')]
+  assert.deepEqual(findUnregisteredDocs(Object.keys(manifest), discovered), [])
 })
