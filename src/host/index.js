@@ -2,10 +2,10 @@
  * dsh-leader-kit 的宿主侧插件。
  *
  * 贡献九件事：bundle 内置 skill 的发现（协议层）、后台派工工具、worker 会话的
- * 创建与续聊（常驻根会话 + 登记表落盘 + `message_worker` 工具）、轮次结束时由
- * 会话事件自动结算回报并唤醒协调者、任务看板卡片存储与卡片工具、项目注册表、
- * 项目数据的 Typert 远程通道、角色槽位到系统提示词的注入，以及项目协调者手册
- * （`COORDINATOR.md`）的注入。
+ * 创建与续聊（常驻根会话 + 登记表落盘 + `message_worker` 工具）、按回合回看 worker
+ * 会话（`read_worker_session`）、轮次结束时由会话事件自动结算回报并唤醒协调者、
+ * 任务看板卡片存储与卡片工具、项目注册表、项目数据的 Typert 远程通道、角色槽位
+ * 到系统提示词的注入，以及项目协调者手册（`COORDINATOR.md`）的注入。
  *
  * 客户端侧（交付看板 UI 与左栏项目区块）在 `src/client/`，跑在浏览器进程，与本
  * 模块不共处。
@@ -18,6 +18,7 @@ import { dirname, join } from 'node:path'
 import { createSkillProvider } from './skills.js'
 import { createSpawnWorkerTool } from './tools/spawn-worker.js'
 import { createMessageWorkerTool } from './tools/message-worker.js'
+import { createReadWorkerTool } from './tools/read-worker.js'
 import { createCreateCardTool, createUpdateCardTool, createListCardsTool } from './tools/cards.js'
 import { createNotificationStore, resolveDshHome } from './notification-store.js'
 import { createWorkerRegistry } from './worker-registry.js'
@@ -72,6 +73,7 @@ export function createBundleTools({ dispatcher, cards, resolveProject } = {}) {
   return [
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
+    createReadWorkerTool({ dispatcher }),
     createCreateCardTool({ store: cards, resolveProject }),
     createUpdateCardTool({ store: cards, resolveProject }),
     createListCardsTool({ store: cards, resolveProject }),

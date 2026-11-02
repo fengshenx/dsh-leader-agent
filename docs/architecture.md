@@ -227,6 +227,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 给 worker 续聊 / 改名 | `message_worker` | 本 bundle |
 | worker 轮次结束的自动回报 | `session/event` → `turn/end` | 宿主 |
 | 读 worker 回报 | 完成通知 | 本 bundle 的唤醒器 |
+| 回看 worker 的会话回合（不唤醒） | `read_worker_session` | 本 bundle（读宿主的 `sessionQuery.readSession`） |
 | 建卡 / 改卡 / 查卡 | `create_card` / `update_card` / `list_cards` | 本 bundle |
 
 `spawn_worker` / `message_worker` 这套接口是为「协调者派活、worker 干活并自动回报」设计的：会话由 `agents.create` 建，生命周期归本 bundle 管，不经 dsh 的 subagent 机制。
@@ -319,6 +320,8 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 ### worker 的控制面
 
 - **协调者没有中止 worker 的手段，也没有模型侧的名录工具**。worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 都作用在 subagent 体系上，对它无效（`interrupt_agent` 还会返回一个假的成功回执）。worker 卡住或跑偏时，只能请人去那个会话里处理；要看项目里有哪些 worker，看项目树（那一层在前端，模型看不到）。这是常驻化的直接代价：换掉 subagent 换来常驻与可下钻，也就换掉了宿主的这套控制面。
+- **`read_worker_session` 是只读视图，不是会话导出**。它读宿主的 `sessionQuery.readSession()`（live 会话读内存快照）并折叠成「一回合一段」：用户投进去的任务、worker 说过的正文、调过哪些工具、失败原因、终态。正文有条目上限（单条 2000 字符、失败原因 200）与总量上限（12000 字符，按最新优先保留），超出部分丢弃并标注条数；`turns` 默认 2、最多 20。工具参数与成功结果不返回——那是给排障解释「哪一步失败」，不是完整转录（要完整日志用宿主的会话导出）。权限按项目协调者 + 本体系登记归属判，与 `message_worker` 同档；退役协调者在调用时被判掉。
+- **读 worker 会话与 worker 是否在跑无关**：会话日志已落盘的部分随时可读，最后一轮缺 `turn/end` 时标「进行中」并按当前已追加的事件展示——不要把半截输出当结论。worker 还没投过第一条消息时没有日志，工具会说明这一点而不是返回空视图。
 
 ### 看板与卡片
 

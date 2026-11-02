@@ -16,11 +16,12 @@
  * 完成回报不占工具面：由 `dispatch.js` 订阅会话事件自动结算。
  */
 
-/** 只有协调者能用的工具：worker 编排与全库卡片查询。 */
+/** 只有协调者能用的工具：worker 编排、会话回看与全库卡片查询。 */
 export const COORDINATOR_ONLY_TOOLS = Object.freeze([
   'list_cards',
   'spawn_worker',
   'message_worker',
+  'read_worker_session',
 ])
 
 /**

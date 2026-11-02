@@ -21,7 +21,7 @@ import {
  */
 function makeAgent(id, registered = [
   'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
-  'spawn_worker', 'message_worker', 'list_cards',
+  'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
 ]) {
   const restrictions = []
   const names = new Set(registered)
