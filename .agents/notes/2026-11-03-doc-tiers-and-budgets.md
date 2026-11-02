@@ -44,7 +44,7 @@
 
 ## 验证
 
-- `docs/architecture.md`：60,309 字节 / 15,999 单位 → 5,041 单位（-68%）；合并 #66 的卡片写入闸后按分层承接新规则（工具面矩阵与执行时闸进架构、用户可见限制进 `limitations.md`），天花板按 ×1.05 重算为 5,300。
+- `docs/architecture.md`：60,309 字节 / 15,999 单位 → 5,028 单位（-69%）；合并 #66 的卡片写入闸后按分层承接新规则（工具面矩阵与执行时闸进架构、用户可见限制进 `limitations.md`），天花板按 ×1.05 重算为 5,300。
 - 其余读数：`AGENTS.md` 3,571 / 3,930（10.1%）、`README.md` 2,942 / 3,090（5.0%）、`README_ZH.md` 4,435 / 4,660（5.1%）、`docs/limitations.md` 5,276 / 5,600（6.1%）、`docs/development.md` 1,686 / 1,780（5.6%）、`docs/capability-gaps.md` 13,739 / 15,150（10.3%）、`docs/usage.md` 4,775 / 5,020（5.1%）、`docs/e2e-testing.md` 4,129 / 4,340（5.1%），全部不低于声明的比例。
 - README 拆成英文默认与 `README_ZH.md` 后，两版都只留概览与命令速查，开发节与限制节压缩为 `docs/development.md` / `docs/limitations.md` 的指针；#71 加进来的 e2e 段落也从 README 删掉，只留命令与指针（细节在 `docs/e2e-testing.md`）。
 - 逐节比对旧架构文档后补回 4 处丢失项：worker 挂工作区的 fail-open 语义（进限制）、`projects.json` 拖拽改序的笔记入口（回架构表格）、非 `active` 卡不能绑槽位与名册到顶单列挂卡 worker（进限制与架构）、worker 各有一份独立 JSONL（回架构）。

@@ -49,8 +49,8 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 - 协调者拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；
-- `create_card` 只给协调者：建卡与派工是协调者的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、协调者建卡。普通会话建卡同样没有槽位、没有协调者认领，一并收掉。
-- `update_card` 给协调者与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。换协调者不重建旧会话，退役者手里的写入工具要到下次会话重建（重启或冷恢复）才收走，所以每次写入都按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title`——完成、重开与换执行者归协调者，规格与标题是验收锚点，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡两面都关（取舍见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/2026-11-02-card-write-tools-scope.md)）。
+- `create_card` 只给协调者：建卡与派工是协调者的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、协调者建卡（普通会话为什么一并收掉见[已知限制](limitations.md#看板与卡片)）。
+- `update_card` 给协调者与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。工具面在会话创建时一次裁完，换协调者不重建旧会话，所以每次写入按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title`——完成、重开与换执行者归协调者，规格与标题是验收锚点，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡两面都关。退役者的写卡边界见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/2026-11-02-card-write-tools-scope.md)。
 
 实现在 `src/host/tools/gate.js`，用宿主的 `tools.restrict({ deny })`，对 `agent.ctx` 调一次；已发布版本里 `tools.register()` 不接受按步条件，所以只能在会话创建时做。协调者身份来自项目注册表——**索引重建完成前不裁**，此时问不出谁是协调者，而少给工具会让协调者首轮干不成活。
 
