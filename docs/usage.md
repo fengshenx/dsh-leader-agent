@@ -1,6 +1,6 @@
 # 使用手册
 
-README 给最短路径；本文展开每个动作的完整交互与边界。实现与取舍见[架构文档](architecture.md)。
+README 给最短路径；本文展开每个动作的完整交互与边界。实现见[架构文档](architecture.md)，取舍见[已知限制](limitations.md)。
 
 ## 派工
 
