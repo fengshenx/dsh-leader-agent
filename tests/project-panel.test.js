@@ -202,11 +202,23 @@ test('协调者运行态接线到行首加载圈', () => {
   // 判据来自会话行的 running，只认现任协调者（纯函数见上一条用例）。
   assert.match(source, /const coordinatorRunning = isCoordinatorRunning\(project, sessionRows\)/)
   assert.match(source, /'data-running': coordinatorRunning \? 'true' : undefined/)
-  // 渲染分支：运行中不画目录图标，改画加载圈。
-  assert.match(source, /coordinatorRunning\s*\n\s*\? createElement\('span', \{ className: 'dsh-leader-kit-project-lead-spinner' \}\)/)
-  // 样式：加载圈自己会转；hover 时让位给展开箭头，与目录图标同一条规则。
-  assert.match(source, /\.dsh-leader-kit-project-lead-spinner \{[\s\S]*?animation: dsh-leader-kit-spin/)
-  assert.match(source, /\.dsh-leader-kit-project-row:hover \.dsh-leader-kit-project-lead-spinner \{\s*display: none;/)
+  // 加载圈画在槽位容器内部：替换掉容器的话，组内有当前会话时的激活色（挂在
+  // 容器的 color 上）就没有承载对象了。
+  assert.match(
+    source,
+    /'dsh-leader-kit-project-lead-folder' \},\s*coordinatorRunning\s*\n\s*\? createElement\('span', \{\s*className: 'dsh-leader-kit-project-lead-spinner',\s*'aria-hidden': 'true',/,
+  )
+  // 装饰性元素：旋转没有语义，别让读屏念出来。
+  assert.match(source, /className: 'dsh-leader-kit-project-lead-spinner',\s*'aria-hidden': 'true',/)
+  // 样式：边框跟随槽位容器的 color（激活色才生效），自己会转。
+  const spinnerAt = source.indexOf('.dsh-leader-kit-project-lead-spinner {')
+  assert.notEqual(spinnerAt, -1, '找不到加载圈的样式规则')
+  const spinnerRule = source.slice(spinnerAt, source.indexOf('}', spinnerAt))
+  assert.match(spinnerRule, /border: 1\.5px solid currentColor/)
+  assert.doesNotMatch(spinnerRule, /--dsw-alias-label-tertiary/)
+  assert.match(spinnerRule, /animation: dsh-leader-kit-spin/)
+  // hover 让位给展开箭头：槽位容器整条隐藏，加载圈跟着一起收起来。
+  assert.match(source, /:hover \.dsh-leader-kit-project-lead-folder \{\s*display: none;/)
 })
 
 test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {

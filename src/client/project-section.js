@@ -174,14 +174,17 @@ const STYLE_TEXT = `
 .dsh-leader-kit-project-lead-arrow[data-open='true'] {
   transform: rotate(90deg);
 }
-/* 协调者运行中：行首目录图标换成加载圈。12px 与 16px 的目录图标视觉重量相近，
-   又留得下旋转的边。 */
+/* 协调者运行中：槽位里的目录图标换成加载圈（尺寸与位置仍占行首槽位）。12px 与
+   16px 的目录图标视觉重量相近，又留得下旋转的边。边框用 currentColor：目录图标
+   本身是 stroke: currentColor，组内有当前会话的激活色挂在槽位容器的 color 上，
+   写死色值会把那层配色丢掉。 */
 .dsh-leader-kit-project-lead-spinner {
+  display: block;
   flex: none;
   width: 12px;
   height: 12px;
   box-sizing: border-box;
-  border: 1.5px solid var(--dsw-alias-label-tertiary);
+  border: 1.5px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: dsh-leader-kit-spin 0.8s linear infinite;
@@ -191,11 +194,6 @@ const STYLE_TEXT = `
     display: inline-flex;
   }
   .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-folder {
-    display: none;
-  }
-  /* hover 让位给展开箭头（与目录图标同一条规则）：指针在行上时用户要找的是
-     展开/收起，运行状态在移开指针后就回来了。 */
-  .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-spinner {
     display: none;
   }
   .dsh-leader-kit-project-header:hover .dsh-leader-kit-project-lead-arrow {
@@ -822,13 +820,16 @@ function ProjectRow(props) {
           'aria-expanded': expanded,
           onClick: (event) => { event.stopPropagation(); onToggleExpand(project.id) },
         },
-        coordinatorRunning
-          ? createElement('span', { className: 'dsh-leader-kit-project-lead-spinner' })
-          : createElement(
-              'span',
-              { className: 'dsh-leader-kit-project-lead-folder' },
-              productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
-            ),
+        createElement(
+          'span',
+          { className: 'dsh-leader-kit-project-lead-folder' },
+          coordinatorRunning
+            ? createElement('span', {
+                className: 'dsh-leader-kit-project-lead-spinner',
+                'aria-hidden': 'true',
+              })
+            : productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
+        ),
         createElement(
           'span',
           {
