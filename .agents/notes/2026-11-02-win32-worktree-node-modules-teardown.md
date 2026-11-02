@@ -43,7 +43,7 @@ S2 用例用「子进程把 worktree 作为 cwd」稳定制造删除失败：Win
 - `classifyNodeModulesLink` 的 `reason` 固定写「指向主 checkout」，只被测试使用，无功能影响。
 - prune 锁是仓库级 advisory，只约束本脚本：手工 `git worktree remove` 或旧版本脚本不受它约束。PID 活着的锁绝不回收；只有没有可用 PID 时才走 TTL，并用文件内容比对缩小误删新锁的窗口。
 - `.dev` 与 `.dev-stash-<任务名>` 同时存在时安全拒绝并给出路径；stash 删除失败只警告、数据不丢；隐藏 stash 同名碰撞待确认（任务名不允许以 `.` 开头）；跨卷/UNC 的 `renameSync` EXDEV 未实测。
-- 看板所在右栏的默认宽度由宿主决定（首次打开 `max(300, round(视口宽 × 45%))`），本插件没有设置入口；缺口见 `docs/capability-gaps.md` 第 43 条。
+- 看板所在右栏的默认宽度由宿主决定（首次打开 `max(300, round(视口宽 × 45%))`，之后保留首开计算值或拖拽值的 px 偏好）；公开面没有设置入口，私有 `panels.setRightbar` 旁路不采用。结论按 `0.2.1-rc.5` 实测，`engines.dsh` 下限 `rc.2` 未复测；缺口见 `docs/capability-gaps.md` 第 43 条。
 - 复现与探针都在 C:\Temp 临时仓库里做，没有拿本仓的 `node_modules` 当靶子。
 
 ## 验证
@@ -107,5 +107,5 @@ win32 真机成功路径（Windows 11 / node 24.13.0，全部用本 PR 的脚本
 ### 追加项（2026-11-03）
 
 - **测试夹具噪声**：`makeFixture` 的 git 调用统一显式 `-c core.autocrlf=false`，并用 `stdio: ['ignore', 'pipe', 'pipe']` 捕获 stderr。修复前集成用例每轮往父进程 stderr 打印 7 次 `warning: ... LF will be replaced by CRLF` 与 7 次 `Preparing worktree`；修复后同一文件 7/7 pass，`npm run check 2>&1` 过滤 `warning|Preparing worktree` **0 行**；合并 `origin/main` 后整条 914 / 911 / 0 / 3、exit 0。
-- **右栏默认宽度**：看板自动打开时跟随宿主 AppFrame 的默认值 `max(300, round(视口宽 × 45%))`；`ctx.layout` 没有宽度入口，sidebar-right 的 localStorage 也不存列宽。本仓不改宿主，只做缺口记录，见 `docs/capability-gaps.md` 第 43 条。
+- **右栏默认宽度**：看板自动打开时跟随宿主 AppFrame 的默认值 `max(300, round(视口宽 × 45%))`（实测 `0.2.1-rc.5`，`engines.dsh` 下限 `rc.2` 未复测）；`ctx.layout` 公开面没有宽度入口，sidebar-right 的 localStorage 也不存列宽，私有 `panels.setRightbar` 旁路不采用。本仓不改宿主，只做缺口记录，见 `docs/capability-gaps.md` 第 43 条。
 - **合并 main 的 Windows 兼容修复**：文档分层后 `capability-gaps` 的 41/42 被 main 占用，本条的右栏缺口顺延到 43；`scripts/doc-budget.mjs` 与 `tests/spawn-command-usage.test.js` 的路径比较先把反斜杠归一成 `/`，`tests/project-panel.test.js` 按行匹配源码前先归一 CRLF——否则 `npm run check` 在 Windows 检出上会红。
