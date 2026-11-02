@@ -13,6 +13,30 @@ const PRUNE = fileURLToPath(new URL('../scripts/worktree-prune.mjs', import.meta
 const WIN32 = { skip: process.platform !== 'win32' }
 
 /**
+ * 在夹具仓库里跑 git。显式关掉换行转换：本机全局 `core.autocrlf=true` 会让
+ * `git add` 对 LF 文件告警，噪声混进父进程 stderr，污染 `npm run check` 输出。
+ *
+ * stderr 一律捕获：`git worktree add` 成功时会打印 `Preparing worktree`，失败时
+ * 它的 stderr 才是诊断材料；交给 execFileSync 抛错即可。
+ *
+ * @param {string} repo - 仓库目录
+ * @param {string[]} args - git 子命令与参数
+ * @returns {string} stdout
+ */
+function git(repo, args) {
+  try {
+    return execFileSync('git', ['-c', 'core.autocrlf=false', ...args], {
+      cwd: repo,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  } catch (error) {
+    const stderr = typeof error.stderr === 'string' ? error.stderr.trim() : ''
+    throw new Error(`git ${args.join(' ')} 失败${stderr === '' ? '' : `：\n${stderr}`}`, { cause: error })
+  }
+}
+
+/**
  * 造一个临时仓库：main 上一条已合并的分支 worktree，根部与 `.dev` 里各有一个
  * 指向共享 node_modules 的 junction。
  *
@@ -29,13 +53,13 @@ function makeFixture(t) {
   mkdirSync(join(shared, 'esbuild'), { recursive: true })
   writeFileSync(join(shared, 'esbuild', 'marker.txt'), 'marker')
   mkdirSync(repo, { recursive: true })
-  execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo })
+  git(repo, ['init', '-q', '-b', 'main'])
   writeFileSync(join(repo, '.gitignore'), 'node_modules/\n.dev/\n.worktrees/\n')
   writeFileSync(join(repo, 'a.txt'), 'a')
-  execFileSync('git', ['add', '.'], { cwd: repo })
-  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'], { cwd: repo })
+  git(repo, ['add', '.'])
+  git(repo, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'])
   mkdirSync(join(repo, '.worktrees'), { recursive: true })
-  execFileSync('git', ['worktree', 'add', worktree, '-b', 'feature/int'], { cwd: repo })
+  git(repo, ['worktree', 'add', worktree, '-b', 'feature/int'])
   symlinkSync(shared, join(worktree, 'node_modules'), 'junction')
   mkdirSync(join(worktree, '.dev', 'home', 'profiles', 'web', 'node_modules'), { recursive: true })
   writeFileSync(join(worktree, '.dev', 'home', 'session.json'), '{}')
@@ -109,7 +133,7 @@ test('win32 上 prune --apply 接管手动留下的 .dev 暂存', WIN32, (t) => 
 
 test('win32 上 remove 失败时按原 target 恢复链接', WIN32, (t) => {
   const { repo, shared, worktree } = makeFixture(t)
-  execFileSync('git', ['worktree', 'lock', worktree], { cwd: repo })
+  git(repo, ['worktree', 'lock', worktree])
   const result = runPrune(repo)
   const output = `${result.stdout}\n${result.stderr}`
   assert.equal(result.status, 0, `prune 异常退出:\n${output}`)
@@ -147,7 +171,7 @@ test('win32 上 remove 失败且 git 已注销时提示目录与分支', WIN32, 
     assert.equal(existsSync(join(worktree, 'node_modules')), false, '注销后不应恢复链接')
     assert.equal(existsSync(join(shared, 'esbuild', 'marker.txt')), true, '共享依赖被跟穿删除')
     assert.match(
-      execFileSync('git', ['branch', '--list', 'feature/int'], { cwd: repo, encoding: 'utf8' }),
+      git(repo, ['branch', '--list', 'feature/int']),
       /feature\/int/,
       '注销后分支应当保留',
     )

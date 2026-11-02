@@ -382,6 +382,19 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：map 形状的参数在子集里只能用 `additionalProperties: true` 放行任意键，条目形状靠 `properties` 里的示例（`dev` / `review`）与工具描述表达；键级校验只能写在执行路径上（`normalizeSlots`）。`cardSchema()` 复用了同一个 `slotsSchema()`，所以一处越界同时污染三个工具的 output schema——schema 层「兜底校验」的直觉在这里是负收益。
 
+### 41. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
+
+**目标形态**：看板所在的右栏首次打开时默认 400px（或至少允许插件给出宽度偏好）。
+
+**dsh 实测**（`0.2.1-rc.5`，安装包 `@deepseek-ai/dsh-client-ui-layout` / `dsh-client-ui-sidebar-right`）：
+
+- 宽度是 `dsh-client-ui-layout` 的 AppFrame 自己算的：`RIGHTBAR_DEFAULT_RATIO = .45`，首次 `openRightbar()` 时执行 `rightbar ??= Math.max(300, Math.round(viewportWidth * .45))`；此后只保留用户拖出来的像素偏好，且这份偏好是**内存态**，刷新即失（该包 README 的 Known Limitations：layout state resets on reload）。
+- `ctx.layout` 的公开面只有 `selectPanel` / `beginNavigation` / `toggleSidebar` / `openRightbar(track, fullscreen)` / `closeRightbar`，没有设置右栏宽度的动作；存着 `rightbar` 偏好的 `layoutInfo` 是包内 store，第三方拿不到。
+- `dsh-client-ui-sidebar-right` 的 localStorage（`dsh.sidebar-right.v1.<sessionId>`）只存每会话的 tab / 分栏比例 / 浮窗矩形 / 呈现方式，不存列宽；右栏座收到的 `width` 是宿主解析后的只读值（`RightbarOwnerProps.width`）。
+- 本插件没有撑开它的样式：看板面板根节点是 `width: 100%`，`board-styles.js` 里唯一的 380px 是 guide 入口胶囊且带 `max-width: 100%`；自动弹出只调用 `sidebarRight.openTab` / `focus`。
+
+**结论**：右栏默认宽度 = `max(300, round(视口宽 × 45%))`——1920px 宽窗口下约 864px，与「启动时太宽」的观感一致。第三方要改成 400 只有三条路，都不该走：改宿主默认值（本仓不改宿主）、用 `!important` 覆盖面板 inline 宽度（轨道内联在 frame 的 `grid-template-columns` 上，拖拽把手位置与 dockkit 测宽也按同一宽度算，盖一处会三处不一致）、派发合成 pointer 事件去拖宿主把手（依赖宿主内部 DOM 与手势实现）。**需要宿主提供宽度偏好入口**（例如 `ctx.layout.setRightbarWidth(px)`，或一个公开 CSS 变量）；在那之前本仓的看板只能跟随宿主默认宽度，用户手动拖出来的宽度刷新后也会弹回 45%。
+
 ---
 
 ## 四、工具级（已验证可用，无缺口）
