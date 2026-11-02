@@ -160,9 +160,26 @@ async function createFixture({ resumeError } = {}) {
   return { ...host, dispatcher: makeDispatcher(), makeDispatcher, delivered, store, workers, parent }
 }
 
+/**
+ * 建 worker 并投递第一条任务消息（派工两段化前的 `dispatch({ initialMessage })`）。
+ * @param {object} dispatcher - 派工器
+ * @param {object} options - 派工参数（含 `initialMessage`）
+ * @returns {Promise<object>} 派工记录
+ */
+async function dispatchAndStart(dispatcher, { initialMessage, ...rest }) {
+  const record = await dispatcher.dispatch(rest)
+  await dispatcher.message({
+    parent: rest.parent,
+    sessionId: record.childId,
+    message: initialMessage,
+    signal: rest.signal,
+  })
+  return record
+}
+
 test('派工同时登记进 worker 登记表', async () => {
   const fixture = await createFixture()
-  const record = await fixture.dispatcher.dispatch({
+  const record = await dispatchAndStart(fixture.dispatcher, {
     parent: fixture.parent,
     initialMessage: '做一件事',
     name: '首轮',
@@ -240,7 +257,7 @@ test('缺会话查询后端时拒绝派工', async () => {
 
 test('worker 在飞时续聊并入当前执行', async () => {
   const fixture = await createFixture()
-  const record = await fixture.dispatcher.dispatch({
+  const record = await dispatchAndStart(fixture.dispatcher, {
     parent: fixture.parent,
     initialMessage: '做一件事',
     name: '在飞',
@@ -264,7 +281,7 @@ test('worker 在飞时续聊并入当前执行', async () => {
 
 test('插件重启后会话不在内存，续聊走冷恢复', async () => {
   const fixture = await createFixture()
-  const record = await fixture.dispatcher.dispatch({
+  const record = await dispatchAndStart(fixture.dispatcher, {
     parent: fixture.parent,
     initialMessage: '做一件事',
     name: '首轮',
@@ -303,7 +320,7 @@ test('没有派工记录的会话拒绝续聊', async () => {
 
 test('别的会话派的 worker 不能跨会话续聊', async () => {
   const fixture = await createFixture()
-  const record = await fixture.dispatcher.dispatch({
+  const record = await dispatchAndStart(fixture.dispatcher, {
     parent: fixture.parent,
     initialMessage: '做一件事',
     name: '首轮',
@@ -323,7 +340,7 @@ test('别的会话派的 worker 不能跨会话续聊', async () => {
 
 test('冷恢复失败时不登记在飞记录，也不投递回报', async () => {
   const fixture = await createFixture({ resumeError: new Error('NOT_RESUMABLE') })
-  const record = await fixture.dispatcher.dispatch({
+  const record = await dispatchAndStart(fixture.dispatcher, {
     parent: fixture.parent,
     initialMessage: '做一件事',
     name: '首轮',

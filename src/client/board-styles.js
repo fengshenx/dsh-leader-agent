@@ -624,11 +624,42 @@ const STYLE_TEXT = `
   margin-top: 0;
 }
 
+.dsh-leader-kit-card-detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .dsh-leader-kit-card-detail-section-title {
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-kit-card-detail-section-action {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-card-detail-section-action:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.dsh-leader-kit-card-detail-section-action:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
 }
 
 .dsh-leader-kit-card-detail-text {
@@ -702,6 +733,178 @@ const STYLE_TEXT = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 链接编辑态：每行一张小卡，标签窄、URL 占宽，用途与增删都在行内。 */
+.dsh-leader-kit-link-editor {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dsh-leader-kit-link-editor-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-kit-link-editor-row {
+  padding: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dsh-leader-kit-link-editor-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsh-leader-kit-link-editor-label,
+.dsh-leader-kit-link-editor-url,
+.dsh-leader-kit-link-editor-purpose {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-button-elevated-fill);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+
+.dsh-leader-kit-link-editor-label {
+  flex: none;
+  width: 88px;
+}
+
+.dsh-leader-kit-link-editor-url {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dsh-leader-kit-link-editor-purpose {
+  width: 100%;
+  height: 24px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.dsh-leader-kit-link-editor-label:focus-visible,
+.dsh-leader-kit-link-editor-url:focus-visible,
+.dsh-leader-kit-link-editor-purpose:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
+}
+
+.dsh-leader-kit-link-editor-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-remove:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.dsh-leader-kit-link-editor-add-purpose {
+  margin-top: 4px;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-add-purpose:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.dsh-leader-kit-link-editor-add {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-add:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dsh-leader-kit-link-editor-error {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-leader-kit-link-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dsh-leader-kit-link-editor-button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-button:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dsh-leader-kit-link-editor-button-primary {
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-2);
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-button-primary:hover {
+    background: var(--dsw-alias-label-primary);
+    opacity: 0.9;
+  }
+}
+
+.dsh-leader-kit-link-editor-button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* 右栏 guide 页的入口胶囊：复刻宿主 EntryBox 的数值（380px 宽、56px 最小高、

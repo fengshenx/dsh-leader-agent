@@ -1,6 +1,6 @@
 # dsh-leader-kit 架构
 
-本文是 dsh-leader-kit 的架构文档：分层与模块职责、运行时模型、数据流、持久化布局、宿主契约与取舍。安装与入门见 [README](../README.md)，每个动作的完整交互见[使用手册](usage.md)；宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)；设计决策与实测记录见 [.agents/notes/](../.agents/notes/)。
+本文是 dsh-leader-kit 的架构文档：分层与模块职责、运行时模型、数据流、持久化布局、宿主契约与取舍。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)；宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)；设计决策与实测记录见 [.agents/notes/](../.agents/notes/)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)，再看自己要改的那一块；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
@@ -28,8 +28,8 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 身份 | 判定 | 工具面 |
 |---|---|---|
 | 协调者 | 项目注册表 `coordinatorSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` |
-| 普通会话 | 其余会话 | 与 worker 相同，但保留宿主 subagent 三件工具 |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题与槽位） |
+| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card`；保留宿主 subagent 三件工具 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
 
@@ -47,9 +47,11 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 挂上的是**整个标准组合**，不只一两个工具：persona、`agent-instructions`（会读项目 `AGENTS.md`）、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web` 等一起进来。worker 是常驻后台会话，因此它也能向用户提问。
 
+worker 的**权限**（沙箱模式 + 审批策略）在派工时从协调者继承。宿主的 `permissionPresets` 会按用户默认 preset 给每个新会话钉权限，协调者自己切过的 `danger-full-access` / `never` 不会跟过来（[capability-gaps 第 41 条](capability-gaps.md)）；于是 worker 建好之后、首轮之前追加两条 `source: 'delegation'` 的覆盖事件（`permission-inherit.js`）。协调者是 `auto` 时再补一条 `permission/preset`：auto 的身份不在 knob 值里（bundle 不匹配任何配置 preset），只写 knobs 会让 `derive()` 落到 `custom`，审查门关闭而沙箱已经放开。不继承的后果不对称：worker 在后台跑，审批 answerer 按会话 UI 作用域注册，没人应答的 `ask` 一律落到 `unavailable`——需要审批的调用直接被拒（继承 `ask` 给后台 worker 仍是死路，只有打开这个会话才可能应答）。继承是一次性快照，协调者之后切换 preset 不影响已派出的 worker：权限在宿主里本来就是逐会话的。`spawn_worker` 的回执带的是**回读到的实际权限**（写失败或放弃继承时如实说 worker 停在哪，而不是报继承目标）与未继承的缺口，完全权限会被点名——worker 的输入含项目文件、issue 与 PR 正文，静默给完全权限等于把 prompt injection 变成任意代码执行。
+
 ### 派工与唤醒
 
-`spawn_worker` 建会话后**立即返回**，不等结果：工具返回会话 id，父 turn 正常结束，worker 在后台继续。
+`spawn_worker` 建会话后**立即返回，且不开工**：工具返回会话 id，父 turn 正常结束。开工由 `message_worker` 的第一条消息触发，worker 在后台继续。分两步是为了让槽位绑定先落盘——角色槽位与卡片事实因此能在首轮请求里出现，而不是等到下一次模型请求。
 
 完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 那一刻折叠这一轮的 `assistant/message` 文本与终态。worker 不调用任何工具回报——与宿主 subagent 的 `captureLocalResult()` 同一机制：产出与终态都由机制侧取，模型漏写一句话不会让协调者卡在等待里。
 
@@ -62,7 +64,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 人下钻到 worker 会话直接对话不经过这条路径：那种轮次不登记在飞记录，不结算，协调者不会被打扰。
 
-`message_worker` 是续聊入口：会话活着就直接投（返回 `merged`），进程重启后先冷恢复再投（返回 `sent`）；可选 `rename` 同时改会话标题与登记表。派工要求组合里有 `sessionPersistence` / `sessionQuery`，缺任一就拒绝，而不是悄悄降级成一次性 worker。
+`message_worker` 既是开工入口也是续聊入口：会话活着就直接投（返回 `merged`），进程重启后先冷恢复再投（返回 `sent`）；可选 `rename` 同时改会话标题与登记表。它是投递路径上唯一会建在飞记录的地方——没有消息就没有 turn，也就不该有在飞记录。派工要求组合里有 `sessionPersistence` / `sessionQuery`，缺任一就拒绝，而不是悄悄降级成一次性 worker。
 
 ### worker 不走宿主的三件 subagent 工具
 
@@ -84,7 +86,8 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 
 - 协调者拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；
-- `create_card` / `update_card` 对所有会话开放——worker 边干活边把状态写回卡片。
+- `create_card` 只给协调者：建卡与派工是协调者的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、协调者建卡。普通会话建卡同样没有槽位、没有协调者认领，一并收掉。
+- `update_card` 给协调者与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。这条规则在工具之外还有执行时校验（`src/host/tools/cards.js`）：换协调者不重建旧会话，退役者手里的写入工具要到下次会话重建（重启或冷恢复）才收走，所以每次写入都按当前身份再判一次（`assertCardWriter`）。身份判定走 `tools/gate.js` 的 `canWriteCardsFor`，与派工同口径——索引未就绪时问不出谁是协调者就拒绝写卡，不吃 `isCoordinatorSession()` 的宽松放行。worker 另有范围闸（`assertWorkerCardScope`）：只能改自己挂着的卡；不能改 `slots`——整卡替换 `slots` 正是投递门禁认定必须拦下的「同一会话挂多张 active 卡」坏状态，换执行者归协调者；也不能改 `status` / `spec` / `title`——完成由协调者验收后判定（`done` / `archived` 会释放执行者、抽走卡片上下文），重开同样是协调者的指派动作；规格与标题是验收锚点（同一注入通道），worker 的进展与产物走回报与 `links`。`create_card` 也在执行时再判一次（`assertCardCreator`）：worker 建卡被拒，不靠工具面单独兜。
 
 完成回报不占工具面。普通会话保留那三件宿主工具：它可能真的用官方 subagent，那时它们是有效的。
 
@@ -99,8 +102,9 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 - **建项目 = 建实体 + 建工作区 + 建协调者会话 + 绑定**，四步一体；协调者会话建不出来时项目不落盘，项目落盘失败时尽力撤销刚建的会话与自建工作区，不留半条记录与孤儿工作区。
 - **目录不可改**：目录是项目身份的一部分，改目录等于换项目。
 - **会话归属按 realpath**：`session-index.js` 把会话按 cwd 与项目目录的 realpath 精确相等归到项目；两个项目指向同一目录时先注册的归属。子目录里的 worker 不算项目下的 worker。项目树的名单在它之上再并两类：worker 看登记表，退役协调者看项目记录的 `retiredCoordinatorSessionIds`。
-- **worker 建完挂进同一工作区**：`agents.create` 不接受 `workspaceId`，派工器按父会话反查项目的 `workspaceId`，在投递成功后调 `attachToWorkspace` 挂进去。fire-and-forget：归属只影响分组，挂失败只记日志，下次点项目行自愈。
-- **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` 在调用时按当前身份判定并拒绝。
+- **worker 建完挂进同一工作区**：`agents.create` 不接受 `workspaceId`，派工器按父会话反查项目的 `workspaceId`，在会话建好后调 `attachToWorkspace` 挂进去。fire-and-forget：归属只影响分组，挂失败只记日志，下次点项目行自愈。
+- **派工两段化**：`spawn_worker` 只建会话、登记、可选把卡片槽位绑到它身上，随后立即返回，**不投递任务、不产生模型调用**；开工由 `message_worker` 的第一条消息触发。这样绑定先于第一条任务请求，角色槽位与卡片事实都能在首轮上下文中出现。派工本身不建在飞记录（没有 turn 就没有 `turn/end`），在飞记录由首次投递建立。绑卡前按当前身份校验卡属于协调者所在项目且状态为 `active`（跨项目、已关闭/归档都拒绝）；改名与挂工作区推迟到绑定成功之后，绑定失败回滚时磁盘上不会留下空会话。名册分类一次读盘取全量绑定再分组，不逐 worker 读 `cards.json`。
+- **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` / `create_card` / `update_card` 在调用时按当前身份判定并拒绝。
 
 项目注册表**只经左栏项目区块操作**，模型没有 `add_project` / `list_projects` / `switch_project` / `remove_project`。
 
@@ -159,10 +163,17 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | `.agents/skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
 | `.agents/skills/init-project/` | 初始化方法 | 模型调用 `skill` 工具时 |
-| `COORDINATOR.md` | 该项目的协调者会话 | 每轮 turn 读文件，改动下一轮生效 |
-| `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮 turn 读文件，改动下一轮生效 |
+| `COORDINATOR.md` | 该项目的协调者会话 | 每轮请求求值，读文件内容变化才追加 |
+| `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，读文件内容变化才追加 |
+| 卡片事实 | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，卡片内容变化才追加 |
 
-`COORDINATOR.md` 与 `SLOTS.md` 都**只贡献提示词文本，不授予工具权限**。`COORDINATOR.md` 按身份注入（项目注册表指针），不需要卡片绑定；`SLOTS.md` 按卡片绑定注入。文件缺失、读失败或正文为空时注入空串，不阻断会话，也不生成兜底正文（协议层 skill 已覆盖通用方法）；配置错误大声告警，且同一问题只报一次。
+这三类注入都走运行时上下文（`systemPrompt.context`）：宿主在每次模型请求前求值 provider，只有渲染文本与上一份快照不同时才作为一条 user 消息追加。因此「正文没变的轮次不重复注入」，改动在下一个模型请求生效，不需要 watcher。
+
+`COORDINATOR.md`、`SLOTS.md` 与卡片事实都**只贡献提示词文本，不授予工具权限**。`COORDINATOR.md` 按身份注入（项目注册表指针），不需要卡片绑定；`SLOTS.md` 与卡片事实按卡片绑定注入。文件缺失、读失败或正文为空时注入空串，不阻断会话，也不生成兜底正文（协议层 skill 已覆盖通用方法）；配置错误大声告警，且同一问题只报一次。
+
+卡片事实包含编号、标题、状态、槽位、revision、spec 全文与链接列表。它在**派工绑卡时**就已经可用：`spawn_worker` 在建会话返回前写入 `slots`，而开工要等 `message_worker` 的第一条消息，所以首轮请求就带着角色槽位与卡片事实。worker 自己用 `addLinks` 挂上 PR 后，下一次请求会看到递增的 revision 与新链接。
+
+卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**，绑定、槽位索引与卡片事实一起失效，worker 不再挂卡。重新打开卡片不恢复绑定——那是新的指派，要显式再绑一次。写 `slots` 的两条路径（`bindSlot` 与 `update` 的整卡替换）都拒绝非 `active` 卡；同次把状态改回 `active` 是显式重新指派，放行。工具层拒绝「关闭卡片 + 同次绑定槽位」的组合，避免调用方以为绑定生效而实际被释放。投递门禁按绑定卡的 `status === 'active'` 判断，所以挂卡 worker 只能同卡续跑；同时挂**多张** `active` 卡的会话一律拒绝投递（与声明哪张卡无关）——角色注入只按一张卡算（`slotIndex` 后绑胜出），上下文与产物归属都对不上，要把卡先收敛到一张。名册到顶给候选时也把挂卡 worker 单独列出（`describeRoster` 的 `bound`），不当作可复用。
 
 `SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 声明界面显示名，只影响界面，不进入注入正文。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`（正文为空）。
 
@@ -174,16 +185,19 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | 协议层 skill | `.agents/skills/leader-mode/` | `SKILL.md` + 4 个 playbook + 2 份参考：派工、接力、事件调度、卡片维护、传话纪律、验收裁决、进度说明 |
 | 初始化 skill | `.agents/skills/init-project/` | 一次性把仓库工程约定写入目标项目：skill 给出方法与正文，模型用宿主的文件能力写 `AGENTS.md` 受管区块，幂等 |
-| `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话并即刻派活，**立即返回**会话 id，不等结果 |
-| `message_worker` 工具 | `src/host/tools/message-worker.js` | 给 worker 续聊：活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
+| `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话，**不开工、立即返回**会话 id；可选带 `cardId` + `slot` 把卡槽位绑到它身上（卡必须是本项目的 `active` 卡），绑定在返回前完成 |
+| `message_worker` 工具 | `src/host/tools/message-worker.js` | 投递任务与续聊：第一条消息即开工；活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
 | worker 会话 | `src/host/worker-sessions.js` | worker 的创建、投递、销毁：`agents.create` 建的**普通根会话**，常驻、可被人下钻对话、进程重启后能冷恢复 |
+| 权限继承 | `src/host/permission-inherit.js` | 派工时把协调者的有效沙箱模式与审批策略写到新 worker 会话上（`source: 'delegation'` 的两条覆盖事件）；协调者是 `auto` 时补写 `permission/preset` 保住审查门；宿主默认 preset 不等于协调者当前那套 |
 | worker 登记表 | `src/host/worker-registry.js` | 会话 id → 父会话与名字的落盘映射（`workers.json`）：续聊跨进程也要找得到归属 |
 | 派工与唤醒 | `src/host/dispatch.js` | 建会话、在 worker 轮次结束时从会话事件结算产出、落盘完成通知、唤醒父会话开新 turn |
 | 通知落盘队列 | `src/host/notification-store.js` | 完成通知先写盘再唤醒；投递失败留队，父会话重开时补投 |
-| 卡片工具 | `src/host/tools/cards.js` | `create_card` / `update_card` / `list_cards`：建卡、改卡、查卡。卡片按项目归属（宿主按调用方会话判定，模型不传项目参数），`list_cards` 默认只列本项目，`scope=all` 才跨项目 |
-| 卡片存储 | `src/host/cards/store.js` | 卡片落盘与领域规则：编号不复用、revision 乐观并发、归档终态、项目归属字段 |
+| 卡片工具 | `src/host/tools/cards.js` | `create_card` / `update_card` / `list_cards`：建卡、改卡、查卡。链接有整体替换（`links`）与增量追加（`addLinks`，按 id 合并）两种写法；卡片按项目归属（宿主按调用方会话判定，模型不传项目参数），`list_cards` 默认只列本项目，`scope=all` 才跨项目 |
+| 卡片存储 | `src/host/cards/store.js` | 卡片落盘与领域规则：编号不复用、revision 乐观并发、归档终态、项目归属字段；维护 `slotIndex`（角色）与 `cardIndex`（卡片事实）两份同步索引，并提供派工用的原子绑卡 |
+| 卡片上下文 | `src/host/cards/card-context.js` | 把挂卡事实渲染成运行时上下文；每轮请求求值，卡片变化才追加 |
 | 项目存储与服务 | `src/host/projects/` | 项目注册表（`projects.json`）与项目服务：建项目连带建协调者会话并绑定，失败整体回滚。注册表只经左栏项目区块读写，模型没有对应工具 |
-| 项目通道 | `src/host/projects/remote.js` | 浏览器侧 → 宿主侧的 Typert 远程通道（命名空间 `projects`，走官方 `/api` 共享通道） |
+| 项目通道 | `src/host/projects/remote.js` | 浏览器侧 → 宿主侧的 Typert 远程通道（命名空间 `projects`，走官方 `/api` 共享通道）；方法参数名与线上类型在 `src/shared/projects.js`，浏览器侧按类型选严格 codec |
+| 卡片链接判定 | `src/shared/card-links.js` | 链接草稿的规范化与 URL 校验：浏览器侧保存前与宿主侧写通道共用同一份判定（trim、丢空 label、只认 http(s)） |
 | 工具面分配 | `src/host/tools/gate.js` | 按调用方角色裁剪工具：协调者全有，普通会话与 worker 都没有编排与全库查询 |
 | 会话归属 | `src/host/projects/session-index.js` | 按 realpath 把会话归到项目目录，得出「项目 → 会话」映射 |
 | 角色槽位 | `src/host/slots/` | 读项目目录的 `SLOTS.md`，按卡片 `slots` 字段绑定到会话，作为运行时上下文注入 |
@@ -194,7 +208,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 看板取数 | `src/client/project-board-data.js` | 解析会话所属项目、判定项目会话（协调者 / worker）、拉该项目的卡片、算出新增卡片 id（纯函数，可单测） |
 | 看板监视器 | `src/client/project-board-monitor.js` | 建卡后自动打开（或聚焦）右栏看板 tab：只跟随项目协调者会话（worker 不自动弹），轮询项目卡片，出现新卡才开 |
 | 看板卡面 | `src/client/board-card.js`、`src/client/board-styles.js` | active 卡三层（标题行 / 链接行 / 槽位行）、done 卡单行变体、链接 chip 按实测宽度排布、信号灯七档、卡面零操作铬 |
-| 卡片详情浮层 | `src/client/card-detail.js`、`src/client/modal-shell.js` | 只读详情浮层（说明 / 链接）；浮层外壳（portal、遮罩、ESC、Tab 焦点陷阱、初始焦点、关闭回焦）与确认弹窗共用 |
+| 卡片详情浮层 | `src/client/card-detail.js`、`src/client/card-links-editor.js`、`src/client/modal-shell.js` | 详情浮层（说明 / 链接）：链接可编辑（行内 label / url / purpose、增删、保存经 `updateCardLinks` 整体替换），其余字段只读；浮层外壳（portal、遮罩、ESC、Tab 焦点陷阱、初始焦点、关闭回焦）与确认弹窗共用 |
 | 左栏项目区块 | `src/client/project-panel.js` | 左栏「项目」区块：在「自动化任务」之下、工作区之上（DOM 注入取位），加项目（选目录即建好）、点项目行打开协调者会话、换新协调者、删除项目 |
 | 项目树 | `src/client/project-section.js` | 点标题折叠/展开整个项目列表，点行首槽位展开/收起该项目的会话行（worker 与被换下的协调者；当前协调者与用户手动开的会话都不在其中，会话行是纯文字行，无左右图标）；点项目行本身是打开该项目的协调者会话；项目名后面不跟路径。行首槽位与官方工作区行同款：平时是目录图标，悬停整行换成展开箭头，展开时箭头旋转朝下；收起时若有会话行在跑，目录图标换成加载器——判定直接读要渲染的会话行，与行内 spinner 同源（归档会话、快照里还没有的会话不算；当前协调者没有会话行，它单独在跑不点亮目录行）。展开后不显示加载器，避免同一状态画两遍。「更多」在行右端，悬停时出现。项目下的会话列表按水位折叠（见下一行） |
 | 会话水位折叠 | `src/client/session-watermark.js` | 复刻宿主工作区树的口径：默认露出 5 条，每次「展开其余 N 个会话」再加 5 条，剩余不足 5 条时一次放完；运行中的会话把水位抬到它所在位置（只在前 50 条内生效）；水位只升不降，收起回落到基线；每个项目各算各的，状态不持久化 |
@@ -222,13 +236,13 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ### 多 worktree 并发
 
-每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见 README 的[前提](../README.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
+每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见[中文 README 的前提](../README_ZH.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
 
 `npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 
 - 凭据文件跟着数据根独立，新工作树第一次起实例本来要在界面上重填 API key：启动前会把源 HOME `.credentials.yaml` 的 `refs` 并进开发实例那一份。只搬 `refs`（按环境变量名存的密钥），不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录。目标里已有的条目不动，界面里改过的值优先；要重新跟随源就删掉 `.dev/home/.credentials.yaml` 里那一条。块式与行内（`refs: {}`）两种 `refs` 节形态都认，写回替换该节；认不出、重复 `refs:`、锁超时都直接报错，不猜拼接位置。目标凭据文档不是 version 1 布局时不动——pre-release 扁平布局由宿主启动时自行迁移，先追加 `refs:` 会让它两种布局都不成立。写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。没走 `DEEPSEEK_API_KEY` 启动环境那条路：它在 dsh 的凭据解析顺序里排在存储文件之后本来就能用，但 key 会留在 agent 工具进程的环境里。
 - 端口默认交给系统分配，启动日志里打印带 token 的 URL；要固定就 `DEV_PORT=3210 npm run dev`。
-- 改客户端代码（`src/client/`）要重跑 `npm run dev` 或 `npm run build:client` 再刷新；宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
+- 改客户端代码（`src/client/`）由 `npm run dev` 挂的 esbuild watch 自动重建，宿主 web 组合默认挂着 `client-hmr`：它每 500ms 轮询插件产物的 `mtime/ctime/size`，变化就把运行中的插件换掉（拆旧 fiber、重新 `apply`），页面不刷新、插件内 React 状态重置、会话与连接数据保留。构建失败时正式产物保持上一份，watch 打印错误后继续监听；单独重建用 `npm run build:client`。宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
 - 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DSH_PROFILE`（源 profile 名，默认 `web`；那个 profile 的 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。
 
@@ -250,9 +264,9 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 命令见 [AGENTS.md 的常用命令](../AGENTS.md#常用命令)。这里只记机制：
 
-只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用真机取证（见 [e2e-testing.md](e2e-testing.md)）。
+只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，机制与场景写法见 [e2e-testing.md](e2e-testing.md)。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
 
-浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
+浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。构建入口 `build/client.mjs` 是薄壳，配置与原子写在 `build/client-bundle.mjs`：esbuild 先写 `<产物>.<pid>.<随机>.staging`，成功后才 rename 到正式路径——宿主按文件 stat 轮询产物，读到半截文件会替换失败且没有回滚，这条契约由 `tests/client-build.test.js` 守住（banner/footer 外壳、基线模块 external、构建失败保留上一份）。staging 带进程标识，同树的 watch 与手动构建并存时不会共写临时文件；两个进程仍会竞争最终产物，后完成 rename 的赢，但不保证内容新旧顺序。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
 
 ## 宿主契约与架构约束
 
@@ -264,7 +278,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 | 不改宿主仓库、不 import 宿主内部包、不 peer 依赖 dsh 包 | 零运行时依赖的边界见[分层](#分层)；理由写在 `src/host/message.js` 头注释 |
 | 身份先于会话（[第 37 条](capability-gaps.md)） | `src/host/tools/gate.js` 在 `agent/created` 上按身份 `restrict({ deny })`；协调者身份先写进项目注册表，再建会话 |
 | 不能新增 session event 类型（[第 8 条](capability-gaps.md)） | 卡片、通知、项目状态各自独立落盘（`cards/`、`notification-store.js`、`projects/`），会话侧只做 projection |
-| client 产物不能用 `node:`、不引 React / jsdom（[第 23 条](capability-gaps.md)） | `src/client/` 只用宿主模块表与 `React.createElement`，产物由 `build/client.mjs` 打 |
+| client 产物不能用 `node:`、不引 React / jsdom（[第 23 条](capability-gaps.md)） | `src/client/` 只用宿主模块表与 `React.createElement`，产物由 `build/client.mjs`（薄入口）与 `build/client-bundle.mjs`（配置）打 |
 | 浏览器侧 → 宿主侧只有 Typert 远程通道 | `src/host/projects/remote.js`：`connection.rpc.handle` 对仓外插件不可用，`/api` 被官方 gateway 占用；代价是手写的协议形状与宿主版本耦合（标记属性名、`version:1` 描述符、`typertRemote` 绑定字段），宿主改契约时要同步 |
 
 ## 协作与文档机制
@@ -296,7 +310,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 - **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即被销毁，届时没有载体接收完成通知——这是宿主语义，不是本 bundle 的缺陷。
 - **报告结算依赖轮次正常结束**：结算点在宿主的 `turn/end` 事件上。进程在 worker 跑完之前被杀，那一轮就不会结算（在飞表在内存里，重启即空），协调者也就收不到这次通知；重启后它会看到 worker 会话还在，可以自己打开看或续聊。订阅 `session/event` 不做运行期能力探测——cordis 的 `Context` 永远有 `on`，而宿主低于 `engines.dsh` 下限时本来就没有这个事件；下限 rc.2 已提供 `session/event` 与 `turn/end`，这是版本契约，不是装配期能判定的错误。
 - **不能新增 session event 类型**：dsh 要求仓外事件带 `ignorable` 标记且不进读路径，因此卡片与通知状态走自有落盘文件。
-- **项目级手册都是每轮读文件，没有 watcher**。`COORDINATOR.md` 与 `SLOTS.md` 每轮 turn 重新读取，改动在下一轮生效；正在跑的那一轮不会变。两者都是增量信息：文件缺失、读失败或正文为空时注入空串，不阻断会话，也不生成兜底正文（协议层 skill 已覆盖通用方法）。协调者手册只对项目注册表里指到该会话的协调者生效——项目索引还没重建完的那一轮不注入，下一轮补上。
+- **项目级手册都是每轮求值、变化才追加，没有 watcher**。`COORDINATOR.md` 与 `SLOTS.md` 在每次模型请求前重新读取，正文变化才追加一份新快照，改动在下一个模型请求生效；正在跑的那一轮不会变。两者都是增量信息：文件缺失、读失败或正文为空时注入空串，不阻断会话，也不生成兜底正文（协议层 skill 已覆盖通用方法）。协调者手册只对项目注册表里指到该会话的协调者生效——项目索引还没重建完的那一轮不注入，下一轮补上。
 - **历史消息不追溯**。改造之前发出的通知在 session log 里就是普通用户消息，重放时仍按老形态渲染（右对齐、无头像）。
 - **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-leader-kit/worker-report`），因此会话自动标题不取它、turn 摘要 prompt 不取它、markdown 转录导出会跳过它。换来的是它不会被误当成用户说的话——标题、摘要、导出这三处都只认真人输入。
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
@@ -313,8 +327,8 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 - **「看板」入口按会话画，残余在 More 菜单**。右栏 tab 类型与「开始」页的入口是静态注册，宿主没有按会话过滤的扩展点；本插件接管 `sidebar.right.tab.guide.entry` 里自己那一枚胶囊的渲染，只在项目会话（协调者与 worker）里画出来，样式复刻宿主 `EntryBox`。`sidebar.right.tab.guide.actions` 是 root scope、不带会话，「开始」页的 More 菜单仍会列出「看板」；自动弹出仍只跟随协调者会话（worker 建卡不弹）。
 - **卡片按项目归属，归属由宿主判定**。`create_card` 时宿主按调用方会话反查项目，把 `projectId` 写进卡片记录，模型不传项目参数——它未必知道自己在哪个项目的语境里调工具。`list_cards` 默认只列本项目，`scope=all` 才跨项目；有归属的卡只能被本项目的会话改，跨项目改卡会被拒绝。**存量卡片不迁移**（记录里没有创建会话 id，无法可靠反推归属），它们不出现在任何项目看板，只能用 `list_cards`（`scope=all`）看到。
 - **卡片编号仍是全局的**。按项目过滤后编号会有空洞，但全局唯一，`@#n` 不歧义——比按项目编号更好（见[卡片存储与编号作用域](../.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)）。归档与删除都不回收编号，跨项目也不复用。
-- **卡片详情只读**。完成、置顶、重命名、删除都要新增宿主远程方法才能做，本轮不做；卡面也不放操作按钮。
-- **卡片详情浮层是打开瞬间的快照**。卡片随后被协调者更新，浮层不会跟着刷新，要关掉重开。
+- **卡片详情只写链接**。链接编辑走项目通道的 `updateCardLinks`（整体替换 `links`，宿主侧按共享的 `card-links.js` 重新校验、把 http(s) 地址按 WHATWG URL 归一化后落盘并补条目 id）；完成、置顶、重命名、删除仍归协调者的卡片工具，卡面也不放操作按钮。归档卡是终态，详情不给编辑入口。**跨项目判定不在这条通道上**：远程方法拿不到调用方会话（`direct` 调用不带 ctx），归属之下的写卡限制仍只由工具层执行；这条通道经官方 `/api` 同源链路到达宿主，任何能调 `/api` 的本机页面或进程都能按 id 改任意项目的卡——这是单机单用户威胁模型下的取舍，不比工具更宽，只是少了「防误用」的一致性检查。
+- **卡片详情浮层是打开瞬间的快照**。卡片随后被协调者更新，浮层不会跟着刷新，要关掉重开；本浮层自己保存的链接会立刻回填到浮层与卡面。链接编辑不进乐观并发：详情里的 revision 是打开时的，用它做 `expectedRevision` 会在协调者改过卡后稳定冲突，而用户表达的意图就是「这些链接现在是这样」。
 - **卡面不显示所属项目/工作区**。看板已经按项目过滤，卡面不必再重复标注（无 workspace chip）。
 - **会话折叠只认运行态**。宿主的工作区树还会为「有子代理在跑」「等你输入」「未读完成」「当前会话」四种注意力抬高水位，我们手里只有会话行的 `running`，所以只按它抬。收起只在全部放完时出现，与宿主 `sessionsExpanded = hiddenCount === 0` 的口径一致——会话很多时要点若干次「展开其余 N 个会话」，而不是随时能收。
 - **「等你输入」档暂无数据源**。宿主的待处理交互机制在（`pendingInteraction`），但当前没有任何域发布它，这一档不会亮；机制与档位都留着，等真有域发布时自动生效。「未读」档已实测跑通。

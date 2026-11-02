@@ -85,7 +85,8 @@ test('协调者会话注入项目根手册正文', async () => {
     applyCoordinatorContext({ ctx, resolveDirectory: () => project.directory })
     const text = holder.registered.text({ agent: { id: 'session-a' } })
     assert.match(text, /## 协调者手册/)
-    assert.match(text, new RegExp(project.directory))
+    // 路径里有 `\`，直接塞进 RegExp 会被当成转义；正文里包含目录即可。
+    assert.ok(text.includes(project.directory))
     assert.match(text, /派工前先建卡，验收读真实产物。/)
   } finally {
     await project.cleanup()

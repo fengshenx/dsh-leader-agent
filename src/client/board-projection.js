@@ -249,6 +249,55 @@ export function sortDoneCards(cards) {
 }
 
 /**
+ * 把一次改卡的结果合进看板列表。
+ *
+ * 只替换同 id 的那张，其余保持原引用——列表每 2 秒换一次，整份重建会让所有
+ * 卡面跟着重渲染。
+ *
+ * @param {readonly object[]} cards - 当前列表
+ * @param {object} updated - 宿主返回的新卡片
+ * @returns {object[]} 合并后的列表
+ */
+export function mergeCardUpdate(cards, updated) {
+  if (updated === null || typeof updated !== 'object') return cards
+  return cards.map((card) => (card.id === updated.id ? updated : card))
+}
+
+/**
+ * 把一次改卡的结果合进详情浮层。
+ *
+ * 浮层里的卡片是打开瞬间的快照；保存返回时浮层可能已经关掉、又点开了另一张
+ * 卡。只有浮层仍停在同一张卡上时才替换，否则 A 的保存结果会显示成 B 的内容。
+ *
+ * @param {{ card: object, anchor?: unknown } | null} current - 当前详情状态
+ * @param {object} updated - 宿主返回的新卡片
+ * @returns {{ card: object, anchor?: unknown } | null} 合并后的详情状态
+ */
+export function mergeDetailCard(current, updated) {
+  if (current === null || current === undefined) return null
+  if (updated === null || typeof updated !== 'object') return current
+  return current.card?.id === updated.id ? { ...current, card: updated } : current
+}
+
+/**
+ * 把一轮轮询结果合进看板列表。
+ *
+ * 本地刚回填过的卡片版本更高（保存链接后立刻回填，而在途的取数请求是保存之前
+ * 发出的）：它的响应晚到时不能把内容打回旧值。同版本以宿主快照为准。
+ *
+ * @param {readonly object[]} current - 当前列表
+ * @param {readonly object[]} next - 宿主快照
+ * @returns {object[]} 合并后的列表
+ */
+export function mergeCardSnapshot(current, next) {
+  const byId = new Map(current.map((card) => [card.id, card]))
+  return next.map((card) => {
+    const kept = byId.get(card.id)
+    return kept !== undefined && (kept.revision ?? 0) > (card.revision ?? 0) ? kept : card
+  })
+}
+
+/**
  * 停滞判定：名下有会话、会话都不在跑、且超过阈值没有更新。
  *
  * 没有绑定会话的卡不参与停滞计时——那是「没开始」不是「卡住」。会话正在跑的卡

@@ -17,13 +17,15 @@ import { PROJECT_REMOTE_SERVICE_KEY } from '../src/shared/projects.js'
  * 故意与项目目录不同，用来暴露「按会话 cwd 取手册」这类错位判据。
  *
  * @param {Map<string, string>} sessionCwds - 会话 id → 会话 cwd
+ * @param {object} [extraServices] - 额外的宿主服务；`sessions` 由本夹具提供，不在这里传
  * @returns {object} 假上下文与捕获到的注册项
  */
-function createFakeHost(sessionCwds) {
+function createFakeHost(sessionCwds, extraServices = {}) {
   const holder = {
     contexts: new Map(),
     handlers: new Map(),
     provided: new Map(),
+    tools: new Map(),
   }
   const ctx = {
     skills: {
@@ -31,7 +33,11 @@ function createFakeHost(sessionCwds) {
         holder.skillsProvider = factory()
       },
     },
-    tools: { register() {} },
+    tools: {
+      register(tool) {
+        holder.tools.set(tool.name, tool)
+      },
+    },
     systemPrompt: {
       context(definition) {
         holder.contexts.set(definition.name, definition)
@@ -43,6 +49,7 @@ function createFakeHost(sessionCwds) {
       return () => {}
     },
     get(name) {
+      if (name in extraServices) return extraServices[name]
       if (name !== 'sessions') return undefined
       return {
         get(sessionId) {
@@ -132,5 +139,127 @@ test('装配层：skill provider 读包内 .agents/skills', async () => {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
     await rm(home, { recursive: true, force: true })
+  }
+})
+
+/**
+ * 往隔离的 DSH_HOME 里写一份项目注册表。
+ * @param {string} home - DSH_HOME
+ * @param {object[]} projects - 项目记录
+ * @returns {Promise<void>}
+ */
+async function writeProjectIndex(home, projects) {
+  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await writeFile(
+    join(home, 'dsh-leader-kit', 'projects.json'),
+    JSON.stringify({ version: 1, projects }),
+    'utf8',
+  )
+}
+
+test('装配层：普通会话写卡被拒，协调者放行', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const previousHome = process.env.DSH_HOME
+  // 普通会话的 cwd 就在项目目录里：归属解析会认它，写卡仍要按身份拒。
+  const { ctx, holder } = createFakeHost(new Map([['session-plain', projectDirectory]]))
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      coordinatorSessionId: 'session-coordinator',
+    }])
+    apply(ctx)
+    const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
+    assert.equal(await service.awaitIndex(), true)
+
+    const createCard = holder.tools.get('create_card')
+    assert.ok(createCard, 'create_card 没有注册')
+    // 装配漏传 canWriteCards 时先红：工具工厂会当场拒绝启动，写卡闸不会静默失效。
+    await assert.rejects(
+      () => createCard.execute(
+        { title: '普通会话的卡' },
+        { agent: { id: 'session-plain' }, signal: undefined },
+      ),
+      /只有协调者与 worker 能写卡/,
+    )
+    const created = await createCard.execute(
+      { title: '协调者的卡' },
+      { agent: { id: 'session-coordinator' }, signal: undefined },
+    )
+    assert.equal(created.card.projectId, 'project-1')
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：真实换协调者之后，退役会话写卡被拒、新会话放行', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const previousHome = process.env.DSH_HOME
+  const { ctx, holder } = createFakeHost(new Map([['session-old', projectDirectory]]), {
+    // 换协调者要建一条新会话；建会话的实现必须使用调用方传入的 id。
+    agents: {
+      async create(options) {
+        return { agent: { id: options.sessionId } }
+      },
+    },
+  })
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      coordinatorSessionId: 'session-old',
+    }])
+    apply(ctx)
+    const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
+    assert.equal(await service.awaitIndex(), true)
+
+    const createCard = holder.tools.get('create_card')
+    const updateCard = holder.tools.get('update_card')
+    const created = await createCard.execute(
+      { title: '换人前的卡' },
+      { agent: { id: 'session-old' }, signal: undefined },
+    )
+
+    const updated = await service.replaceCoordinator('project-1')
+    const next = updated.coordinatorSessionId
+    assert.notEqual(next, 'session-old')
+    assert.equal(service.isCoordinatorSession('session-old'), false)
+
+    // 退役者手里的写入工具要到下次会话重建才收走：执行时闸必须兜住。
+    await assert.rejects(
+      () => createCard.execute(
+        { title: '退役者建的卡' },
+        { agent: { id: 'session-old' }, signal: undefined },
+      ),
+      /只有协调者与 worker 能写卡/,
+    )
+    await assert.rejects(
+      () => updateCard.execute(
+        { id: created.card.id, title: '退役者改的标题' },
+        { agent: { id: 'session-old' }, signal: undefined },
+      ),
+      /只有协调者与 worker 能写卡/,
+    )
+    const after = await updateCard.execute(
+      { id: created.card.id, title: '新协调者改的标题' },
+      { agent: { id: next }, signal: undefined },
+    )
+    assert.equal(after.card.title, '新协调者改的标题')
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
   }
 })

@@ -23,7 +23,7 @@ export function createMessageWorkerTool({ dispatcher }) {
   return {
     name: 'message_worker',
     description:
-      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 带着完整上下文继续执行，结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。',
+      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 带着完整上下文继续执行，结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
     parameters: {
       type: 'object',
       properties: {

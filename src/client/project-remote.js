@@ -5,8 +5,10 @@
  * `projects` 命名空间上，之后的调用就是普通的远程方法调用，传输与鉴权走官方
  * `/api` 通道。
  *
- * 客户端侧要求每个入参带严格 codec（`$mount` 会拒收没有严格 codec 的描述符），
- * 这里的 codec 只做本地类型检查，不改变宿主侧的解析行为。
+ * 客户端侧要求每个入参带严格 codec（`$mount` 会拒收没有严格 codec 的描述符）。
+ * 这些 codec 只服务挂载校验：调用时宿主按**自己**从服务实例派生出的描述符
+ * （`src-json`）派发，不读这里的 parse。真正的入参边界在宿主侧——所以
+ * `updateCardLinks` 里会再规范化一遍链接。
  *
  * @module dsh-leader-kit/client/project-remote
  */
@@ -35,16 +37,49 @@ function stringCodec() {
 }
 
 /**
+ * 造一个链接数组入参的严格 codec。
+ *
+ * 只校验「是数组」：条目形状由共享的 `card-links.js` 在保存前规范化，宿主侧
+ * 写通道还会再校验一遍。这里不做第二套字段规则，免得两端判定漂移。这个
+ * `parse` 只用于满足挂载校验，运行时不执行（见文件头）。
+ *
+ * @returns {object} codec
+ */
+function linksCodec() {
+  return {
+    mode: 'strict',
+    typeSymbol: 'array',
+    create: () => ({
+      parse: (value) => {
+        if (!Array.isArray(value)) throw new TypeError(`期望链接数组，收到 ${typeof value}`)
+        return value
+      },
+    }),
+  }
+}
+
+/**
+ * 按契约里的线上类型取 codec。
+ * @param {string} type - `string` / `links`
+ * @returns {object} codec
+ */
+function codecFor(type) {
+  if (type === 'string') return stringCodec()
+  if (type === 'links') return linksCodec()
+  throw new Error(`未知的远程参数类型：${String(type)}`)
+}
+
+/**
  * 造一个方法的客户端描述符。
  * @param {string} method - 方法名
  * @returns {object} 描述符
  */
 function buildDescriptor(method) {
-  const parameters = PROJECT_REMOTE_METHODS[method].map((name) => ({
+  const parameters = Object.entries(PROJECT_REMOTE_METHODS[method]).map(([name, type]) => ({
     name,
     wire: name,
     source: 'json',
-    codec: stringCodec(),
+    codec: codecFor(type),
   }))
   return {
     id: `dsh-leader-kit:${PROJECT_REMOTE_NAMESPACE}/${method}`,
@@ -148,7 +183,12 @@ export async function callProjectRemote(ctx, method, args = []) {
   const result = await namespace[method](...args)
   if (!result.ok) {
     const code = result.error?.code ?? 'unknown'
-    throw new Error(`项目通道调用失败：${method}（${code}）`)
+    // 宿主把业务失败的原因写在 message 里（如「卡片已归档，归档是终态」）。只报
+    // code 的话，用户看到的是一条无法照着处理的 `gateway/internal`。
+    const reason = typeof result.error?.message === 'string' && result.error.message !== ''
+      ? `：${result.error.message}`
+      : ''
+    throw new Error(`项目通道调用失败：${method}（${code}）${reason}`)
   }
   return result.value
 }

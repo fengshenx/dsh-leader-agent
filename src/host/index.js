@@ -23,12 +23,13 @@ import { createNotificationStore, resolveDshHome } from './notification-store.js
 import { createWorkerRegistry } from './worker-registry.js'
 import { createWorkerSessions } from './worker-sessions.js'
 import { createCardStore } from './cards/store.js'
+import { applyCardContext } from './cards/card-context.js'
 import { createProjectStore } from './projects/store.js'
 import { createProjectService } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { createDispatcher } from './dispatch.js'
 import { createCoordinatorHandover } from './coordinator-handover.js'
-import { applyToolGate, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
+import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyCoordinatorContext } from './coordinator-context.js'
 import { applyTeamGuard } from './team-guard.js'
@@ -65,14 +66,47 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  * @param {object} [options.dispatcher] - 派工器
  * @param {object} [options.cards] - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
+ * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWriteCards] -
+ *   写卡身份判定；传了 `cards` 就必须传它
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   与 `cardBindingsOf` 一起限定 worker 的写卡范围
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡
  * @returns {object[]} 工具定义
  */
-export function createBundleTools({ dispatcher, cards, resolveProject } = {}) {
+export function createBundleTools({
+  dispatcher,
+  cards,
+  resolveProject,
+  canWriteCards,
+  isWorkerSession,
+  cardBindingsOf,
+} = {}) {
+  // 漏传判定会让写卡闸静默失效：工具面照裁，执行时却对所有会话放行。文档门禁走
+  // 无参调用（没有 cards），单测直接调工具工厂，都不受这条约束。
+  if (cards !== undefined) {
+    if (typeof canWriteCards !== 'function') {
+      throw new Error('createBundleTools: 传了 cards 就必须传 canWriteCards——否则卡片写入闸对所有会话放行')
+    }
+    if (typeof isWorkerSession !== 'function' || typeof cardBindingsOf !== 'function') {
+      throw new Error('createBundleTools: 传了 cards 就必须传 isWorkerSession 与 cardBindingsOf——否则 worker 的写卡范围闸失效')
+    }
+  }
   return [
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
-    createCreateCardTool({ store: cards, resolveProject }),
-    createUpdateCardTool({ store: cards, resolveProject }),
+    createCreateCardTool({
+      store: cards,
+      resolveProject,
+      canWrite: canWriteCards,
+      isWorkerSession,
+    }),
+    createUpdateCardTool({
+      store: cards,
+      resolveProject,
+      canWrite: canWriteCards,
+      isWorkerSession,
+      cardBindingsOf,
+    }),
     createListCardsTool({ store: cards, resolveProject }),
   ]
 }
@@ -128,6 +162,14 @@ export function apply(ctx) {
   // 工具面按角色分配：协调者拿到编排与全库查询，worker 与普通会话都没有。
   // 裁剪在 `agent/created` 时对 agent 作用域做（见 `applyToolGate`）。
   const isCoordinatorSession = (sessionId) => projectService.isCoordinatorSession(sessionId)
+  // 卡片写入只给协调者与 worker。工具面已经按角色裁过，这里再判一次是因为换协调
+  // 者不重建旧会话：退役者手里的写入工具要到下次会话重建才收走。
+  const canWriteCards = (sessionId) => canWriteCardsFor({
+    sessionId,
+    isCoordinatorSession,
+    isWorkerSession: workerSessions.isWorkerSession,
+    awaitIndex: () => projectService.awaitIndex(),
+  })
 
   const cards = createCardStore({ home: resolveDshHome(), logger })
   // 卡片按项目归属：归属由宿主按调用方会话判定，模型不传项目参数。
@@ -165,18 +207,36 @@ export function apply(ctx) {
     // 卡片库。两者缺失时各自降级（不限数量 / 不做门禁），不阻塞派工。
     archivedSessionIds: () => ctx.get('workspaceRegistry')?.archivedSessionIds ?? [],
     listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
+    // 名册一次读盘取全量绑定再分组：逐 worker 读 cards.json 会让一次派工付
+    // O(N × 文件体积)。
+    cardBindingsBySession: () => cards.bindingsBySession(),
+    // 派工时绑卡：会话 id 是预生成的，绑好之后协调者投递的第一条消息就带着
+    // 角色槽位与卡片事实。
+    bindCardSlot: (input) => cards.bindSlot(input),
+    // 绑卡前校验归属与状态：与 update_card 同口径，跨项目、已关闭或已归档的卡
+    // 都不能拿来绑 worker。
+    resolveProject,
+    getCard: (cardId) => cards.get(cardId),
     logger,
   })
 
   // 装配收尾：接管动作依赖上面全部组件，现在才成形。
   handover = createCoordinatorHandover({ projects, workers, notifications: store, dispatcher, logger })
 
-  // 建卡与改卡对所有会话开放：worker 边干活边把状态写回卡片，普通会话也能为
-  // 项目登记待办；查全库卡片、派工与续聊只给协调者（见 `applyToolGate`）。
-  for (const tool of createBundleTools({ dispatcher, cards, resolveProject })) ctx.tools.register(tool)
+  // 卡片写入只给协调者与 worker（见 `applyToolGate`）：普通会话不在项目编排里，
+  // 建出来的卡没有槽位、没人认领，改别人的卡更没有依据。查全库卡片、派工与续聊
+  // 同样只给协调者。
+  for (const tool of createBundleTools({
+    dispatcher,
+    cards,
+    resolveProject,
+    canWriteCards,
+    isWorkerSession: workerSessions.isWorkerSession,
+    cardBindingsOf: (sessionId) => cards.bindingsOf(sessionId),
+  })) ctx.tools.register(tool)
 
-  // 角色槽位注入：会话被卡片绑到某个槽位时，每轮 turn 注入该槽位在项目
-  // `SLOTS.md` 里的正文。槽位不注册工具、不改工具可见性。
+  // 角色槽位注入：会话被卡片绑到某个槽位时，每轮请求组装时求值该槽位在项目
+  // `SLOTS.md` 里的正文，正文变化才追加一份新快照。槽位不注册工具、不改工具可见性。
   applyRoleContext({
     ctx,
     slotIndex: cards.slotIndex,
@@ -187,8 +247,17 @@ export function apply(ctx) {
     logger,
   })
 
-  // 协调者手册注入：项目的协调者会话每轮 turn 注入项目根 `COORDINATOR.md` 的
-  // 正文。它按身份决定，不需要卡片绑定——协调者天然属于这个项目。
+  // 任务卡注入：会话被卡片绑到某个槽位后，每轮请求组装时渲染该卡的事实
+  // （编号、状态、规格、链接、revision），文本变化才追加新快照。卡片是会被改
+  // 的事实，因此不拼进派工消息；worker 自己挂链接后下一轮就能看到。
+  applyCardContext({
+    ctx,
+    cardIndex: cards.cardIndex,
+    logger,
+  })
+
+  // 协调者手册注入：项目的协调者会话每轮请求组装时求值项目根 `COORDINATOR.md`
+  // 的正文，内容变化才追加。它按身份决定，不需要卡片绑定——协调者天然属于这个项目。
   applyCoordinatorContext({
     ctx,
     // 只有协调者会话在这里有值；索引还没重建完时同样为空，那一轮不注入、
@@ -207,9 +276,9 @@ export function apply(ctx) {
     logger,
   })
 
-  // 两份反查索引都是进程内的，崩溃后不会留下：启动时从各自的库重建。
-  void cards.loadSlotIndex().catch((error) => {
-    logger(`dsh-leader-kit: 重建槽位索引失败：${error instanceof Error ? error.message : String(error)}`)
+  // 两份反查索引都是进程内的，崩溃后不会留下：启动时从卡片库重建（槽位与卡片事实）。
+  void cards.loadIndexes().catch((error) => {
+    logger(`dsh-leader-kit: 重建卡片索引失败：${error instanceof Error ? error.message : String(error)}`)
   })
   // 项目索引失败会永久停在「未就绪」，而那个状态下所有会话都被当作协调者。
   // 重启进程代价太大，退避重试几次；最终失败则由派工路径上的 awaitIndex 拒绝。

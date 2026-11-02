@@ -119,22 +119,26 @@ export function selectProjectSessionRows({
 }
 
 /**
- * 项目行要不要显示「运行中」加载器。
+ * 项目行行首要不要显示加载圈。
  *
- * 只在收起时显示：展开后每条会话行自己带 spinner，目录行再加一个就是同一件事
- * 画两遍；收起后会话行不可见，目录行是唯一的活动提示。
+ * 两个来源合成一个判定：本组任一会话行在跑（只在收起时算），以及协调者自己在跑
+ * （任何展开状态都算）。收起后会话行不可见，行首是唯一的活动提示；展开后每条
+ * 会话行自己带 spinner，其它会话在跑就不再画第二遍——但它没有自己的行，协调者
+ * 跑起来只能靠行首。
  *
- * 判定直接读**要渲染的会话行**（{@link selectProjectSessionRows} 的结果），不另
- * 行判一遍身份与归属。这样「目录行有加载器」与「至少一条会话行有 spinner」严格
- * 同源：归档会话、快照里还没有的会话、以及不在会话列表里的当前协调者都不参与，
- * 也不会因为换协调者留下的退役会话而误判。
+ * 会话行那一半读**要渲染的会话行**（{@link selectProjectSessionRows} 的结果），
+ * 不另行判一遍身份与归属。这样「目录行有加载器」与「至少一条会话行有 spinner」
+ * 严格同源：归档会话、快照里还没有的会话、以及不在会话列表里的当前协调者都不
+ * 参与，也不会因为换协调者留下的退役会话而误判。
  *
  * @param {object} options - 选项
  * @param {boolean} options.expanded - 项目的会话列表是否展开
  * @param {object[]} options.rows - 要渲染的会话行
- * @returns {boolean} 是否显示加载器
+ * @param {boolean} [options.coordinatorRunning] - 协调者是否在运行
+ * @returns {boolean} 是否显示加载圈
  */
-export function showsProjectActivity({ expanded, rows }) {
+export function showsProjectActivity({ expanded, rows, coordinatorRunning }) {
+  if (coordinatorRunning === true) return true
   if (expanded === true) return false
   return (Array.isArray(rows) ? rows : []).some((row) => row?.running === true)
 }
@@ -180,17 +184,63 @@ export function currentSessionIdOf(byId) {
 }
 
 /**
- * 判定项目行是否处于选中态。
+ * 判定项目行是否代表主区域里正在看的协调者会话。
  *
- * 协调者会话不在项目树下单独出行，项目行就是它的入口；点项目行打开协调者之后
+ * 协调者会话不在项目树下单独出行，项目行就是它的入口：点项目行打开协调者之后
  * 主区域里放着那条会话，这一行必须跟着亮起来，否则「我现在在哪个项目里」只能
- * 靠会话标题猜。项目下的 worker 会话被打开时同样点亮所属项目——那一行代表的
- * 就是这一组会话。
+ * 靠会话标题猜。
+ *
+ * 只有协调者算数：被打开的 worker 会话在列表里有自己的一行，选中态归它；项目
+ * 行这时只点亮行首文件夹（`isProjectCurrent`）。两行同时铺整行底色会看成选了
+ * 两个，而它们层级不同。
+ *
+ * 归档协调者在项目树里没有可点的行，不算。
+ *
+ * @param {object} project - 项目记录
+ * @param {string | undefined} currentSessionId - 主区域当前会话 id
+ * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
+ * @returns {boolean} 是否选中
+ */
+export function isCoordinatorCurrent(project, currentSessionId, archivedSessionIds) {
+  if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
+  if (project?.coordinatorSessionId !== currentSessionId) return false
+  return archivedSessionIds?.has(currentSessionId) !== true
+}
+
+/**
+ * 判定项目的协调者会话是否在运行。
+ *
+ * 会话行有自己的运行状态位，项目行没有——协调者在项目树下不单独出行，它跑起来
+ * 时唯一能看出「还在干活」的位置就是项目行的行首图标。行首加载圈的另一半是
+ * 会话行的运行态（{@link showsProjectActivity}），两者在 `ProjectRow` 里合成。
+ *
+ * 只认现任协调者：worker 在跑各自的行上有自己的加载圈。归档的协调者不算——与
+ * {@link isCoordinatorCurrent} / {@link isProjectCurrent} 同一条口径，宿主会话
+ * 索引里还留着它的记录。
+ *
+ * @param {object} project - 项目记录
+ * @param {Record<string, {running?: boolean}>} [sessionRows] - 会话 id 到会话行
+ * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
+ * @returns {boolean} 协调者是否在运行
+ */
+export function isCoordinatorRunning(project, sessionRows, archivedSessionIds) {
+  const id = project?.coordinatorSessionId
+  if (typeof id !== 'string' || id === '') return false
+  if (archivedSessionIds?.has(id) === true) return false
+  return sessionRows?.[id]?.running === true
+}
+
+/**
+ * 判定主区域里的当前会话是否属于这个项目（协调者或 worker）。
+ *
+ * 这一层不画整行底色——那是协调者会话的选中态（`isCoordinatorCurrent`），只
+ * 点亮行首文件夹：整行底色的语义是「你现在看的就是这一行」，而被打开的 worker
+ * 是列表里的另一行。
  *
  * 口径与看板的「项目会话」判定一致（`boardViewState` 的 `coordinator` / `worker`）：
  * 退役协调者仍解析得到项目、也仍列在 `sessionsByProject` 里，归档会话的行还留在
  * 会话索引里——但它们都不是项目会话。算进来的话，点开退役会话或归档会话时项目
- * 行也会亮，而点这一行去的是现任协调者：选中态承诺的「你正在看的就是这一组」
+ * 行也会亮，而点这一行去的是现任协调者：这个点亮承诺的「你正在看的就是这一组」
  * 就成了谎。
  *
  * @param {object} project - 项目记录

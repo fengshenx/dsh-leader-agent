@@ -9,6 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto'
+import { normalizeHttpUrl } from '../../shared/card-links.js'
 import {
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
@@ -59,9 +60,9 @@ function linkSchema() {
     type: 'object',
     properties: {
       id: { type: 'string' },
-      label: { type: 'string' },
-      url: { type: 'string' },
-      purpose: { type: 'string' },
+      label: { type: 'string', description: '链接标签，必填且非空' },
+      url: { type: 'string', description: '能归一化为 http(s) 绝对地址的完整地址（如 https://…）；没有可跳转地址时省略这个字段' },
+      purpose: { type: 'string', description: '这个链接的用途（可选）' },
     },
     required: ['label'],
   }
@@ -133,38 +134,100 @@ function cardSchema() {
  *
  * 工具是手写的 ToolDefinition，宿主只校验输出 schema，入参 schema 里的
  * `required` 在运行时不生效——链接条目的 label 缺了就会以 `undefined` 落盘，
- * 序列化后静默丢字段。因此这里显式校验形状。
+ * 序列化后静默丢字段。因此这里显式校验形状与 URL。
+ *
+ * 报错是写给模型看的：每条都带上「第几条、哪个标签、收到的原值、该怎么改」。
+ * 只说「url 非法」会让模型原地重试，而它需要知道的是「要 http(s) 绝对地址
+ * （如 https://… 的完整地址），或者干脆不传 url」。
+ *
+ * 整体替换（`links`）会给缺 id 的条目补一个稳定 id，条目以后能按 id 原位更新。
+ * 增量追加（`addLinks`）**不能补**：补了每次都生成新 id，同一份链接会被重复
+ * 追加，去重也就永远不生效——调用方没给 id 时就留空，交给 store 按
+ * `label + url` 判重。
  *
  * @param {object[]} links - 原始链接条目
+ * @param {{ assignIds?: boolean }} [options] - `assignIds` 为 false 时不给缺 id 的条目补 id
  * @returns {object[]} 规范化后的链接条目
  */
-function normalizeLinks(links) {
+function normalizeLinks(links, { assignIds = true } = {}) {
   if (!Array.isArray(links)) {
-    throw new Error('卡片工具: links 必须是数组')
+    throw new Error(`卡片工具: links 必须是数组，收到 ${describeValue(links)}`)
   }
-  return links.map((link) => {
+  const seenIds = new Set()
+  return links.map((link, index) => {
+    const where = `links 第 ${index + 1} 条`
     if (link === null || typeof link !== 'object' || Array.isArray(link)) {
-      throw new Error('卡片工具: links 条目必须是对象')
+      throw new Error(`卡片工具: ${where}必须是对象，收到 ${describeValue(link)}`)
     }
     if (typeof link.label !== 'string' || link.label.trim() === '') {
-      throw new Error('卡片工具: links 条目缺 label')
+      const hint = typeof link.url === 'string' && link.url.trim() !== ''
+        ? `（这一条带了 url ${JSON.stringify(link.url)}，但链接必须有非空 label）`
+        : ''
+      throw new Error(`卡片工具: ${where}缺 label${hint}；每条链接都要有非空 label`)
     }
+    const label = link.label.trim()
     if (link.id !== undefined && (typeof link.id !== 'string' || link.id === '')) {
-      throw new Error('卡片工具: links 条目的 id 必须是非空字符串')
+      throw new Error(`卡片工具: ${where}（label「${label}」）的 id 必须是非空字符串，收到 ${describeValue(link.id)}`)
     }
     if (link.url !== undefined && typeof link.url !== 'string') {
-      throw new Error('卡片工具: links 条目的 url 必须是字符串')
+      throw new Error(`卡片工具: ${where}（label「${label}」）的 url 必须是字符串，收到 ${describeValue(link.url)}`)
     }
     if (link.purpose !== undefined && typeof link.purpose !== 'string') {
-      throw new Error('卡片工具: links 条目的 purpose 必须是字符串')
+      throw new Error(`卡片工具: ${where}（label「${label}」）的 purpose 必须是字符串，收到 ${describeValue(link.purpose)}`)
     }
+    const rawUrl = typeof link.url === 'string' ? link.url.trim() : ''
+    let url = ''
+    if (rawUrl !== '') {
+      const normalizedUrl = normalizeHttpUrl(rawUrl)
+      if (normalizedUrl === null) {
+        throw new Error(
+          `卡片工具: ${where}（label「${label}」）的 url 必须是 http(s) 绝对地址，`
+          + `收到 ${JSON.stringify(link.url)}；请改成 https://… 这样的完整地址，或者去掉 url 字段`,
+        )
+      }
+      url = normalizedUrl
+    }
+    const purpose = typeof link.purpose === 'string' ? link.purpose.trim() : ''
+    // 重复 id 会让看板把两条链接当成同一条（改一行动两行）：后面那条换新 id。
+    // `addLinks` 不补 id：补了每次都是新 id，去重永远不生效，交给 store 按
+    // `label + url` 判重。重复且不能补时同样留空，避免两条链接撞同一个 id。
+    const hasId = typeof link.id === 'string' && link.id !== ''
+    const id = hasId && !seenIds.has(link.id)
+      ? link.id
+      : assignIds ? randomUUID() : undefined
+    if (id !== undefined) seenIds.add(id)
     return {
-      id: typeof link.id === 'string' ? link.id : randomUUID(),
-      label: link.label,
-      ...link.url === undefined ? {} : { url: link.url },
-      ...link.purpose === undefined ? {} : { purpose: link.purpose },
+      ...id === undefined ? {} : { id },
+      label,
+      ...url === '' ? {} : { url },
+      ...purpose === '' ? {} : { purpose },
     }
   })
+}
+
+/**
+ * 把收到的值描述成一句能放进报错里的话。
+ *
+ * 模型看到 `[object Object]` 或 `undefined` 都无从下手；给出类型与 JSON 片段
+ * 才能让它自己改对。
+ *
+ * @param {unknown} value - 收到的值
+ * @returns {string} 描述
+ */
+function describeValue(value) {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return `数组（${value.length} 项）`
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (typeof value === 'object') {
+    try {
+      const text = JSON.stringify(value)
+      return text.length > 120 ? `${text.slice(0, 120)}…` : text
+    } catch {
+      // 循环引用之类序列化不了的值，退回类型说明。
+      return '对象'
+    }
+  }
+  return `${typeof value} ${String(value)}`
 }
 
 /**
@@ -212,18 +275,117 @@ function cardMeta(scope, cards) {
 }
 
 /**
+ * 卡片写入的身份闸。
+ *
+ * 工具面在 `agent/created` 一次性裁，而换协调者不重建旧会话：退役的那个会话手里
+ * 仍留着 `create_card` / `update_card`，直到下次会话重建才按普通会话重裁。因此
+ * 每次写入再判一次当前身份——退役者与普通会话同档，不能写卡。
+ *
+ * 判定可以是异步的：索引未就绪时问不出谁是协调者，判据要先等一次重建结果，口径
+ * 与派工一致（见 `canWriteCardsFor`）。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean | Promise<boolean>) | undefined} canWrite -
+ *   写卡身份判定；省略时放行，仅供文档取名字与单测构造
+ * @returns {Promise<void>} 闸门通过
+ * @throws {Error} 调用方不是协调者也不是 worker
+ */
+async function assertCardWriter(sessionId, canWrite) {
+  if (typeof canWrite !== 'function') return
+  if ((await canWrite(sessionId)) === true) return
+  throw new Error('卡片工具: 只有协调者与 worker 能写卡（项目注册表尚未读出时同样拒绝）——普通会话不在任何项目编排里，没有卡可写')
+}
+
+/**
+ * 建卡的身份闸：worker 不能建卡。
+ *
+ * 协议层的建卡动作全部属于协调者（`COORDINATOR.md` 的「一个 worker 一张卡」、
+ * `leader-mode` 的协调者动作表），`SLOTS.md` 的各槽位也没有让执行者建卡的步骤——
+ * worker 攒下的待办由它回报、协调者建卡并派工。放开这个口子会造出没有槽位、
+ * 没人认领的卡，和普通会话建卡是同一种问题，只是少一道工具面拒绝。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean) | undefined} isWorkerSession - worker 判定
+ * @returns {void}
+ * @throws {Error} 调用方是 worker
+ */
+function assertCardCreator(sessionId, isWorkerSession) {
+  if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
+  throw new Error('create_card: worker 不建卡——卡由协调者建并派工；需要新任务请在回报里说明，交付物挂到自己卡上用 update_card 的 addLinks')
+}
+
+/**
+ * worker 的写卡范围闸：只允许改自己挂着的卡，且不许动槽位绑定。
+ *
+ * 身份闸只回答「能不能写卡」，回答不了「写哪张、写什么」。对 worker 有五条：
+ *
+ * - **只能改自己挂着的卡**：worker 的 cwd 就是项目目录，同项目里别的 worker 的卡
+ *   它一样能改；改别人的卡会把产物落错地方。
+ * - **不能改槽位绑定**：整卡替换 `slots` 正是投递门禁（`dispatch.js` 的
+ *   `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂多张 active 卡）。
+ * - **不能改状态**：`done` / `archived` 会释放执行者、抽走卡片上下文，是协调者的
+ *   收工动作；重开同样是它的指派动作。worker 连合并与 approve 都不决定，判不了完成。
+ * - **不能改规格**：`spec` 是协调者维护的目标、范围与验收（`program.md` 的「`status`
+ *   与 `spec` 仍归协调者」、`implementation.md` 的「卡片规格与状态仍由协调者维护」）。
+ *   worker 的进展与产物走回报正文与 `links`，不往 spec 里写——那会改掉验收锚点，
+ *   也会冲掉 `expectedRevision`。
+ * - **不能改标题**：标题与 spec 走同一条注入通道（`SKILL.md` 的卡片事实一节），
+ *   同是看板与回执里的可读标识。`title: '范围：只改文档；验收：不新增依赖'` 一样
+ *   能把规格语义塞回来，只收 `spec` 等于留了个旁路。
+ *
+ * 协调者不受这条约束：它本来就在管整个项目。
+ *
+ * @param {string} sessionId - 调用方会话 id
+ * @param {object} input - 本次写入的意图
+ * @param {string} input.cardId - 目标卡 id
+ * @param {object | undefined} input.slots - 要写入的槽位绑定
+ * @param {string | undefined} input.status - 要写入的状态
+ * @param {string | undefined} input.spec - 要写入的规格
+ * @param {string | undefined} input.title - 要写入的标题
+ * @param {object} options - 判定依赖
+ * @param {((sessionId: string | undefined) => boolean) | undefined} options.isWorkerSession - worker 判定
+ * @param {((sessionId: string) => Promise<object[]>) | undefined} options.cardBindingsOf - 会话的卡片绑定
+ * @returns {Promise<void>} 范围校验通过
+ * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态、改规格、改标题
+ */
+async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, title }, { isWorkerSession, cardBindingsOf }) {
+  if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
+  if (slots !== undefined) {
+    throw new Error('update_card: worker 不能改卡片的槽位绑定——换执行者请在协调者会话里做')
+  }
+  if (status !== undefined) {
+    throw new Error('update_card: worker 不能改卡片状态——完成由协调者验收后判定（done / archived 会释放执行者），重开也是协调者的指派动作；请把交付物挂到 links 并在回报里说明已完成')
+  }
+  if (spec !== undefined) {
+    throw new Error('update_card: worker 不能改卡片规格——spec 是协调者维护的目标、范围与验收；进展与产物写进回报、链接挂到 links')
+  }
+  if (title !== undefined) {
+    throw new Error('update_card: worker 不能改卡片标题——标题与 spec 走同一条注入通道，只在回执里写进展；交付物挂到 links')
+  }
+  if (typeof cardBindingsOf !== 'function') return
+  const bindings = await cardBindingsOf(sessionId)
+  if (bindings.some((binding) => binding.cardId === cardId)) return
+  const mine = bindings.map((binding) => `#${binding.number}（cardId: ${binding.cardId}）`).join('、')
+  throw new Error(`update_card: worker 只能改自己挂着的卡，${cardId} 不在你的绑定里${mine === '' ? '' : `；你的卡：${mine}`}`)
+}
+
+/**
  * 创建 `create_card` 工具定义。
  * @param {object} options - 工具选项
  * @param {{ create: (input: object) => Promise<object> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目；卡片按项目归属，模型不传项目参数
+ * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWrite] - 写卡身份判定；
+ *   省略时放行，仅供文档取名字与单测构造
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   worker 不建卡，建卡与派工是协调者的一条动作链
  * @returns {object} dsh 工具定义
  */
-export function createCreateCardTool({ store, resolveProject }) {
+export function createCreateCardTool({ store, resolveProject, canWrite, isWorkerSession }) {
   return {
     name: 'create_card',
     description:
-      '建立一张任务看板卡片。卡片是协调者维护的任务事实，编号自动分配且永不复用，可用返回的 number 引用。',
+      '建立一张任务看板卡片。卡片是协调者维护的任务事实，编号自动分配且永不复用，可用返回的 number 引用。worker 不建卡：新任务由协调者建卡并派工。',
     parameters: {
       type: 'object',
       properties: {
@@ -235,7 +397,7 @@ export function createCreateCardTool({ store, resolveProject }) {
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '外部引用条目（MR、Issue、设计文档等）。',
+          description: '外部引用条目（MR、Issue、设计文档等）。每条要有非空 label；url 若是 http(s) 绝对地址才会在卡上可点，传错会报错并指出是第几条。',
         },
         slots: {
           ...slotsSchema(),
@@ -262,6 +424,8 @@ export function createCreateCardTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const input = /** @type {{ title: string, spec?: string, links?: object[], slots?: object, checkpoint?: unknown }} */ (args)
+      await assertCardWriter(exec.agent?.id, canWrite)
+      assertCardCreator(exec.agent?.id, isWorkerSession)
       if (typeof input.title !== 'string' || input.title.trim() === '') {
         throw new Error('create_card: title 不能为空')
       }
@@ -295,13 +459,18 @@ export function createCreateCardTool({ store, resolveProject }) {
  * @param {{ update: (input: object) => Promise<object> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目；跨项目改卡会被拒绝
+ * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWrite] - 写卡身份判定；
+ *   省略时放行，仅供文档取名字与单测构造
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   与 `cardBindingsOf` 一起构成 worker 的写卡范围闸
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡
  * @returns {object} dsh 工具定义
  */
-export function createUpdateCardTool({ store, resolveProject }) {
+export function createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf }) {
   return {
     name: 'update_card',
     description:
-      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡。',
+      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡；worker 只能改自己挂着的卡，且不能改状态、规格、标题与槽位绑定。',
     parameters: {
       type: 'object',
       properties: {
@@ -317,7 +486,16 @@ export function createUpdateCardTool({ store, resolveProject }) {
           enum: ['active', 'done', 'archived'],
           description: '新状态。active 与 done 可逆，archived 是终态。',
         },
-        links: { type: 'array', items: linkSchema(), description: '新的链接条目（整体替换）。' },
+        links: {
+          type: 'array',
+          items: linkSchema(),
+          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。',
+        },
+        addLinks: {
+          type: 'array',
+          items: linkSchema(),
+          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。',
+        },
         slots: {
           ...slotsSchema(),
           description: '新的槽位绑定（整体替换）。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，是小写 ASCII 机器标识（字母、数字、下划线、连字符，最长 32 字符），不是显示名。',
@@ -343,7 +521,8 @@ export function createUpdateCardTool({ store, resolveProject }) {
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      await assertCardWriter(exec.agent?.id, canWrite)
       if (typeof input.id !== 'string' || input.id.trim() === '') {
         throw new Error('update_card: id 不能为空')
       }
@@ -361,7 +540,19 @@ export function createUpdateCardTool({ store, resolveProject }) {
       }
       const spec = optionalString(input.spec, 'spec')
       const links = input.links === undefined ? undefined : normalizeLinks(input.links)
+      const addLinks = input.addLinks === undefined ? undefined : normalizeLinks(input.addLinks, { assignIds: false })
+      // 整体替换与增量追加是两种意图；同次传会让「不覆盖别人刚写的链接」
+      // 这个承诺落空，调用方却以为自己在追加。
+      if (links !== undefined && addLinks !== undefined) {
+        throw new Error('update_card: links 与 addLinks 不能同时传（整体替换与增量追加互斥）')
+      }
       const slots = input.slots === undefined ? undefined : normalizeSlots(input.slots)
+      // 关闭卡片会释放槽位上的执行者；同次再传槽位是自相矛盾的意图，收下会让
+      // 调用方以为绑定生效，实际被释放。
+      if ((input.status === 'done' || input.status === 'archived')
+        && slots !== undefined && Object.keys(slots).length > 0) {
+        throw new Error('update_card: 关闭卡片（done / archived）会释放槽位上的执行者，同次不能再绑定槽位')
+      }
       const sortOrder = optionalNumber(input.sortOrder, 'sortOrder')
       // 卡片按项目归属：改别人项目的卡要拒绝。无归属的存量卡不拦——没有归属可
       // 冲突，拦下来只会让存量卡永远改不动。
@@ -375,6 +566,11 @@ export function createUpdateCardTool({ store, resolveProject }) {
       if (owner !== '' && owner !== scope) {
         throw new Error(`update_card: 卡片 ${input.id.trim()} 属于另一个项目，不能跨项目改卡`)
       }
+      await assertWorkerCardScope(
+        exec.agent?.id,
+        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title },
+        { isWorkerSession, cardBindingsOf },
+      )
       const card = await store.update({
         id: input.id.trim(),
         ...input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision },
@@ -382,6 +578,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
         ...spec === undefined ? {} : { spec },
         ...input.status === undefined ? {} : { status: input.status },
         ...links === undefined ? {} : { links },
+        ...addLinks === undefined ? {} : { addLinks },
         ...slots === undefined ? {} : { slots },
         ...sortOrder === undefined ? {} : { sortOrder },
       })
