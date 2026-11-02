@@ -158,9 +158,10 @@ test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己
 test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）', { skip: process.platform !== 'win32' }, () => {
   const result = spawnCommandSync({
     command: process.execPath,
-    args: ['-e', 'process.stdout.write(String(process.argv[1]))', '--', '%OS%'],
+    args: ['-e', 'process.stdout.write(String(process.argv[1]))', '--', '%DSH_PROBE_VAR%'],
     encoding: 'utf8',
+    env: { ...process.env, DSH_PROBE_VAR: 'expanded' },
   })
   assert.equal(result.status, 0)
-  assert.equal(result.stdout.trim(), process.env.OS)
+  assert.equal(result.stdout.trim(), 'expanded')
 })

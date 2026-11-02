@@ -47,7 +47,9 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 - **只管 start / dev 起的 `npm` 与 `dsh`**：`worktree:spawn` / `worktree:prune` 起的是 `git`，各平台都是 `.exe`，不动。
 - **不认 `dsh.ps1`，也不退回落 sh 脚本**：两条都要宿主 shell 参与，属于「能用但换了一套执行模型」，真需要时由 `DSH_DSH` 指到具体入口。
 - **不读 `PATHEXT` 环境变量**：固定 `.exe` / `.cmd` / `.bat` / `.com` 的默认顺序。改过 PATHEXT 的机器按默认顺序也仍然能找到 npm 的 shim。
-- **只管 cmd 层的引号，`%VAR%` 会被展开**：cmd 在双引号内同样做变量替换，加引号也拦不住，所以 `quoteForCmd` 不试图拦——参数来自用户自己的命令行，不是外部输入。用例把展开行为固化成已知边界，`start.mjs` 头注释提示参数含 `%` 会被改写。
+- **引号只对付 runtime 的转义，不对抗 cmd 语义**：`%VAR%` 会被展开——cmd 在双引号内同样做变量替换，加引号也拦不住，所以 `quoteForCmd` 不试图拦；参数来自用户自己的命令行，不是外部输入。用例把展开行为固化成已知边界，`start.mjs` 头注释提示参数含 `%` 会被改写。
+- **参数里的换行会被 cmd 截断**：`'line1\nline2'` 到目标程序只剩 `'line1'`——cmd 把换行当命令分隔符。实测借它执行不了第二条命令（`'a\necho INJECTED>文件'` 没有创建文件、argv 只有 `['a']`），是「参数被吃掉」而不是注入面。
+- **语法门禁跟随符号链接目录**：`check-syntax.mjs` 用 `statSync` 判断目录（与顶层一致），`Dirent.isDirectory()` 不跟随会让链接进来的目录被静默漏检；按 `realpath` 去重，成环的链接不会让递归停不下来。实测 junction 指向 `tests` 时文件数 80 → 133，重复指向 `src` 与自环仍是 80。
 - **PATH 顺序决定用哪个 dsh**：npm 会把祖先目录的 `node_modules/.bin` 插到 PATH 前面，那里有 `dsh.cmd` 时它赢过全局安装的那一份。这是 npm 脚本的既有语义，不特殊处理；排查「版本不对」时先看 `node_modules/.bin`。
 
 ## 验证
@@ -62,8 +64,9 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 | `buildCommandLine({ file })` 换回 `command` | `解析结果决定起哪个文件` 红：actual `from-bat` / expected `from-cmd`；只传 PATH 的那条仍绿——cmd 自己也能解析，守不住「解析结果被用上」，所以另加了 PATHEXT 顺序一条 |
 | `exists` 默认换回 `existsSync` | `PATH 上与命令同名的目录不算可执行文件` 红 |
 | `scripts/check-syntax.mjs` 前，把 `src/shared/frontmatter.js` 写坏 | 门禁 exit 1，打印 `src\shared\frontmatter.js` 与 `SyntaxError: Unexpected end of input`；还原后 exit 0 |
+| 把 `check-syntax` 里的 `process.execPath` 换成 `no-such-node-xyz` | exit 1，一行 `check-syntax: 起不了 no-such-node-xyz --check：spawnSync no-such-node-xyz ENOENT`；修复前同样操作只打印 80 行裸路径、`ENOENT` 一次都不出现 |
 
-引号探针（`.telov/probe-quote.mjs` 那 10 组 `a\"b` / `a b\\` / `x\\"y` / `tail two\\` 等）：修复前 6/10 相等，修复后 10/10 相等；另补 23 组元字符与边缘形态，唯一不等是 `%OS%`（cmd 层展开，见边界）。
+引号探针（`.telov/probe-quote.mjs` 那 10 组 `a\"b` / `a b\\` / `x\\"y` / `tail two\\` 等）：修复前 6/10 相等，修复后 10/10 相等。另测 33 组元字符与边缘形态（制表符、单双引号、`&` / `|` / `;` / 括号、超长串、emoji、换行），不等的只有两类：`%OS%`（cmd 层展开）与含换行的参数（`'line1\nline2'` 只收到 `'line1'`）。换行是截断不是注入：`'a\necho INJECTED>文件'` 实测 argv 只有 `['a']`、目标文件没有被创建。
 
 真机（Windows 11 / node 24.18.1 / dsh 0.2.1-rc.5）：
 
