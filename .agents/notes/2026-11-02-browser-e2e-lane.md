@@ -28,7 +28,7 @@
 
 `npm run dev` 与 e2e 都要起 `npm` / `dsh`，而 Windows 上 npm 装出来的是 `.cmd` / `.ps1` / 无扩展名 shim，裸 `spawn('dsh')` / `spawnSync('npm')` 必 ENOENT（#63 修过一次，真机读数见 `2026-11-02-windows-command-spawn.md`）。抽出 `dev-instance.mjs` 时曾退回裸 `spawn` / `spawnSync`，所以这里重新统一：`dev.mjs` 的构建与 `spawnDshWeb` 都经 `scripts/spawn-command.mjs`（`spawnCommandSync` / `spawnCommand`），异步路径用 `commandLaunchError` 把「命令不存在」与「cmd 起不来」分开报。
 
-`tests/spawn-command-usage.test.js` 静态守这道线：scripts 与 e2e 夹具里导 `spawn` / `spawnSync` 的文件必须在允许清单里（每条写理由），`dev.mjs` 里唯一的裸 `spawn` 只能是 `spawn(process.execPath)`。选静态用例而不是单独门禁脚本：`npm run check` 已经跑 tests，不必再加一条命令，失败信息也能直接指出文件名。
+`tests/spawn-command-usage.test.js` 静态守这道线：scripts 与 e2e 夹具里**引入 `node:child_process`** 的文件必须在允许清单里（每条写理由），`dev.mjs` 里唯一的裸 `spawn` 只能是 `spawn(process.execPath)`。判据是模块说明符而不是导入语法——命名、命名空间、默认导入、`require`、`createRequire` 与动态 `import()` 都落在同一段字符串上；只认 `import { spawn }` 会被 `import * as cp from 'node:child_process'` 后调 `cp.spawn('dsh')` 绕过（第一版就是这么写的，被复审抓出来）。注释里提到也算，宁可加白名单，不留靠换写法就能绕过的缺口。选静态用例而不是单独门禁脚本：`npm run check` 已经跑 tests，不必再加一条命令，失败信息也能直接指出文件名。
 
 ### 截图走同一套夹具，不另开一条手工路径
 
@@ -52,10 +52,11 @@ check 的门禁只跑纯函数与假件，不能依赖真实 `dsh` 与 chromium�
 ## 验证
 
 - `npm run e2e`：2 个场景全绿，约 4.7 秒（`plugin.e2e.js` 3.5s + `session.e2e.js` 4.5s，并行）。
-- `npm run check`：805 用例 / 796 通过 / 0 失败 / 9 跳过（跳过为既有的平台相关用例），含新增的 `tests/e2e-logic.test.js`（6 例）、`tests/e2e-mock-script.test.js`（12 例）与 `tests/spawn-command-usage.test.js`（3 例）。
+- `npm run check`：805 用例 / 796 通过 / 0 失败 / 9 跳过（跳过为既有的平台相关用例），含新增的 `tests/e2e-logic.test.js`（6 例）、`tests/e2e-mock-script.test.js`（12 例）与 `tests/spawn-command-usage.test.js`（4 例）。
 - **双向验证 1**：把 `plugin.e2e.js` 的标题断言从 `'项目'` 改成 `'不存在的标题'` → 该用例 30s 超时变红；还原 → 变绿。
 - **双向验证 2**：把 `mock-llm.mjs` 的 `cursor.take(resolveMarker(parsed))` 改成 `cursor.take(null)`（等于撤掉标记处理）→ `session.e2e.js` 在等回复时 90s 超时变红；还原 → 变绿。
-- **双向验证 3**（spawn 门禁）：`dev-instance.mjs` 改回裸 `spawn(dshCommand, …)` → `起 npm / dsh 只经 spawn-command.mjs` 红，报出该文件；还原 → 绿。`dev.mjs` 的 `run()` 改回 `spawnSync(command, …)` → `dev.mjs 的裸 spawn 只起 process.execPath` 红，actual `['spawnSync(command)', 'spawn(process.execPath)']`；还原 → 绿。
+- **双向验证 3**（spawn 门禁）：`dev-instance.mjs` 改回裸 `spawn(dshCommand, …)` → `起子进程只经 spawn-command.mjs` 红，报出该文件；还原 → 绿。`dev.mjs` 的 `run()` 改回 `spawnSync(command, …)` → `dev.mjs 的裸 spawn 只起 process.execPath` 红，actual `['spawnSync(command)', 'spawn(process.execPath)']`；还原 → 绿。
+- **双向验证 3b**（门禁覆盖导入形态）：临时加 `tests/e2e/_probe-spawn.mjs`，分别写 `import * as cp from 'node:child_process'` + `cp.spawn('dsh')`、`import cp from 'node:child_process'` + `cp.spawn('dsh')`、`createRequire(import.meta.url)('node:child_process')` + `cp.spawn('dsh')` → 三种形态各自让门禁红并报出探针文件；删掉 → 4 例全绿。把 `referencesChildProcess` 临时退化成只认 `import { … } from` → `检测覆盖命名、命名空间、默认导入与 require 形态` 红并打印「漏检的写法：import * as cp from 'node:child_process'」；还原 → 绿。
 - **双向验证 4**（mock 断连，探针 `/tmp/probe-mock-abort.mjs`：`content-length: 200` 只写 12 字节后 `destroy()`）：修复前进程 exit 1，栈是 `Error: aborted … code: 'ECONNRESET'`；修复后打印 `ALIVE`、exit 0。
 - **双向验证 5**（失败路径临时根，探针 `/tmp/probe-instance-clean.mjs`，`DSH_HOME_SOURCE` 指向空目录）：修复前 `before=0 after=1`（残留一个 `dsh-leader-kit-e2e-*`）；修复后 `before=0 after=0`。
 - 真机读数：实例就绪行形如 `dsh web: http://127.0.0.1:<port>/?token=<...>`；新会话的 composer 在启动早期是 `data-phase="inert"`（`aria-label="选择工作区"`），等 `contenteditable="true"` 才是可输入状态；一条消息会带来两次模型请求（`scenario` + `title`）。
