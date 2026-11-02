@@ -291,13 +291,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **后续复核（rc.2，2026-11-02）**：「不归属就打不开」这半句不成立——`openSession` 只按会话 id retain（`packages/client/ui-workspace/src/client/navigation.ts`），主区域不检查归属；不归属的会话在「未分组」里点开，`data-phase` 正常是 `active`。本仓仍然把项目会话挂进工作区，理由换成**分组**：不归属就落「未分组」，而本仓把项目会话行藏掉了，组头会留成一棵空组。归属是数据层能解决这件事的唯一手段——会话头没有「侧栏不显示」的字段，`origin` 只允许 `subagent`（`session-format-v3-to-v4/src/validation.ts:39`），归档会把会话拦在 `agent/pre-step` 之外（`api/session-controller/src/archived-session-gate.ts:22-30`）。
 
-**用户删掉那个工作区之后**（第 33 条的延伸）：`WorkspaceRegistry.delete` 只删记录（`packages/workspace/workspace/src/index.ts:585-601`），会话与文件都不动，于是项目会话变成松散会话、落回「未分组」。本仓在下次打开项目（点项目行）时按需重建：`create` 是幂等的，重建后会放进项目记录，并把协调者、退役协调者与该项目的 worker 会话挂回去（名单来自 `sessionQuery.listSessions()` 加 worker 登记表，用户在项目目录里手动开的会话不碰）。重建在左栏看不见（工作区行被藏着），所以客户端给一条顶部提示。
+**用户删掉那个工作区之后**（第 33 条的延伸）：`WorkspaceRegistry.delete` 只删记录（`packages/workspace/workspace/src/index.ts:585-601`），会话与文件都不动，于是项目会话变成松散会话、落回「未分组」。本仓在下次打开项目（点项目行）时按需重建：`create` 是幂等的，重建后会放进项目记录，并把协调者、退役协调者与该项目的 worker 会话挂回去（名单来自 `sessionQuery.listSessions()` 加 worker 登记表，用户在项目目录里手动开的会话不碰）。重建出的工作区行会重新出现在左栏，但触发点在项目行上，所以客户端给一条顶部提示。
 
 ### 33. 官方工作区没有「隐藏」位——第三方注册的工作区只能从渲染层藏
 
 **dsh 实测**：工作区记录是封闭 schema（`packages/workspace/workspace/src/spec.ts` 的 `workspaceRecord`：只有 `path` / `title` / `sessionIds` / `createdAt` / `updatedAt`），没有备注、标签或可见性字段；归档只作用于会话（`workspaceDomainState.archivedSessionIds`），工作区级别没有归档。工作区实体的公开接口（`packages/workspace/workspace/src/types.ts`）也只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`，没有隐藏或删除可见性的方法。
 
-**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）而注册了工作区——本仓后来改成为了**分组**而归属于它（不归属会落「未分组」，见第 32 条的后续复核）——那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。可行的只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
+**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）而注册了工作区——本仓后来改成为了**分组**而归属于它（不归属会落「未分组」，见第 32 条的后续复核）——那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。本仓的落点是**让它显示**：项目目录在官方树里是用户手动开会话的入口，藏掉之后那些会话没有替代路径；渲染层只用来排除会话行（见第 29 条）。宿主若要支持隐藏，只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
 
 ### 34. 空会话一律渲染欢迎页——没有「标记会话非空」的入口
 
@@ -316,13 +316,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：「未读」档已接上并实测跑通（worker 子会话跑完 → `completionUnread` 为 true → 蓝点；主视图里的会话未读被清）。「等你输入」档接的是 `pendingInteraction`，但宿主的 `SessionPendingInteractionMap`（同文件 50-51 行）是空的声明合并表——**当前没有任何域发布待处理交互**，这一档恒为不触发。机制留着，档位留着，等真有域发布时自动生效；现在不会亮。
 
-### 36. 卡片没有写方法——详情只能只读
+### 36. 卡片没有写方法——本仓在项目通道上自建
 
 **目标形态**：卡片详情浮层带编辑能力（改标题、状态、链接、槽位、排序）。
 
 **dsh 实测**：宿主官方未暴露通用远程方法注册面（`connection.rpc.handle` 对仓外插件不可用）。但浏览器侧 → 宿主侧的写通道**本仓已经有了**：自建的 Typert SRC 命名空间 `projects`（见第 26 条）在 P3 实测通过，8 个写方法（create / deleteProject / rename / replaceCoordinator / attachCoordinator 等）都跑通了。缺的不是通道，是**卡片自己的写方法**——而卡片的写入语义（revision 乐观并发、归档终态）住在 host 侧的卡片存储里，改卡要走那套规则。
 
-**影响**：本轮卡片详情浮层只读，完成、置顶、重命名、删除都没做，卡面也不放操作按钮。补齐是本仓自己的活：在 `projects` 之外加一组卡片远程方法，宿主侧转调卡片存储的既有领域规则。属独立议题，不是宿主拦路。
+**影响**：链接编辑已补（`updateCardLinks`，整体替换 `links`，宿主侧转调 `cards.update`）；其余写操作——完成、置顶、重命名、删除、改槽位——仍未做，卡面也不放操作按钮。补齐是本仓自己的活：同一命名空间里加方法、宿主侧转调卡片存储的既有领域规则。不是宿主拦路。
 
 ### 37. 工具面只能按身份**同步**判定，而判定发生在建会话内部——身份必须先于会话存在
 
@@ -382,6 +382,20 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：map 形状的参数在子集里只能用 `additionalProperties: true` 放行任意键，条目形状靠 `properties` 里的示例（`dev` / `review`）与工具描述表达；键级校验只能写在执行路径上（`normalizeSlots`）。`cardSchema()` 复用了同一个 `slotsSchema()`，所以一处越界同时污染三个工具的 output schema——schema 层「兜底校验」的直觉在这里是负收益。
 
+### 41. 新建会话的权限取部署默认 preset，不继承父会话
+
+**目标形态**：worker 与协调者用同一套沙箱模式与审批策略——同一个命令，协调者能跑，worker 也能跑。
+
+**dsh 实测**（`0.2.1-rc.2`）：
+
+- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,428`、`pinInitialPermission()`）。
+- **preset 身份不编码在 knob 值里**：`permissionPresets.current(session)` 是 `derive()` 的结果，把 knob 值折回配置表。`auto` 的 bundle（`danger-full-access` + `ask`）不匹配任何配置 preset，所以只写 knobs 时 `derive()` 落到 `custom`；而 auto-review 的审查门判据正是 `permissionPresets.current(session) === 'auto'`（`packages/experimental/auto-review/src/index.ts:689`）。宿主 subagent 因此只在父会话的显式身份是 `auto` / `danger-full-access` 时额外写 `permission/preset`（`packages/subagent/subagent/src/child-agent.ts:248-278` 的 `captureDelegatedPolicyOverrides` / `appendDelegatedPolicyOverrides`）。`pinInitialPermission()` 对已有 `auto` 身份的会话要求 auto 集成在场（`autoAdmit` 缺失时抛错），这是宿主自身契约。
+- 有效值 = 会话覆盖 ?? 部署默认：`sandboxPolicy.resolve({ session })`（`packages/sandbox/sandbox-policy/src/index.ts:197-205`）与 `approval.overrideOf(session) ?? approval.config.policy`（`packages/interaction/user-approval/src/index.ts:244-253`），两处在 rc.2 就有。
+- 会话覆盖的写路径是 `sandbox/mode` 与 `approval/policy` 两条 session event，都接受 `source: 'delegation'`（宿主 subagent 就给子会话钉 `approvalPolicy: 'never'`，`packages/subagent/subagent/src/child-agent.ts:271-277`）。仓外插件可以直接 append 这两条**已知**事件，不违反「不能新增 session event 类型」（第 8 条）。
+- 审批 answerer 按**会话 UI 作用域**注册（`ctx.sessions.scopeOf(owner)`，`packages/client/ui-approval/src/client/index.ts:45`）：会话没在界面上打开时没有 answerer，`ask` 落到 `unavailable` → 工具被拒（`packages/core/tools/src/pipeline.ts:436-469`）。所以继承 `ask` 给后台 worker 仍是死路：卡上「协调者切 `never` 后 worker 被拒」那一半修好了，`ask` 方向没修，除非用户打开这个 worker 会话去应答。
+
+**影响**：`agents.create` 建的 worker 拿到的是默认 preset（web profile 下 `workspace-write` + `ask`）。协调者切到 `danger-full-access` / `never` 之后，worker 的同一个命令会被沙箱拒绝；需要审批的调用在后台无人应答，同样被拒——两个方向的偏差都表现为「协调者能干、worker 干不了」。本仓在派工建会话后、首轮之前按协调者的有效值追加两条 `source: 'delegation'` 覆盖，协调者是 `auto` 时再补一条 `permission/preset`（`src/host/permission-inherit.js`）。读不到协调者的 preset 身份时整体放弃继承——排除不了 auto 就不能只写裸 knobs，否则得到的是无沙箱、无审查门的 worker；此时 worker 停在**部署默认 preset** 上，默认可能是任意一档，不保证比协调者更严。继承是派工那一刻的快照，协调者之后切换 preset 不影响已派出的 worker。`spawn_worker` 回执带的是**回读到的实际值**（`resolve` / `overrideOf` / `permissionPresets.current`），不是继承目标：写失败时如实报告 worker 真正跑的权限；读不到的键不写——值为 `undefined` 的键过不了工具结果的 lossless JSON 判定（`snapshotJsonValue` 返回 `undefined`），而报错发生在派工完成之后，会留下挂卡的孤儿 worker。
+
 ---
 
 ## 四、工具级（已验证可用，无缺口）
@@ -412,7 +426,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 | 官方工作区树排除项目会话 | 通过 | 浏览器实测：官方树里 `test` 工作区下的项目会话行被加隐藏类，`getComputedStyle` 为 `display:none`；官方数据层未动（见第 29 条） |
 | 产品图标 | 通过（内联路径） | 宿主 web 端运行时无 sprite，`<use>` 引用必然落空（见第 31 条）；改为内联路径后浏览器实测图标尺寸 14×14 / 16×16、path 齐全 |
 | 角色槽位注入 | 通过 | `ctx.systemPrompt.context()` 注册运行时上下文（见第 24–25 条）；改 `SLOTS.md` 正文后下一轮 turn 注入新正文；注入前后两轮请求的工具定义数组逐字节一致（32 个工具） |
-| 看板卡面与详情浮层 | 通过 | P4 重做卡面（active 三层 / done 单行 / 链接 chip 实测排布 / 信号灯七档 / 只读详情浮层 / 已完成折叠区）；mock LLM 触发真实卡片工具建卡后浏览器实测渲染，console 无报错（见第 35、36 条） |
+| 看板卡面与详情浮层 | 通过 | P4 重做卡面（active 三层 / done 单行 / 链接 chip 实测排布 / 信号灯七档 / 详情浮层 / 已完成折叠区）；详情浮层的链接编辑在 P5 补上；mock LLM 触发真实卡片工具建卡后浏览器实测渲染，console 无报错（见第 35、36 条） |
 
 ---
 

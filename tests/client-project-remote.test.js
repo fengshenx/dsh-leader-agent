@@ -25,7 +25,7 @@ test('客户端贡献覆盖契约里的每个方法，wire 字段名与形参名
     assert.deepEqual(descriptor.invocation, { kind: 'direct' })
     assert.deepEqual(
       descriptor.parameters.map((parameter) => parameter.wire),
-      [...PROJECT_REMOTE_METHODS[descriptor.method]],
+      Object.keys(PROJECT_REMOTE_METHODS[descriptor.method]),
     )
   }
 })
@@ -34,6 +34,12 @@ test('每个入参都有严格 codec：宿主拒绝没有严格 codec 的描述�
   for (const descriptor of PROJECT_REMOTE_CONTRIBUTION.descriptors) {
     for (const parameter of descriptor.parameters) {
       assert.equal(parameter.codec.mode, 'strict')
+      if (PROJECT_REMOTE_METHODS[descriptor.method][parameter.name] === 'links') {
+        const links = [{ label: 'PR', url: 'https://example.com/pull/1' }]
+        assert.deepEqual(parameter.codec.create().parse(links), links)
+        assert.throws(() => parameter.codec.create().parse('不是数组'), /期望链接数组/)
+        continue
+      }
       assert.equal(parameter.codec.create().parse('值'), '值')
       assert.throws(() => parameter.codec.create().parse(1), /期望字符串/)
     }
@@ -79,6 +85,31 @@ test('调用把业务失败变成异常', async () => {
   }
 
   await assert.rejects(() => callProjectRemote(ctx, 'list', []), /gateway\/internal/)
+})
+
+test('业务失败带上宿主给的原因，用户能照着处理', async () => {
+  const ctx = {
+    get(key) {
+      if (key !== 'remote.projects') return undefined
+      return {
+        updateCardLinks: async () => ({
+          ok: false,
+          error: {
+            code: 'gateway/internal',
+            message: '卡片 c1 已归档，归档是终态，不可再改',
+          },
+        }),
+      }
+    },
+  }
+
+  await assert.rejects(
+    () => callProjectRemote(ctx, 'updateCardLinks', ['c1', []]),
+    (error) => {
+      assert.match(error.message, /已归档/)
+      return true
+    },
+  )
 })
 
 test('通道没挂上时报项目通道不可用', async () => {

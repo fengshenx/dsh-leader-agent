@@ -2,9 +2,9 @@
  * 浮层外壳：portal、遮罩、Escape、焦点陷阱与关闭回焦。
  *
  * 结构与数值照抄宿主 `packages/client/ui-primitives/src/Modal.tsx` 与
- * `Modal.module.css`（版本 `0.2.1-rc.2`）——第三方 bundle 不能 import 宿主 UI
- * 包（见 docs/subsystems/web-client.zh.md:93），只能复制源码后改写：类名换成
- * 本仓前缀，避免与宿主的 CSS module 撞名；`clsx` 换成字符串拼接；焦点工具
+ * `Modal.module.css`（版本 `0.2.1-rc.2`）——组件虽在基线 `ui-primitives` 里可
+ * import，但它的 CSS module 不跨 bundle 共享，行为也要按本仓调整，因此复制源码后
+ * 改写：类名换成本仓前缀，避免与宿主的 CSS module 撞名；`clsx` 换成字符串拼接；焦点工具
  * `focusWithoutRing` 依赖宿主的 `[data-dsh-automatic-focus]` 主题规则，保留原样
  * 以便行为与官方一致。
  *

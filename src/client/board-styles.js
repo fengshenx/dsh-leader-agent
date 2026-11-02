@@ -8,9 +8,9 @@
  * `client-ui-agent-team` 的成员卡。
  *
  * 数值约定：8px 卡间距、13px 标题、11px 弱化文字、22px 链接行缩进。颜色一律走
- * 宿主 `--dsw-*` 令牌，不写死色值——第三方 bundle 不能 import 宿主 UI 包
- * （见 docs/subsystems/web-client.zh.md:93），既没有 Tailwind 也没有宿主 CSS
- * module 可用，只能自注入样式表（沿用 `modal-shell.js` 的做法）。
+ * 宿主 `--dsw-*` 令牌，不写死色值。宿主跨 bundle 共享的是组件（`PLATFORM_MODULES`
+ * 里的 `ui-primitives`，见 `markdown.js`），它们的 CSS module 不在这张表里，也没有
+ * Tailwind 可用，因此样式只能自注入（沿用 `modal-shell.js` 的做法）。
  *
  * @module dsh-leader-kit/client/board-styles
  */
@@ -624,6 +624,13 @@ const STYLE_TEXT = `
   margin-top: 0;
 }
 
+.dsh-leader-kit-card-detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .dsh-leader-kit-card-detail-section-title {
   font-size: 11px;
   line-height: 16px;
@@ -631,13 +638,50 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
 }
 
+.dsh-leader-kit-card-detail-section-action {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-card-detail-section-action:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.dsh-leader-kit-card-detail-section-action:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
 .dsh-leader-kit-card-detail-text {
   margin-top: 6px;
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 宿主 compact 变体把正文压成三级标签色：.markdown 与 .compact 挂在同一个根节点上、
+   特异性同为 (0,1,0)，.compact 靠源顺序压过 .markdown 的 primary。链接同理——
+   .compact a 的 color: inherit 压过 .markdown a 的 --dsw-alias-link。
+   这里用宿主暴露的 data-markdown-variant 钩子把容器内的正文与链接压回原色：
+   容器类 + 属性选择器是 (0,2,0)，高于 .compact 的 (0,1,0)；链接再叠标签选择器到
+   (0,2,1)，高于 .compact a 的 (0,1,1)。特异性严格更高，不依赖样式表注入顺序。 */
+.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] a {
+  color: var(--dsw-alias-link);
 }
 
 .dsh-leader-kit-card-detail-muted {
@@ -689,6 +733,178 @@ const STYLE_TEXT = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 链接编辑态：每行一张小卡，标签窄、URL 占宽，用途与增删都在行内。 */
+.dsh-leader-kit-link-editor {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dsh-leader-kit-link-editor-empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-kit-link-editor-row {
+  padding: 8px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+.dsh-leader-kit-link-editor-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsh-leader-kit-link-editor-label,
+.dsh-leader-kit-link-editor-url,
+.dsh-leader-kit-link-editor-purpose {
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 6px;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: var(--dsw-radius-sm);
+  background: var(--dsw-alias-button-elevated-fill);
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+
+.dsh-leader-kit-link-editor-label {
+  flex: none;
+  width: 88px;
+}
+
+.dsh-leader-kit-link-editor-url {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dsh-leader-kit-link-editor-purpose {
+  width: 100%;
+  height: 24px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.dsh-leader-kit-link-editor-label:focus-visible,
+.dsh-leader-kit-link-editor-url:focus-visible,
+.dsh-leader-kit-link-editor-purpose:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -1px;
+}
+
+.dsh-leader-kit-link-editor-remove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-remove:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.dsh-leader-kit-link-editor-add-purpose {
+  margin-top: 4px;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-add-purpose:hover {
+    color: var(--dsw-alias-label-primary);
+  }
+}
+
+.dsh-leader-kit-link-editor-add {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-add:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dsh-leader-kit-link-editor-error {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-leader-kit-link-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.dsh-leader-kit-link-editor-button {
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-button:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dsh-leader-kit-link-editor-button-primary {
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-layer-2);
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-link-editor-button-primary:hover {
+    background: var(--dsw-alias-label-primary);
+    opacity: 0.9;
+  }
+}
+
+.dsh-leader-kit-link-editor-button:disabled {
+  cursor: default;
+  opacity: 0.5;
 }
 
 /* 右栏 guide 页的入口胶囊：复刻宿主 EntryBox 的数值（380px 宽、56px 最小高、

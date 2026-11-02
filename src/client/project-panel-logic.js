@@ -142,29 +142,6 @@ export function collectExcludedSessionIds(projects, sessionsByProject) {
 }
 
 /**
- * 挑出要从官方工作区树里藏掉的工作区。
- *
- * 只有插件自己注册的工作区才记进项目记录的 `workspaceId`（复用的用户工作区不记，
- * 见 `ensureWorkspace`）。加项目时目录还不是工作区的话，宿主会顺带注册一个——
- * 那个工作区在左栏里就是「用户没加过的一行」，凭空出现在项目目录旁边。项目记录
- * 里的 id 正好是它的身份依据。
- *
- * 藏只是渲染层的事：工作区仍在宿主数据里，协调者会话的归属与打开路径都靠它。
- *
- * @param {object[]} projects - 项目记录
- * @returns {Set<string>} 要藏掉的工作区 id
- */
-export function collectHiddenWorkspaceIds(projects) {
-  const hidden = new Set()
-  for (const project of projects ?? []) {
-    if (typeof project?.workspaceId === 'string' && project.workspaceId !== '') {
-      hidden.add(project.workspaceId)
-    }
-  }
-  return hidden
-}
-
-/**
  * 从会话快照里取主区域当前会话。
  *
  * 与宿主的 `mainSessionId`（`tree.ts`）同判据：`mainView` 持有数大于 0 的那条。
@@ -258,7 +235,7 @@ export function isArchiveActiveRefusal(reason) {
  * 不需要先跑一轮模型。
  *
  * `recreated` 表示宿主里已经没有这个项目的工作区（用户把它删了）——这次打开顺带
- * 重建了一个。工作区被我们藏在左栏里，不提示的话用户不会知道它又回来了。
+ * 重建了一个。用户点的是项目行，不会注意左栏工作区树里多回一行，所以要提示。
  *
  * @param {object} options - 选项
  * @param {object} options.project - 项目

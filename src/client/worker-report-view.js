@@ -1,8 +1,10 @@
 /**
  * worker 回报气泡的渲染组件。
  *
- * 形态：身份头（头像 + 名字）在气泡上方单独一行，气泡本身
- * 左对齐、带 1px 边框、淡底——读起来像另一个 agent 在回话，而不是用户在说话。
+ * 形态：身份头（头像 + 名字）在气泡上方单独一行，气泡本身左对齐、用宿主消息气泡
+ * 的底色、无描边——读起来像另一个 agent 在回话，而不是用户在说话。
+ *
+ * 正文走宿主基线的 `MarkdownText`（`src/client/markdown.js`），旧回报回退纯文本。
  *
  * 气泡里只渲染 worker **最后一次回报的内容**（产物摘要或失败原因）。协议字段
  * （子会话 id、状态、下一步）留在消息正文里给模型读，不占用户的界面。
@@ -14,8 +16,9 @@
 
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
 import { agentAvatarDataUri } from './worker-report-avatar.js'
-import { workerReportBody } from '../shared/worker-report.js'
+import { workerReportBody, workerReportFormat } from '../shared/worker-report.js'
 import { ensureWorkerReportStyles } from './worker-report-styles.js'
+import { Markdown } from './markdown.js'
 import { productIcon } from './icons.js'
 
 /**
@@ -59,6 +62,9 @@ export function WorkerReportView({ node, openSession }) {
   const bubbleRef = useRef(null)
   const data = node?.data
   const body = data === undefined ? '' : workerReportBody(data)
+  // 哪些正文走纯文本（旧回报、失败原因、既无块级结构也无空行的多行）由 shared 判，
+  // 理由见 workerReportFormat。
+  const markdown = data === undefined ? false : workerReportFormat(data) === 'markdown'
 
   // 样式必须在测量之前进 DOM，所以放在 layout 阶段而不是被动 effect：后者晚于
   // 绘制，首帧的 clamp 规则还没生效，`scrollHeight === clientHeight` 会量成「没
@@ -119,25 +125,32 @@ export function WorkerReportView({ node, openSession }) {
     ),
     createElement(
       'div',
-      {
-        ref: bubbleRef,
-        className: 'dsh-leader-kit-worker-report__bubble',
-        'data-collapsed': expanded ? undefined : 'true',
-      },
-      body,
+      { className: 'dsh-leader-kit-worker-report__bubble' },
+      // 裁剪只发生在正文层：按钮在气泡内、正文外，否则展开开关会跟着两行水位被裁掉
+      createElement(
+        'div',
+        {
+          ref: bubbleRef,
+          className: 'dsh-leader-kit-worker-report__content',
+          'data-collapsed': expanded ? undefined : 'true',
+        },
+        markdown
+          ? createElement(Markdown, { source: body })
+          : createElement('div', { className: 'dsh-leader-kit-worker-report__plain' }, body),
+      ),
+      overflowing
+        ? createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-leader-kit-worker-report__toggle',
+              'aria-expanded': expanded,
+              onClick: () => setExpanded((value) => !value),
+            },
+            expanded ? '收起' : '展示更多',
+          )
+        : null,
     ),
-    overflowing
-      ? createElement(
-          'button',
-          {
-            type: 'button',
-            className: 'dsh-leader-kit-worker-report__toggle',
-            'aria-expanded': expanded,
-            onClick: () => setExpanded((value) => !value),
-          },
-          expanded ? '收起' : '展示更多',
-        )
-      : null,
     createElement(
       'div',
       { className: 'dsh-leader-kit-worker-report__meta' },

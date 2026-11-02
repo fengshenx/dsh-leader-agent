@@ -157,21 +157,50 @@ test('零字段更新不递增版本，也不刷新更新时间与落盘', async
   }
 })
 
+test('一次读盘按会话分组全部绑定，与逐个反查同口径', async () => {
+  const { store, home } = await createStore()
+  try {
+    const first = await store.create({ title: '实现登录', slots: { dev: { sessionId: 's1' } } })
+    const second = await store.create({ title: '审查登录', slots: { review: { sessionId: 's1' }, dev: { sessionId: 's2' } } })
+    await store.create({ title: '没人挂' })
+
+    const grouped = await store.bindingsBySession()
+    assert.deepEqual([...grouped.keys()].sort(), ['s1', 's2'])
+    assert.deepEqual(grouped.get('s1'), [
+      { cardId: first.id, number: first.number, title: '实现登录', status: 'active', slot: 'dev' },
+      { cardId: second.id, number: second.number, title: '审查登录', status: 'active', slot: 'review' },
+    ])
+    assert.deepEqual(grouped.get('s2'), [
+      { cardId: second.id, number: second.number, title: '审查登录', status: 'active', slot: 'dev' },
+    ])
+    // 与逐个反查同口径：名册分类不能和投递门禁看到不同的绑定。
+    assert.deepEqual(grouped.get('s1'), await store.bindingsOf('s1'))
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('按会话反查它挂在哪些卡上，带卡号、状态与槽位名', async () => {
   const { store, home } = await createStore()
   try {
     const first = await store.create({ title: '实现登录', slots: { dev: { sessionId: 's1' } } })
     const second = await store.create({ title: '审查登录', slots: { review: { sessionId: 's1' }, dev: { sessionId: 's2' } } })
-    await store.update({ id: second.id, status: 'done' })
 
     // 一个会话可以同时被多张卡绑到不同槽位：投递门禁要看到全部，不能只挑最新那张。
     assert.deepEqual(await store.bindingsOf('s1'), [
       { cardId: first.id, number: first.number, title: '实现登录', status: 'active', slot: 'dev' },
-      { cardId: second.id, number: second.number, title: '审查登录', status: 'done', slot: 'review' },
+      { cardId: second.id, number: second.number, title: '审查登录', status: 'active', slot: 'review' },
     ])
     assert.deepEqual(await store.bindingsOf('s2'), [
-      { cardId: second.id, number: second.number, title: '审查登录', status: 'done', slot: 'dev' },
+      { cardId: second.id, number: second.number, title: '审查登录', status: 'active', slot: 'dev' },
     ])
+
+    // 关闭第二张卡即释放执行者：s1 只剩第一张卡，s2 不再挂卡。
+    await store.update({ id: second.id, status: 'done' })
+    assert.deepEqual(await store.bindingsOf('s1'), [
+      { cardId: first.id, number: first.number, title: '实现登录', status: 'active', slot: 'dev' },
+    ])
+    assert.deepEqual(await store.bindingsOf('s2'), [])
     assert.deepEqual(await store.bindingsOf('没挂卡的会话'), [])
   } finally {
     await rm(home, { recursive: true, force: true })
@@ -227,7 +256,7 @@ test('摘会话：删掉指向它的槽位，同卡其它槽位与其它卡不�
       slots: { builder: { sessionId: 's1' }, reviewer: { sessionId: 's2' } },
     })
     const other = await store.create({ title: '别的卡', slots: { builder: { sessionId: 's9' } } })
-    await store.loadSlotIndex()
+    await store.loadIndexes()
 
     const result = await store.detachSession('s1')
     assert.deepEqual(result, { cards: [bound.id], slots: 1 })
@@ -258,19 +287,250 @@ test('摘会话：没有绑定时不改任何卡、不落盘', async () => {
   }
 })
 
-test('摘会话：已归档的卡片也摘，槽位索引不区分卡片状态', async () => {
+test('归档卡片在归档时就释放槽位，摘会话时没有可摘的', async () => {
   const { store, home } = await createStore()
   try {
     const card = await store.create({ title: '已归档', slots: { builder: { sessionId: 's1' } } })
     await store.update({ id: card.id, status: 'archived' })
-    await store.loadSlotIndex()
-    assert.equal(store.slotIndex.has('s1'), true)
+    await store.loadIndexes()
 
-    assert.deepEqual(await store.detachSession('s1'), { cards: [card.id], slots: 1 })
     const after = await store.get(card.id)
     assert.deepEqual(after.slots, {})
     assert.equal(after.status, 'archived')
     assert.equal(store.slotIndex.has('s1'), false)
+    assert.equal(store.cardIndex.has('s1'), false)
+    assert.deepEqual(await store.detachSession('s1'), { cards: [], slots: 0 })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('关闭卡片（done）释放槽位上的执行者，重新打开不会恢复绑定', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'worker-1' } } })
+    assert.equal(store.slotIndex.get('worker-1'), 'dev')
+
+    const done = await store.update({ id: card.id, status: 'done' })
+    assert.deepEqual(done.slots, {})
+    assert.equal(done.revision, 1)
+    assert.equal(store.slotIndex.has('worker-1'), false)
+    assert.equal(store.cardIndex.has('worker-1'), false)
+
+    // 重新打开是新的工作周期，执行者要重新指派。
+    const active = await store.update({ id: card.id, status: 'active' })
+    assert.deepEqual(active.slots, {})
+    assert.equal(store.slotIndex.has('worker-1'), false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('关闭没绑槽位的卡片不额外递增版本', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    const done = await store.update({ id: card.id, status: 'done' })
+    // 只有状态变化这一次 bump；清空本就不存在的 slots 不该再算一次内容变化。
+    assert.equal(done.revision, 1)
+    assert.equal(done.slots, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 追加链接并保留原有条目', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({
+      title: '任务',
+      links: [{ id: 'issue', label: 'Issue', url: 'https://example.test/1' }],
+    })
+    const updated = await store.update({
+      id: card.id,
+      addLinks: [{ label: 'PR', url: 'https://example.test/pr/2' }],
+    })
+    assert.deepEqual(updated.links, [
+      { id: 'issue', label: 'Issue', url: 'https://example.test/1' },
+      { label: 'PR', url: 'https://example.test/pr/2' },
+    ])
+    assert.equal(updated.revision, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 同 id 原位更新字段，不产生重复条目', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({
+      title: '任务',
+      links: [{ id: 'pr', label: 'PR', url: 'https://example.test/draft' }],
+    })
+    const updated = await store.update({
+      id: card.id,
+      addLinks: [{ id: 'pr', label: 'PR', url: 'https://example.test/pr/2', purpose: '交付' }],
+    })
+    assert.equal(updated.links.length, 1)
+    assert.equal(updated.links[0].url, 'https://example.test/pr/2')
+    assert.equal(updated.links[0].purpose, '交付')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 没带 id 时按 label+url 去重，重复调用不长出重复链接', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    const link = { label: 'PR', url: 'https://example.test/pr/2' }
+    await store.update({ id: card.id, addLinks: [link] })
+    const again = await store.update({ id: card.id, addLinks: [link] })
+    assert.equal(again.links.length, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 与 links 互斥：同次传会覆盖别人刚写的链接，必须拒绝', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    await assert.rejects(
+      () => store.update({
+        id: card.id,
+        links: [{ label: 'PR', url: 'https://example.test/pr/2' }],
+        addLinks: [{ label: 'Issue', url: 'https://example.test/1' }],
+      }),
+      /不能同时传/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 没有实质变化时不递增版本', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    const added = await store.update({ id: card.id, addLinks: [{ label: 'PR' }] })
+    const same = await store.update({ id: card.id, addLinks: [{ label: 'PR' }] })
+    assert.equal(same.revision, added.revision)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('bindSlot 把槽位绑到指定会话并同步索引', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    const updated = await store.bindSlot({ cardId: card.id, slot: 'dev', sessionId: 'worker-1' })
+    assert.deepEqual(updated.slots, { dev: { sessionId: 'worker-1' } })
+    assert.equal(updated.revision, 1)
+    assert.equal(store.slotIndex.get('worker-1'), 'dev')
+    assert.equal(store.cardIndex.get('worker-1')[0].cardId, card.id)
+    // 幂等：同一个会话再绑一次不改版本。
+    const again = await store.bindSlot({ cardId: card.id, slot: 'dev', sessionId: 'worker-1' })
+    assert.equal(again.revision, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('bindSlot 拒绝顶替已绑到别的会话的槽位', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'worker-1' } } })
+    await assert.rejects(
+      () => store.bindSlot({ cardId: card.id, slot: 'dev', sessionId: 'worker-2' }),
+      /已绑到会话 worker-1/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('bindSlot 拒绝已关闭（done）的卡，不静默跳过', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'worker-old' } } })
+    await store.update({ id: card.id, status: 'done' })
+
+    // 关闭即释放执行者：再绑上去会让门禁（按 active 过滤）看不见它，cardIndex
+    // 却照旧给会话注入卡片事实。
+    await assert.rejects(
+      () => store.bindSlot({ cardId: card.id, slot: 'dev', sessionId: 'worker-new' }),
+      /已关闭（done）/,
+    )
+    const after = await store.get(card.id)
+    assert.deepEqual(after.slots, {})
+    assert.equal(store.slotIndex.has('worker-new'), false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('bindSlot 拒绝已归档的卡', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    await store.update({ id: card.id, status: 'archived' })
+
+    await assert.rejects(
+      () => store.bindSlot({ cardId: card.id, slot: 'dev', sessionId: 'worker-new' }),
+      /已归档/,
+    )
+    assert.deepEqual((await store.get(card.id)).slots, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('整卡替换 slots 同样拒绝 done 卡，但允许同次重开再绑', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务' })
+    await store.update({ id: card.id, status: 'done' })
+
+    // 写 slots 的另一条路径，同样不能绕过「关闭即释放」。
+    await assert.rejects(
+      () => store.update({ id: card.id, slots: { dev: { sessionId: 'worker-new' } } }),
+      /已关闭（done）/,
+    )
+    // 同一次把状态改回 active 是新的显式指派，允许。
+    const reopened = await store.update({
+      id: card.id,
+      status: 'active',
+      slots: { dev: { sessionId: 'worker-new' } },
+    })
+    assert.equal(reopened.status, 'active')
+    assert.deepEqual(reopened.slots, { dev: { sessionId: 'worker-new' } })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('卡片事实索引随建卡、改卡、摘绑定同步', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({
+      title: '任务',
+      spec: '第一版规格',
+      slots: { dev: { sessionId: 'worker-1' } },
+    })
+    const before = store.cardIndex.get('worker-1')
+    assert.equal(before[0].spec, '第一版规格')
+    assert.equal(before[0].revision, 0)
+
+    await store.update({ id: card.id, spec: '第二版规格', addLinks: [{ label: 'PR' }] })
+    const after = store.cardIndex.get('worker-1')
+    assert.equal(after[0].spec, '第二版规格')
+    assert.equal(after[0].revision, 1)
+    assert.deepEqual(after[0].links, [{ label: 'PR' }])
+
+    await store.detachSession('worker-1')
+    assert.equal(store.cardIndex.has('worker-1'), false)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

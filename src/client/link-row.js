@@ -8,16 +8,20 @@
  * @module dsh-leader-kit/client/link-row
  */
 
+import { isHttpUrl } from '../shared/card-links.js'
+
 /**
  * 链接能否跳转。
  *
- * 有 URL 的用 `<a>` 新标签打开，没有的只是一段文字（点它开详情）。
+ * 只有 http(s) 的用 `<a>` 新标签打开，其余渲染成文字（点它开详情）。渲染层也
+ * 要认 scheme：三条写入路径现在都只认 http(s)，但**存量卡**是校验上线前写进去
+ * 的，可能带 `javascript:`；这里一旦拼进 `href` 就是可执行的注入面。
  *
  * @param {object} link - 链接
  * @returns {boolean} 能否跳转
  */
 export function isJumpableLink(link) {
-  return typeof link?.url === 'string' && link.url !== ''
+  return isHttpUrl(link?.url)
 }
 
 /**

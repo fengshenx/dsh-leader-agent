@@ -26,7 +26,11 @@ function createFakeHost(sessionCwds) {
     provided: new Map(),
   }
   const ctx = {
-    skills: { registerProvider() {} },
+    skills: {
+      registerProvider(factory) {
+        holder.skillsProvider = factory()
+      },
+    },
     tools: { register() {} },
     systemPrompt: {
       context(definition) {
@@ -109,5 +113,24 @@ test('装配层：手册目录只认协调者会话的项目目录，不认会�
     await rm(home, { recursive: true, force: true })
     await rm(projectDirectory, { recursive: true, force: true })
     await rm(sessionDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：skill provider 读包内 .agents/skills', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const previousHome = process.env.DSH_HOME
+  const { ctx, holder } = createFakeHost(new Map())
+  process.env.DSH_HOME = home
+  try {
+    apply(ctx)
+    assert.ok(holder.skillsProvider, 'skill provider 没有注册')
+    // 路径拼错时 provider 读盘失败会静默返回空候选，这条断言守的是搬迁后的真实位置。
+    const names = (await holder.skillsProvider.list()).map(candidate => candidate.name).sort()
+    assert.deepEqual(names, ['init-project', 'leader-mode'])
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
   }
 })

@@ -5,7 +5,6 @@ import {
   buildProjectMenuItems,
   classifyDeletionResult,
   collectExcludedSessionIds,
-  collectHiddenWorkspaceIds,
   createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
@@ -125,17 +124,6 @@ test('没有项目或没有 worker 会话时排除集为空', () => {
     [...collectExcludedSessionIds([{ id: 'p1', coordinatorSessionId: 'c' }], new Map())],
     ['c'],
   )
-})
-
-test('插件注册的工作区整行藏掉，用户自己的工作区不藏', () => {
-  const hidden = collectHiddenWorkspaceIds([
-    { id: 'p1', workspaceId: 'w-plugin' },
-    // 复用用户已有的工作区时不记 workspaceId——那不是我们的东西。
-    { id: 'p2' },
-    { id: 'p3', workspaceId: '' },
-  ])
-  assert.deepEqual([...hidden], ['w-plugin'])
-  assert.equal(collectHiddenWorkspaceIds([]).size, 0)
 })
 
 test('当前会话取主区域持有的那条', () => {

@@ -8,6 +8,7 @@ import {
   boundSummary,
   readWorkerReportSource,
   workerReportBody,
+  workerReportFormat,
   workerReportSource,
   workerReportText,
 } from '../src/shared/worker-report.js'
@@ -37,6 +38,41 @@ test('界面渲染最后一次回报的内容，没有就退回正文', () => {
   assert.equal(workerReportBody({ text: '正文' }), '正文')
   assert.equal(workerReportBody({}), '')
   assert.equal(workerReportBody(null), '')
+})
+
+test('旧消息回退的整条正文走纯文本，新消息的 report 走 Markdown', () => {
+  // 旧消息没有 report，正文是逐行协议字段；Markdown 的软换行会把它们折成一段。
+  assert.equal(workerReportFormat({ report: '', text: '任务「x」已结束。\n子会话：c1\n状态：completed' }), 'text')
+  assert.equal(workerReportFormat({ text: '正文' }), 'text')
+  // 新消息的 report 是 worker 自己的产物，按 Markdown 渲染。
+  assert.equal(workerReportFormat({ report: '## 摘要\n\n- 改完了', text: '协议字段' }), 'markdown')
+  assert.equal(workerReportFormat(null), 'text')
+  assert.equal(workerReportFormat(undefined), 'text')
+})
+
+test('单换行连接的旧回报走纯文本，有块级标记或空行才判 Markdown', () => {
+  // #8 起 report 随通知落盘，多块用单个 \n 连接；Markdown 的软换行会把块折成一段。
+  assert.equal(workerReportFormat({ report: '第一块\n第二块' }), 'text')
+  assert.equal(workerReportFormat({ report: '第一块\n第二块', outcome: 'completed' }), 'text')
+  // 块级标记本身会分段，不会被折成一段。
+  assert.equal(workerReportFormat({ report: '## 摘要\n\n收尾一句' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '- 一\n- 二' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '```\nnpm run check\n```' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '| a | b |\n| - | - |' }), 'markdown')
+  // 单行正文不存在折段，行内语法照常渲染。
+  assert.equal(workerReportFormat({ report: '改完了 `src/host/message.js`' }), 'markdown')
+})
+
+test('空行分隔的新回报走 Markdown，行内语法不被当成纯文本字面显示', () => {
+  // 本 PR 起多块用 \n\n 连接：没有块级标记也要渲染，否则行内语法按字面显示。
+  assert.equal(workerReportFormat({ report: '第一段 `a.js`\n\n第二段 `b.js`' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '第一段\n\n第二段\n\n第三段' }), 'markdown')
+})
+
+test('失败原因的回报保持纯文本，多行错误不被 Markdown 折行', () => {
+  assert.equal(workerReportFormat({ report: '失败：第一行\n第二行', outcome: 'failed' }), 'text')
+  // 成功终态不受影响，仍按 report 是否存在判断。
+  assert.equal(workerReportFormat({ report: '## 摘要', outcome: 'completed' }), 'markdown')
 })
 
 test('节点状态带着回报内容与终态', () => {

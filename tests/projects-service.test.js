@@ -1265,11 +1265,18 @@ test('解析会话所属项目：协调者会话已失效时如实报告', async
   assert.equal(resolved.coordinatorAlive, false)
 })
 
-test('解析会话所属项目：符号链接写法与项目目录相同也算同一个项目', async () => {
+test('解析会话所属项目：符号链接写法与项目目录相同也算同一个项目', async (t) => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
   const link = join(home, 'link-to-workspace')
-  await symlink(workspace, link)
+  // 同 project-session-index：Windows 上目录符号链接要特权，建不了就跳过而不是报失败。
+  try {
+    await symlink(workspace, link)
+  } catch (error) {
+    if (error.code !== 'EPERM' && error.code !== 'EACCES') throw error
+    t.skip(`本机建不了目录符号链接（${error.code}），跳过符号链接归属验证`)
+    return
+  }
   const sessions = { get: () => ({ header: { cwd: link } }) }
   const service = makeService({
     store,

@@ -19,14 +19,14 @@
 
 > 一个 Leader 帮你推进开发和 Review，解放你的注意力：同时并行开发 10 个 feature，而不是逐个陪跑。
 >
-> DeepSeek Harness（dsh）的协调者 / 执行者编排 bundle。Leader 拆解、派工、盯完成、收产物、组织审查；worker 各自干活（本仓约定是一人一个 worktree），完成自动回报，任务事实落进按项目组织的看板。
+> DeepSeek Harness（dsh）的协调者 / 执行者编排 bundle。Leader 拆解、派工、盯完成、收产物、组织审查；worker 在后台各自干活、完成自动回报，任务事实落进按项目组织的看板。一人一个 worktree 是本仓的约定，不是 bundle 的硬性要求。
 
 ## 亮点
 
 1. **通过一个 Leader，帮你推进开发和 Review** — 你只跟 Leader 说目标，它拆卡、派工、盯住每个 worker 的完成、验证产物、组织审查。注意力回到「要什么」上，不用逐个陪跑——目标规模是一次并行开发 10 个 feature。
-2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板。卡面上是执行者槽位与实时信号灯，点卡面看只读详情（目标、范围、验收、链接），点槽位直接下钻进那个 Agent 的会话接着聊。
-3. **Agent 自由编排** — 拆成两份文件：`COORDINATOR.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（讨论 / 开发 / 审核……）。两者每轮自动注入，改文件即改行为，不用重建会话。
-4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个协调者会话，项目树列出它派出的 worker；项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
+2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板。卡面上是执行者槽位与实时信号灯，卡片说明按 Markdown 渲染，链接可在浮层里直接编辑；点卡面看详情（目标、范围、验收、链接，其余只读），点槽位直接下钻进那个 Agent 的会话接着聊。worker 的回报也渲染成气泡，同样支持 Markdown。
+3. **Agent 自由编排** — 拆成两份文件：`COORDINATOR.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（讨论 / 开发 / 审核……）。两者在每次模型请求前求值、正文变化才追加，改文件即改行为，不用重建会话。
+4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个协调者会话，项目树列出它派出的 worker；项目行可拖拽排序，删除项目会一并摘掉插件注册的工作区、保留文件夹与会话记录。项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
 
 ## 预览
@@ -35,20 +35,20 @@
   <img src="docs/assets/readme/board.png" alt="dsh-leader-kit：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
 </div>
 
-左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。你可以看到开发的Agent，点击可以下钻到它的Session，绕开Leader直接和它对话。
+左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。你能看到正在工作的 Agent，点击即可下钻到它的会话，绕开 Leader 直接和它对话。
 
-截图用的是一个真实工作中场景的截图。
+截图取自真实工作会话。
 
 ## 它是怎么跑起来的
 
 ```text
 你 ──────▶ Leader（协调者会话，项目的唯一指挥）
-             │  create_card    记下要做什么、验收是什么
-             │  spawn_worker   派给执行者，立即返回
+             │  create_card     记下要做什么、验收是什么
+             │  spawn_worker    建 worker 会话，立即返回
+             │  message_worker  投第一条消息——开工的是它
              ▼
       worker ─ worker ─ worker        各自在自己的项目目录里后台并行
              │                        （一人一个 worktree 是项目约定，见「前提」）
-             │
              │  turn 结束由机制侧结算（worker 不用调工具交作业）
              ▼
       Leader 被唤醒 ──▶ 看板信号灯更新 ──▶ 你打开任一 worker 接着聊
@@ -87,17 +87,23 @@ cd /path/to/deepseek-harness
 pnpm dsh web --patch ../dsh-leader-kit/cordis.patch.yml
 ```
 
+发布到 npm 之后，按包名安装即可：
+
+```sh
+dsh plugin --profile web add dsh-leader-kit
+```
+
 profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类自定义名字不在 dsh 的 `PROFILE_TEMPLATES` 里，`dsh plugin` 会按默认模板只装 `@deepseek-ai/dsh-base`——没有 web-app bundle，插件客户端半边根本不加载。
 
 `engines.dsh` 声明支持范围（当前 `>=0.2.1-rc.2 <0.3.0`），不满足时安装与启动会被拒绝；dsh 处于 developer preview，版本范围需随它跟进。在本仓库里可以直接 `npm start`：它先构建 `lib/client.js`（不入库，漏构建时实例照常起来、右栏却没有看板），再起 `dsh web`，起之前检查 dsh 是否可用、日常 profile 是否装了本插件。
 
 ### 五步上手
 
-1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个协调者会话，点项目行就是打开这个 Leader。
+1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个协调者会话；点项目行就是打开这个 Leader，当前会话属于该项目（协调者或它派出的 worker）时该行亮着选中底色（注册的工作区被删过的话会顺手重建并归位会话）。
 2. **加载协议**：协调者会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
-3. **派工**：`spawn_worker` 的 `name`（角色-任务短名）与 `initialMessage` 必填，工具立即返回会话 id。续派用 `message_worker`（`sessionId` + `message`，可顺手 `rename`）。
-4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。
-5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看详情，点槽位 chip 打开执行者会话。
+3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从协调者继承（协调者是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。
+4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。
+5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看详情（链接可编辑，其余只读），点槽位 chip 打开执行者会话。
 
 ## 编排：把规则写进文件
 
@@ -105,9 +111,11 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 | 文件 / skill | 写给谁 | 管什么 |
 |---|---|---|
-| `COORDINATOR.md` | 项目里的 Leader | 这个项目怎么指挥：职责边界、卡与派工的粒度、必须写进简报的硬约束、验收口径。协调者会话每轮自动注入，不需要绑定 |
-| `SLOTS.md` | 不同角色的 worker | 按 `## <槽位名>` 分节写角色方法与人设（`discuss` / `dev` / `review`…）；卡片 `slots` 字段把槽位绑到会话，被绑会话每轮注入 |
+| `COORDINATOR.md` | 项目里的 Leader | 这个项目怎么指挥：职责边界、卡与派工的粒度、必须写进简报的硬约束、验收口径。协调者会话自动注入，不需要绑定 |
+| `SLOTS.md` | 不同角色的 worker | 按 `## <槽位名>` 分节写角色方法与人设（`discuss` / `dev` / `review`…）；卡片 `slots` 字段把槽位绑到会话，被绑会话注入对应分节 |
 | `leader-mode` skill | Leader 的编排协议 | 技术讨论 → 设计 → 实现交付 → 审查 → 合入的分阶段 playbook，加并行协作与交接规范 |
+
+三者都在每次模型请求前求值、正文变化才追加：改动在下一个请求生效，没变的轮次不重复注入。卡片转为 `done` / `archived` 即释放执行者——槽位绑定与卡片事实一起停止注入。
 
 槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`。
 
@@ -134,10 +142,10 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 - **Leader 不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了只能请人去那个会话处理——这是常驻化换来的代价。
 - **完成回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算；重启后自己打开 worker 会话看或续聊。
 - **看板只对项目会话展示**：协调者与该项目的 worker 能看到；同目录的普通会话与已换下的协调者只看到提示，不属于任何项目的会话也没有看板。
-- **卡片详情只读**：完成、置顶、重命名、删除需要新增宿主远程方法，当前不做；编号全局递增，跨项目不复用、不回收。
+- **卡片详情只写链接**：链接可在详情里增删改，其余操作（完成、置顶、重命名、删除）仍归协调者的卡片工具；编号全局递增，跨项目不复用、不回收。
 - **项目注册表只经左栏区块操作**：模型没有项目工具；目录选择器不可用时无法建项目，需换 web profile。
-- **项目树与官方工作区树并存**：项目会话从官方树里的隐藏是渲染层排除，官方计数与搜索仍包含它们。
-- **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状——宿主升级时要同步本仓。
+- **项目树与官方工作区树并存**：项目会话从官方树里的隐藏是渲染层排除，官方计数与搜索仍包含它们；项目目录本身也作为一行工作区显示在官方树里，两处都能进。
+- **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状，协调者会话形态依赖宿主的会话视图服务——宿主升级时要同步本仓。
 
 完整清单与取舍（信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[架构文档的已知限制](docs/architecture.md#已知限制与取舍)。
 
@@ -153,7 +161,7 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 
 其余命令见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
-`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。改客户端代码要 `npm run build:client` 再刷新，宿主侧代码重启实例即可。
+`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。启动前会把 `~/.dsh/.credentials.yaml` 里的 `refs`（按环境变量名存的 API key）并进开发实例的凭据文件，新工作树第一次起实例不用再填一遍；只搬 refs，账号授权记录不搬。客户端产物由常驻 esbuild watch 重建，宿主 `client-hmr` 把运行中的插件换掉——改 `src/client/` 不用刷新页面（插件内的 React 状态会重置，会话与连接数据保留）；宿主侧代码重启实例即可。
 
 `npm start` 走日常那套（数据根 `~/.dsh`、日常 profile 里链接的版本），起之前逐项检查并给出可复制的修复命令：dsh 不可用（`DSH_DSH` 可指定路径）、profile 缺失、bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有隔离——在 worktree 里跑加载的仍是链接指向的那份代码，验证本目录改动请用 `npm run dev`。
 
@@ -169,7 +177,7 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器侧取证的执行规范 |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
-| [skills/leader-mode/](skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
+| [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
 
 ## 致谢
 

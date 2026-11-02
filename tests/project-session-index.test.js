@@ -182,10 +182,18 @@ test('服务在没有 sessionQuery 时返回空映射', async () => {
   assert.deepEqual(await service.sessionsByProject(), [])
 })
 
-test('真实符号链接目录按 realpath 归一后归属同一项目', async () => {
+test('真实符号链接目录按 realpath 归一后归属同一项目', async (t) => {
   const { home, workspace } = await makeWorkspace()
   const link = join(home, 'link-to-workspace')
-  await symlink(workspace, link)
+  // Windows 上建目录符号链接要开发者模式或管理员权限，受限 token 下是 EPERM/EACCES；
+  // 那是环境限制，不是被测逻辑失败。
+  try {
+    await symlink(workspace, link)
+  } catch (error) {
+    if (error.code !== 'EPERM' && error.code !== 'EACCES') throw error
+    t.skip(`本机建不了目录符号链接（${error.code}），跳过 realpath 归一验证`)
+    return
+  }
   const canonical = await realpath(workspace)
 
   const store = createProjectStore({ home })

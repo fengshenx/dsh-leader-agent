@@ -937,8 +937,8 @@ function ProjectRow(props) {
 /**
  * 项目的操作菜单。
  *
- * 第三方插件不能 import 宿主 UI 包（dsh 的包面规则禁止功能包为绕过规则添加
- * `dsh.client.external`），所以菜单是自己渲染的，但外观照官方 `Menu`：同样的
+ * 菜单自己渲染，不复用基线 `ui-primitives` 里的 `Menu`：类名前缀与交互都要按本仓
+ * 调整，复制改写比覆写样式可控。外观照官方 `Menu`：同样的
  * 圆角、材质、阴影与行高，取的是同一批 `--dsw-*` 变量。菜单挂在 `document.body`
  * 上（portal），避免被左栏滚动区裁掉。
  *
