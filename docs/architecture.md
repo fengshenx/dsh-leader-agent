@@ -135,7 +135,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 目录 | 职责 |
 |---|---|
 | `src/host/` | 工具注册与角色裁剪、派工与结算、worker 会话生命周期与权限继承、卡片与项目存储、项目通道、提示词注入 |
-| `src/host/tools/` | 五个工具的实现：`spawn_worker` / `message_worker` / `create_card` / `update_card` / `list_cards` |
+| `src/host/tools/` | 六个工具的实现：`spawn_worker` / `message_worker` / `read_worker_session` / `create_card` / `update_card` / `list_cards` |
 | `src/client/` | 左栏项目区块与项目树、右栏看板与卡片详情、worker 回报气泡、浮层与提示条 |
 | `src/shared/` | 两端共用的纯函数与线上类型（frontmatter 解析、卡片链接判定、项目通道方法名） |
 | `.agents/skills/` | 协议层 `leader-mode` 与初始化方法 `init-project` |
@@ -151,6 +151,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 给 worker 续聊 / 改名 | `message_worker` | 本 bundle |
 | worker 轮次结束的自动回报 | `session/event` → `turn/end` | 宿主 |
 | 读 worker 回报 | 完成通知 | 本 bundle 的唤醒器 |
+| 回看 worker 的会话回合（不唤醒） | `read_worker_session` | 本 bundle（读宿主的 `sessionQuery.readSession`） |
 | 建卡 / 改卡 / 查卡 | `create_card` / `update_card` / `list_cards` | 本 bundle |
 
 这套接口是为「协调者派活、worker 干活并自动回报」设计的：会话由 `agents.create` 建，生命周期归本 bundle 管，不经 dsh 的 subagent 机制。

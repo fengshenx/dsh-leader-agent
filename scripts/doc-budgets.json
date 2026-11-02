@@ -1,13 +1,13 @@
 {
   "AGENTS.md": 3930,
-  "README.md": 3090,
-  "README_ZH.md": 4660,
-  "COORDINATOR.md": 1350,
+  "README.md": 3250,
+  "README_ZH.md": 4850,
+  "COORDINATOR.md": 1390,
   "SLOTS.md": 900,
-  "docs/architecture.md": 5300,
-  "docs/limitations.md": 5600,
+  "docs/architecture.md": 5350,
+  "docs/limitations.md": 6000,
   "docs/development.md": 1780,
-  "docs/capability-gaps.md": 15150,
-  "docs/usage.md": 5020,
+  "docs/capability-gaps.md": 15500,
+  "docs/usage.md": 5350,
   "docs/e2e-testing.md": 4340
 }

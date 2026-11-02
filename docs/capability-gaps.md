@@ -145,11 +145,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **右栏入口的过滤边界**：tab 类型的 `guide` 是静态注册，注册表没有按会话过滤的扩展点，guide 页会把每个入口画给所有会话。能收紧的只有一处：`sidebar.right.tab.guide.entry` 是 keyed slot（key 为 tab 类型的 `providerId`），插件接管自己那一个入口的渲染，按会话决定画或不画；但 guide 的 More 菜单走 `sidebar.right.tab.guide.actions`（root scope，不带会话），列出的入口名单无法过滤。接管渲染的代价是胶囊要自己复刻宿主 `EntryBox` 的数值，宿主改版式时要跟。
 
-### 16. 读子会话原始回合内容没有默认可用的工具
+### 16. 读子会话原始回合内容没有默认可用的工具，但底层读取服务是公开的
 
-**实测**：`session_event_read` / `session_search` / `session_trace` 属 `@deepseek-ai/dsh-tool-session-query`（experimental），base bundle 未启用；其「authorized session」授权校验在 dsh 内部，仓外插件无法零依赖正确复刻。
+**实测**：模型侧的 `session_search` / `session_event_search` / `session_trace` / `session_event_trace` / `session_event_read` 五个工具属 `@deepseek-ai/dsh-tool-session-query`（`packages/experimental/tool-session-query/src/index.ts:66-109`），base bundle 未启用。
 
-**影响**：读 worker 原始回合没有直接对应物，降级为「完成通知携带产物摘要」；需要深挖时用 `message_worker` 向该 worker 追问（会唤醒它开新回合）。若要直读会话原始事件，须显式安装 `tool-session-query` 并接受其 experimental 状态。
+**但它不是「只有实验包能用」**：底层 `ctx.sessionQuery.readSession(sessionId)` 是公开服务方法，rc.2 就有（`packages/session-query/session-query/src/index.ts:184`），返回 `{ session, inheritedEventCount, events }`，实现里没有身份校验，只做 live-preferred 读取与回放校验；`filterSessions` 同样公开。实验包在工具层自己加授权，判据只有两条：调用方 `header.cwd` 存在，且目标会话 `cwd` 与之相同（`packages/experimental/tool-session-query/src/workspace-access.ts` 的 `authorizeTarget` / `headerAuthorized`）。这条判据仓外可零依赖复刻，本 bundle 的 worker 与协调者又必然同 cwd（派工时 worker 的目录取自项目）。
+
+**影响**：本仓用 `readSession` 自建了 `read_worker_session`（`src/host/dispatch.js` 的 `transcript`），授权比官方更严：调用方必须是项目协调者、目标必须在本 bundle 的派工登记里、且归属就是该协调者。折叠逻辑在 `src/host/worker-transcript.js`。完成通知仍然只给产物摘要，两者分工：通知说「是什么」，这个工具说「怎么做的」。要读**任意**会话（含非本体系派出的）仍须安装 `tool-session-query` 并接受其 experimental 状态——本仓不越界替所有会话开读取口。
 
 ### 17. storage domain 需要 dsh 内部包与 zod，与「bundle 零内部依赖」冲突
 

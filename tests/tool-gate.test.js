@@ -25,7 +25,8 @@ import {
  */
 function makeAgent(id, registered = [
   'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
-  'spawn_worker', 'message_worker', 'list_cards', 'create_card', 'update_card',
+  'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
+  'create_card', 'update_card',
 ]) {
   const restrictions = []
   const names = new Set(registered)
@@ -82,6 +83,30 @@ test('普通会话没有派工、全库查询与卡片写入', () => {
   // 卡片是项目里的任务事实：普通会话建的卡没有槽位、没有协调者认领，只会污染看板。
   assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
   assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
+})
+
+test('read_worker_session 只给协调者：worker 与普通会话的工具面都摘掉它', () => {
+  const workerDenied = deniedToolsFor({
+    agent: makeAgent('worker-1'),
+    isCoordinatorSession: () => false,
+    isWorkerSession: (id) => id === 'worker-1',
+  })
+  const plainDenied = deniedToolsFor({
+    agent: makeAgent('plain-1'),
+    isCoordinatorSession: () => false,
+    isWorkerSession: () => false,
+  })
+  // 断言写字面量而不是比 WORKER_DENY_TOOLS：名单推导的断言会跟着名单一起缩，
+  // 把工具从 COORDINATOR_ONLY_TOOLS 里删掉时仍然全绿，钉不住工具面这条承诺。
+  assert.ok(workerDenied.includes('read_worker_session'))
+  assert.ok(plainDenied.includes('read_worker_session'))
+
+  const coordinatorDenied = deniedToolsFor({
+    agent: makeAgent('coordinator-1'),
+    isCoordinatorSession: (id) => id === 'coordinator-1',
+    isWorkerSession: () => false,
+  })
+  assert.ok(!coordinatorDenied.includes('read_worker_session'))
 })
 
 test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {

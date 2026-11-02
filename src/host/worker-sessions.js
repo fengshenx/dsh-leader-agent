@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto'
 import { agentPresetOptions, agentPresetResumeSetup } from './agent-preset.js'
 import { inheritPermission } from './permission-inherit.js'
-import { createUserMessage } from './message.js'
+import { createUserMessage, WORKER_TASK_SOURCE_KIND } from './message.js'
 
 /**
  * 创建 worker 会话管理器。
@@ -81,7 +81,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   function taskMessage(text, name, parentSessionId) {
     return createUserMessage(
       [{ type: 'text', text }],
-      { kind: 'dsh-leader-kit/worker-task', name, parentSessionId },
+      { kind: WORKER_TASK_SOURCE_KIND, name, parentSessionId },
     )
   }
 

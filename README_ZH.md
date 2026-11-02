@@ -28,6 +28,7 @@
 3. **Agent 自由编排** — 拆成两份文件：`COORDINATOR.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（讨论 / 开发 / 审核……）。两者在每次模型请求前求值、正文变化才追加，改文件即改行为，不用重建会话。
 4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个协调者会话，项目树列出它派出的 worker；项目行可拖拽排序，删除项目会一并摘掉插件注册的工作区、保留文件夹与会话记录。项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
+6. **回看 worker 的会话过程，不必唤醒它** — `read_worker_session` 直读 worker 的会话日志，给出每轮的任务、正文、调过哪些工具与失败原因。只读：不唤醒 worker、不产生模型调用。完成通知负责「产物是什么」，它负责「过程是怎样的」，排查不必再开一轮。
 
 ## 预览
 
@@ -101,7 +102,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个协调者会话；点项目行就是打开这个 Leader（注册的工作区被删过的话会顺手重建并归位会话）。当前会话属于该项目时左栏按两层回执：打开的是协调者会话则项目行整行亮，打开的是它派出的 worker 则项目行只点亮行首文件夹、选中态落在那个 worker 自己的会话行上。行首槽位平时是目录图标，活动提示看协调者：它在跑就换成加载圈（协调者没有自己的行，项目展开着也照换），项目收起时名下有 worker 在跑也换成加载圈，展开后 worker 由会话行自己带加载圈。
 2. **加载协议**：协调者会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
-3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从协调者继承（协调者是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。
+3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从协调者继承（协调者是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。要看它这一轮怎么做的（调了哪些工具、哪步失败），用 `read_worker_session` 回看，不必唤醒它。
 4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。`list_cards` 与 `create_card` 只给协调者，普通会话一件也没有；`update_card` 协调者与 worker 都有。worker 只能改自己挂着的卡，且只能挂 `links` 这类派生字段：`title` / `spec` / `status` / `slots` 都归协调者（前两者是验收锚点与注入内容，后两者决定谁在执行、卡是否算完成）。
 5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看详情（链接可编辑，其余只读），点槽位 chip 打开执行者会话。
 
@@ -139,7 +140,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 ## 当前限制
 
 - **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即销毁，没有载体接收完成通知。
-- **Leader 不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了只能请人去那个会话处理——这是常驻化换来的代价。
+- **Leader 不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了只能请人去那个会话处理——这是常驻化换来的代价。能读它的会话过程（`read_worker_session`，只读、不唤醒），但不能替它动手或叫停。
 - **完成回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算；重启后自己打开 worker 会话看或续聊。
 - **看板只对项目会话展示**：协调者与该项目的 worker 能看到；同目录的普通会话与已换下的协调者只看到提示，不属于任何项目的会话也没有看板。
 - **卡片详情只写链接**：链接可在详情里增删改，其余操作（完成、置顶、重命名、删除）仍归协调者的卡片工具；编号全局递增，跨项目不复用、不回收。
