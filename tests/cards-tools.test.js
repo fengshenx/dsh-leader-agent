@@ -108,6 +108,143 @@ test('改卡工具拒绝空 id', async () => {
   }
 })
 
+test('改卡工具用 addLinks 追加链接，不覆盖已有条目', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', links: [{ label: 'Issue', url: 'https://example.test/1' }] },
+      exec,
+    )
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/2' }] },
+      exec,
+    )
+    assert.deepEqual(updated.card.links.map((link) => link.label), ['Issue', 'PR'])
+    assert.equal(updated.card.revision, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具重复 addLinks 同一条链接不会长出重复条目', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    const link = { label: 'PR', url: 'https://example.test/pr/2' }
+    await tools.update_card.execute({ id: created.card.id, addLinks: [link] }, exec)
+    const again = await tools.update_card.execute({ id: created.card.id, addLinks: [link] }, exec)
+    // 工具层不能给增量追加补 id：补了每次都算新条目，去重永远不生效。
+    assert.equal(again.card.links.length, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 与整体替换共用 URL 归一化，且不补 id', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: '单斜杠', url: 'https:/example.com' }] },
+      exec,
+    )
+    // 归一化在落盘前做：增量路径不能绕过 #53 的写入边界。
+    assert.equal(updated.card.links[0].url, 'https://example.com/')
+    // 不补 id 是增量路径的语义：store 靠 label+url 判重。
+    assert.equal('id' in updated.card.links[0], false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 的非法 URL 与整体替换同口径拒绝', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, addLinks: [{ label: '本地文件', url: 'docs/report.md' }] },
+        exec,
+      ),
+      /第 1 条.*http\(s\) 绝对地址/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具拒绝同次传 links 与 addLinks', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        {
+          id: created.card.id,
+          links: [{ label: 'PR', url: 'https://example.test/pr/2' }],
+          addLinks: [{ label: 'Issue' }],
+        },
+        exec,
+      ),
+      /不能同时传/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具拒绝缺标签的 addLinks 条目', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute({ id: created.card.id, addLinks: [{ url: 'https://example.test' }] }, exec),
+      /label/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具拒绝关闭卡片的同时绑定槽位', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, status: 'done', slots: { dev: { sessionId: 'worker-1' } } },
+        exec,
+      ),
+      /会释放槽位上的执行者/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具关闭卡片时释放原有槽位', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { dev: { sessionId: 'worker-1' } } },
+      exec,
+    )
+    const done = await tools.update_card.execute({ id: created.card.id, status: 'done' }, exec)
+    assert.deepEqual(done.card.slots, {})
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡工具的入参 schema 暴露 addLinks，模型才用得到', async () => {
+  const { home, tools } = await createTools()
+  try {
+    assert.equal(tools.update_card.parameters.properties.addLinks.type, 'array')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('查卡工具默认只列 active，归档卡要显式要', async () => {
   const { home, tools } = await createTools()
   try {

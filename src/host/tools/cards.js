@@ -140,10 +140,16 @@ function cardSchema() {
  * 只说「url 非法」会让模型原地重试，而它需要知道的是「要 http(s) 绝对地址
  * （如 https://… 的完整地址），或者干脆不传 url」。
  *
+ * 整体替换（`links`）会给缺 id 的条目补一个稳定 id，条目以后能按 id 原位更新。
+ * 增量追加（`addLinks`）**不能补**：补了每次都生成新 id，同一份链接会被重复
+ * 追加，去重也就永远不生效——调用方没给 id 时就留空，交给 store 按
+ * `label + url` 判重。
+ *
  * @param {object[]} links - 原始链接条目
+ * @param {{ assignIds?: boolean }} [options] - `assignIds` 为 false 时不给缺 id 的条目补 id
  * @returns {object[]} 规范化后的链接条目
  */
-function normalizeLinks(links) {
+function normalizeLinks(links, { assignIds = true } = {}) {
   if (!Array.isArray(links)) {
     throw new Error(`卡片工具: links 必须是数组，收到 ${describeValue(links)}`)
   }
@@ -183,12 +189,15 @@ function normalizeLinks(links) {
     }
     const purpose = typeof link.purpose === 'string' ? link.purpose.trim() : ''
     // 重复 id 会让看板把两条链接当成同一条（改一行动两行）：后面那条换新 id。
-    const id = typeof link.id === 'string' && link.id !== '' && !seenIds.has(link.id)
+    // `addLinks` 不补 id：补了每次都是新 id，去重永远不生效，交给 store 按
+    // `label + url` 判重。重复且不能补时同样留空，避免两条链接撞同一个 id。
+    const hasId = typeof link.id === 'string' && link.id !== ''
+    const id = hasId && !seenIds.has(link.id)
       ? link.id
-      : randomUUID()
-    seenIds.add(id)
+      : assignIds ? randomUUID() : undefined
+    if (id !== undefined) seenIds.add(id)
     return {
-      id,
+      ...id === undefined ? {} : { id },
       label,
       ...url === '' ? {} : { url },
       ...purpose === '' ? {} : { purpose },
@@ -355,7 +364,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
   return {
     name: 'update_card',
     description:
-      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡。',
+      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡。',
     parameters: {
       type: 'object',
       properties: {
@@ -374,7 +383,12 @@ export function createUpdateCardTool({ store, resolveProject }) {
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。',
+          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。',
+        },
+        addLinks: {
+          type: 'array',
+          items: linkSchema(),
+          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。',
         },
         slots: {
           ...slotsSchema(),
@@ -401,7 +415,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
       if (typeof input.id !== 'string' || input.id.trim() === '') {
         throw new Error('update_card: id 不能为空')
       }
@@ -419,7 +433,19 @@ export function createUpdateCardTool({ store, resolveProject }) {
       }
       const spec = optionalString(input.spec, 'spec')
       const links = input.links === undefined ? undefined : normalizeLinks(input.links)
+      const addLinks = input.addLinks === undefined ? undefined : normalizeLinks(input.addLinks, { assignIds: false })
+      // 整体替换与增量追加是两种意图；同次传会让「不覆盖别人刚写的链接」
+      // 这个承诺落空，调用方却以为自己在追加。
+      if (links !== undefined && addLinks !== undefined) {
+        throw new Error('update_card: links 与 addLinks 不能同时传（整体替换与增量追加互斥）')
+      }
       const slots = input.slots === undefined ? undefined : normalizeSlots(input.slots)
+      // 关闭卡片会释放槽位上的执行者；同次再传槽位是自相矛盾的意图，收下会让
+      // 调用方以为绑定生效，实际被释放。
+      if ((input.status === 'done' || input.status === 'archived')
+        && slots !== undefined && Object.keys(slots).length > 0) {
+        throw new Error('update_card: 关闭卡片（done / archived）会释放槽位上的执行者，同次不能再绑定槽位')
+      }
       const sortOrder = optionalNumber(input.sortOrder, 'sortOrder')
       // 卡片按项目归属：改别人项目的卡要拒绝。无归属的存量卡不拦——没有归属可
       // 冲突，拦下来只会让存量卡永远改不动。
@@ -440,6 +466,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
         ...spec === undefined ? {} : { spec },
         ...input.status === undefined ? {} : { status: input.status },
         ...links === undefined ? {} : { links },
+        ...addLinks === undefined ? {} : { addLinks },
         ...slots === undefined ? {} : { slots },
         ...sortOrder === undefined ? {} : { sortOrder },
       })
