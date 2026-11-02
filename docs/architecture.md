@@ -252,7 +252,7 @@ npm run worktree:prune -- --apply      # 真删：worktree 目录 + 本地分支
 npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删（--remote 指定远端，默认 origin）
 ```
 
-守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝。分支是否已合并看两条判据——`merge-base --is-ancestor main`（merge 合并成立）与 PR 状态（squash 合并只有这条成立）。删 worktree 前先拆掉 `node_modules` 链接（只拆链接本身：Windows junction 用 `rmdir`、POSIX 符号链接用 `unlink`），再 `git worktree remove --force` 删目录。`.dev` 整棵目录也先删掉——dev 实例在里面把依赖逐条链到源 profile，git 同样会跟穿；这份数据本来就随 worktree 丢弃。不先拆的话，git 在 Windows 上会跟随 junction 递归删掉链接目标，也就是主 checkout 或源 profile 的依赖（实测）。
+守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝。分支是否已合并看两条判据——`merge-base --is-ancestor main`（merge 合并成立）与 PR 状态（squash 合并只有这条成立）。删 worktree 前先把 `.dev` 挪到 `.worktrees/.dev-stash-<任务名>`（`git worktree remove` 失败时挪回），再拆掉 `node_modules` 链接（只拆链接本身：Windows junction 用 `rmdir`、POSIX 符号链接用 `unlink`），最后 `git worktree remove --force` 删目录。不先拆的话，git 在 Windows 上会跟随 junction 递归删掉链接目标，也就是主 checkout 或源 profile 的依赖（实测）。删除成功后才删 `.dev` 暂存；失败路径恢复链接、把 `.dev` 挪回，恢复不了时在错误信息里写明残留位置。
 
 也可以不用脚本、手工把插件装进某个 profile：`dsh plugin --profile web add ../dsh-leader-kit`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。
 

@@ -147,6 +147,8 @@ try {
 } catch (error) {
   console.error(`[rollback] ${error.message}`)
   if (created) {
+    const link = join(target, 'node_modules')
+    const hadLink = lstatIfExists(link)?.isSymbolicLink() === true
     let removed = false
     try {
       const result = removeWorktree(target)
@@ -158,7 +160,8 @@ try {
     if (removed) {
       git(['branch', '-D', branch], root)
     } else {
-      console.error(`[rollback] worktree 未删除，分支 ${branch} 保留`)
+      const linkGone = hadLink && lstatIfExists(link) === null
+      console.error(`[rollback] worktree 未删除，分支 ${branch} 保留${linkGone ? '（node_modules 链接已拆）' : ''}`)
     }
   }
   process.exit(1)

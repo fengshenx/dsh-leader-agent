@@ -4,11 +4,12 @@
  * 默认只打印结论（dry-run），`--apply` 才真的删。判据见 `classifyWorktree`：
  * 有未提交改动、当前所在的 worktree、分支没进 main 且 PR 未合并——任一命中就拒绝。
  *
- * 删除顺序：先拆 worktree 里的 node_modules 链接（只拆链接本身，Windows junction
- * 用 rmdir、POSIX 符号链接用 unlink），再 `git worktree remove --force` 清目录。
- * 不先拆的话，git 在 Windows 上会跟随 junction 递归删掉主 checkout 的依赖（实测）；
- * `.dev` 里 dev 实例的逐条链接同理，所以 `.dev` 整棵目录先删掉（这份数据本来就
- * 随 worktree 丢弃）。已合并的分支一并删本地引用；远端分支默认保留，
+ * 删除顺序：先把 `.dev` 挪到 `.worktrees/.dev-stash-<任务名>`（remove 失败时挪回），
+ * 再拆 worktree 里的 node_modules 链接（只拆链接本身，Windows junction 用 rmdir、
+ * POSIX 符号链接用 unlink），最后 `git worktree remove --force` 清目录。不先拆的话，
+ * git 在 Windows 上会跟随 junction 递归删掉主 checkout 的依赖（实测）；`.dev` 里
+ * dev 实例的逐条链接同理。删除成功后才删暂存；失败路径恢复链接、把 `.dev` 挪回，
+ * 恢复不了时在错误信息里写明残留位置。已合并的分支一并删本地引用；远端分支默认保留，
  * `--delete-remote` 才删（远端名由 `--remote` 指定，默认 origin）。
  *
  * 用法：
@@ -20,7 +21,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, lstatSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, renameSync, rmSync, symlinkSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import {
   assertTaskName, classifyWorktree, detachNodeModulesLink, lstatIfExists, teardownWorktree, worktreeDirFor,
@@ -116,6 +117,60 @@ function teardown(dir, remove) {
   })
 }
 
+/**
+ * 把 `.dev` 挪到 `git worktree remove` 不会碰到的位置。
+ *
+ * remove 失败时 worktree 还留着，里面的开发实例数据不能先丢；先挪走、成功后再删。
+ * 暂存目录用隐藏名放在 `.worktrees` 下，不参与本脚本的扫描，重跑时会接管残留。
+ *
+ * @param {string} dir - worktree 目录
+ * @param {string} name - 任务名
+ * @returns {{ dev: string, stash: string, moved: boolean }} 原路径、暂存路径与是否有待处理的 `.dev`
+ */
+function stashDev(dir, name) {
+  const dev = join(dir, '.dev')
+  const stash = join(worktreesRoot, `.dev-stash-${name}`)
+  if (!existsSync(dev)) return { dev, stash, moved: existsSync(stash) }
+  if (existsSync(stash)) throw new Error(`.dev 与暂存目录同时存在: ${stash}`)
+  renameSync(dev, stash)
+  return { dev, stash, moved: true }
+}
+
+/**
+ * 把 `.dev` 挪回 worktree。
+ *
+ * @param {{ dev: string, stash: string, moved: boolean }} state - `stashDev` 的结果
+ * @returns {string} 追加到错误信息后的状态说明；没有待恢复的数据时为空串
+ */
+function restoreDevStatus(state) {
+  if (!state.moved) return ''
+  try {
+    renameSync(state.stash, state.dev)
+    return '，.dev 已挪回'
+  } catch (error) {
+    return `，.dev 暂存在 ${state.stash}（挪回失败: ${error.message}）`
+  }
+}
+
+/**
+ * 删除失败时把 node_modules 链接补回去，别留下「链接已拆、worktree 还在」的状态。
+ *
+ * @param {string} dir - worktree 目录
+ * @param {boolean} hadLink - 删除前是否确实有链接
+ * @returns {string} 追加到错误信息后的状态说明；不需要恢复时为空串
+ */
+function restoreNodeModulesLink(dir, hadLink) {
+  if (!hadLink) return ''
+  try {
+    const link = join(dir, 'node_modules')
+    if (lstatIfExists(link) !== null) return ''
+    symlinkSync(join(root, 'node_modules'), link, process.platform === 'win32' ? 'junction' : 'dir')
+    return '，node_modules 链接已恢复'
+  } catch (error) {
+    return `，node_modules 链接恢复失败（${error.message}）`
+  }
+}
+
 if (!existsSync(worktreesRoot)) {
   console.log('没有 .worktrees 目录，无需清理')
   process.exit(0)
@@ -141,11 +196,13 @@ for (const name of names) {
   }
   const dirty = call('git', ['-C', dir, 'status', '--porcelain'], root).stdout.trim() !== ''
   const mergedIntoMain = call('git', ['merge-base', '--is-ancestor', branch, 'main'], root).status === 0
+  // 已进 main 时 classifyWorktree 直接放行，不必再问 gh——离线时也不会白等
+  const pullRequest = mergedIntoMain ? undefined : pullRequestOf(branch, root)
   const verdict = classifyWorktree({
     isCurrent: here === dir,
     dirty,
     mergedIntoMain,
-    pullRequest: pullRequestOf(branch, root),
+    pullRequest,
   })
   rows.push({ name, dir, branch, verdict })
 }
@@ -172,27 +229,45 @@ if (removable.length === 0) {
 // 在将要删除的 worktree 里执行时，删到自己那一步 cwd 就失效了，所以从主 checkout 跑
 process.chdir(root)
 for (const row of removable) {
+  const hadLink = lstatIfExists(join(row.dir, 'node_modules'))?.isSymbolicLink() === true
+  let devState
+  try {
+    // 先挪 .dev，再拆链接：挪不动就停在「什么都没改」的状态，不会出现链接已拆、
+    // .dev 也删了一半的残局。
+    devState = stashDev(row.dir, row.name)
+  } catch (error) {
+    console.error(`[失败] ${row.name}: 挪走 .dev 失败，worktree 未动（${error.message}）`)
+    continue
+  }
   let removed
   try {
-    removed = teardown(row.dir, () => {
-      // dev 实例把 profile 的 node_modules 逐条链到源 profile；git 在 Windows 上
-      // 同样会跟穿这些 junction。.dev 是随 worktree 丢弃的数据，先删掉它
-      // （Node 的 rmSync 不跟穿链接，实测），别让 git 去递归。
-      rmSync(join(row.dir, '.dev'), { recursive: true, force: true })
-      return call('git', ['worktree', 'remove', row.dir, '--force'], root)
-    })
+    removed = teardown(row.dir, () => call('git', ['worktree', 'remove', row.dir, '--force'], root))
   } catch (error) {
-    console.error(`[失败] ${row.name}: 删除前拆链接或清 .dev 失败，已跳过 git worktree remove（${error.message}）`)
+    console.error(`[失败] ${row.name}: 拆 node_modules 链接失败，worktree 未删（${error.message}）${restoreDevStatus(devState)}${restoreNodeModulesLink(row.dir, hadLink)}`)
     continue
   }
   if (removed.status !== 0) {
-    console.error(`[失败] ${row.name}: ${removed.stderr.trim()}`)
+    console.error(`[失败] ${row.name}: git worktree remove 失败（${removed.stderr.trim()}）；worktree 保留${restoreDevStatus(devState)}${restoreNodeModulesLink(row.dir, hadLink)}`)
     continue
+  }
+  if (devState.moved) {
+    try {
+      rmSync(devState.stash, { recursive: true, force: true })
+    } catch (error) {
+      console.error(`[警告] ${row.name}: .dev 暂存目录删除失败（${error.message}），残留在 ${devState.stash}`)
+    }
   }
   let remoteNote = ''
   // worktree remove 偶尔留下空壳目录（`--force` 之外的残留）。兜底也走同一套
   // 拆除流程：真出现链接时先拆再删，rmSync 不会跟穿到主 checkout。
-  if (existsSync(row.dir)) teardown(row.dir, () => rmSync(row.dir, { recursive: true, force: true }))
+  if (existsSync(row.dir)) {
+    try {
+      teardown(row.dir, () => rmSync(row.dir, { recursive: true, force: true }))
+    } catch (error) {
+      console.error(`[失败] ${row.name}: 清理残留目录失败（${error.message}）`)
+      continue
+    }
+  }
   if (row.branch !== '') {
     call('git', ['branch', '-D', row.branch], root)
     if (deleteRemote) {
