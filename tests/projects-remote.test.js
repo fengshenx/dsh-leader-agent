@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { createProjectRemote } from '../src/host/projects/remote.js'
 import {
@@ -190,6 +193,35 @@ test('方法把调用转给项目服务', async () => {
   assert.deepEqual(await remote.detachSession('s5'), { cards: ['c1'], slots: 1, worker: true, disposed: false })
   assert.deepEqual(cards.calls.at(-1), ['detachSession', 's5'])
   assert.deepEqual(workers.calls.at(-1), ['remove', 's5'])
+})
+
+test('项目的槽位显示名来自 SLOTS.md 的 label，未声明的槽位不下发', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-slots-remote-'))
+  try {
+    await writeFile(join(directory, 'SLOTS.md'), [
+      '---',
+      'slots:',
+      '  dev:',
+      '    label: 开发',
+      '---',
+      '## dev',
+      '你是实现者。',
+      '## audit',
+      '你是审计者。',
+    ].join('\n'), 'utf8')
+    const { ctx } = fakeCtx()
+    const service = {
+      async get(id) {
+        return id === 'p1' ? { id, name: 'demo', directory } : undefined
+      },
+    }
+    const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), ctx })
+    assert.deepEqual(await remote.projectSlots('p1'), { dev: '开发' })
+    // 项目不存在时返回空字典：标签是装饰信息，取不到不让看板报错。
+    assert.deepEqual(await remote.projectSlots('missing'), {})
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('删除项目带回工作区移除结果，项目不存在时明确返回未删除', async () => {

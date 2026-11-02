@@ -252,6 +252,28 @@ export async function fetchBoardCards(callRemote, projectId) {
 }
 
 /**
+ * 取项目的槽位显示名字典。
+ *
+ * 显示名由项目 `SLOTS.md` 的 `label:` 声明，宿主解析后经远程通道下发。形状不对
+ * 的条目逐条丢弃：标签是卡面装饰信息，脏数据不该让看板报错。
+ *
+ * @param {(method: string, args: unknown[]) => Promise<unknown>} callRemote - 远程调用
+ * @param {string} projectId - 项目 id
+ * @returns {Promise<Record<string, string>>} 槽位名到显示名
+ */
+export async function fetchSlotLabels(callRemote, projectId) {
+  if (typeof projectId !== 'string' || projectId === '') return {}
+  const labels = await callRemote('projectSlots', [projectId])
+  if (labels === null || typeof labels !== 'object' || Array.isArray(labels)) return {}
+  /** @type {Record<string, string>} */
+  const clean = {}
+  for (const [name, label] of Object.entries(labels)) {
+    if (typeof label === 'string' && label !== '') clean[name] = label
+  }
+  return clean
+}
+
+/**
  * 两组卡片的 id 集合差：后出现的前者没有的 id。
  *
  * 判据是**新增**而不是内容变化：改卡不该把看板弹出来，只有项目里多了一张卡

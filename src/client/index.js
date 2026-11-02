@@ -18,6 +18,7 @@ import { BoardBody } from './board.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
 import { mountCoordinatorView, watchCoordinatorSessions } from './coordinator-view.js'
+import { SLOT_LOCALE_NAMESPACE, en, zh } from './locales.js'
 import { callProjectRemote, mountProjectRemote, reportProjectRemoteError } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
@@ -33,7 +34,7 @@ import { WorkerReportView } from './worker-report-view.js'
  */
 const PLUGIN_ID = 'dsh-leader-kit'
 
-export const inject = ['slots', 'sidebarRightTabs', 'sessions']
+export const inject = ['slots', 'sidebarRightTabs', 'sessions', 'locale']
 
 /**
  * 注册左栏项目区块与看板 tab 类型、面板主体。
@@ -41,6 +42,13 @@ export const inject = ['slots', 'sidebarRightTabs', 'sessions']
  * @returns {void}
  */
 export function apply(ctx) {
+  // 槽位显示名字典：槽位名本身是 ASCII 机器标识，卡面按当前界面语言翻译。
+  // 字典晚于 UI 挂载也能生效（locale 服务会推 revision），不必等挂载顺序。
+  ctx.effect(
+    () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, { zh, en }),
+    'dsh-leader-kit 槽位显示名',
+  )
+
   // 注册必须放进 effect：注册表把 effect 挂到调用方 fiber 上，在别的插件的
   // apply 里直接注册会让浏览器启动静默卡住。
   ctx.effect(() => ctx.sidebarRightTabs.register({
@@ -64,6 +72,9 @@ export function apply(ctx) {
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
     name: 'sidebar.right.pane.tab',
     key: PLUGIN_ID,
+    // 声明命名空间后宿主把当前语言的 `t` 注入组件 props，卡面上的槽位名
+    // 因此随语言切换重渲染，不需要自己订阅 locale。
+    locale: SLOT_LOCALE_NAMESPACE,
     inject: () => ({
       getSessions: () => ctx.sessions,
       getUiWorkspace: () => ctx.get('uiWorkspace'),

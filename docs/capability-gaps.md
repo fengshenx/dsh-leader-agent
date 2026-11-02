@@ -365,6 +365,19 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **相邻的坑**：`tools.get(name)` 省略 scope 等于**全局视图**。web-app 把 `tool-subagent` / `tool-subagent-control` / `tool-subagent-fork` 在宿主平面 `disabled: true`（`packages/bundle/web-app/cordis.patch.yml`），改由 preset 子树注册——用 `get(name)` 探测这三件会全部返回 undefined。工具名存在性只能靠 `restrict()` 的失败来判（见 `src/host/tools/gate.js` 的 `applyToolGate`）。
 
+### 40. 工具 schema 受宿主执行子集约束，越界关键字让注册直接失败
+
+**目标形态**：卡片工具的 `slots` 是「槽位名 → 绑定」的 map，希望 schema 能表达键级约束（键必须是 ASCII 槽位名）。
+
+**dsh 实测**（`0.2.1-rc.2`，`packages/core/tools/src/json-schema.ts`）：
+
+- 强制子集只有 `type` / `oneOf` / `properties` / `required` / `additionalProperties`（**布尔**）/ `items` / `enum` / `const`，注释字段只有 `description` / `title` / `default` / `examples`。其余关键字（`propertyNames`、`pattern`、`minimum`、`maxLength`、`format`…）一律判 `UNSUPPORTED_SCHEMA`；把 `additionalProperties` 写成 schema 对象会命中「must be a boolean」。rc.2 与 HEAD 的实现一致。
+- `tools.register()` 在注册前就 `assertSupportedJsonSchema(output.schema)`（`packages/core/tools/src/index.ts:1079`）——**注册直接抛错，整个插件装配失败**，不是「约束不生效」。
+- 入参 `parameters` 既不校验子集、也不执行任何约束：`register` 只做 lossless JSON 快照（`packages/core/tools/src/index.ts:1291-1299`），手写 ToolDefinition 绕过了 `defineTool` 的 `validateJsonSchemaValue`。参数 schema 只是给模型看的形状说明。
+- 实测脚本（用 rc.2 的 `assertSupportedJsonSchema` 断言本仓工具定义）：`propertyNames` + 对象 `additionalProperties` 时 `create_card` / `update_card` / `list_cards` 的 `parameters` 与 `output` 全部被拒；改成 `additionalProperties: true` 后五个工具（含 `spawn_worker` / `message_worker`）全部通过。
+
+**影响**：map 形状的参数在子集里只能用 `additionalProperties: true` 放行任意键，条目形状靠 `properties` 里的示例（`dev` / `review`）与工具描述表达；键级校验只能写在执行路径上（`normalizeSlots`）。`cardSchema()` 复用了同一个 `slotsSchema()`，所以一处越界同时污染三个工具的 output schema——schema 层「兜底校验」的直觉在这里是负收益。
+
 ---
 
 ## 四、工具级（已验证可用，无缺口）

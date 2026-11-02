@@ -196,6 +196,116 @@ test('改卡工具拒绝空标题', async () => {
   }
 })
 
+test('建卡与改卡工具接受 ASCII 槽位名', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { dev: { sessionId: 's1' } } },
+      exec,
+    )
+    assert.deepEqual(Object.keys(created.card.slots), ['dev'])
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, slots: { dev: { sessionId: 's1' }, review: { sessionId: 's2' } } },
+      exec,
+    )
+    assert.deepEqual(Object.keys(updated.card.slots), ['dev', 'review'])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('建卡与改卡工具拒绝非法槽位名', async () => {
+  const { home, tools } = await createTools()
+  try {
+    await assert.rejects(
+      () => tools.create_card.execute(
+        { title: '任务', slots: { 'Bad Name': { sessionId: 's1' } } },
+        exec,
+      ),
+      /槽位名 "Bad Name" 不合法/,
+    )
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, slots: { 开发: { sessionId: 's1' } } },
+        exec,
+      ),
+      /槽位名 "开发" 不合法/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+/**
+ * 宿主 rc.2 的 JSON Schema 执行子集（`packages/core/tools/src/json-schema.ts` 的
+ * `CONSTRAINT_KEYWORDS` / `ANNOTATION_KEYWORDS`）。不在这个集合里的关键字会被
+ * `assertSupportedJsonSchema` 判 `UNSUPPORTED_SCHEMA`，而 `tools.register` 对
+ * `output.schema` 就跑这一条断言——写了不是「不生效」，是注册直接失败。
+ */
+const HOST_SCHEMA_KEYWORDS = new Set([
+  'type',
+  'oneOf',
+  'properties',
+  'required',
+  'additionalProperties',
+  'items',
+  'enum',
+  'const',
+  'description',
+  'title',
+  'default',
+  'examples',
+])
+
+/**
+ * 收集 schema 树里超出宿主执行子集的地方。
+ * @param {unknown} node - schema 节点
+ * @param {string} path - 断言里的出错路径
+ * @param {string[]} violations - 违规列表
+ */
+function collectSchemaViolations(node, path, violations) {
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) {
+    violations.push(`${path} 不是 schema 对象`)
+    return
+  }
+  for (const [key, value] of Object.entries(node)) {
+    if (!HOST_SCHEMA_KEYWORDS.has(key)) {
+      violations.push(`${path}.${key} 不在宿主支持的关键字里`)
+      continue
+    }
+    if (key === 'properties') {
+      for (const [name, child] of Object.entries(value)) collectSchemaViolations(child, `${path}.properties.${name}`, violations)
+    }
+    if (key === 'items') collectSchemaViolations(value, `${path}.items`, violations)
+    if (key === 'oneOf') value.forEach((child, index) => collectSchemaViolations(child, `${path}.oneOf[${index}]`, violations))
+    if (key === 'additionalProperties' && typeof value !== 'boolean') {
+      violations.push(`${path}.additionalProperties 必须是布尔`)
+    }
+  }
+}
+
+test('卡片工具的 schema 只用宿主执行子集里的关键字', async () => {
+  const { home, tools } = await createTools()
+  try {
+    for (const tool of [tools.create_card, tools.update_card, tools.list_cards]) {
+      const violations = []
+      collectSchemaViolations(tool.parameters, `${tool.name}.parameters`, violations)
+      collectSchemaViolations(tool.output.schema, `${tool.name}.output`, violations)
+      assert.deepEqual(violations, [])
+    }
+    // 槽位名是 map 键，子集表达不了键级约束；名字合法性只在 normalizeSlots 执行。
+    for (const tool of [tools.create_card, tools.update_card]) {
+      const slots = tool.parameters.properties.slots
+      assert.match(slots.description, /小写 ASCII 机器标识/)
+      assert.equal(slots.additionalProperties, true)
+      assert.equal(Object.hasOwn(slots, 'propertyNames'), false)
+    }
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('建卡与改卡工具拒绝缺 sessionId 的槽位绑定', async () => {
   const { home, tools } = await createTools()
   try {

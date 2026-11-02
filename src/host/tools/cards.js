@@ -15,6 +15,7 @@ import {
   parseListQuery,
   renderCardList,
 } from '../cards/card-list-view.js'
+import { isValidSlotName } from '../slots/slot-templates.js'
 
 /**
  * 校验可选字符串字段。
@@ -68,6 +69,19 @@ function linkSchema() {
 
 /**
  * 槽位绑定的 JSON Schema。
+ *
+ * 槽位名是机器标识：小写 ASCII 字母、数字、下划线、连字符，最长 32 字符（显示名
+ * 走 `SLOTS.md` 的 `label`）。名字不是固定枚举——`properties` 里的 dev / review
+ * 只是常见示例，其余名字由 `additionalProperties: true` 放行。
+ *
+ * 只能用宿主执行子集里的关键字（`type` / `properties` / `required` /
+ * `additionalProperties` 布尔值 / `items` / `enum` / `const` 与注释字段）：本 schema
+ * 同时进 `output.schema`（`cardSchema()` 复用它），而 `tools.register` 会校验
+ * output schema——`propertyNames`、`pattern`，或把 `additionalProperties` 写成
+ * schema 对象，都会在注册时抛 `UNSUPPORTED_SCHEMA`（见 capability-gaps 第 40 条）。
+ * 入参 schema 宿主既不校验子集也不执行约束，槽位名的合法性只有 `normalizeSlots`
+ * 一条执行路径。
+ *
  * @returns {object} schema
  */
 function slotsSchema() {
@@ -85,6 +99,7 @@ function slotsSchema() {
         required: ['sessionId'],
       },
     },
+    additionalProperties: true,
   }
 }
 
@@ -155,6 +170,9 @@ function normalizeLinks(links) {
 /**
  * 校验槽位绑定结构。
  *
+ * 槽位名必须与 `SLOTS.md` 解析器接受的名字一致：名字合法但解析器不认，绑定
+ * 会落盘成功、注入却是空串——这种静默失效只能在写入前拦住。
+ *
  * 每个槽位项必须带非空的 `sessionId`——否则槽位看起来绑上了，实际没有对应
  * 会话，后续按槽位找执行者会拿到空值。
  *
@@ -166,6 +184,9 @@ function normalizeSlots(slots) {
     throw new Error('卡片工具: slots 必须是对象')
   }
   for (const [name, binding] of Object.entries(slots)) {
+    if (!isValidSlotName(name)) {
+      throw new Error(`卡片工具: 槽位名 ${JSON.stringify(name)} 不合法（只允许小写 ASCII 字母、数字、下划线、连字符，最长 32 字符）`)
+    }
     if (binding === null || typeof binding !== 'object' || Array.isArray(binding)) {
       throw new Error(`卡片工具: 槽位 ${name} 必须是对象`)
     }
@@ -218,7 +239,7 @@ export function createCreateCardTool({ store, resolveProject }) {
         },
         slots: {
           ...slotsSchema(),
-          description: '槽位绑定：把执行或评审会话挂到卡片上。',
+          description: '槽位绑定：把执行或评审会话挂到卡片上。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，是小写 ASCII 机器标识（字母、数字、下划线、连字符，最长 32 字符），不是显示名。',
         },
       },
       required: ['title'],
@@ -297,7 +318,10 @@ export function createUpdateCardTool({ store, resolveProject }) {
           description: '新状态。active 与 done 可逆，archived 是终态。',
         },
         links: { type: 'array', items: linkSchema(), description: '新的链接条目（整体替换）。' },
-        slots: { ...slotsSchema(), description: '新的槽位绑定（整体替换）。' },
+        slots: {
+          ...slotsSchema(),
+          description: '新的槽位绑定（整体替换）。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，是小写 ASCII 机器标识（字母、数字、下划线、连字符，最长 32 字符），不是显示名。',
+        },
         sortOrder: { type: 'number', description: '手动排序序号（小的在前）。' },
       },
       required: ['id'],
