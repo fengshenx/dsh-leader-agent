@@ -21,6 +21,10 @@
 
 重建在左栏看不见（工作区行被藏着），所以客户端弹一条顶部提示（复用 `toast.js`，文案带归位数量）。
 
+## 打开前先确认项目目录还在
+
+宿主注册工作区不校验目录；等到挂会话时才 realpath 会话的 cwd，解析不到就抛一句英文技术错（`cannot attach session …: its cwd '…' does not resolve`），客户端包一层之后只剩「协调者会话挂到工作区失败」——用户既看不懂，也不知道该恢复目录还是删项目。现在 `attachCoordinator` 先 `assertUsableDirectory`：目录不在就直接回「项目目录不存在或不可访问：…。把这个目录恢复回来，或删掉该项目后重新添加。」，顺带避免凭空注册一个指向已删目录的工作区。
+
 ## 明确接受的代价
 
 - 「未分组」组头在工作区被删、又还没点过项目行的窗口期会露出来（组里没有可见行，因为我们把插件会话藏了）。不复刻宿主可见性规则是刻意的。
@@ -30,5 +34,5 @@
 
 ## 证据
 
-- `npm run check` 528 绿。新增用例：worker 建完挂工作区（含工作区不存在、挂载失败两条退化路径）、工作区被删后重建并标出 `recreated`/`reconnected`、重建时把 worker 一起归位、`openCoordinatorSession` 透传重建标记。
+- `npm run check` 529 绿。新增用例：worker 建完挂工作区（含工作区不存在、挂载失败两条退化路径）、工作区被删后重建并标出 `recreated`/`reconnected`、重建时把 worker 一起归位、`openCoordinatorSession` 透传重建标记。
 - 真机（隔离实例，零真实 API 调用）：建项目后左栏只余 `Default workspace`，项目工作区行 `display:none`；手工把该工作区从 `workspace.json` 删掉并重启后点项目行，提示条读出「项目「own」的工作区已重建，1 个会话已归位。」，重建的工作区行与会话行都是 `display:none`，无 console error / pageerror。

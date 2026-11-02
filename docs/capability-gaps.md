@@ -297,7 +297,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **dsh 实测**：工作区记录是封闭 schema（`packages/workspace/workspace/src/spec.ts` 的 `workspaceRecord`：只有 `path` / `title` / `sessionIds` / `createdAt` / `updatedAt`），没有备注、标签或可见性字段；归档只作用于会话（`workspaceDomainState.archivedSessionIds`），工作区级别没有归档。工作区实体的公开接口（`packages/workspace/workspace/src/types.ts`）也只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`，没有隐藏或删除可见性的方法。
 
-**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）不得不注册工作区，那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。可行的只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
+**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）而注册了工作区——本仓后来改成为了**分组**而归属于它（不归属会落「未分组」，见第 32 条的后续复核）——那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。可行的只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
 
 ### 34. 空会话一律渲染欢迎页——没有「标记会话非空」的入口
 
