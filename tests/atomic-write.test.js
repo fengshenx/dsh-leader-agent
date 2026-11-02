@@ -16,22 +16,27 @@ function withTempDir(run) {
   }
 }
 
-test('原子写替换已有文件，权限收紧到 600', () => {
+test('原子写替换已有文件，权限收紧到 600', (t) => {
   withTempDir((root) => {
     const target = join(root, '.credentials.yaml')
     writeFileSync(target, 'old\n', { mode: 0o644 })
     writeFileAtomicSync(target, 'new\n', { mode: 0o600 })
     assert.equal(readFileSync(target, 'utf8'), 'new\n')
-    assert.equal(statSync(target).mode & 0o777, 0o600)
+    // Windows 的 chmod 只影响只读位，0o600 这类 POSIX 权限位不可能成立；用诊断把
+    // 跳过的断言打进报告，避免「绿了但少验了一件事」看不见。
+    if (process.platform === 'win32') t.diagnostic('win32 没有 POSIX 权限位，跳过 mode 断言')
+    else assert.equal(statSync(target).mode & 0o777, 0o600)
   })
 })
 
-test('目标不存在时按给定权限创建，父目录跟着建出来', () => {
+test('目标不存在时按给定权限创建，父目录跟着建出来', (t) => {
   withTempDir((root) => {
     const target = join(root, 'nested', 'home', '.credentials.yaml')
     writeFileAtomicSync(target, 'secret\n', { mode: 0o600, dirMode: 0o700 })
     assert.equal(readFileSync(target, 'utf8'), 'secret\n')
-    assert.equal(statSync(target).mode & 0o777, 0o600)
+    assert.equal(statSync(join(root, 'nested', 'home')).isDirectory(), true)
+    if (process.platform === 'win32') t.diagnostic('win32 没有 POSIX 权限位，跳过 mode 断言')
+    else assert.equal(statSync(target).mode & 0o777, 0o600)
   })
 })
 

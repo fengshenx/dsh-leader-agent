@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   assertTaskName, branchFor, classifyWorktree, worktreeDirFor,
@@ -18,7 +19,7 @@ test('路径穿越与分隔符一律拒绝', () => {
 
 test('分支名与目录按约定派生', () => {
   assert.equal(branchFor('dev-script'), 'feature/dev-script')
-  assert.equal(worktreeDirFor('/repo', 'dev-script'), '/repo/.worktrees/dev-script')
+  assert.equal(worktreeDirFor('/repo', 'dev-script'), join('/repo', '.worktrees', 'dev-script'))
 })
 
 test('未提交的改动挡在最前面，比"已合并"优先级高', () => {

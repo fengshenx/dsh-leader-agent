@@ -47,7 +47,7 @@ test('DSH_HOME 与 DSH_HOME_SOURCE 都能覆盖', () => {
     env: { DSH_HOME: '/tmp/dev-home', DSH_HOME_SOURCE: '/tmp/origin-home' },
   })
   assert.equal(paths.home, '/tmp/dev-home')
-  assert.equal(paths.profileDir, '/tmp/dev-home/profiles/web')
+  assert.equal(paths.profileDir, join('/tmp/dev-home', 'profiles', 'web'))
   assert.equal(paths.sourceHome, '/tmp/origin-home')
 })
 
@@ -97,8 +97,8 @@ test('node_modules 逐条链到源，只有插件本体指工作树', () => {
     worktree: WORKTREE,
   })
   const byName = Object.fromEntries(plan.links.map((item) => [item.name, item.target]))
-  assert.equal(byName['@deepseek-ai'], '/home/user/.dsh/profiles/web/node_modules/@deepseek-ai')
-  assert.equal(byName['.pnpm'], '/home/user/.dsh/profiles/web/node_modules/.pnpm')
+  assert.equal(byName['@deepseek-ai'], join('/home/user/.dsh/profiles/web/node_modules', '@deepseek-ai'))
+  assert.equal(byName['.pnpm'], join('/home/user/.dsh/profiles/web/node_modules', '.pnpm'))
   assert.equal(byName[LEADER_KIT_PACKAGE], WORKTREE)
   assert.deepEqual(plan.removals, [])
 })
@@ -122,7 +122,7 @@ test('DSH_PROFILE 覆盖源 profile 名，两边的目录都跟着换', () => {
   })
   assert.equal(paths.profile, 'sdk')
   assert.equal(paths.sourceProfileDir, join(SOURCE_HOME, 'profiles', 'sdk'))
-  assert.equal(paths.profileDir, '/tmp/dev-home/profiles/sdk')
+  assert.equal(paths.profileDir, join('/tmp/dev-home', 'profiles', 'sdk'))
 })
 
 test('DSH_PROFILE 传空串时落回 web', () => {
