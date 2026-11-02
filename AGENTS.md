@@ -17,6 +17,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协�
 
 | 任务 | 先读 |
 |---|---|
+| 理解整体架构、查模块归属与完整限制 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、已知限制） |
 | 改 host 侧、加工具、动 `agent/created` | [docs/capability-gaps.md](docs/capability-gaps.md)（宿主能力边界，每条都有实测依据） |
 | 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/2026-10-23-client-side-findings-and-build-constraints.md) |
 | 起开发实例、多 worktree 并行 | [README 的开发一节](README.md#开发)、`scripts/dev.mjs` |
@@ -38,7 +39,7 @@ skills/             leader-mode 协议层（SKILL.md + playbooks + references）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 build/client.mjs    esbuild 客户端构建（closure-factory 封装）
 scripts/            开发实例、worktree 工具、Agent Note 格式门禁（verify-agent-note-format.mjs）
-docs/               长期文档（宿主能力边界、真机取证指引）
+docs/               长期文档（架构、宿主能力边界、真机取证指引）
 .agents/notes/      非平凡改动的决策记忆
 COORDINATOR.md      本仓作为项目时，协调者会话自动注入的手册
 SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / dev / review）
