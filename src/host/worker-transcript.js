@@ -206,12 +206,13 @@ export function renderTranscript({ turns, sessionId, name, limit, running = fals
     ...kept,
   ]
   if (outsideTurns > 0 || overflowTurns > 0) {
-    // 两种丢弃成因给出相反的操作建议：窗口外的要调大 turns，体积溢出的调小才有效。
     const facts = []
     if (outsideTurns > 0) facts.push(`更早的 ${outsideTurns} 个回合超出 turns=${limit} 的范围`)
     if (overflowTurns > 0) facts.push(`最近的 ${overflowTurns} 个回合因正文超出单次读取上限被丢弃`)
+    // 体积上限固定：被挤掉的回合在任何 turns 值下都装不回来（调小只是少几个候选，
+    // 调大仍超限），提示不能暗示调参可达。窗口外的部分调大 turns 仍然有效。
     const hint = overflowTurns > 0
-      ? '调小 turns 可以让更早的回合装进上限；要看更远的回合请用 message_worker 让 worker 自己复述。'
+      ? '单次读取的总量上限固定，调 turns 取不到这些回合；需要更早的内容请用 message_worker 让 worker 自己复述。'
       : '调大 turns 可以多看更早的回合。'
     lines.push('', `${facts.join('；')}，未展示。${hint}`)
   }

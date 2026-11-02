@@ -332,7 +332,7 @@ test('组合字符截断只丢重音，不出乱码', () => {
   assert.match(text, new RegExp(`${'a'.repeat(1999)}e…`))
 })
 
-test('两种丢弃成因分开说，体积受限时建议调小 turns', () => {
+test('体积溢出时如实说这些回合取不到，不承诺调 turns 可达', () => {
   const events = []
   for (let turn = 1; turn <= 20; turn += 1) {
     events.push(event('turn/start', { turn }))
@@ -345,7 +345,10 @@ test('两种丢弃成因分开说，体积受限时建议调小 turns', () => {
   // 15 个在 turns=5 窗口外，另有若干个在窗口内被体积挤掉：两种成因都要说清。
   assert.match(text, /更早的 15 个回合超出 turns=5 的范围/)
   assert.match(text, /最近的 \d+ 个回合因正文超出单次读取上限被丢弃/)
-  assert.match(text, /调小 turns 可以让更早的回合装进上限/)
+  // 体积上限固定，任何 turns 值都装不回被挤掉的回合：不能暗示调参能拿到。
+  assert.match(text, /单次读取的总量上限固定，调 turns 取不到这些回合/)
+  assert.match(text, /需要更早的内容请用 message_worker 让 worker 自己复述/)
+  assert.doesNotMatch(text, /调小 turns 可以让更早的回合装进上限/)
   assert.doesNotMatch(text, /调大 turns 可以多看更早的回合/)
 })
 
@@ -361,4 +364,25 @@ test('只有窗口外的回合被丢时，建议调大 turns', () => {
   assert.match(text, /更早的 2 个回合超出 turns=2 的范围/)
   assert.doesNotMatch(text, /超出单次读取上限/)
   assert.match(text, /调大 turns 可以多看更早的回合/)
+})
+
+test('体积受限时任何 turns 值都不暗示调参能取到更早回合', () => {
+  const events = []
+  for (let turn = 1; turn <= 20; turn += 1) {
+    events.push(event('turn/start', { turn }))
+    events.push(task(`${'甲'.repeat(1990)}第${turn}轮`))
+    events.push(assistant(`${'乙'.repeat(1990)}第${turn}轮`))
+    events.push(user(`${'丙'.repeat(1990)}第${turn}轮`))
+    events.push(assistant(`${'丁'.repeat(1990)}第${turn}轮`))
+    events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
+  }
+  const { turns } = foldTurns(events)
+  // 每回合近 8000 字符，任何 turns 值都装不下窗口内更早的回合：调大调小都无益。
+  for (const limit of [2, 3, 4]) {
+    const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit })
+    assert.match(text, /因正文超出单次读取上限被丢弃/, `limit=${limit} 应触发体积溢出`)
+    assert.match(text, /单次读取的总量上限固定，调 turns 取不到这些回合/)
+    assert.doesNotMatch(text, /调小 turns/)
+    assert.doesNotMatch(text, /调大 turns 可以多看更早的回合/)
+  }
 })

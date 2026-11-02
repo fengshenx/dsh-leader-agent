@@ -49,7 +49,7 @@
 
 截断按 UTF-16 码元数计，但切点回退到码点边界：切在代理对中间会留下孤立代理、渲染成 U+FFFD。三层上限共用 `clip()`，所以三处都覆盖。只保证码点完整、不切字素簇——丢掉组合标记只影响重音，不是乱码。
 
-丢弃标注分开说两种成因：`turns` 窗口外（建议调大 `turns`）与窗口内被体积挤掉（建议调小 `turns`）。只报一种会让协调者朝反方向操作、再撞一次上限。
+丢弃标注分开说两种成因：`turns` 窗口外（调大 `turns` 可以多看）与窗口内被体积挤掉。后者的上限是固定的——调小只是少几个候选，调大仍超限，任何 `turns` 值都装不回被挤掉的回合，所以如实说「这些回合在本次读取里取不到」，需要更早内容只能用 `message_worker` 让 worker 复述。别暗示调参可达：实测 `turns=4` 建议调小、调到 3 后仍只显示同样的最近几轮。
 
 回合数与单条上限都挡不住体积：20 回合 × 每轮两条消息 × 2000 字符仍有八万，所以总量上限必须单独存在。
 
@@ -71,15 +71,16 @@
 
 ## 验证
 
-- `npm run check`：840 例，831 pass，0 fail（9 skipped）。
+- `npm run check`：841 例，832 pass，0 fail（9 skipped）。
 - 新增用例分两层：
-  - `tests/worker-transcript.test.js`（20 例）：回合切分、工具失败原因与兜底、未配对结果、进行中标记、`turn/end` 后的独立消息段、turns 裁剪、总上限、空日志、无关事件过滤；注入上下文与任务正文分开（不冒充用户、不占任务预算）；三层上限各自的代理对截断（单条正文 / 失败原因 / 总上限硬截断）；CJK 与组合字符截断；两种丢弃成因分开说，体积受限时建议调小 `turns`。
+  - `tests/worker-transcript.test.js`（21 例）：回合切分、工具失败原因与兜底、未配对结果、进行中标记、`turn/end` 后的独立消息段、turns 裁剪、总上限、空日志、无关事件过滤；注入上下文与任务正文分开（不冒充用户、不占任务预算）；三层上限各自的代理对截断（单条正文 / 失败原因 / 总上限硬截断）；CJK 与组合字符截断；体积溢出时的提示不承诺调 `turns` 可达（`turns=2/3/4` 三种取值都断言）。
   - `tests/read-worker-tool.test.js`（17 例）：正常读取、turns 只影响渲染、非协调者/索引未就绪被拒、未登记与跨会话归属被拒、缺 `sessionQuery` / 缺 `readSession`、读失败转述、日志形状不符、`turns` 与 `sessionId` 校验、`owners` 兜底、schema 子集；**读路径与读失败/授权拒绝路径的写调用记录为空**。
 - `tests/tool-gate.test.js` 的 agent 假件补上 `read_worker_session`：缺它时 `restrict()` 会抛「unknown global tool」，逐件重试会把一次 deny 拆成三次——夹具比宿主真实面更窄会掩盖裁剪逻辑。
 - 双向验证（精确撤销对应代码 → 对应用例红 → 还原 → 全绿），四条都实测：
   - `clip()` 改回按码元切：三条截断用例红（17 pass / 3 fail），还原后 20 绿；
   - 丢弃标注改回单一成因 + 「调大 turns」：`worker-transcript` + `read-worker-tool` 4 红（33 pass / 4 fail），还原后 37 绿；
   - `user/message` 不看 `source.kind`（全部记用户）：4 红（33 pass / 4 fail），还原后 37 绿；
+  - 体积溢出的提示改回「调小 turns 可以装进上限」：2 红（19 pass / 2 fail），还原后 21 绿；
   - `transcript()` 读路径插入 `workerSessions.send()` + `sessionPersistence.append()`：只读护栏用例红（16 pass / 1 fail），还原后 17 绿。
 - 另有三条既有双向验证保留：放大 `TOTAL_LIMIT`、去掉 `assertCoordinator`、去掉 `turns` 校验，各自都能让对应用例变红。
 - `docs/capability-gaps.md` 第 16 条的工具名按 rc.2 源码改正（`session_search` / `session_event_search` / `session_trace` / `session_event_trace` / `session_event_read`），其余 `docs/` 工具名逐个核过无漂移。
