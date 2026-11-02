@@ -50,6 +50,19 @@ test('旧消息回退的整条正文走纯文本，新消息的 report 走 Markd
   assert.equal(workerReportFormat(undefined), 'text')
 })
 
+test('单换行连接的旧回报走纯文本，有块级标记才判 Markdown', () => {
+  // #8 起 report 随通知落盘，多块用单个 \n 连接；Markdown 的软换行会把块折成一段。
+  assert.equal(workerReportFormat({ report: '第一块\n第二块' }), 'text')
+  assert.equal(workerReportFormat({ report: '第一块\n第二块', outcome: 'completed' }), 'text')
+  // 块级标记本身会分段，不会被折成一段。
+  assert.equal(workerReportFormat({ report: '## 摘要\n\n收尾一句' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '- 一\n- 二' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '```\nnpm run check\n```' }), 'markdown')
+  assert.equal(workerReportFormat({ report: '| a | b |\n| - | - |' }), 'markdown')
+  // 单行正文不存在折段，行内语法照常渲染。
+  assert.equal(workerReportFormat({ report: '改完了 `src/host/message.js`' }), 'markdown')
+})
+
 test('失败原因的回报保持纯文本，多行错误不被 Markdown 折行', () => {
   assert.equal(workerReportFormat({ report: '失败：第一行\n第二行', outcome: 'failed' }), 'text')
   // 成功终态不受影响，仍按 report 是否存在判断。

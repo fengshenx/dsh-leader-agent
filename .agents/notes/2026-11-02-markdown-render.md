@@ -16,7 +16,9 @@
 
 ### 构建期把 `ui-primitives` 留在产物外
 
-它与 `react` 同属基线模块，运行时由宿主冻结模块表提供同一实例。基线（rc.2 的 `PLATFORM_MODULES`）里有四个宿主自有包：`client-store` / `ui-slots` / `ui-primitives` / `ui-dockkit`，宿主已把这批包列进封闭清单（新增包不再加入）；本仓只用到 `ui-primitives`。`build/client.mjs` 的 `BASELINE_EXTERNALS` 加上它；manifest 的 `dsh.client.external` 仍为空——基线模块本来就能解析，重复声明反而是违规（宿主自己的 `verify-client-packages` 会判 violation）。
+它与 `react` 同属基线模块，运行时由宿主冻结模块表提供同一实例。基线（rc.2 的 `PLATFORM_MODULES`）里有四个宿主自有包：`client-store` / `ui-slots` / `ui-primitives` / `ui-dockkit`，本仓只用到 `ui-primitives`。出处是两张宿主侧的单一真源表：`packages/client/web/src/platform.ts:7`（`PLATFORM_MODULES`，seeding / bundling / Vite aliases 共用）与 `packages/client/web/src/seed.ts:1-7`（`getStaticModules` 静态 import，注释写明「the ONLY entities the shell shares into the frozen module table」）；`docs/subsystems/web-client.zh.md:93` 把 `ui-primitives` 列为「共享运行时值的静态 owner」之一。`build/client.mjs` 的 `BASELINE_EXTERNALS` 加上它；manifest 的 `dsh.client.external` 仍为空——基线模块本来就能解析，重复声明反而违规（`scripts/verify-client-packages.ts:347` 的 `dsh.client.external repeats baseline module`）。
+
+这张表不是承诺：宿主可以随版本增删条目。真正的漂移风险在这里——`ui-primitives` 一旦被移出基线，产物里的外部 `require` 解析失败，插件的客户端半边整个起不来（模块求值阶段就抛）。核法是按 `engines.dsh` 下限的 tag 对照 `platform.ts`，而不是看本机最新版；本 PR 已按下限 `0.2.1-rc.2` 核过。
 
 ### 固定 `variant="compact"`
 
@@ -44,13 +46,17 @@
 
 ### 旧消息回退与失败原因保持纯文本
 
-`workerReportFormat` 按 `report` 是否存在、终态是否失败选渲染方式：有 `report` 的成功消息走 Markdown；改造前落盘、没有 `report` 的旧消息回退的是整条通知正文，逐行的协议字段（子会话、状态、下一步）按 Markdown 渲染会被软换行折成一段，所以走纯文本 `pre-wrap`；失败原因（`失败：<reason>`）是原样透出的错误文本、可能多行，也走纯文本。
+`workerReportFormat` 按三件事选渲染方式：终态失败、`report` 是否存在、`report` 有没有块级结构。
 
-新消息的多块产物摘要在生产者侧处理：`blocksToText` 加可选分隔符参数，默认值仍是 `\n`，通知正文（`buildNotificationText`）用它；`buildWorkerReport` 生成的 `report` 会随通知落盘，多块用 `\n\n` 连接，让交给 Markdown 的段落之间有空行。
+- **失败原因**（`失败：<reason>`）是原样透出的错误文本、可能多行，走纯文本。
+- **没有 `report` 的旧消息**回退的是整条通知正文，逐行的协议字段（子会话、状态、下一步），走纯文本 `pre-wrap`。
+- **有 `report` 的多行正文**只有出现块级标记（标题、列表、围栏、表格、引用）才走 Markdown；没有块级标记的多行走纯文本。原因是 `report` 自 #8 起就随通知落盘，那时的多块用**单个 `\n`** 连接（`blocksToText` 的默认分隔符），本 PR 才改成 `\n\n`——这类记录是一串纯文本块，交给 Markdown 会被软换行折成一段。块级标记本身会分段，不受影响；单行正文不存在折段，照常渲染行内语法。行内语法（`**粗**`、`` `code` ``）不参与判定，判据只是行首的块级语法。
+
+契约的另一半在生产者侧：`blocksToText` 加可选分隔符参数（默认仍是 `\n`，通知正文 `buildNotificationText` 用它）；`buildWorkerReport` 生成的 `report` 随通知落盘，多块用 `\n\n` 连接，让交给 Markdown 的段落之间有空行。
 
 ## 边界
 
-- **基线模块可直接复用，基线外的宿主 UI 包不保证可用**。基线模块是宿主公开的共享契约（模块表 + seed 静态表 + 文档把 `ui-primitives` 列为共享运行时值的静态 owner），因此不需要 `dsh.client.external`；但「基线外」不等于宿主禁止引用（宿主允许 `dsh.client.external` 配 supplier 引入其他插件行），只是这些包不承诺运行时可解析。`Modal` / `Menu` 是基线包 `ui-primitives` 的导出、本来就在基线内；本仓仍照源码复制改写，动机是定制（类名前缀、按本仓交互调整行为），不是它们不可用。代价是宿主改 `MarkdownText` 的签名或 `compact` 排版时本仓要同步（`MarkdownText` 与 `variant` 在 rc.2 已核过）。
+- **基线模块可直接复用；风险方向是宿主把条目移出基线**。基线模块是宿主公开的共享契约（`packages/client/web/src/platform.ts:7` 的 `PLATFORM_MODULES`、`seed.ts:1-7` 的静态表、`docs/subsystems/web-client.zh.md:93` 把 `ui-primitives` 列为共享运行时值的静态 owner），因此本仓不写 `dsh.client.external`。这张表没有跨版本承诺：宿主删掉条目，产物里的外部 `require` 就解析失败，插件客户端半边在模块求值阶段整个起不来——`engines.dsh` 下限升级时按 tag 复核 `platform.ts` 的条目，而不是看本机最新版。「基线外」也不等于宿主禁止引用：`dsh.client.external` 可以引入由另一个插件行（dynamic row）supplier 的模块，校验还会要求生产源码里确有对应 import（`scripts/verify-client-packages.ts:352-381`），只是这些包不承诺运行时可解析。`Modal` / `Menu` 是基线包 `ui-primitives` 的导出、本来就在基线内；本仓仍照源码复制改写，动机是定制（类名前缀、按本仓交互调整行为），不是它们不可用。代价是宿主改 `MarkdownText` 的签名或 `compact` 排版时本仓要同步（`MarkdownText` 与 `variant` 在 rc.2 已核过）。
 - **远端图片会渲染**。宿主渲染器对 http(s) 图片按默认行为出 `<img>`，与聊天消息一致；`pathImages` 不传，本地路径图片不出图。若将来要禁止外部资源加载，得在传入前处理图片语法，渲染器本身在 rc.2 没有开关。
 - **代码块工具栏随组件一起出现**。复制、换行按钮会出现在气泡与详情里的代码块上，这是宿主组件的固定 chrome，不是本仓加的。
 - **排版随宿主主题**。字号、行高、间距来自 `--dsh-*` 令牌与 `compact` 样式，宿主题变化时本仓不改样式也变。
@@ -59,12 +65,13 @@
 
 ## 验证
 
-- 单测 655 例全绿；`tests/markdown.test.js` 新增 8 例：走基线模块、固定 compact、构建期 external 清单、两处调用点接线、折叠实现不再是 line-clamp（含「气泡本身不裁剪」）、展开开关在气泡内、气泡底色用 `--dsw-specific-bubble`、compact 颜色覆盖；`tests/worker-report.test.js` 新增 2 例（`workerReportFormat`：旧消息回退纯文本、失败原因纯文本）；`tests/dispatch.test.js` 新增 1 例（多块产物摘要用 `\n\n` 连接，通知正文仍用单换行）。
+- 单测 656 例全绿；`tests/markdown.test.js` 新增 8 例：走基线模块、固定 compact、构建期 external 清单、两处调用点接线、折叠实现不再是 line-clamp（含「气泡本身不裁剪」）、展开开关在气泡内、气泡底色用 `--dsw-specific-bubble`、compact 颜色覆盖；`tests/worker-report.test.js` 新增 3 例（`workerReportFormat`：旧消息回退纯文本、单换行连接的旧回报走纯文本（含块级标记反例）、失败原因纯文本）；`tests/dispatch.test.js` 新增 1 例（多块产物摘要用 `\n\n` 连接，通知正文仍用单换行）。
 - 双向验证（原接线）：把 `worker-report-view.js` 的 `createElement(Markdown, { source: body })` 改回裸 `body`，「两处调用点都渲染 Markdown 组件」变红；还原后全绿。
 - 双向验证（颜色覆盖）：删掉两个样式文件里的 `[data-markdown-variant='compact']` 覆盖规则 → 「两处容器用 data-markdown-variant 钩子恢复正文与链接色」变红（报 `src/client/board-styles.js 没有把正文色恢复成 primary`）；还原后全绿。
 - 双向验证（旧消息回退）：把 `workerReportFormat` 改成恒返回 `'markdown'` → 「旧消息回退的整条正文走纯文本」变红；把 view 改回无条件渲染 `Markdown` → 「两处调用点都渲染 Markdown 组件，旧消息回退纯文本」变红；各自还原后全绿。
 - 双向验证（多块摘要）：把 `buildWorkerReport` 的 `blocksToText(..., '\n\n')` 改回默认单换行 → 「多块产物摘要按空行连接」变红；还原后全绿。
 - 双向验证（失败原因）：删掉 `workerReportFormat` 的 `outcome === 'failed'` 分支 → 「失败原因的回报保持纯文本」变红；还原后全绿。
+- 双向验证（旧回报保守判定）：把 `workerReportFormat` 改回「有 `report` 就 `markdown`」（去掉 `BLOCK_MARKERS` 判定）→ 「单换行连接的旧回报走纯文本，有块级标记才判 Markdown」变红（`'第一块\n第二块'` 判成 `markdown`）；还原后全绿。判定边界的对抗读数：`第一块\n第二块` → `text`、`## 摘要\n\n- 改完了` → `markdown`、单行的「改完了 + 行内代码」→ `markdown`、`第一块\n-不是列表`（列表符后无空格）→ `text`、4 空格缩进代码块 → `text`（不识别，保守走纯文本）。
 - 构建读数：`npm run build:client` 后产物里的外部 `require` 只有 `react`、`react-dom`、`@deepseek-ai/dsh-client-ui-primitives` 三处，宿主包未被打进产物（颜色覆盖与回退改动不新增依赖）。
 - computed color 探针（无头 Chrome + 宿主安装产物 `index-BxpfOGf3.css` + 宿主主题 light token，宿主 CSS 原文不动）：覆盖前正文与链接的 computed color 都是 `rgb(129, 133, 140)`（`--dsw-alias-label-tertiary`）；加上两个容器的覆盖规则后正文 `rgb(15, 17, 21)`（`--dsw-alias-label-primary`）、链接 `rgb(65, 118, 230)`（`--dsw-alias-link`）。把覆盖样式放在宿主 CSS 之前也得到同一读数，说明压过 `.compact` 靠的是特异性而不是注入顺序。
 - 真机（dsh `0.2.1-rc.2`，隔离 `DSH_HOME` 的 dev 实例，无头 Chrome 走 CDP 驱动页面）：页面加载、项目入口出现；点项目行 → 开右栏 → 看板 Tab 与 seed 的卡片 `#1` 渲染。console 无模块解析错误（只有 Electron 既有的 CSP 警告），说明 client bundle 在模块求值阶段成功 require 了基线里的 `ui-primitives`——静态 import 失败会让插件 apply 整个起不来。

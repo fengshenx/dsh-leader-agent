@@ -1,8 +1,10 @@
 /**
  * worker 回报气泡的渲染组件。
  *
- * 形态：身份头（头像 + 名字）在气泡上方单独一行，气泡本身
- * 左对齐、带 1px 边框、淡底——读起来像另一个 agent 在回话，而不是用户在说话。
+ * 形态：身份头（头像 + 名字）在气泡上方单独一行，气泡本身左对齐、用宿主消息气泡
+ * 的底色、无描边——读起来像另一个 agent 在回话，而不是用户在说话。
+ *
+ * 正文走宿主基线的 `MarkdownText`（`src/client/markdown.js`），旧回报回退纯文本。
  *
  * 气泡里只渲染 worker **最后一次回报的内容**（产物摘要或失败原因）。协议字段
  * （子会话 id、状态、下一步）留在消息正文里给模型读，不占用户的界面。
@@ -60,7 +62,7 @@ export function WorkerReportView({ node, openSession }) {
   const bubbleRef = useRef(null)
   const data = node?.data
   const body = data === undefined ? '' : workerReportBody(data)
-  // 旧消息没有 report，回退的整条正文是协议行；走纯文本才不会被 Markdown 折成一段。
+  // 哪些正文走纯文本（旧回报、失败原因、无块级结构的多行）由 shared 判，理由见 workerReportFormat。
   const markdown = data === undefined ? false : workerReportFormat(data) === 'markdown'
 
   // 样式必须在测量之前进 DOM，所以放在 layout 阶段而不是被动 effect：后者晚于

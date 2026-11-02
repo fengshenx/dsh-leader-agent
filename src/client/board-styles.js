@@ -8,9 +8,9 @@
  * `client-ui-agent-team` 的成员卡。
  *
  * 数值约定：8px 卡间距、13px 标题、11px 弱化文字、22px 链接行缩进。颜色一律走
- * 宿主 `--dsw-*` 令牌，不写死色值——第三方 bundle 不能 import 宿主 UI 包
- * （见 docs/subsystems/web-client.zh.md:93），既没有 Tailwind 也没有宿主 CSS
- * module 可用，只能自注入样式表（沿用 `modal-shell.js` 的做法）。
+ * 宿主 `--dsw-*` 令牌，不写死色值。宿主跨 bundle 共享的是组件（`PLATFORM_MODULES`
+ * 里的 `ui-primitives`，见 `markdown.js`），它们的 CSS module 不在这张表里，也没有
+ * Tailwind 可用，因此样式只能自注入（沿用 `modal-shell.js` 的做法）。
  *
  * @module dsh-leader-kit/client/board-styles
  */

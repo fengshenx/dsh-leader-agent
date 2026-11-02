@@ -78,12 +78,31 @@ export function workerReportBody(state) {
 }
 
 /**
+ * Markdown 块级标记：行首的块级语法才改变分段方式。
+ *
+ * 行内语法（`**粗**`、`` `code` ``）不参与判定——多行正文缺块级标记时，Markdown
+ * 会把整段软换行折成一段，那正是旧回报踩的坑。
+ */
+const BLOCK_MARKERS = [
+  /^#{1,6}[ \t]/m, // 标题
+  /^[ \t]*>/m, // 引用
+  /^[ \t]*(?:```|~~~)/m, // 围栏代码块
+  /^[ \t]*\|/m, // 表格
+  /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]/m, // 列表
+  /^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/m, // 水平线
+]
+
+/**
  * 决定正文用哪种方式渲染。
  *
- * 新消息的 `report` 是 worker 自己的产物，按 Markdown 渲染；旧消息（改造前落盘）
- * 没有 `report`，回退的整条消息正文是逐行的协议字段（子会话、状态、下一步），
- * 按 Markdown 渲染会被软换行折成一段，所以保持纯文本。失败原因的回报同理：它是
- * 原样透出的错误文本，可能多行，也走纯文本。
+ * 新消息的 `report` 是 worker 自己的产物，按 Markdown 渲染。失败原因的回报是原样
+ * 透出的错误文本、可能多行，走纯文本。
+ *
+ * `report` 字段自 #8 起就随通知落盘，那时多块用单个 `\n` 连接（本 PR 才改成空行）：
+ * 这些旧记录是一串纯文本块，按 Markdown 渲染会被软换行折成一段。因此多行正文只有
+ * 出现块级标记（标题、列表、围栏、表格、引用）才判 Markdown——块级结构本身就不会
+ * 折段；单行正文不会被折段，照常渲染行内语法。旧消息没有 `report` 时回退的整条
+ * 通知正文是逐行的协议字段（子会话、状态、下一步），同样保持纯文本。
  *
  * @param {{ report?: string, text?: string, outcome?: string } | null | undefined} state - 节点状态
  * @returns {'markdown' | 'text'} 渲染方式
@@ -92,7 +111,10 @@ export function workerReportFormat(state) {
   if (state === null || typeof state !== 'object') return 'text'
   // 失败原因来自 error.message，可能带换行；交给 Markdown 会被折成一段。
   if (state.outcome === 'failed') return 'text'
-  return typeof state.report === 'string' && state.report !== '' ? 'markdown' : 'text'
+  const report = state.report
+  if (typeof report !== 'string' || report === '') return 'text'
+  if (!report.includes('\n')) return 'markdown'
+  return BLOCK_MARKERS.some((marker) => marker.test(report)) ? 'markdown' : 'text'
 }
 
 /**
