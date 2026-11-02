@@ -19,7 +19,7 @@
 
 两件都在 `workspace-exclusion.js` 的渲染层完成，官方数据层不动：
 
-- **藏掉项目自建的工作区**：项目记录里的 `workspaceId` 只在插件自己注册工作区时写入（复用的用户工作区不记，见 `ensureWorkspace`），拿它当身份依据，给 `[data-row-key="workspace:<id>"]` 加 `dsh-coordinator-hidden-workspace`（`display: none`）。工作区仍留在宿主数据里——协调者会话的归属与打开路径都靠它。**组内属于这一组的行跟着一起藏**（会话行、「展开其余 N 个会话」按钮，加 `dsh-coordinator-hidden-workspace-group`）：组展开时它们是 header 的兄弟节点，只藏 header 会留下一批没有标题的孤儿行——而展开恰恰是常态，宿主打开协调者会话时自己就会展开这一组。嵌套分组的行不跟着藏，各自跟自己的 header 走。
+- **藏掉项目自建的工作区**：项目记录里的 `workspaceId` 只在插件自己注册工作区时写入（复用的用户工作区不记，见 `ensureWorkspace`），拿它当身份依据，给 `[data-row-key="workspace:<id>"]` 加 `dsh-leader-kit-hidden-workspace`（`display: none`）。工作区仍留在宿主数据里——协调者会话的归属与打开路径都靠它。**组内属于这一组的行跟着一起藏**（会话行、「展开其余 N 个会话」按钮，加 `dsh-leader-kit-hidden-workspace-group`）：组展开时它们是 header 的兄弟节点，只藏 header 会留下一批没有标题的孤儿行——而展开恰恰是常态，宿主打开协调者会话时自己就会展开这一组。嵌套分组的行不跟着藏，各自跟自己的 header 走。
 - **压掉激活态**：当前会话（`sessions.list` 快照里 `retainedBy.mainView > 0` 的那条，与宿主 `mainSessionId` 同判据）落在会话排除集里时，从 `workspaces.list` 快照的 `items` 反查它所属的工作区，给那一行加类，CSS 把行首图标槽的颜色压回 `--dsw-alias-label-tertiary`（未激活时官方也是这个色，见 `Rows.module.css` 的 `.slot`）。
 
 判定抽成纯函数（`project-panel-logic.js` 的 `collectHiddenWorkspaceIds` / `currentSessionIdOf` / `quietWorkspaceOf`）：面板只负责订阅两个快照并把结果喂给排除器（`update({ sessionIds, quietWorkspaceIds, hiddenWorkspaceIds })`）。

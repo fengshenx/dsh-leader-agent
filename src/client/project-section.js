@@ -9,7 +9,7 @@
  * 图标，悬停整行时换成展开箭头，展开时箭头旋转朝下。图标是自带的内联路径
  * （宿主 web 端运行时没有 sprite，见 `icons.js`）。
  *
- * @module dsh-coordinator/client/project-section
+ * @module dsh-leader-kit/client/project-section
  */
 
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -18,16 +18,16 @@ import { productIcon } from './icons.js'
 import { buildProjectMenuItems, isProjectOpenable, selectProjectSessionRows } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
-const STYLE_ID = 'dsh-coordinator-project-section'
+const STYLE_ID = 'dsh-leader-kit-project-section'
 
 /** 区块的样式表。随主题变量走，宿主换肤时自动跟随。 */
 const STYLE_TEXT = `
-.dsh-coordinator-project-section {
+.dsh-leader-kit-project-section {
   display: flex;
   flex-direction: column;
   padding-right: var(--dsh-session-list-edge-inset, 0px);
 }
-.dsh-coordinator-project-header {
+.dsh-leader-kit-project-header {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -37,12 +37,12 @@ const STYLE_TEXT = `
   box-sizing: border-box;
   color: var(--dsw-alias-label-tertiary);
 }
-.dsh-coordinator-project-header-label {
+.dsh-leader-kit-project-header-label {
   flex: none;
   line-height: 20px;
   font-size: 14px;
 }
-.dsh-coordinator-project-header-toggle {
+.dsh-leader-kit-project-header-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -53,13 +53,13 @@ const STYLE_TEXT = `
   font: inherit;
   cursor: pointer;
 }
-.dsh-coordinator-project-header-actions {
+.dsh-leader-kit-project-header-actions {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-left: auto;
 }
-.dsh-coordinator-project-icon-button {
+.dsh-leader-kit-project-icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -73,11 +73,11 @@ const STYLE_TEXT = `
   cursor: pointer;
 }
 @media (hover: hover) {
-  .dsh-coordinator-project-icon-button:hover {
+  .dsh-leader-kit-project-icon-button:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
-.dsh-coordinator-project-row {
+.dsh-leader-kit-project-row {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -91,14 +91,14 @@ const STYLE_TEXT = `
   user-select: none;
 }
 @media (hover: hover) {
-  .dsh-coordinator-project-row:hover {
+  .dsh-leader-kit-project-row:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
-.dsh-coordinator-project-row[data-dead='true'] {
+.dsh-leader-kit-project-row[data-dead='true'] {
   color: var(--dsw-alias-label-secondary);
 }
-.dsh-coordinator-project-title {
+.dsh-leader-kit-project-title {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -108,7 +108,7 @@ const STYLE_TEXT = `
   line-height: 20px;
 }
 /* 行首槽位：默认目录图标，悬停整行时换成展开箭头（与官方工作区行同款）。 */
-.dsh-coordinator-project-lead {
+.dsh-leader-kit-project-lead {
   flex: none;
   width: 16px;
   height: 20px;
@@ -121,48 +121,48 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
-.dsh-coordinator-project-lead-arrow {
+.dsh-leader-kit-project-lead-arrow {
   display: none;
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-tertiary));
   transition: transform 150ms var(--ds-ease-in-out, ease);
 }
-.dsh-coordinator-project-lead-arrow[data-open='true'] {
+.dsh-leader-kit-project-lead-arrow[data-open='true'] {
   transform: rotate(90deg);
 }
 @media (hover: hover) {
-  .dsh-coordinator-project-row:hover .dsh-coordinator-project-lead-arrow {
+  .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-arrow {
     display: inline-flex;
   }
-  .dsh-coordinator-project-row:hover .dsh-coordinator-project-lead-folder {
+  .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-folder {
     display: none;
   }
-  .dsh-coordinator-project-header:hover .dsh-coordinator-project-lead-arrow {
+  .dsh-leader-kit-project-header:hover .dsh-leader-kit-project-lead-arrow {
     display: inline-flex;
   }
-  .dsh-coordinator-project-header:hover .dsh-coordinator-project-lead-folder {
+  .dsh-leader-kit-project-header:hover .dsh-leader-kit-project-lead-folder {
     display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dsh-coordinator-project-lead-arrow {
+  .dsh-leader-kit-project-lead-arrow {
     transition: none;
   }
 }
-.dsh-coordinator-project-actions {
+.dsh-leader-kit-project-actions {
   flex: none;
   display: none;
   align-items: center;
   gap: 2px;
 }
 @media (hover: hover) {
-  .dsh-coordinator-project-row:hover .dsh-coordinator-project-actions {
+  .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-actions {
     display: inline-flex;
   }
 }
-.dsh-coordinator-project-row[data-menu-open='true'] .dsh-coordinator-project-actions {
+.dsh-leader-kit-project-row[data-menu-open='true'] .dsh-leader-kit-project-actions {
   display: inline-flex;
 }
-.dsh-coordinator-project-rename {
+.dsh-leader-kit-project-rename {
   flex: 1 1 auto;
   min-width: 0;
   font-size: 14px;
@@ -174,7 +174,7 @@ const STYLE_TEXT = `
   color: inherit;
   outline: none;
 }
-.dsh-coordinator-project-menu {
+.dsh-leader-kit-project-menu {
   position: fixed;
   z-index: 1100;
   box-sizing: border-box;
@@ -192,7 +192,7 @@ const STYLE_TEXT = `
   backdrop-filter: var(--dsw-menu-backdrop-filter);
   box-shadow: var(--dsw-elevation-prominent);
 }
-.dsh-coordinator-project-menu-item {
+.dsh-leader-kit-project-menu-item {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -209,23 +209,23 @@ const STYLE_TEXT = `
   cursor: pointer;
 }
 @media (hover: hover) {
-  .dsh-coordinator-project-menu-item:hover:not(:disabled) {
+  .dsh-leader-kit-project-menu-item:hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
-.dsh-coordinator-project-menu-item:focus-visible:not(:disabled) {
+.dsh-leader-kit-project-menu-item:focus-visible:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
   outline: none;
 }
-.dsh-coordinator-project-menu-item[data-danger='true'] {
+.dsh-leader-kit-project-menu-item[data-danger='true'] {
   color: var(--dsw-alias-state-error-primary);
 }
 @media (hover: hover) {
-  .dsh-coordinator-project-menu-item[data-danger='true']:hover:not(:disabled) {
+  .dsh-leader-kit-project-menu-item[data-danger='true']:hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover-danger);
   }
 }
-.dsh-coordinator-project-menu-icon {
+.dsh-leader-kit-project-menu-icon {
   display: inline-flex;
   flex: none;
   width: 14px;
@@ -234,7 +234,7 @@ const STYLE_TEXT = `
   justify-content: center;
   color: inherit;
 }
-.dsh-coordinator-project-notice {
+.dsh-leader-kit-project-notice {
   padding: 4px 8px;
   font-size: 12px;
   line-height: 17px;
@@ -242,19 +242,19 @@ const STYLE_TEXT = `
   /* 报错与目录路径都不带空格，不主动断行会横向撑出左栏。 */
   overflow-wrap: anywhere;
 }
-.dsh-coordinator-project-draft {
+.dsh-leader-kit-project-draft {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 4px 8px;
 }
-.dsh-coordinator-project-draft-directory {
+.dsh-leader-kit-project-draft-directory {
   font-size: 12px;
   line-height: 17px;
   color: var(--dsw-alias-label-tertiary);
   overflow-wrap: anywhere;
 }
-.dsh-coordinator-project-draft-action {
+.dsh-leader-kit-project-draft-action {
   padding: 4px 10px;
   border: none;
   border-radius: var(--dsw-radius-sm);
@@ -268,7 +268,7 @@ const STYLE_TEXT = `
    官方那棵树是按深度缩进的——Rows.module.css 的 sessionRow 在 padding-inline-start
    里加 var(--dsh-workspace-indent)，WorkspaceBrowser.tsx 把它设成 depth * 12px。
    我们没有嵌套层级，所以不加缩进项。 */
-.dsh-coordinator-project-sessions {
+.dsh-leader-kit-project-sessions {
   display: flex;
   flex-direction: column;
   padding: 2px 0 4px;
@@ -278,7 +278,7 @@ const STYLE_TEXT = `
    一级标签色。左右内边距照官方两代写法：0.2.2 起行用透明边框吃掉 paint-inset、
    padding 只留 row_padding 与它的差，hover 背景才会比内容窄一圈；rc.2 这两个变量
    都不存在，落到 8 / 0，与那版硬编码的 8px 一致。 */
-.dsh-coordinator-session-row {
+.dsh-leader-kit-session-row {
   display: flex;
   align-items: center;
   gap: 0;
@@ -294,13 +294,13 @@ const STYLE_TEXT = `
   user-select: none;
 }
 @media (hover: hover) {
-  .dsh-coordinator-session-row:hover {
+  .dsh-leader-kit-session-row:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 /* 状态位：尺寸照官方会话行的 slot（16×20）。官方在这里放运行状态圆点或加载器，
    我们只区分「运行中」，所以只放加载器。 */
-.dsh-coordinator-session-status {
+.dsh-leader-kit-session-status {
   flex: none;
   width: 16px;
   height: 20px;
@@ -308,7 +308,7 @@ const STYLE_TEXT = `
   align-items: center;
   justify-content: center;
 }
-.dsh-coordinator-session-title {
+.dsh-leader-kit-session-title {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -321,7 +321,7 @@ const STYLE_TEXT = `
   line-height: 20px;
   margin: 0 6px 0 var(--dsh-sidebar-label-gap, 4px);
 }
-.dsh-coordinator-session-spinner {
+.dsh-leader-kit-session-spinner {
   flex: none;
   width: 10px;
   height: 10px;
@@ -329,23 +329,23 @@ const STYLE_TEXT = `
   border: 1.5px solid var(--dsw-alias-label-tertiary);
   border-top-color: transparent;
   border-radius: 50%;
-  animation: dsh-coordinator-spin 0.8s linear infinite;
+  animation: dsh-leader-kit-spin 0.8s linear infinite;
 }
 /* 归档按钮：外观照官方会话行的 hover 动作（三级标签色、悬停提亮）。
    尺寸取宿主 0.2.2 的形态：24×24 目标 + -4px 负边距，净占位 16×16；rc.2 那版
    直接是 16×16 无负边距，净占位相同，两版视觉一致。容器不加外边距——负边距
    由按钮自己带，容器再补一份会把图标推离行右边缘。 */
-.dsh-coordinator-session-actions {
+.dsh-leader-kit-session-actions {
   flex: none;
   display: none;
   align-items: center;
 }
 @media (hover: hover) {
-  .dsh-coordinator-session-row:hover .dsh-coordinator-session-actions {
+  .dsh-leader-kit-session-row:hover .dsh-leader-kit-session-actions {
     display: inline-flex;
   }
 }
-.dsh-coordinator-session-archive {
+.dsh-leader-kit-session-archive {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -359,15 +359,15 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
-.dsh-coordinator-session-archive:focus-visible {
+.dsh-leader-kit-session-archive:focus-visible {
   outline-offset: -2px;
 }
 @media (hover: hover) {
-  .dsh-coordinator-session-archive:hover:not(:disabled) {
+  .dsh-leader-kit-session-archive:hover:not(:disabled) {
     color: var(--dsw-alias-label-primary);
   }
 }
-.dsh-coordinator-session-archive:disabled {
+.dsh-leader-kit-session-archive:disabled {
   cursor: default;
   opacity: 0.5;
 }
@@ -376,7 +376,7 @@ const STYLE_TEXT = `
    左边缘上，否则文字会比标题缩进一截：官方 rc.2 是 calc(28px + 缩进)，0.2.2
    改成 calc(row_padding + 16 + label_gap + 缩进)。写成同一公式、给 rc.2 没有的
    变量兜底，那版得 28、0.2.2 得 34，两版都与标题对齐。右内边距两版都是 12。 */
-.dsh-coordinator-session-overflow {
+.dsh-leader-kit-session-overflow {
   width: 100%;
   height: 28px;
   padding: 0 12px 0 calc(var(--dsh-sidebar-row-padding, 8px) + 16px + var(--dsh-sidebar-label-gap, 4px));
@@ -390,11 +390,11 @@ const STYLE_TEXT = `
   cursor: pointer;
 }
 @media (hover: hover) {
-  .dsh-coordinator-session-overflow:hover {
+  .dsh-leader-kit-session-overflow:hover {
     color: var(--dsw-alias-label-secondary);
   }
 }
-@keyframes dsh-coordinator-spin {
+@keyframes dsh-leader-kit-spin {
   to { transform: rotate(360deg); }
 }
 `
@@ -434,46 +434,46 @@ export function ProjectSection(props) {
 
   return createElement(
     'div',
-    { className: 'dsh-coordinator-project-section' },
+    { className: 'dsh-leader-kit-project-section' },
     createElement(
       'div',
-      { className: 'dsh-coordinator-project-header' },
+      { className: 'dsh-leader-kit-project-header' },
       createElement(
         'button',
         {
           type: 'button',
-          className: 'dsh-coordinator-project-header-toggle',
+          className: 'dsh-leader-kit-project-header-toggle',
           'aria-expanded': listExpanded,
           title: listExpanded ? '收起项目列表' : '展开项目列表',
           onClick: onToggleList,
         },
         createElement(
           'span',
-          { className: 'dsh-coordinator-project-lead' },
+          { className: 'dsh-leader-kit-project-lead' },
           createElement(
             'span',
-            { className: 'dsh-coordinator-project-lead-folder' },
+            { className: 'dsh-leader-kit-project-lead-folder' },
             productIcon('folder-open-outline', { size: 16 }),
           ),
           createElement(
             'span',
             {
-              className: 'dsh-coordinator-project-lead-arrow',
+              className: 'dsh-leader-kit-project-lead-arrow',
               'data-open': listExpanded ? 'true' : 'false',
             },
             productIcon('triangle-right-fill', { size: 14 }),
           ),
         ),
-        createElement('span', { className: 'dsh-coordinator-project-header-label' }, '项目'),
+        createElement('span', { className: 'dsh-leader-kit-project-header-label' }, '项目'),
       ),
       createElement(
         'div',
-        { className: 'dsh-coordinator-project-header-actions' },
+        { className: 'dsh-leader-kit-project-header-actions' },
         createElement(
           'button',
           {
             type: 'button',
-            className: 'dsh-coordinator-project-icon-button',
+            className: 'dsh-leader-kit-project-icon-button',
             title: '加项目：选一个目录',
             disabled: busy,
             onClick: onAdd,
@@ -486,7 +486,7 @@ export function ProjectSection(props) {
       ? (projects.length === 0
           ? createElement(
               'div',
-              { className: 'dsh-coordinator-project-notice' },
+              { className: 'dsh-leader-kit-project-notice' },
               '还没有项目。加一个即在它的目录里建好协调者会话。',
             )
           : createElement(
@@ -514,11 +514,11 @@ export function ProjectSection(props) {
     // 项目没建成，列表里就没有那一行，行上的「重命名」也不存在。
     naming === null || naming === undefined ? null : createElement(
       'div',
-      { className: 'dsh-coordinator-project-draft' },
-      createElement('div', { className: 'dsh-coordinator-project-draft-directory' }, naming.directory),
+      { className: 'dsh-leader-kit-project-draft' },
+      createElement('div', { className: 'dsh-leader-kit-project-draft-directory' }, naming.directory),
       createElement('input', {
         type: 'text',
-        className: 'dsh-coordinator-project-rename',
+        className: 'dsh-leader-kit-project-rename',
         value: naming.name,
         autoFocus: true,
         onChange: (event) => onNamingChange(event.target.value),
@@ -532,22 +532,22 @@ export function ProjectSection(props) {
         { style: { display: 'flex', gap: '4px' } },
         createElement(
           'button',
-          { type: 'button', disabled: busy, className: 'dsh-coordinator-project-draft-action', onClick: onConfirmNaming },
+          { type: 'button', disabled: busy, className: 'dsh-leader-kit-project-draft-action', onClick: onConfirmNaming },
           '建项目',
         ),
         createElement(
           'button',
-          { type: 'button', className: 'dsh-coordinator-project-draft-action', onClick: onCancelNaming },
+          { type: 'button', className: 'dsh-leader-kit-project-draft-action', onClick: onCancelNaming },
           '取消',
         ),
       ),
       naming.error === '' || naming.error === undefined
         ? null
-        : createElement('div', { className: 'dsh-coordinator-project-notice' }, naming.error),
+        : createElement('div', { className: 'dsh-leader-kit-project-notice' }, naming.error),
     ),
     notice === '' ? null : createElement(
       'div',
-      { className: 'dsh-coordinator-project-notice' },
+      { className: 'dsh-leader-kit-project-notice' },
       notice,
     ),
   )
@@ -617,14 +617,14 @@ function ProjectRow(props) {
     createElement(
       'div',
       {
-        className: 'dsh-coordinator-project-row',
+        className: 'dsh-leader-kit-project-row',
         'data-dead': openable ? undefined : 'true',
         'data-menu-open': menuOpen ? 'true' : undefined,
         role: 'treeitem',
         'aria-expanded': expanded,
         title: `${project.name} · ${project.directory}`,
         onClick: (event) => {
-          if (event.target.closest('.dsh-coordinator-project-actions') !== null) return
+          if (event.target.closest('.dsh-leader-kit-project-actions') !== null) return
           onOpen(project)
         },
       },
@@ -633,19 +633,19 @@ function ProjectRow(props) {
         {
           type: 'button',
           ref: leadRef,
-          className: 'dsh-coordinator-project-lead',
+          className: 'dsh-leader-kit-project-lead',
           'aria-label': expanded ? '收起会话' : '展开会话',
           onClick: (event) => { event.stopPropagation(); onToggleExpand(project.id) },
         },
         createElement(
           'span',
-          { className: 'dsh-coordinator-project-lead-folder' },
+          { className: 'dsh-leader-kit-project-lead-folder' },
           productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
         ),
         createElement(
           'span',
           {
-            className: 'dsh-coordinator-project-lead-arrow',
+            className: 'dsh-leader-kit-project-lead-arrow',
             'data-open': expanded ? 'true' : 'false',
           },
           productIcon('triangle-right-fill', { size: 14 }),
@@ -654,7 +654,7 @@ function ProjectRow(props) {
       renaming
         ? createElement('input', {
             type: 'text',
-            className: 'dsh-coordinator-project-rename',
+            className: 'dsh-leader-kit-project-rename',
             value: name,
             autoFocus: true,
             onClick: (event) => event.stopPropagation(),
@@ -667,19 +667,19 @@ function ProjectRow(props) {
           })
         : createElement(
             'span',
-            { className: 'dsh-coordinator-project-title' },
+            { className: 'dsh-leader-kit-project-title' },
             project.name,
           ),
       createElement(
         'div',
-        { className: 'dsh-coordinator-project-actions' },
+        { className: 'dsh-leader-kit-project-actions' },
         openable
           ? null
           : createElement(
               'button',
               {
                 type: 'button',
-                className: 'dsh-coordinator-project-icon-button',
+                className: 'dsh-leader-kit-project-icon-button',
                 title: '换新协调者',
                 disabled: busy,
                 onClick: (event) => { event.stopPropagation(); onReplace(project) },
@@ -691,7 +691,7 @@ function ProjectRow(props) {
           {
             type: 'button',
             ref: moreRef,
-            className: 'dsh-coordinator-project-icon-button',
+            className: 'dsh-leader-kit-project-icon-button',
             title: '更多',
             disabled: busy,
             onClick: (event) => {
@@ -717,11 +717,11 @@ function ProjectRow(props) {
     expanded
       ? createElement(
           'div',
-          { className: 'dsh-coordinator-project-sessions' },
+          { className: 'dsh-leader-kit-project-sessions' },
           childSessions.length === 0
             ? createElement(
                 'div',
-                { className: 'dsh-coordinator-project-notice' },
+                { className: 'dsh-leader-kit-project-notice' },
                 '该项目下还没有会话。',
               )
             : [
@@ -739,7 +739,7 @@ function ProjectRow(props) {
                       {
                         key: 'overflow',
                         type: 'button',
-                        className: 'dsh-coordinator-session-overflow',
+                        className: 'dsh-leader-kit-session-overflow',
                         'aria-expanded': folded.expanded,
                         onClick: () => {
                           if (folded.expanded) {
@@ -802,7 +802,7 @@ function ProjectMenu(props) {
     {
       ref,
       role: 'menu',
-      className: 'dsh-coordinator-project-menu',
+      className: 'dsh-leader-kit-project-menu',
       'data-menu-material': 'translucent',
       style: { left: `${placement.left}px`, top: `${placement.top}px` },
       onClick: (event) => event.stopPropagation(),
@@ -813,7 +813,7 @@ function ProjectMenu(props) {
         key: item.id,
         type: 'button',
         role: 'menuitem',
-        className: 'dsh-coordinator-project-menu-item',
+        className: 'dsh-leader-kit-project-menu-item',
         'data-danger': item.danger === true ? 'true' : undefined,
         onClick: () => { onClose(); item.onSelect() },
       },
@@ -821,7 +821,7 @@ function ProjectMenu(props) {
         ? null
         : createElement(
             'span',
-            { className: 'dsh-coordinator-project-menu-icon' },
+            { className: 'dsh-leader-kit-project-menu-icon' },
             productIcon(item.icon, { size: 14 }),
           ),
       createElement('span', null, item.label),
@@ -844,29 +844,29 @@ function SessionRow(props) {
   return createElement(
     'div',
     {
-      className: 'dsh-coordinator-session-row',
+      className: 'dsh-leader-kit-session-row',
       'data-session-id': row.id,
       onClick: () => onOpenSession(row.id),
       title: row.displayTitle ?? row.title ?? row.id,
     },
     createElement(
       'span',
-      { className: 'dsh-coordinator-session-status' },
-      row.running ? createElement('span', { className: 'dsh-coordinator-session-spinner' }) : null,
+      { className: 'dsh-leader-kit-session-status' },
+      row.running ? createElement('span', { className: 'dsh-leader-kit-session-spinner' }) : null,
     ),
     createElement(
       'span',
-      { className: 'dsh-coordinator-session-title' },
+      { className: 'dsh-leader-kit-session-title' },
       row.title ?? row.displayTitle ?? row.id,
     ),
     createElement(
       'div',
-      { className: 'dsh-coordinator-session-actions' },
+      { className: 'dsh-leader-kit-session-actions' },
       createElement(
         'button',
         {
           type: 'button',
-          className: 'dsh-coordinator-session-archive',
+          className: 'dsh-leader-kit-session-archive',
           title: '归档会话：从列表移除，并摘掉卡片上绑定的槽位',
           'aria-label': `归档会话 ${row.title ?? row.displayTitle ?? row.id}`,
           disabled: busy,

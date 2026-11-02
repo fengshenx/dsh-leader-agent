@@ -9,7 +9,7 @@
  * 可聚焦后代」。这是刻意的取舍：整卡热区与嵌套控件并存，子控件保留独立
  * 按钮语义优先，键盘可达性由子控件自己保证。
  *
- * @module dsh-coordinator/client/board-card
+ * @module dsh-leader-kit/client/board-card
  */
 
 import { createElement, memo, useLayoutEffect, useRef, useState } from 'react'
@@ -53,9 +53,9 @@ function openDetailOnKey(event, card, onOpenDetail) {
 function linkChipContent(link) {
   return createElement(
     'span',
-    { className: 'dsh-coordinator-board-link-chip-body' },
+    { className: 'dsh-leader-kit-board-link-chip-body' },
     productIcon('link-outline', { size: 10 }),
-    createElement('span', { className: 'dsh-coordinator-board-link-chip-label' }, link.label ?? ''),
+    createElement('span', { className: 'dsh-leader-kit-board-link-chip-label' }, link.label ?? ''),
   )
 }
 
@@ -107,26 +107,26 @@ function BoardLinks({ links, onOpenDetail }) {
 
   return createElement(
     'div',
-    { ref: row, className: 'dsh-coordinator-board-card-links' },
+    { ref: row, className: 'dsh-leader-kit-board-card-links' },
     createElement(
       'div',
-      { ref: measure, 'aria-hidden': 'true', className: 'dsh-coordinator-board-links-measure' },
+      { ref: measure, 'aria-hidden': 'true', className: 'dsh-leader-kit-board-links-measure' },
       links.map((link, index) => (isJumpableLink(link)
         ? createElement('a', {
             key: linkRowKey(link, index),
             href: link.url,
             tabIndex: -1,
-            className: 'dsh-coordinator-board-link-chip',
+            className: 'dsh-leader-kit-board-link-chip',
           }, linkChipContent(link))
         : createElement('button', {
             key: linkRowKey(link, index),
             type: 'button',
             tabIndex: -1,
-            className: 'dsh-coordinator-board-link-chip',
+            className: 'dsh-leader-kit-board-link-chip',
           }, linkChipContent(link)))),
       createElement(
         'button',
-        { type: 'button', tabIndex: -1, className: 'dsh-coordinator-board-link-chip dsh-coordinator-board-link-overflow' },
+        { type: 'button', tabIndex: -1, className: 'dsh-leader-kit-board-link-chip dsh-leader-kit-board-link-overflow' },
         plan.measureOverflow,
       ),
     ),
@@ -138,14 +138,14 @@ function BoardLinks({ links, onOpenDetail }) {
             target: '_blank',
             rel: 'noreferrer',
             title: link.purpose || link.url,
-            className: 'dsh-coordinator-board-link-chip',
+            className: 'dsh-leader-kit-board-link-chip',
             onClick: (event) => { event.stopPropagation() },
           }, linkChipContent(link))
         : createElement('button', {
             key: linkRowKey(link, index),
             type: 'button',
             title: link.purpose || link.label,
-            className: 'dsh-coordinator-board-link-chip',
+            className: 'dsh-leader-kit-board-link-chip',
             onClick: (event) => {
               event.stopPropagation()
               onOpenDetail(event.currentTarget)
@@ -155,7 +155,7 @@ function BoardLinks({ links, onOpenDetail }) {
       ? createElement('button', {
           type: 'button',
           title: links.map((link) => link.label).join(' · '),
-          className: 'dsh-coordinator-board-link-chip dsh-coordinator-board-link-overflow',
+          className: 'dsh-leader-kit-board-link-chip dsh-leader-kit-board-link-overflow',
           onClick: (event) => {
             event.stopPropagation()
             onOpenDetail(event.currentTarget)
@@ -194,13 +194,13 @@ const STATE_LABELS = {
  */
 function BoardSlot({ slot, onOpenSession }) {
   const dot = createElement('span', {
-    className: `dsh-coordinator-board-slot-dot dsh-coordinator-board-slot-dot-${slot.state}`,
+    className: `dsh-leader-kit-board-slot-dot dsh-leader-kit-board-slot-dot-${slot.state}`,
   })
   const label = STATE_LABELS[slot.state] ?? slot.state
   if (slot.sessionId === '') {
     return createElement(
       'span',
-      { className: 'dsh-coordinator-board-slot-chip', title: `${slot.name}：${label}` },
+      { className: 'dsh-leader-kit-board-slot-chip', title: `${slot.name}：${label}` },
       dot,
       slot.name,
     )
@@ -209,7 +209,7 @@ function BoardSlot({ slot, onOpenSession }) {
     'button',
     {
       type: 'button',
-      className: 'dsh-coordinator-board-slot-chip',
+      className: 'dsh-leader-kit-board-slot-chip',
       title: `${slot.name}：${label}`,
       onClick: (event) => {
         event.stopPropagation()
@@ -240,7 +240,7 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
     return createElement(
       'div',
       {
-        className: 'dsh-coordinator-board-card-done',
+        className: 'dsh-leader-kit-board-card-done',
         role: 'button',
         tabIndex: 0,
         onClick: (event) => onOpenDetail(card, event.currentTarget),
@@ -248,13 +248,13 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
       },
       createElement(
         'span',
-        { className: 'dsh-coordinator-board-done-check' },
+        { className: 'dsh-leader-kit-board-done-check' },
         productIcon('check-circle-outline', { size: 14 }),
       ),
-      createElement('span', { className: 'dsh-coordinator-board-card-number' }, `#${card.number ?? '?'}`),
-      createElement('span', { className: 'dsh-coordinator-board-done-title', title: card.title }, card.title ?? ''),
+      createElement('span', { className: 'dsh-leader-kit-board-card-number' }, `#${card.number ?? '?'}`),
+      createElement('span', { className: 'dsh-leader-kit-board-done-title', title: card.title }, card.title ?? ''),
       typeof card.doneAt === 'number'
-        ? createElement('span', { className: 'dsh-coordinator-board-done-time' }, formatDuration(card.doneAt, now))
+        ? createElement('span', { className: 'dsh-leader-kit-board-done-time' }, formatDuration(card.doneAt, now))
         : null,
     )
   }
@@ -266,7 +266,7 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
   return createElement(
     'div',
     {
-      className: 'dsh-coordinator-board-card',
+      className: 'dsh-leader-kit-board-card',
       role: 'button',
       tabIndex: 0,
       onClick: (event) => onOpenDetail(card, event.currentTarget),
@@ -274,21 +274,21 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
     },
     createElement(
       'div',
-      { className: 'dsh-coordinator-board-card-title-row' },
+      { className: 'dsh-leader-kit-board-card-title-row' },
       createElement(
         'span',
-        { className: 'dsh-coordinator-board-signal-slot' },
+        { className: 'dsh-leader-kit-board-signal-slot' },
         createElement('span', {
-          className: `dsh-coordinator-board-signal dsh-coordinator-board-signal-${signal}`,
+          className: `dsh-leader-kit-board-signal dsh-leader-kit-board-signal-${signal}`,
           title: STATE_LABELS[signal] ?? signal,
         }),
       ),
-      createElement('span', { className: 'dsh-coordinator-board-card-number' }, `#${card.number ?? '?'}`),
-      createElement('span', { className: 'dsh-coordinator-board-card-title', title: card.title }, card.title ?? ''),
+      createElement('span', { className: 'dsh-leader-kit-board-card-number' }, `#${card.number ?? '?'}`),
+      createElement('span', { className: 'dsh-leader-kit-board-card-title', title: card.title }, card.title ?? ''),
       stalled
         ? createElement(
             'span',
-            { className: 'dsh-coordinator-board-card-stalled' },
+            { className: 'dsh-leader-kit-board-card-stalled' },
             `停滞 ${formatDuration(card.updatedAt ?? 0, now)}`,
           )
         : null,
@@ -299,7 +299,7 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
     slots.length > 0
       ? createElement(
           'div',
-          { className: 'dsh-coordinator-board-card-meta' },
+          { className: 'dsh-leader-kit-board-card-meta' },
           slots.map((slot) => createElement(BoardSlot, { key: slot.name, slot, onOpenSession })),
         )
       : null,

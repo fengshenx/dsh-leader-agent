@@ -11,7 +11,7 @@
  * 卡片仍然随 `tool/result` 事件的 `meta` 投影进 session log（历史完整），但那
  * 是历史，不是看板的数据源。
  *
- * @module dsh-coordinator/client/project-board-data
+ * @module dsh-leader-kit/client/project-board-data
  */
 
 /** 看板刷新间隔（毫秒）。 */

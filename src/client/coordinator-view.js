@@ -9,7 +9,7 @@
  * 它，官方外壳就自己切到 active 形态，输入框落到底部，会话区是空的。目标不
  * 注册成可见 tab，所以所有会话的头部都不会多出标签。
  *
- * @module dsh-coordinator/client/coordinator-view
+ * @module dsh-leader-kit/client/coordinator-view
  */
 
 import { createElement, useLayoutEffect } from 'react'
@@ -60,19 +60,19 @@ export function mountCoordinatorView(ctx) {
     ctx.uiConversation.views.register(createCoordinatorViewDefinition())
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    ctx.logger?.error?.(`dsh-coordinator: 协调者视图目标注册失败：${message}`)
+    ctx.logger?.error?.(`dsh-leader-kit: 协调者视图目标注册失败：${message}`)
     return
   }
   // 入口挂在输入框上方的 dock 槽：那里按会话渲染，入口拿得到当前会话 id，
   // 而宿主在会话打开后才会建绑定——正好是激活的时机。
   ctx.effect(() => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
-    id: 'dsh-coordinator-view',
+    id: 'dsh-leader-kit-view',
     order: 100,
     inject: () => ({
       getUiConversation: () => ctx.get('uiConversation'),
     }),
-  }, CoordinatorViewEntry)), 'dsh-coordinator 协调者视图入口')
+  }, CoordinatorViewEntry)), 'dsh-leader-kit 协调者视图入口')
 }
 
 /**
@@ -92,7 +92,7 @@ export function watchCoordinatorSessions(ctx) {
       coordinatorSessionIndex.update(collectCoordinatorSessionIds(projects))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      ctx.logger?.warn?.(`dsh-coordinator: 读取协调者会话名单失败：${message}`)
+      ctx.logger?.warn?.(`dsh-leader-kit: 读取协调者会话名单失败：${message}`)
     }
   }
   void onProjectRemoteReady(() => { void refresh() })

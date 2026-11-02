@@ -11,7 +11,7 @@ after(cleanupTempDirs)
  * @returns {Promise<string>} 目录路径
  */
 async function makeHome() {
-  return makeTempDir('dsh-coordinator-projects-')
+  return makeTempDir('dsh-leader-kit-projects-')
 }
 
 test('项目记录落盘后可读回，字段齐全', async () => {

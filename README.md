@@ -1,4 +1,4 @@
-# dsh-coordinator
+# dsh-leader-kit
 
 DeepSeek Harness 的协调者/执行者编排 bundle：多 Agent 编排协议 skill、项目初始化 skill、后台派工与完成唤醒、任务看板卡片，以及交付看板 UI。
 
@@ -10,7 +10,7 @@ DeepSeek Harness 的协调者/执行者编排 bundle：多 Agent 编排协议 sk
 
 | 部件 | 位置 | 说明 |
 |---|---|---|
-| 协议层 skill | `skills/coordinator-mode/` | `SKILL.md` + 4 个 playbook + 2 份参考：派工、接力、事件调度、卡片维护、传话纪律、验收裁决、进度说明 |
+| 协议层 skill | `skills/leader-mode/` | `SKILL.md` + 4 个 playbook + 2 份参考：派工、接力、事件调度、卡片维护、传话纪律、验收裁决、进度说明 |
 | 初始化 skill | `skills/init-project/` | 一次性把仓库工程约定写入目标项目：skill 给出方法与正文，模型用宿主的文件能力写 `AGENTS.md` 受管区块，幂等 |
 | `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话并即刻派活，**立即返回**会话 id，不等结果 |
 | `message_worker` 工具 | `src/host/tools/message-worker.js` | 给 worker 续聊：活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
@@ -72,20 +72,20 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 开发期用 profile link 安装（改代码即生效）：
 
 ```sh
-dsh plugin --profile web add ../dsh-coordinator
+dsh plugin --profile web add ../dsh-leader-kit
 ```
 
 快速试跑（不装进 profile）：
 
 ```sh
 cd /path/to/deepseek-harness
-pnpm dsh web --patch ../dsh-coordinator/cordis.patch.yml
+pnpm dsh web --patch ../dsh-leader-kit/cordis.patch.yml
 ```
 
 分发到 npm 后：
 
 ```sh
-dsh plugin --profile web add dsh-coordinator
+dsh plugin --profile web add dsh-leader-kit
 ```
 
 profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类自定义名字不在 dsh 的 `PROFILE_TEMPLATES` 里，`dsh plugin` 会按默认模板只装 `@deepseek-ai/dsh-base`——没有 web-app bundle，插件客户端半边根本不加载。
@@ -102,7 +102,7 @@ cd .worktrees/my-task
 npm run dev                       # 起开发实例
 ```
 
-`npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-coordinator` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
+`npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 
 - 端口默认交给系统分配，启动日志里打印带 token 的 URL；要固定就 `DEV_PORT=3210 npm run dev`。
 - 改客户端代码（`src/client/`）要重跑 `npm run dev` 或 `npm run build:client` 再刷新；宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
@@ -119,14 +119,14 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝。分支是否已合并看两条判据——`merge-base --is-ancestor main`（merge 合并成立）与 PR 状态（squash 合并只有这条成立）。删 worktree 时 `.dev/home` 的数据与 `node_modules` 链接随之清掉，链接指向主 checkout，删的只是链接本身。
 
-也可以不用脚本、手工把插件装进某个 profile：`dsh plugin --profile web add ../dsh-coordinator`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。
+也可以不用脚本、手工把插件装进某个 profile：`dsh plugin --profile web add ../dsh-leader-kit`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。
 
 ## 使用
 
-1. **让模型加载协议层**：`skill` 工具会列出 `coordinator-mode`。协调者会话先读 `playbooks/program.md`，再按阶段读对应 playbook。
+1. **让模型加载协议层**：`skill` 工具会列出 `leader-mode`。协调者会话先读 `playbooks/program.md`，再按阶段读对应 playbook。
 2. **初始化项目**：让模型加载 `init-project` skill，按 skill 指令读 `references/conventions.md`，用宿主的文件编辑能力把正文并入目标项目 `AGENTS.md` 的受管区块（没有专用工具）。dsh 读取 `AGENTS.md` 作为系统提示段落，因此写入即对模型生效。重复执行只替换受管区块，不动项目已有内容。
 3. **派工**：调用 `spawn_worker`，参数 `name` 与 `initialMessage` 都必填。`name` 是 worker 的显示名（角色-任务短名，如 `research-sources`），同时钉成它的会话标题：不钉的话宿主按首条消息自动起名，侧栏看到的是任务正文前几个字。工具立即返回会话 id；worker 是**常驻根会话**——它在左栏项目树下有自己的会话行，你能像开别的会话一样打开它、直接输入新指令，也能在 `message_worker` 里给它续聊。worker 那一轮结束时协调者随即被唤醒，收到一条完成通知——回报由机制侧从会话事件结算，worker 不需要调用任何工具。通知在会话里渲染成 **worker 的发言**：左侧气泡，气泡上方是头像与 worker 名字，正文里没有「谁在说话」的前缀——和用户自己的输入（右侧气泡）区分得开。气泡里只显示 worker 最后一次回报的内容（产物摘要或失败原因），协议字段（会话、状态、下一步）留给模型读；气泡下方是时间与复制按钮，点 worker 名字可跳到它的会话。通知排进 inbox 的 **next-turn** 边界（下一个 turn 的一次输入），且**父会话正忙时先不投**——它留在落盘队列里，等父会话空闲后再投，因此不会挂在宿主输入框上方的「消息队列」面板上。
-4. **记任务事实**：调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。卡片落盘在 `$DSH_HOME/dsh-coordinator/cards.json`，编号全局递增不复用。**卡片按项目归属**：宿主按调用方会话反查项目（协调者会话走项目注册表的指针，其它会话按 cwd 与项目目录的 realpath 相同），模型不传项目参数。`list_cards` 默认只列本项目，要看全部项目传 `scope=all`；跨项目改卡会被拒绝。
+4. **记任务事实**：调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。卡片落盘在 `$DSH_HOME/dsh-leader-kit/cards.json`，编号全局递增不复用。**卡片按项目归属**：宿主按调用方会话反查项目（协调者会话走项目注册表的指针，其它会话按 cwd 与项目目录的 realpath 相同），模型不传项目参数。`list_cards` 默认只列本项目，要看全部项目传 `scope=all`；跨项目改卡会被拒绝。
 5. **续聊 worker**：再调 `message_worker`（`sessionId` 与 `message` 必填，`sessionId` 就是 `spawn_worker` 返回的会话 id；可选的 `rename` 顺手改名，登记表与会话标题同次改到新名字）。会话还活着就直接投进去（返回 `merged`），进程重启后不在内存就先冷恢复再投（返回 `sent`）——两种形态对调用方是同一步。新的一轮结束时同样唤醒协调者，收到一条格式一致的汇报气泡。
 
    **人自己下钻跟 worker 聊天不经过这条路径**：那种轮次不会登记在飞记录，因此不会被结算，协调者不会被打扰。派工要求组合里有会话持久化与查询后端（`sessionPersistence` / `sessionQuery`）：缺任一就拒绝派工，而不是悄悄降级成只能跑一轮的一次性 worker。
@@ -135,7 +135,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 8. **配角色槽位**：在项目目录写 `SLOTS.md`，按 `## <槽位名>` 分节写角色的工作方法与人设；在卡片的 `slots` 字段把槽位名绑到会话 id，该会话每轮 turn 都会注入对应槽位正文，改动 `SLOTS.md` 在下一轮 turn 生效。槽位只贡献提示词文本，不授予工具权限。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`（正文为空）。
 9. **写协调者手册**：在项目目录写 `COORDINATOR.md`，写这个项目的协调者该怎么指挥——职责边界、派工要求、验收口径、本仓硬约束。**协调者会话每轮 turn 自动注入**，不需要卡片绑定，也不用加载任何 skill 才生效；改动在下一轮 turn 生效。它只贡献提示词文本，与 `SLOTS.md` 一样不授予工具权限。
 
-协议层也随 bundle 分发到 `skills/` 下；项目内若自行放置 `.agents/skills/coordinator-mode/`，项目副本优先（dsh 的 skill 发现按来源层级取优）。
+协议层也随 bundle 分发到 `skills/` 下；项目内若自行放置 `.agents/skills/leader-mode/`，项目副本优先（dsh 的 skill 发现按来源层级取优）。
 
 ## 已知限制
 
@@ -155,7 +155,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 - **气泡折叠没有单测**。折几行靠 `-webkit-line-clamp`，是否出现「展示更多」要在 DOM 上量 `scrollHeight` 与 `clientHeight`；本仓不引 jsdom，这段只能用浏览器取证（`docs/e2e-testing.md`），逻辑本身没有可单测的纯函数。
 - **卡片详情浮层是打开瞬间的快照**。卡片随后被协调者更新，浮层不会跟着刷新，要关掉重开。
 - **卡面不显示所属项目/工作区**。看板已经按项目过滤，卡面不必再重复标注（无 workspace chip）。
-- **弹窗与菜单是复制官方源码改写的，不是复用宿主组件**。第三方 bundle 不能 import 宿主 UI 包，官方 `Modal` / `Menu` 组件用不了，因此确认弹窗照 `packages/client/ui-primitives/src/Modal.tsx` 与 `Modal.module.css` 复制一份改写（类名换 `dsh-coordinator-modal-*` 前缀），菜单照 `Menu.tsx` 的材质与数值复刻。代价是宿主改这两个组件时本仓要同步。
+- **弹窗与菜单是复制官方源码改写的，不是复用宿主组件**。第三方 bundle 不能 import 宿主 UI 包，官方 `Modal` / `Menu` 组件用不了，因此确认弹窗照 `packages/client/ui-primitives/src/Modal.tsx` 与 `Modal.module.css` 复制一份改写（类名换 `dsh-leader-kit-modal-*` 前缀），菜单照 `Menu.tsx` 的材质与数值复刻。代价是宿主改这两个组件时本仓要同步。
 - **协调者会话形态依赖宿主的会话视图服务**。宿主没提供 `uiConversation` 服务时（它不在机器可读的插件 API 目录里，属于版本耦合面），协调者会话退化成官方欢迎页（居中输入框），本 bundle 不阻断打开会话，也不自绘替代界面。
 - **项目区块靠 DOM 注入取位**。dsh 的左栏正文区只有 `sidebar.workspaces` 一个槽且已被宿主占用，slot 机制没有包装能力，第三方插不进并列区块——本仓在左栏的「面板列表 nav」之后插容器并用 portal 渲染，位置是「自动化任务之下、工作区之上」；宿主结构变化导致找不到锚点时内容退回原槽，功能不受影响。
 - **项目树是自建的，与官方工作区树并存**。官方只有按工作区分组的会话树，没有「项目」维度。本仓的项目树只挂该项目的 worker 会话——判据是「登记表说它是本 bundle 派出的 worker」加上 cwd 与项目目录的 realpath 精确相等（worker 是普通根会话，会话头没有身份标记，只能按登记判）。协调者会话（入口在项目行上）与用户在项目目录里手动开的会话都不算项目会话：前者由项目入口打开，后者留在官方工作区树里。
@@ -165,7 +165,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 - **被隐藏的会话不再点亮它所在的工作区**。官方按「当前会话属于哪个分组」给工作区目录图标上主色；协调者与 worker 会话在渲染层被隐藏后，点亮的分组里找不到对应的会话行——分组看着是开着的，却找不到是谁。本仓在当前会话属于排除集时，给承载它的工作区行加类，把图标压回三级标签色（同为渲染层，官方数据层不动）。只在分组视图下压当前会话所属的那一组；树模式下祖先分组仍会点亮。
 - **项目自建的工作区从官方树里藏掉**。加项目会顺带把目录注册成工作区（上一条的技术原因），左栏工作区树里于是凭空多出一行用户没加过的目录——项目区块里已经有同一个目录了。本仓按项目记录的 `workspaceId` 认出「这个工作区是我们注册的」，在渲染层整组藏掉（分组行 + 组内属于它的会话行与「展开其余 N 个会话」按钮；嵌套分组各自显示）；用户自己加的同目录工作区不记这个字段，照常显示。代价：项目目录里用户手动开的会话不在项目树（项目树只列 worker），左栏也看不到——宿主搜索仍能命中它们，「在一个列表里」视图也照常列出。想彻底解决得让项目树列出整个目录的会话，那是另一件事。
 - **图标数据与宿主 `artwork.ts` 耦合**。宿主 web 端把图标在构建期内联进产物，运行时 DOM 里没有 sprite 节点，第三方 bundle 在运行时渲染只能自己带路径数据——本仓内联的路径取自宿主 `dsh-client-ui-primitives` 的 `artwork.ts`（regular 字重），宿主改图标时本仓要同步。
-- **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-coordinator/worker-report`），因此会话自动标题不取它、turn 摘要 prompt 不取它、markdown 转录导出会跳过它。换来的是它不会被误当成用户说的话——标题、摘要、导出这三处都只认真人输入。
+- **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-leader-kit/worker-report`），因此会话自动标题不取它、turn 摘要 prompt 不取它、markdown 转录导出会跳过它。换来的是它不会被误当成用户说的话——标题、摘要、导出这三处都只认真人输入。
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](.agents/notes/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
 - **worker 回报要等父会话空闲才送达**。完成通知排进 inbox 的 next-turn 边界（下一个 turn 的一次输入），父会话正忙时先不投、留在落盘队列里，检测到空闲再投。否则它会像用户自己发的消息一样，以「一条待发消息」的形态挂在输入框上方的「消息队列」条里（对照实验：busy 时直接投，面板显示「2 queued messages」，把人的消息和 worker 回报混在一起）。代价是协调者正忙时，回报要多等它这一轮结束（见 [worker 回报的投递边界](.agents/notes/2026-10-27-worker-report-delivery-boundary.md)）。
 - **历史消息不追溯**。改造之前发出的通知在 session log 里就是普通用户消息，重放时仍按老形态渲染（右对齐、无头像）。

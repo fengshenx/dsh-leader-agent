@@ -41,7 +41,7 @@ function createFakeCtx() {
  * @returns {Promise<{ directory: string, cleanup: () => Promise<void> }>} 目录与清理函数
  */
 async function createProject(content) {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-coordinator-coordinator-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-coordinator-'))
   if (content !== undefined) {
     await writeFile(join(directory, COORDINATOR_CONTEXT_FILE), content, 'utf8')
   }

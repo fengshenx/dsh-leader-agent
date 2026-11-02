@@ -20,7 +20,7 @@
  * 落盘位置在 dsh home 下的自有目录，与卡片库同域；不占用 session 事件流——仓外
  * 插件不得新增 session event 类型。
  *
- * @module dsh-coordinator/host/projects/store
+ * @module dsh-leader-kit/host/projects/store
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -119,7 +119,7 @@ function isProjectRecord(value) {
  * @returns {object} 项目注册表接口
  */
 export function createProjectStore({ home, logger = () => {} } = {}) {
-  const directory = join(home, 'dsh-coordinator')
+  const directory = join(home, 'dsh-leader-kit')
   const file = join(directory, 'projects.json')
   const temporary = join(directory, 'projects.json.tmp')
 

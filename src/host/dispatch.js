@@ -31,7 +31,7 @@
  * 人下钻到 worker 会话直接对话时不经过本模块：那种轮次不会登记在飞记录，也就
  * 不会被结算，worker 不会因为人自己聊了几句去打扰协调者。
  *
- * @module dsh-coordinator/host/dispatch
+ * @module dsh-leader-kit/host/dispatch
  */
 
 import { createUserMessage, blocksToText } from './message.js'
@@ -134,11 +134,11 @@ export function createDispatcher({
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
   if (typeof coordinatorIndex?.awaitIndex !== 'function'
     || typeof coordinatorIndex?.isCoordinatorSession !== 'function') {
-    throw new Error('dsh-coordinator: createDispatcher 缺少 coordinatorIndex，无法校验协调者身份')
+    throw new Error('dsh-leader-kit: createDispatcher 缺少 coordinatorIndex，无法校验协调者身份')
   }
   // worker 会话是派工的唯一落点，漏传会让派工在运行到一半时炸。
   if (typeof workerSessions?.spawn !== 'function' || typeof workerSessions?.send !== 'function') {
-    throw new Error('dsh-coordinator: createDispatcher 缺少 workerSessions，无法创建或唤醒 worker 会话')
+    throw new Error('dsh-leader-kit: createDispatcher 缺少 workerSessions，无法创建或唤醒 worker 会话')
   }
   /** @type {Map<string, object>} 派工记录，key 为 worker 会话 id */
   const inflight = new Map()
@@ -264,7 +264,7 @@ export function createDispatcher({
     const reason = `连续自动续行已达上限 ${autoResumeLimit}，当前有 ${pendingCount} 条完成通知待投`
     await store.markUndelivered(notification.id, reason)
     logger(
-      `dsh-coordinator: 父会话 ${notification.parentSessionId} 的${reason}，`
+      `dsh-leader-kit: 父会话 ${notification.parentSessionId} 的${reason}，`
       + `通知 ${notification.id} 留待人工处理`,
     )
   }
@@ -332,7 +332,7 @@ export function createDispatcher({
         .catch((error) => {
           // 读盘失败等异常必须在这里兜住：宿主对未处理拒绝是致命退出（proc.exit(1)），
           // 一次磁盘抖动不该带走整个 dsh 进程。
-          logger(`dsh-coordinator: 空闲检测失败：${error instanceof Error ? error.message : String(error)}`)
+          logger(`dsh-leader-kit: 空闲检测失败：${error instanceof Error ? error.message : String(error)}`)
         })
         .finally(() => {
           flushing = false
@@ -520,7 +520,7 @@ export function createDispatcher({
         await workers.rename(sessionId, name)
       } catch (error) {
         // 消息已经投进 worker 了，改名落盘失败不该让调用方以为投递失败。
-        logger(`dsh-coordinator: worker ${sessionId} 登记表改名失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-kit: worker ${sessionId} 登记表改名失败：${error instanceof Error ? error.message : String(error)}`)
       }
     }
     return { code: form === 'resumed' ? 'sent' : 'merged', name: displayName }
@@ -551,10 +551,10 @@ export function createDispatcher({
     // 续聊是 worker 的既定能力：缺持久化后端（日志不落盘）或查询后端（冷恢复
     // 读不了日志）时 worker 只能跑一轮，拒绝派工而不是静默降级成一次性 worker。
     if (ctx.get('sessionPersistence') === undefined) {
-      throw new Error('dsh-coordinator: 当前组合缺少会话持久化后端，worker 无法续聊，拒绝派工')
+      throw new Error('dsh-leader-kit: 当前组合缺少会话持久化后端，worker 无法续聊，拒绝派工')
     }
     if (ctx.get('sessionQuery') === undefined) {
-      throw new Error('dsh-coordinator: 当前组合缺少会话查询后端，worker 无法冷恢复续聊，拒绝派工')
+      throw new Error('dsh-leader-kit: 当前组合缺少会话查询后端，worker 无法冷恢复续聊，拒绝派工')
     }
     // 名册上限：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
     // 一条干净上下文时才值得。`force` 非空是明确的逃逸声明，理由随工具调用进
@@ -603,7 +603,7 @@ export function createDispatcher({
         task: initialMessage,
       })
     } catch (error) {
-      logger(`dsh-coordinator: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
     }
     return record
   }
@@ -667,7 +667,7 @@ export function createDispatcher({
     } catch (error) {
       // 已经落盘：投递失败留给空闲检测与补投通道，一次 IO 抖动不能让这一轮
       // 重结算一遍（那会再唤醒父会话一次，且第二条正文是新一轮的产物）。
-      logger(`dsh-coordinator: 投递 worker ${sessionId} 的完成通知失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: 投递 worker ${sessionId} 的完成通知失败：${error instanceof Error ? error.message : String(error)}`)
     }
     return true
   }
@@ -696,7 +696,7 @@ export function createDispatcher({
     // 宿主会接住并记下观察者的异常，但那条日志混在宿主日志里查不出来源；自己接住，
     // 才能把「回报没送到」记成这条链上的失败。
     return settleTurn(sessionId, event.data?.reason).catch((error) => {
-      logger(`dsh-coordinator: 结算 worker ${sessionId} 的轮次失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: 结算 worker ${sessionId} 的轮次失败：${error instanceof Error ? error.message : String(error)}`)
       return false
     })
   }

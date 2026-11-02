@@ -11,7 +11,7 @@
  * 客户端插件在浏览器进程运行，`ctx.sidebarRightTabs` 与 `ctx.slots` 都是
  * client 服务，宿主侧插件拿不到（见 docs/capability-gaps.md 第 15 条）。
  *
- * @module dsh-coordinator/client
+ * @module dsh-leader-kit/client
  */
 
 import { BoardBody } from './board.js'
@@ -30,7 +30,7 @@ import { WorkerReportView } from './worker-report-view.js'
  * 这几处必须同值（guide 入口按 provider id 分发，宿主拿它当槽位键），写两遍
  * 容易改一处漏另一处——漏了就静默退回「全局入口」，入口又对所有会话可见。
  */
-const PLUGIN_ID = 'dsh-coordinator'
+const PLUGIN_ID = 'dsh-leader-kit'
 
 export const inject = ['slots', 'sidebarRightTabs', 'sessions']
 
@@ -44,7 +44,7 @@ export function apply(ctx) {
   // apply 里直接注册会让浏览器启动静默卡住。
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: PLUGIN_ID,
-    kind: 'dsh-coordinator-board',
+    kind: 'dsh-leader-kit-board',
     title: () => '看板',
     guide: [{
       id: 'board',
@@ -52,7 +52,7 @@ export function apply(ctx) {
       title: () => '看板',
       description: () => '项目协调者与 worker 会话里的任务交付看板',
     }],
-  }), 'dsh-coordinator 看板 tab 类型')
+  }), 'dsh-leader-kit 看板 tab 类型')
 
   // 面板主体挂在 tab 类型 id 上：tab 类型 id 既是实现身份，也是它在
   // `sidebar.right.pane.tab` 座里的注册键。
@@ -68,7 +68,7 @@ export function apply(ctx) {
       getUiWorkspace: () => ctx.get('uiWorkspace'),
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
     }),
-  }, BoardBody)), 'dsh-coordinator 看板面板')
+  }, BoardBody)), 'dsh-leader-kit 看板面板')
 
   // 右栏 guide 页的「看板」入口由本插件自己渲染。宿主的入口来自 tab 类型的
   // 静态注册，注册表没有按会话过滤的扩展点（docs/capability-gaps.md 第 15 条），
@@ -80,7 +80,7 @@ export function apply(ctx) {
     inject: () => ({
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
     }),
-  }, BoardGuideEntry)), 'dsh-coordinator 看板入口')
+  }, BoardGuideEntry)), 'dsh-leader-kit 看板入口')
 
   // 项目区块挂左栏底部（`sidebar.footer.action`）：左栏正文区只有
   // `sidebar.workspaces` 一个槽（已被宿主的工作区浏览占用），slot 机制没有装饰
@@ -95,7 +95,7 @@ export function apply(ctx) {
   ctx.inject(['workspaces'], () => { workspacesReady.mark() })
   ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
-    id: 'dsh-coordinator-projects',
+    id: 'dsh-leader-kit-projects',
     order: 10,
     label: '项目',
     inject: () => ({
@@ -106,7 +106,7 @@ export function apply(ctx) {
       getWorkspaces: () => ctx.get('workspaces'),
       onWorkspacesReady: (listener) => workspacesReady.subscribe(listener),
     }),
-  }, ProjectPanel)), 'dsh-coordinator 左栏项目区块')
+  }, ProjectPanel)), 'dsh-leader-kit 左栏项目区块')
 
   // 协调者视图目标：让协调者会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调
@@ -124,7 +124,7 @@ export function apply(ctx) {
     void mountProjectRemote(remoteCtx).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
       reportProjectRemoteError(message)
-      remoteCtx.logger?.warn?.(`dsh-coordinator: 项目通道挂载失败：${message}`)
+      remoteCtx.logger?.warn?.(`dsh-leader-kit: 项目通道挂载失败：${message}`)
     })
     // 协调者会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
     watchCoordinatorSessions(remoteCtx)
@@ -145,7 +145,7 @@ export function apply(ctx) {
 function mountBoardMonitor(ctx) {
   const sidebarRight = ctx.get('sidebarRight')
   if (sidebarRight === undefined || sidebarRight === null) {
-    ctx.logger?.warn?.('dsh-coordinator: 当前宿主没有右栏服务，建卡后不自动打开看板')
+    ctx.logger?.warn?.('dsh-leader-kit: 当前宿主没有右栏服务，建卡后不自动打开看板')
     return
   }
   const stop = mountProjectBoardMonitor({
@@ -153,7 +153,7 @@ function mountBoardMonitor(ctx) {
     callRemote: (method, args) => callProjectRemote(ctx, method, args),
     logger: (message) => { ctx.logger?.warn?.(message) },
   })
-  ctx.effect(() => stop, 'dsh-coordinator 看板监视器')
+  ctx.effect(() => stop, 'dsh-leader-kit 看板监视器')
 }
 
 /**
@@ -170,7 +170,7 @@ function mountWorkerReport(ctx) {
     ctx.uiConversation.events.register(workerReportDefinition)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    ctx.logger?.error?.(`dsh-coordinator: worker 回报节点注册失败：${message}`)
+    ctx.logger?.error?.(`dsh-leader-kit: worker 回报节点注册失败：${message}`)
     return
   }
   ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
@@ -181,5 +181,5 @@ function mountWorkerReport(ctx) {
     inject: () => ({
       openSession: (sessionId) => ctx.get('uiWorkspace')?.openSession(sessionId),
     }),
-  }, WorkerReportView)), 'dsh-coordinator worker 回报渲染器')
+  }, WorkerReportView)), 'dsh-leader-kit worker 回报渲染器')
 }

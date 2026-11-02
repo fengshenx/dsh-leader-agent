@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  COORDINATOR_PACKAGE, WEB_APP_BUNDLE, assertSeparateHome, assertWebBundle, deriveProfilePackage,
+  LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertSeparateHome, assertWebBundle, deriveProfilePackage,
   planNodeModules, resolveDevPaths,
 } from '../scripts/dev-plan.mjs'
 
@@ -19,11 +19,11 @@ function sourcePackage() {
     dependencies: {
       '@deepseek-ai/dsh-experimental-agent-team-profile': '0.2.1-rc.2',
       'dsh-remind': 'link:/home/user/code/dsh-remind',
-      'dsh-coordinator': 'link:/home/user/code/dsh-coordinator',
+      'dsh-leader-kit': 'link:/home/user/code/dsh-leader-kit',
     },
     dsh: {
       profile: {
-        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind', 'dsh-coordinator'],
+        bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind', 'dsh-leader-kit'],
       },
     },
   }
@@ -50,7 +50,7 @@ test('DSH_HOME 与 DSH_HOME_SOURCE 都能覆盖', () => {
 
 test('派生 package.json 把插件依赖换成工作树链接，其余依赖照抄', () => {
   const derived = deriveProfilePackage(sourcePackage(), WORKTREE)
-  assert.equal(derived.dependencies[COORDINATOR_PACKAGE], `link:${WORKTREE}`)
+  assert.equal(derived.dependencies[LEADER_KIT_PACKAGE], `link:${WORKTREE}`)
   assert.equal(derived.dependencies['dsh-remind'], 'link:/home/user/code/dsh-remind')
   assert.equal(derived.dependencies['@deepseek-ai/dsh-experimental-agent-team-profile'], '0.2.1-rc.2')
 })
@@ -58,9 +58,9 @@ test('派生 package.json 把插件依赖换成工作树链接，其余依赖照
 test('派生 package.json 不改入参', () => {
   const source = sourcePackage()
   deriveProfilePackage(source, WORKTREE)
-  assert.equal(source.dependencies[COORDINATOR_PACKAGE], 'link:/home/user/code/dsh-coordinator')
+  assert.equal(source.dependencies[LEADER_KIT_PACKAGE], 'link:/home/user/code/dsh-leader-kit')
   assert.deepEqual(source.dsh.profile.bundles, [
-    '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind', 'dsh-coordinator',
+    '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind', 'dsh-leader-kit',
   ])
 })
 
@@ -70,25 +70,25 @@ test('源 profile 没装本插件时，bundle 列表补上它', () => {
   source.dsh.profile.bundles = ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind']
   const derived = deriveProfilePackage(source, WORKTREE)
   assert.deepEqual(derived.dsh.profile.bundles, [
-    '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind', COORDINATOR_PACKAGE,
+    '@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-remind', LEADER_KIT_PACKAGE,
   ])
-  assert.equal(derived.dependencies[COORDINATOR_PACKAGE], `link:${WORKTREE}`)
+  assert.equal(derived.dependencies[LEADER_KIT_PACKAGE], `link:${WORKTREE}`)
 })
 
 test('bundle 列表已有本插件时不重复追加', () => {
   const derived = deriveProfilePackage(sourcePackage(), WORKTREE)
-  assert.equal(derived.dsh.profile.bundles.filter((name) => name === COORDINATOR_PACKAGE).length, 1)
+  assert.equal(derived.dsh.profile.bundles.filter((name) => name === LEADER_KIT_PACKAGE).length, 1)
 })
 
 test('源 package.json 缺 dsh 段时也能派生', () => {
   const derived = deriveProfilePackage({ dependencies: {} }, WORKTREE)
-  assert.deepEqual(derived.dsh.profile.bundles, [COORDINATOR_PACKAGE])
-  assert.equal(derived.dependencies[COORDINATOR_PACKAGE], `link:${WORKTREE}`)
+  assert.deepEqual(derived.dsh.profile.bundles, [LEADER_KIT_PACKAGE])
+  assert.equal(derived.dependencies[LEADER_KIT_PACKAGE], `link:${WORKTREE}`)
 })
 
 test('node_modules 逐条链到源，只有插件本体指工作树', () => {
   const plan = planNodeModules({
-    sourceEntries: ['@deepseek-ai', 'dsh-coordinator', 'dsh-remind', '.pnpm'],
+    sourceEntries: ['@deepseek-ai', 'dsh-leader-kit', 'dsh-remind', '.pnpm'],
     existingEntries: [],
     sourceNodeModules: '/home/user/.dsh/profiles/web/node_modules',
     worktree: WORKTREE,
@@ -96,14 +96,14 @@ test('node_modules 逐条链到源，只有插件本体指工作树', () => {
   const byName = Object.fromEntries(plan.links.map((item) => [item.name, item.target]))
   assert.equal(byName['@deepseek-ai'], '/home/user/.dsh/profiles/web/node_modules/@deepseek-ai')
   assert.equal(byName['.pnpm'], '/home/user/.dsh/profiles/web/node_modules/.pnpm')
-  assert.equal(byName[COORDINATOR_PACKAGE], WORKTREE)
+  assert.equal(byName[LEADER_KIT_PACKAGE], WORKTREE)
   assert.deepEqual(plan.removals, [])
 })
 
 test('目标里多出来的条目要清掉，但插件本体不动', () => {
   const plan = planNodeModules({
     sourceEntries: ['@deepseek-ai'],
-    existingEntries: ['@deepseek-ai', 'dsh-coordinator', 'stale-plugin'],
+    existingEntries: ['@deepseek-ai', 'dsh-leader-kit', 'stale-plugin'],
     sourceNodeModules: '/src/node_modules',
     worktree: WORKTREE,
   })
@@ -169,7 +169,7 @@ test('两边都不存在时按字面量比较，不会误判', () => {
 test('源 profile 带 web app bundle 时放行', () => {
   assert.doesNotThrow(() => assertWebBundle({
     profileDir: '/home/user/.dsh/profiles/web',
-    bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, COORDINATOR_PACKAGE],
+    bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE],
   }))
 })
 

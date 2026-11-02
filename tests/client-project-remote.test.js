@@ -14,7 +14,7 @@ import {
 
 test('客户端贡献覆盖契约里的每个方法，wire 字段名与形参名一致', () => {
   const descriptors = PROJECT_REMOTE_CONTRIBUTION.descriptors
-  assert.equal(PROJECT_REMOTE_CONTRIBUTION.package, 'dsh-coordinator')
+  assert.equal(PROJECT_REMOTE_CONTRIBUTION.package, 'dsh-leader-kit')
   assert.deepEqual(
     descriptors.map((descriptor) => descriptor.method),
     Object.keys(PROJECT_REMOTE_METHODS),

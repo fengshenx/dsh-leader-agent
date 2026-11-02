@@ -4,7 +4,7 @@
  * 与 `npm run dev` 无关的部分不放在这里：这些函数只回答「任务名合法吗、目录在
  * 哪、分支叫什么」，供 `worktree-spawn.mjs` 与测试共用。
  *
- * @module dsh-coordinator/scripts/worktree-common
+ * @module dsh-leader-kit/scripts/worktree-common
  */
 
 import { join } from 'node:path'

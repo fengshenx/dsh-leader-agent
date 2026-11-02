@@ -16,7 +16,7 @@
  * 结算——它在 `turn/end` 那一刻折叠这一轮的 `assistant/message`，不要求 worker 主动
  * 交付，也不占工具面。
  *
- * @module dsh-coordinator/host/worker-sessions
+ * @module dsh-leader-kit/host/worker-sessions
  */
 
 import { randomUUID } from 'node:crypto'
@@ -52,13 +52,13 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   function renameTitle(handle, name) {
     const sessionTitle = ctx.get('sessionTitle')
     if (sessionTitle === undefined) {
-      logger('dsh-coordinator: 当前组合缺 sessionTitle 服务，worker 会话标题保持宿主默认')
+      logger('dsh-leader-kit: 当前组合缺 sessionTitle 服务，worker 会话标题保持宿主默认')
       return
     }
     try {
       sessionTitle.rename(handle.agent.session, name)
     } catch (error) {
-      logger(`dsh-coordinator: worker 会话标题改名被拒：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: worker 会话标题改名被拒：${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
@@ -73,7 +73,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   function taskMessage(text, name, parentSessionId) {
     return createUserMessage(
       [{ type: 'text', text }],
-      { kind: 'dsh-coordinator/worker-task', name, parentSessionId },
+      { kind: 'dsh-leader-kit/worker-task', name, parentSessionId },
     )
   }
 
@@ -113,7 +113,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     try {
       await handle.dispose()
     } catch (error) {
-      logger(`dsh-coordinator: worker ${sessionId} 销毁失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-kit: worker ${sessionId} 销毁失败：${error instanceof Error ? error.message : String(error)}`)
       return false
     }
     return true
@@ -183,7 +183,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     async spawn({ cwd, name, initialMessage, parentSessionId, signal }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
-        throw new Error('dsh-coordinator: 当前组合未启用 agents 服务，无法创建 worker 会话')
+        throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
       }
       const sessionId = `worker-${randomUUID()}`
       // 先解析 preset 再登记：解析失败就不该建会话——一个没有 bash / read 的
@@ -239,7 +239,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       if (handle === undefined) {
         const agents = ctx.get('agents')
         if (agents === undefined) {
-          throw new Error('dsh-coordinator: 当前组合未启用 agents 服务，无法唤醒 worker 会话')
+          throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法唤醒 worker 会话')
         }
         // 冷恢复建的是新的作用域，preset 组合不会自己回来；按会话投影里记的
         // preset 重新挂（宿主 resume 路径同样走 composeAgent）。

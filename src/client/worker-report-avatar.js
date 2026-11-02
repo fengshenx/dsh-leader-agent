@@ -17,7 +17,7 @@
  * seed 取 worker 的身份名（派工 label）：label 由任务描述派生、随任务变，拿它做
  * seed 同一 worker 会跨任务换脸。
  *
- * @module dsh-coordinator/client/worker-report-avatar
+ * @module dsh-leader-kit/client/worker-report-avatar
  */
 
 import { minidenticon } from 'minidenticons'

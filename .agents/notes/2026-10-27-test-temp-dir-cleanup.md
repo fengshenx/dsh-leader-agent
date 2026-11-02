@@ -5,7 +5,7 @@
 
 ## 背景
 
-macOS 的系统 temp 里堆了 **4107 个** `dsh-coordinator-*` 目录（本仓前缀，最早的建于 10 月 26 日）。逐个查下来，来源是三个测试文件：`projects-store.test.js`、`projects-service.test.js`、`project-session-index.test.js`——它们用 `mkdtemp` 造临时目录，但一个 `rm` 都没有。目录数与用例数成正比，跑一次测试涨一批，跑了多少遍就堆多少个。
+macOS 的系统 temp 里堆了 **4107 个** `dsh-leader-kit-*` 目录（本仓前缀，最早的建于 10 月 26 日）。逐个查下来，来源是三个测试文件：`projects-store.test.js`、`projects-service.test.js`、`project-session-index.test.js`——它们用 `mkdtemp` 造临时目录，但一个 `rm` 都没有。目录数与用例数成正比，跑一次测试涨一批，跑了多少遍就堆多少个。
 
 其余测试文件各自在用例末尾 `await rm(...)`，是逐个用例手动清理。这条路可行，但漏一次就漏一次，且没人会回去数 temp 里剩了多少。
 
@@ -24,6 +24,6 @@ macOS 的系统 temp 里堆了 **4107 个** `dsh-coordinator-*` 目录（本仓�
 
 ## 证据
 
-清理前：系统 temp 里 7092 个 `dsh-coordinator-*` 目录（前缀分布 `projects-` 3651、`work-` 2520、`dir-` 456、`index-` 456，其余为其他测试文件的历史残留）。
+清理前：系统 temp 里 7092 个 `dsh-leader-kit-*` 目录（前缀分布 `projects-` 3651、`work-` 2520、`dir-` 456、`index-` 456，其余为其他测试文件的历史残留）。
 
 修复后跑全量 209 例（`npm run check`），temp 目录数**净增 0**；从零残留状态再跑一遍，仍是 0。

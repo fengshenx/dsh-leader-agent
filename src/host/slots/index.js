@@ -16,13 +16,13 @@
  * （`packages/core/system-prompt/src/index.ts:591`）。声明 `required` 则让它在
  * 可选运行时被关掉的情况下仍然保留。
  *
- * @module dsh-coordinator/host/slots
+ * @module dsh-leader-kit/host/slots
  */
 
 import { renderRoleContext } from './role-context.js'
 
 /** 注入项的上下文名。 */
-export const ROLE_CONTEXT_NAME = 'dsh-coordinator:role-slot'
+export const ROLE_CONTEXT_NAME = 'dsh-leader-kit:role-slot'
 
 /**
  * 注入项在运行时上下文里的位置。紧跟工作目录（100）之后：两者同属「我是谁、
@@ -64,9 +64,9 @@ export function applyRoleContext({ ctx, slotIndex, resolveDirectory, logger = ()
         })
       } catch (error) {
         // 求值失败会让整个 turn 崩掉。槽位是增量信息，取不到就当没有这个槽位。
-        logger(`dsh-coordinator: 渲染角色槽位失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-kit: 渲染角色槽位失败：${error instanceof Error ? error.message : String(error)}`)
         return ''
       }
     },
-  }), 'dsh-coordinator 角色槽位注入')
+  }), 'dsh-leader-kit 角色槽位注入')
 }

@@ -4,7 +4,7 @@
  * 浮层只读，展示什么由卡片决定：说明与链接。哪几段该出现是纯判定，拆出来是为了
  * 能直接断言「没有说明就不出现说明段」，而不是靠肉眼数 DOM。
  *
- * @module dsh-coordinator/client/card-detail-view
+ * @module dsh-leader-kit/client/card-detail-view
  */
 
 /** 卡片没写说明时的占位文案。 */

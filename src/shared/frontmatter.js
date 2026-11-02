@@ -4,7 +4,7 @@
  * 只支持 skill 需要的标量字段（name / description / whenToUse），
  * 不引入 YAML 依赖——bundle 保持零运行时依赖，宿主只需解析 Node 内置模块。
  *
- * @module dsh-coordinator/shared/frontmatter
+ * @module dsh-leader-kit/shared/frontmatter
  */
 
 /**

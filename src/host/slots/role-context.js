@@ -15,7 +15,7 @@
  * 注入是**加法**：槽位只贡献一段角色说明，不注册工具、不改工具可见性——dsh
  * 没有角色权限模型，槽位也不应该被当成权限授予。
  *
- * @module dsh-coordinator/host/slots/role-context
+ * @module dsh-leader-kit/host/slots/role-context
  */
 
 import { loadSlotTemplates } from './slot-templates.js'

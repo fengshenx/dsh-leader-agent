@@ -8,7 +8,7 @@
  * 客户端侧要求每个入参带严格 codec（`$mount` 会拒收没有严格 codec 的描述符），
  * 这里的 codec 只做本地类型检查，不改变宿主侧的解析行为。
  *
- * @module dsh-coordinator/client/project-remote
+ * @module dsh-leader-kit/client/project-remote
  */
 
 import {
@@ -47,7 +47,7 @@ function buildDescriptor(method) {
     codec: stringCodec(),
   }))
   return {
-    id: `dsh-coordinator:${PROJECT_REMOTE_NAMESPACE}/${method}`,
+    id: `dsh-leader-kit:${PROJECT_REMOTE_NAMESPACE}/${method}`,
     service: PROJECT_REMOTE_SERVICE_KEY,
     namespace: PROJECT_REMOTE_NAMESPACE,
     method,
@@ -59,7 +59,7 @@ function buildDescriptor(method) {
 
 /** 客户端贡献：宿主与浏览器共用的那批方法。 */
 export const PROJECT_REMOTE_CONTRIBUTION = Object.freeze({
-  package: 'dsh-coordinator',
+  package: 'dsh-leader-kit',
   descriptors: Object.freeze(
     Object.keys(PROJECT_REMOTE_METHODS).map((method) => Object.freeze(buildDescriptor(method))),
   ),

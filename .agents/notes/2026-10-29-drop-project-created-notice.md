@@ -5,7 +5,7 @@
 
 ## 背景
 
-用户反馈：新建项目后，左栏「项目」区块底部会多出一行「已建项目「dsh-coordinator」。」。这行字挤在项目行与「Workspaces」之间，看起来像一条残留或错误提示，实际是建项成功后的回执（`setNotice` 写进区块尾部的 `.dsh-coordinator-project-notice`）。
+用户反馈：新建项目后，左栏「项目」区块底部会多出一行「已建项目「dsh-leader-kit」。」。这行字挤在项目行与「Workspaces」之间，看起来像一条残留或错误提示，实际是建项成功后的回执（`setNotice` 写进区块尾部的 `.dsh-leader-kit-project-notice`）。
 
 ## 决策
 
@@ -31,7 +31,7 @@
 
 真机读数走隔离实例（`DSH_HOME=/tmp/...`，不碰用户 `.dev/home` 的数据），无头浏览器里只把「目录选择器返回哪个目录」换成固定路径（宿主原生目录面板无法在无头环境里作答），建项、刷新、渲染、提示全部走真实代码：
 
-- 修复前构建：点「加项目」后 `.dsh-coordinator-project-notice` 文本为 `已建项目「probe-dir」。`，项目行同时出现。
+- 修复前构建：点「加项目」后 `.dsh-leader-kit-project-notice` 文本为 `已建项目「probe-dir」。`，项目行同时出现。
 - 修复后构建：同一流程后没有该提示元素，项目行从 1 行变 2 行（`probe-dir`、`probe-dir-2`）。
 - `lib/client.js` 里 `已建项目` 出现次数：修复前 2，修复后 0；`npm run check` 433 个用例全绿。
 

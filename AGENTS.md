@@ -1,6 +1,6 @@
 # AGENTS.md
 
-dsh-coordinator —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协调者/worker 编排、项目树、交付看板。宿主是独立仓库，本仓只消费它的公开插件契约。本文件只列每个任务都适用的规则；细节按[按任务查阅](#按任务查阅)进归属文档。
+dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协调者/worker 编排、项目树、交付看板。宿主是独立仓库，本仓只消费它的公开插件契约。本文件只列每个任务都适用的规则；细节按[按任务查阅](#按任务查阅)进归属文档。
 
 **核心铁律：**
 
@@ -25,7 +25,7 @@ dsh-coordinator —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协
 | 项目级提示词（`COORDINATOR.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/coordinator-context.js`、`src/host/slots/` |
 | 真机 / GUI 取证 | [docs/e2e-testing.md](docs/e2e-testing.md) |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
-| 协议层文案（`skills/`） | 现有 `skills/coordinator-mode/` 的行文与结构，保持同一口吻 |
+| 协议层文案（`skills/`） | 现有 `skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
 ## 目录与职责
 
@@ -34,7 +34,7 @@ index.js            包入口：导出 name / inject / apply（实现都在 src/
 src/host/           宿主侧：工具、派工器、存储、项目服务、worker 会话生命周期
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
-skills/             coordinator-mode 协议层（SKILL.md + playbooks + references）
+skills/             leader-mode 协议层（SKILL.md + playbooks + references）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 build/client.mjs    esbuild 客户端构建（closure-factory 封装）
 scripts/            开发实例（dev.mjs）与 worktree 工具（worktree-spawn.mjs）

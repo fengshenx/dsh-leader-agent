@@ -14,7 +14,7 @@ whenToUse: 需要把工程约定固化到项目上下文，而不是每次会话
 2. 读本 skill 的 `references/conventions.md`，得到约定正文。
 3. 读目标项目的 `AGENTS.md`（不存在就视为空）。
 4. 把约定正文并入受管区块，保留文件里的其它内容：
-   - 区块以 `<!-- dsh-coordinator:conventions:start -->` 开头、`<!-- dsh-coordinator:conventions:end -->` 结尾。
+   - 区块以 `<!-- dsh-leader-kit:conventions:start -->` 开头、`<!-- dsh-leader-kit:conventions:end -->` 结尾。
    - 已有同区块就整体替换该区块；没有就追加到文件末尾；空文件直接写入区块。
 5. 用宿主的文件编辑能力写回 `AGENTS.md`，向用户报告写入位置与要点。
 

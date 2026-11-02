@@ -6,7 +6,7 @@ import { createWorkerRegistry } from '../src/host/worker-registry.js'
 after(cleanupTempDirs)
 
 test('登记后能按子会话 id 取回', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
+  const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })
   await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工', task: '做事' })
   const record = await registry.get('child-1')
@@ -16,19 +16,19 @@ test('登记后能按子会话 id 取回', async () => {
 })
 
 test('同 id 重复登记是更新不是追加', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
+  const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })
   await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '旧' })
   await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '新' })
   const record = await registry.get('child-1')
   assert.equal(record.name, '新')
   const { readFile } = await import('node:fs/promises')
-  const stored = JSON.parse(await readFile(`${home}/dsh-coordinator/workers.json`, 'utf8'))
+  const stored = JSON.parse(await readFile(`${home}/dsh-leader-kit/workers.json`, 'utf8'))
   assert.equal(stored.workers.length, 1)
 })
 
 test('超出上限时淘汰最早的记录，文件不无界增长', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
+  const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home, maxWorkers: 2 })
   await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '一' })
   await registry.register({ childId: 'child-2', parentSessionId: 'parent-1', name: '二' })
@@ -37,19 +37,19 @@ test('超出上限时淘汰最早的记录，文件不无界增长', async () =>
   assert.equal((await registry.get('child-2')).name, '二')
   assert.equal((await registry.get('child-3')).name, '三')
   const { readFile } = await import('node:fs/promises')
-  const stored = JSON.parse(await readFile(`${home}/dsh-coordinator/workers.json`, 'utf8'))
+  const stored = JSON.parse(await readFile(`${home}/dsh-leader-kit/workers.json`, 'utf8'))
   assert.deepEqual(stored.workers.map((item) => item.childId), ['child-2', 'child-3'])
 })
 
 test('跨实例读同一份落盘（进程重启后续聊找得到工）', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
+  const home = await makeTempDir('dsh-leader-kit-registry-')
   await createWorkerRegistry({ home }).register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
   const reloaded = await createWorkerRegistry({ home }).get('child-1')
   assert.equal(reloaded.name, '工')
 })
 
 test('改显示名落盘，跨实例读得到新名', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
+  const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })
   await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: 'research-sources' })
   const renamed = await registry.rename('child-1', 'write-summary')
@@ -62,7 +62,7 @@ test('改显示名落盘，跨实例读得到新名', async () => {
 })
 
 test('删掉记录后取不到，且改动落盘', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
+  const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })
   await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
   assert.equal(await registry.remove('child-1'), true)
@@ -74,8 +74,8 @@ test('删掉记录后取不到，且改动落盘', async () => {
 })
 
 test('登记表损坏时重建空表并保留备份', async () => {
-  const home = await makeTempDir('dsh-coordinator-registry-')
-  const directory = `${home}/dsh-coordinator`
+  const home = await makeTempDir('dsh-leader-kit-registry-')
+  const directory = `${home}/dsh-leader-kit`
   const { mkdir, writeFile } = await import('node:fs/promises')
   await mkdir(directory, { recursive: true })
   await writeFile(`${directory}/workers.json`, '{oops', 'utf8')

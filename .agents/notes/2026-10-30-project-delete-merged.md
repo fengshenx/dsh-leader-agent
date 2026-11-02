@@ -34,5 +34,5 @@
 - **真机取证（接口层）**：隔离 `DSH_HOME`（本工作树 `.dev/home`，`DEV_PORT=3291`）起 web 实例，用 launch token 换 cookie 后直接打 `/api/projects/*`：
   - 删建在已有用户工作区上的项目 → `{"removed":true,"workspaceRemoved":false,"skipped":true}`，用户工作区保留；修复前同一支返回带 `reason:"该项目没有由插件注册的工作区。"`，被客户端渲染成「工作区未移除」。
   - 对同一 id 再删一次 → `{"removed":false,"workspaceRemoved":false,"notFound":true,"reason":"项目不存在。"}`。
-  - 删插件注册了工作区的项目 → `{"removed":true,"workspaceRemoved":true}`；`storages/workspace.json` 里该工作区记录与全局 `workspaceIds` 都消失，`dsh-coordinator/projects.json` 清空，项目目录保留。
+  - 删插件注册了工作区的项目 → `{"removed":true,"workspaceRemoved":true}`；`storages/workspace.json` 里该工作区记录与全局 `workspaceIds` 都消失，`dsh-leader-kit/projects.json` 清空，项目目录保留。
 - **未取证**：菜单三项的画面、两支确认弹窗与提示条的实际显示——本轮修复改的是返回值形状与文案分支，渲染层未动；仍需一次绑定工作区的浏览器会话补证。

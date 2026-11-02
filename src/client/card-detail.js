@@ -9,7 +9,7 @@
  * `headless` 模式自带头部——标题就是卡片标题本身，「卡片详情」这种无信息标题
  * 不放。
  *
- * @module dsh-coordinator/client/card-detail
+ * @module dsh-leader-kit/client/card-detail
  */
 
 import { createElement, useEffect } from 'react'
@@ -45,16 +45,16 @@ export function CardDetail({ card, onClose, restoreFocus = null }) {
     restoreFocus,
     children: createElement(
       'div',
-      { className: 'dsh-coordinator-card-detail' },
+      { className: 'dsh-leader-kit-card-detail' },
       createElement(
         'div',
-        { className: 'dsh-coordinator-card-detail-header' },
-        createElement('h2', { className: 'dsh-coordinator-card-detail-title' }, card?.title ?? ''),
+        { className: 'dsh-leader-kit-card-detail-header' },
+        createElement('h2', { className: 'dsh-leader-kit-card-detail-title' }, card?.title ?? ''),
         createElement(
           'button',
           {
             type: 'button',
-            className: 'dsh-coordinator-card-detail-close',
+            className: 'dsh-leader-kit-card-detail-close',
             'aria-label': '关闭',
             onClick: onClose,
           },
@@ -63,53 +63,53 @@ export function CardDetail({ card, onClose, restoreFocus = null }) {
       ),
       createElement(
         'div',
-        { className: 'dsh-coordinator-card-detail-meta' },
+        { className: 'dsh-leader-kit-card-detail-meta' },
         createElement(
           'span',
-          { className: 'dsh-coordinator-card-detail-number' },
+          { className: 'dsh-leader-kit-card-detail-number' },
           `#${card?.number ?? '?'}`,
         ),
         createElement(
           'span',
           {
-            className: `dsh-coordinator-card-detail-status${done ? ' dsh-coordinator-card-detail-status-done' : ''}`,
+            className: `dsh-leader-kit-card-detail-status${done ? ' dsh-leader-kit-card-detail-status-done' : ''}`,
           },
           statusLabel(card?.status),
         ),
       ),
       createElement(
         'div',
-        { className: 'dsh-coordinator-card-detail-body' },
+        { className: 'dsh-leader-kit-card-detail-body' },
         sections.spec !== null
           ? createElement(
               'section',
-              { className: 'dsh-coordinator-card-detail-section' },
-              createElement('div', { className: 'dsh-coordinator-card-detail-section-title' }, '说明'),
-              createElement('div', { className: 'dsh-coordinator-card-detail-text' }, sections.spec),
+              { className: 'dsh-leader-kit-card-detail-section' },
+              createElement('div', { className: 'dsh-leader-kit-card-detail-section-title' }, '说明'),
+              createElement('div', { className: 'dsh-leader-kit-card-detail-text' }, sections.spec),
             )
-          : createElement('div', { className: 'dsh-coordinator-card-detail-muted' }, DETAIL_SPEC_EMPTY),
+          : createElement('div', { className: 'dsh-leader-kit-card-detail-muted' }, DETAIL_SPEC_EMPTY),
         sections.links.length > 0
           ? createElement(
               'section',
-              { className: 'dsh-coordinator-card-detail-section' },
-              createElement('div', { className: 'dsh-coordinator-card-detail-section-title' }, '链接'),
+              { className: 'dsh-leader-kit-card-detail-section' },
+              createElement('div', { className: 'dsh-leader-kit-card-detail-section-title' }, '链接'),
               createElement(
                 'div',
-                { className: 'dsh-coordinator-card-detail-links' },
+                { className: 'dsh-leader-kit-card-detail-links' },
                 sections.links.map((link, index) => {
                   const row = createElement(
                     'span',
-                    { className: 'dsh-coordinator-board-link-chip-body' },
+                    { className: 'dsh-leader-kit-board-link-chip-body' },
                     productIcon('link-outline', { size: 12 }),
                     createElement(
                       'span',
-                      { className: 'dsh-coordinator-board-link-chip-label' },
+                      { className: 'dsh-leader-kit-board-link-chip-label' },
                       link.label ?? '',
                     ),
                     link.purpose
                       ? createElement(
                           'span',
-                          { className: 'dsh-coordinator-card-detail-link-purpose' },
+                          { className: 'dsh-leader-kit-card-detail-link-purpose' },
                           link.purpose,
                         )
                       : null,
@@ -119,7 +119,7 @@ export function CardDetail({ card, onClose, restoreFocus = null }) {
                         'a',
                         {
                           key: linkRowKey(link, index),
-                          className: 'dsh-coordinator-card-detail-link',
+                          className: 'dsh-leader-kit-card-detail-link',
                           href: link.url,
                           target: '_blank',
                           rel: 'noreferrer',
@@ -128,7 +128,7 @@ export function CardDetail({ card, onClose, restoreFocus = null }) {
                       )
                     : createElement(
                         'div',
-                        { key: linkRowKey(link, index), className: 'dsh-coordinator-card-detail-link' },
+                        { key: linkRowKey(link, index), className: 'dsh-leader-kit-card-detail-link' },
                         row,
                       )
                 }),

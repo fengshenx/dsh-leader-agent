@@ -12,24 +12,24 @@
  * （见 docs/subsystems/web-client.zh.md:93），既没有 Tailwind 也没有宿主 CSS
  * module 可用，只能自注入样式表（沿用 `modal-shell.js` 的做法）。
  *
- * @module dsh-coordinator/client/board-styles
+ * @module dsh-leader-kit/client/board-styles
  */
 
 /** 样式表 id，同一页面只注入一次。 */
-const STYLE_ID = 'dsh-coordinator-board'
+const STYLE_ID = 'dsh-leader-kit-board'
 
 /**
- * 样式表内容。类名统一 `dsh-coordinator-board-*` 前缀，避免与宿主样式撞名。
+ * 样式表内容。类名统一 `dsh-leader-kit-board-*` 前缀，避免与宿主样式撞名。
  */
 const STYLE_TEXT = `
-.dsh-coordinator-board {
+.dsh-leader-kit-board {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.dsh-coordinator-board-list {
+.dsh-leader-kit-board-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -38,7 +38,7 @@ const STYLE_TEXT = `
      l2，本层再绑一次只是同值重复；写 body 的基础档反而会在浮起面上读成脏印 */
 }
 
-.dsh-coordinator-board-group {
+.dsh-leader-kit-board-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -49,7 +49,7 @@ const STYLE_TEXT = `
    重绑 stroke 色而不叠 border——中性 border 配 elevation 阴影被宿主
    ui-theme 的 elevation spec 拒绝。静态取 l3 而不是成员卡的 l2：看板卡在
    浅色 sidebar 上独自立着，没有弹出面板的暗底衬着，l2 在 1x 屏读不出边界。 */
-.dsh-coordinator-board-card {
+.dsh-leader-kit-board-card {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -69,27 +69,27 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-board-card:hover {
+  .dsh-leader-kit-board-card:hover {
     --dsw-elevation-stroke-color: var(--dsw-alias-border-l4);
     box-shadow: var(--dsw-elevation-panel);
   }
 }
 
 /* 卡面在贴边滚动容器里，外扩焦点环会被裁掉，用内嵌环 */
-.dsh-coordinator-board-card:focus-visible {
+.dsh-leader-kit-board-card:focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
-.dsh-coordinator-board-card-title-row {
+.dsh-leader-kit-board-card-title-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
 /* 信号灯槽：固定 14px，让各卡的标题左缘对齐 */
-.dsh-coordinator-board-signal-slot {
+.dsh-leader-kit-board-signal-slot {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -101,7 +101,7 @@ const STYLE_TEXT = `
 /* 图形点的弱化沿用 alpha：这里没有「比 tertiary 更浅」的 token 档，而点要的是
    面积上的退让而不是色相的语义。文字类弱化一律换档不叠 alpha（编号/时间用
    label-caption、折叠开关用 label-secondary），两条界线互不越界 */
-.dsh-coordinator-board-signal {
+.dsh-leader-kit-board-signal {
   display: inline-block;
   box-sizing: border-box;
   width: 8px;
@@ -113,52 +113,52 @@ const STYLE_TEXT = `
 }
 
 /* 等你输入与未读同色不同动效：都在等你动作，但「有人在等」与「有结果没看」不同 */
-.dsh-coordinator-board-signal-waiting {
+.dsh-leader-kit-board-signal-waiting {
   background: var(--dsw-static-blue-500);
   opacity: 1;
-  animation: dsh-coordinator-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-coordinator-board-signal-unread {
+.dsh-leader-kit-board-signal-unread {
   background: var(--dsw-static-blue-500);
   opacity: 1;
 }
 
-.dsh-coordinator-board-signal-running {
+.dsh-leader-kit-board-signal-running {
   background: var(--dsw-alias-state-warn-primary);
   opacity: 1;
-  animation: dsh-coordinator-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-coordinator-board-signal-attention {
+.dsh-leader-kit-board-signal-attention {
   background: var(--dsw-alias-state-error-primary);
   opacity: 1;
 }
 
-.dsh-coordinator-board-signal-idle {
+.dsh-leader-kit-board-signal-idle {
   background: var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
 /* 未派工与状态未知共用虚线圈：两者都不谎称空闲，形状上与实心档区分 */
-.dsh-coordinator-board-signal-unknown,
-.dsh-coordinator-board-signal-none {
+.dsh-leader-kit-board-signal-unknown,
+.dsh-leader-kit-board-signal-none {
   background: transparent;
   border: 1px dashed var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
-@keyframes dsh-coordinator-board-pulse {
+@keyframes dsh-leader-kit-board-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-coordinator-board-signal-running,
-  .dsh-coordinator-board-signal-waiting { animation: none; }
+  .dsh-leader-kit-board-signal-running,
+  .dsh-leader-kit-board-signal-waiting { animation: none; }
 }
 
-.dsh-coordinator-board-card-number {
+.dsh-leader-kit-board-card-number {
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -167,7 +167,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-caption);
 }
 
-.dsh-coordinator-board-card-title {
+.dsh-leader-kit-board-card-title {
   flex: 1;
   min-width: 0;
   font-size: 13px;
@@ -181,7 +181,7 @@ const STYLE_TEXT = `
   overflow-wrap: anywhere;
 }
 
-.dsh-coordinator-board-card-stalled {
+.dsh-leader-kit-board-card-stalled {
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -192,7 +192,7 @@ const STYLE_TEXT = `
 }
 
 /* 链接行与元信息行缩进 22px，对齐标题文字起点 */
-.dsh-coordinator-board-card-links {
+.dsh-leader-kit-board-card-links {
   position: relative;
   display: flex;
   align-items: center;
@@ -206,7 +206,7 @@ const STYLE_TEXT = `
 /* 测量层：全量 chip 与「+N」的不可见副本（visibility: hidden 仍参与布局），
    只用来量真实宽度，不承载交互。标签必须与真实 chip 同构（a / button）——
    UA 默认样式只要有一条没被覆盖，量出的宽度就和渲染不一致 */
-.dsh-coordinator-board-links-measure {
+.dsh-leader-kit-board-links-measure {
   position: absolute;
   left: 0;
   top: 0;
@@ -224,7 +224,7 @@ const STYLE_TEXT = `
    写法（110 内容 + 12 横向 padding + 1 双边边框 = 总宽 124）等价——换材质不该
    顺带把长标签截短。测量层与真实 chip 同 class，两边量到的都是这个 border-box
    宽度，排布逻辑不受影响 */
-.dsh-coordinator-board-link-chip {
+.dsh-leader-kit-board-link-chip {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -250,7 +250,7 @@ const STYLE_TEXT = `
    边框上、与发丝线糊成一条；再往上整条落到 padding box 外，被两层 overflow
    裁掉——两处独立读数分别从 4px 与 5px 起消失，差异来自 0.5px 边框在 Chrome
    被取整成 1px（chip 实际 18px 高）。1px 留出可读的间距 */
-.dsh-coordinator-board-link-chip:focus-visible {
+.dsh-leader-kit-board-link-chip:focus-visible {
   text-decoration: underline dotted;
   text-underline-offset: 1px;
   outline: var(--dsw-focus-ring-width, 2px) solid
@@ -259,7 +259,7 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-board-link-chip:hover {
+  .dsh-leader-kit-board-link-chip:hover {
     border-color: var(--dsw-alias-border-l4);
     background: var(--dsw-alias-interactive-bg-hover);
     text-decoration: underline dotted;
@@ -267,7 +267,7 @@ const STYLE_TEXT = `
   }
 }
 
-.dsh-coordinator-board-link-chip-body {
+.dsh-leader-kit-board-link-chip-body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -275,20 +275,20 @@ const STYLE_TEXT = `
   overflow: hidden;
 }
 
-.dsh-coordinator-board-link-chip-label {
+.dsh-leader-kit-board-link-chip-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dsh-coordinator-board-link-overflow {
+.dsh-leader-kit-board-link-overflow {
   font-family: var(--ds-font-family-code);
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-coordinator-board-card-meta {
+.dsh-leader-kit-board-card-meta {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -296,7 +296,7 @@ const STYLE_TEXT = `
   padding-left: 22px;
 }
 
-.dsh-coordinator-board-slot-chip {
+.dsh-leader-kit-board-slot-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -310,12 +310,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-board-slot-chip:hover {
+  .dsh-leader-kit-board-slot-chip:hover {
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-coordinator-board-slot-dot {
+.dsh-leader-kit-board-slot-dot {
   display: inline-block;
   box-sizing: border-box;
   width: 6px;
@@ -326,48 +326,48 @@ const STYLE_TEXT = `
   opacity: 0.4;
 }
 
-.dsh-coordinator-board-slot-dot-waiting {
+.dsh-leader-kit-board-slot-dot-waiting {
   background: var(--dsw-static-blue-500);
   opacity: 1;
-  animation: dsh-coordinator-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-coordinator-board-slot-dot-unread {
+.dsh-leader-kit-board-slot-dot-unread {
   background: var(--dsw-static-blue-500);
   opacity: 1;
 }
 
-.dsh-coordinator-board-slot-dot-running {
+.dsh-leader-kit-board-slot-dot-running {
   background: var(--dsw-alias-state-warn-primary);
   opacity: 1;
-  animation: dsh-coordinator-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-coordinator-board-slot-dot-attention {
+.dsh-leader-kit-board-slot-dot-attention {
   background: var(--dsw-alias-state-error-primary);
   opacity: 1;
 }
 
-.dsh-coordinator-board-slot-dot-idle {
+.dsh-leader-kit-board-slot-dot-idle {
   background: var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
-.dsh-coordinator-board-slot-dot-unknown,
-.dsh-coordinator-board-slot-dot-empty {
+.dsh-leader-kit-board-slot-dot-unknown,
+.dsh-leader-kit-board-slot-dot-empty {
   background: transparent;
   border: 1px dashed var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-coordinator-board-slot-dot-running,
-  .dsh-coordinator-board-slot-dot-waiting { animation: none; }
+  .dsh-leader-kit-board-slot-dot-running,
+  .dsh-leader-kit-board-slot-dot-waiting { animation: none; }
 }
 
 /* done 卡：单行轻量变体。成品不需要抢注意力，就没有卡面材质——
    透明的行，靠 hover 与 active 卡的卡面区分 */
-.dsh-coordinator-board-card-done {
+.dsh-leader-kit-board-card-done {
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -385,24 +385,24 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-board-card-done:hover {
+  .dsh-leader-kit-board-card-done:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-coordinator-board-card-done:focus-visible {
+.dsh-leader-kit-board-card-done:focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
-.dsh-coordinator-board-done-check {
+.dsh-leader-kit-board-done-check {
   flex: none;
   display: inline-flex;
   color: var(--dsw-alias-state-success-primary);
 }
 
-.dsh-coordinator-board-done-title {
+.dsh-leader-kit-board-done-title {
   flex: 1;
   min-width: 0;
   font-size: 13px;
@@ -413,7 +413,7 @@ const STYLE_TEXT = `
   white-space: nowrap;
 }
 
-.dsh-coordinator-board-done-time {
+.dsh-leader-kit-board-done-time {
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -423,13 +423,13 @@ const STYLE_TEXT = `
 }
 
 /* done 折叠区 */
-.dsh-coordinator-board-done-section {
+.dsh-leader-kit-board-done-section {
   margin-top: 16px;
   padding-top: 6px;
   border-top: 0.5px solid var(--dsw-alias-border-l3);
 }
 
-.dsh-coordinator-board-done-toggle {
+.dsh-leader-kit-board-done-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -447,23 +447,23 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-board-done-toggle:hover {
+  .dsh-leader-kit-board-done-toggle:hover {
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-coordinator-board-done-chevron {
+.dsh-leader-kit-board-done-chevron {
   flex: none;
   display: inline-flex;
   transition: transform 200ms var(--ds-ease-in-out);
 }
 
-.dsh-coordinator-board-done-chevron-open {
+.dsh-leader-kit-board-done-chevron-open {
   transform: rotate(90deg);
 }
 
-.dsh-coordinator-board-done-count {
+.dsh-leader-kit-board-done-count {
   flex: none;
   padding: 1px 6px;
   border-radius: 999px;
@@ -476,23 +476,23 @@ const STYLE_TEXT = `
 }
 
 /* 骨架与空态 */
-.dsh-coordinator-board-skeleton {
+.dsh-leader-kit-board-skeleton {
   height: 64px;
   border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-bg-skeleton);
-  animation: dsh-coordinator-board-fade 1.4s ease-in-out infinite;
+  animation: dsh-leader-kit-board-fade 1.4s ease-in-out infinite;
 }
 
-@keyframes dsh-coordinator-board-fade {
+@keyframes dsh-leader-kit-board-fade {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-coordinator-board-skeleton { animation: none; }
+  .dsh-leader-kit-board-skeleton { animation: none; }
 }
 
-.dsh-coordinator-board-empty {
+.dsh-leader-kit-board-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -501,7 +501,7 @@ const STYLE_TEXT = `
   text-align: center;
 }
 
-.dsh-coordinator-board-empty-icon {
+.dsh-leader-kit-board-empty-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -512,19 +512,19 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-coordinator-board-empty-icon-success {
+.dsh-leader-kit-board-empty-icon-success {
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
   color: var(--dsw-alias-state-success-primary);
 }
 
-.dsh-coordinator-board-empty-title {
+.dsh-leader-kit-board-empty-title {
   margin-top: 12px;
   font-size: 14px;
   line-height: 20px;
   color: var(--dsw-alias-label-secondary);
 }
 
-.dsh-coordinator-board-empty-hint {
+.dsh-leader-kit-board-empty-hint {
   margin-top: 4px;
   font-size: 12px;
   line-height: 18px;
@@ -532,14 +532,14 @@ const STYLE_TEXT = `
 }
 
 /* 卡片详情浮层内容 */
-.dsh-coordinator-card-detail {
+.dsh-leader-kit-card-detail {
   display: flex;
   flex-direction: column;
   min-height: 0;
   max-height: 80vh;
 }
 
-.dsh-coordinator-card-detail-header {
+.dsh-leader-kit-card-detail-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -547,7 +547,7 @@ const STYLE_TEXT = `
   padding: 24px 24px 8px;
 }
 
-.dsh-coordinator-card-detail-title {
+.dsh-leader-kit-card-detail-title {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -558,7 +558,7 @@ const STYLE_TEXT = `
   overflow-wrap: anywhere;
 }
 
-.dsh-coordinator-card-detail-close {
+.dsh-leader-kit-card-detail-close {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -574,19 +574,19 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-card-detail-close:hover {
+  .dsh-leader-kit-card-detail-close:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-coordinator-card-detail-meta {
+.dsh-leader-kit-card-detail-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 24px 12px;
 }
 
-.dsh-coordinator-card-detail-number {
+.dsh-leader-kit-card-detail-number {
   font-family: var(--ds-font-family-code);
   font-size: 11px;
   line-height: 16px;
@@ -594,7 +594,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-caption);
 }
 
-.dsh-coordinator-card-detail-status {
+.dsh-leader-kit-card-detail-status {
   padding: 2px 8px;
   border-radius: 999px;
   corner-shape: round;
@@ -604,34 +604,34 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-coordinator-card-detail-status-done {
+.dsh-leader-kit-card-detail-status-done {
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
   color: var(--dsw-alias-state-success-primary);
 }
 
-.dsh-coordinator-card-detail-body {
+.dsh-leader-kit-card-detail-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0 24px 24px;
 }
 
-.dsh-coordinator-card-detail-section {
+.dsh-leader-kit-card-detail-section {
   margin-top: 16px;
 }
 
-.dsh-coordinator-card-detail-section:first-child {
+.dsh-leader-kit-card-detail-section:first-child {
   margin-top: 0;
 }
 
-.dsh-coordinator-card-detail-section-title {
+.dsh-leader-kit-card-detail-section-title {
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-coordinator-card-detail-text {
+.dsh-leader-kit-card-detail-text {
   margin-top: 6px;
   font-size: 13px;
   line-height: 20px;
@@ -640,20 +640,20 @@ const STYLE_TEXT = `
   overflow-wrap: anywhere;
 }
 
-.dsh-coordinator-card-detail-muted {
+.dsh-leader-kit-card-detail-muted {
   margin-top: 6px;
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-coordinator-card-detail-links {
+.dsh-leader-kit-card-detail-links {
   margin-top: 6px;
   display: flex;
   flex-direction: column;
 }
 
-.dsh-coordinator-card-detail-link {
+.dsh-leader-kit-card-detail-link {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -667,23 +667,23 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-card-detail-link:hover {
+  .dsh-leader-kit-card-detail-link:hover {
     text-decoration: underline dotted;
     text-underline-offset: 3px;
   }
 }
 
 /* 键盘焦点与 hover 同一示能；不可跳转的链接渲染成 div，不在此列 */
-.dsh-coordinator-card-detail-link:focus-visible {
+.dsh-leader-kit-card-detail-link:focus-visible {
   text-decoration: underline dotted;
   text-underline-offset: 3px;
 }
 
-.dsh-coordinator-card-detail-link:last-child {
+.dsh-leader-kit-card-detail-link:last-child {
   border-bottom: 0;
 }
 
-.dsh-coordinator-card-detail-link-purpose {
+.dsh-leader-kit-card-detail-link-purpose {
   min-width: 0;
   color: var(--dsw-alias-label-tertiary);
   overflow: hidden;
@@ -693,7 +693,7 @@ const STYLE_TEXT = `
 
 /* 右栏 guide 页的入口胶囊：复刻宿主 EntryBox 的数值（380px 宽、56px 最小高、
    14/20 内边距、14px 图标间距），宿主改样式时这里要跟着改。 */
-.dsh-coordinator-guide-entry {
+.dsh-leader-kit-guide-entry {
   display: flex;
   gap: 14px;
   align-items: center;
@@ -712,12 +712,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-coordinator-guide-entry:hover {
+  .dsh-leader-kit-guide-entry:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-coordinator-guide-entry-icon {
+.dsh-leader-kit-guide-entry-icon {
   display: flex;
   flex: none;
   align-items: center;
@@ -727,7 +727,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-secondary);
 }
 
-.dsh-coordinator-guide-entry-text {
+.dsh-leader-kit-guide-entry-text {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -735,7 +735,7 @@ const STYLE_TEXT = `
   min-width: 0;
 }
 
-.dsh-coordinator-guide-entry-title {
+.dsh-leader-kit-guide-entry-title {
   overflow: hidden;
   font-size: 14px;
   line-height: 1.4;
@@ -743,7 +743,7 @@ const STYLE_TEXT = `
   text-overflow: ellipsis;
 }
 
-.dsh-coordinator-guide-entry-description {
+.dsh-leader-kit-guide-entry-description {
   overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;

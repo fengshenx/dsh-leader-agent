@@ -12,7 +12,7 @@
  * 服务在却缺方法属于宿主契约变化，直接抛错——静默退化会让 worker 再次没有
  * bash / read，正是本模块要修的故障形态。
  *
- * @module dsh-coordinator/host/agent-preset
+ * @module dsh-leader-kit/host/agent-preset
  */
 
 /**
@@ -41,7 +41,7 @@ function requirePresets(ctx) {
   const presets = ctx.get('agentPresets')
   if (presets === undefined) return undefined
   if (typeof presets.mount !== 'function' || typeof presets.resolve !== 'function') {
-    throw new Error('dsh-coordinator: agentPresets 服务缺少 mount() / resolve()，宿主契约已变；为会话挂 preset 失败会让它没有 bash / read')
+    throw new Error('dsh-leader-kit: agentPresets 服务缺少 mount() / resolve()，宿主契约已变；为会话挂 preset 失败会让它没有 bash / read')
   }
   return presets
 }
@@ -60,7 +60,7 @@ function requirePresets(ctx) {
 export async function agentPresetOptions(ctx, logger) {
   const presets = requirePresets(ctx)
   if (presets === undefined) {
-    warn(ctx, logger, 'dsh-coordinator: 当前组合没有 agentPresets 服务，新建的会话不会挂 preset 组合（bash / read 等内建工具缺失）')
+    warn(ctx, logger, 'dsh-leader-kit: 当前组合没有 agentPresets 服务，新建的会话不会挂 preset 组合（bash / read 等内建工具缺失）')
     return {}
   }
   const preset = await presets.resolve(undefined)
@@ -92,11 +92,11 @@ export async function agentPresetOptions(ctx, logger) {
 function recordedPreset(ctx, agent, logger) {
   const projections = ctx.get('sessionProjections')
   if (projections === undefined) {
-    warn(ctx, logger, 'dsh-coordinator: 当前组合没有 sessionProjections 服务，冷恢复用默认 preset——会话之前换过的 preset 会丢')
+    warn(ctx, logger, 'dsh-leader-kit: 当前组合没有 sessionProjections 服务，冷恢复用默认 preset——会话之前换过的 preset 会丢')
     return undefined
   }
   if (typeof projections.stateOf !== 'function') {
-    throw new Error('dsh-coordinator: sessionProjections 服务缺少 stateOf()，宿主契约已变；读不回会话的 preset')
+    throw new Error('dsh-leader-kit: sessionProjections 服务缺少 stateOf()，宿主契约已变；读不回会话的 preset')
   }
   return projections.stateOf(agent.session, 'agentPreset') ?? undefined
 }
@@ -114,7 +114,7 @@ function recordedPreset(ctx, agent, logger) {
 export function agentPresetResumeSetup(ctx, logger) {
   const presets = requirePresets(ctx)
   if (presets === undefined) {
-    warn(ctx, logger, 'dsh-coordinator: 当前组合没有 agentPresets 服务，冷恢复的会话不会挂 preset 组合（bash / read 等内建工具缺失）')
+    warn(ctx, logger, 'dsh-leader-kit: 当前组合没有 agentPresets 服务，冷恢复的会话不会挂 preset 组合（bash / read 等内建工具缺失）')
     return {}
   }
   return {

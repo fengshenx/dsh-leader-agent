@@ -10,7 +10,7 @@
  * - 数据根（`DSH_HOME`）默认落在工作树内的 `.dev/home`，删掉即重置，工作树删掉
  *   时一起消失；
  * - profile 从源 HOME 的 `profiles/web` 派生：`package.json` 照抄依赖与 bundle
- *   列表（复现日常组合），只把 `dsh-coordinator` 换成工作树链接；
+ *   列表（复现日常组合），只把 `dsh-leader-kit` 换成工作树链接；
  * - `node_modules` 不复制，逐条符号链接到源 profile 的同名条目——依赖仍由源里那
  *   一份承担，源里升级 dsh 或增删插件时开发实例自动跟随；
  * - 端口默认交给系统分配（`--port 0`），设 `DEV_PORT` 可固定。
@@ -135,10 +135,10 @@ for (const { name, target } of plan.links) {
 }
 
 console.log('')
-console.log('== dsh-coordinator 开发实例 ==')
+console.log('== dsh-leader-kit 开发实例 ==')
 console.log(`  工作树    ${worktree}`)
 console.log(`  数据根    ${paths.home}  （会话、项目、卡片都在这里；删掉即重置）`)
-console.log(`  插件链接  ${join(nodeModulesDir, 'dsh-coordinator')} -> ${worktree}`)
+console.log(`  插件链接  ${join(nodeModulesDir, 'dsh-leader-kit')} -> ${worktree}`)
 console.log('')
 
 run('npm', ['run', 'build:client'], { cwd: worktree })

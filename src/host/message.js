@@ -6,7 +6,7 @@
  * 因此按 dsh 的消息契约就地构造等价对象：`id` 是随机 UUID，`source` 默认取
  * `{ kind: 'user' }`。
  *
- * @module dsh-coordinator/host/message
+ * @module dsh-leader-kit/host/message
  */
 
 import { randomUUID } from 'node:crypto'

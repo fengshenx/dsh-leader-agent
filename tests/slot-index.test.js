@@ -10,7 +10,7 @@ import { createCardStore } from '../src/host/cards/store.js'
  * @returns {Promise<{ store: object, home: string }>} 存储与 home 目录
  */
 async function createStore() {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-coordinator-slot-index-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-slot-index-'))
   return { store: createCardStore({ home }), home }
 }
 
@@ -117,7 +117,7 @@ test('启动重建与写卡交错时不丢最新槽位绑定', async () => {
     }],
   })
   const controlled = createControlledIo(initial)
-  const store = createCardStore({ home: '/tmp/dsh-coordinator-slot-index', io: controlled.io })
+  const store = createCardStore({ home: '/tmp/dsh-leader-kit-slot-index', io: controlled.io })
 
   // 进程启动时的索引重建：读盘被卡住。
   const loading = store.loadSlotIndex()

@@ -7,11 +7,11 @@
  * 标记放在 `source` 而不是正文里：正文是模型读的事实，前缀会污染它；`source`
  * 是宿主的归属字段，链路上原样透传（宿主只校验 `source.kind` 是非空字符串）。
  *
- * @module dsh-coordinator/shared/worker-report
+ * @module dsh-leader-kit/shared/worker-report
  */
 
 /** worker 回报消息的 source kind。 */
-export const WORKER_REPORT_SOURCE_KIND = 'dsh-coordinator/worker-report'
+export const WORKER_REPORT_SOURCE_KIND = 'dsh-leader-kit/worker-report'
 
 /** `notice` 摘要的长度上限，与宿主的 `CONTEXT_SUMMARY_MAX_CHARS` 同值。 */
 export const CONTEXT_SUMMARY_MAX_CHARS = 120
