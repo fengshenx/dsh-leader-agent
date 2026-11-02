@@ -658,6 +658,14 @@ test('worker 最后一次回报的内容只取产物摘要或失败原因', () =
   assert.equal(buildWorkerReport({ ok: false, error: new Error('模型不可用') }), '失败：模型不可用')
 })
 
+test('多块产物摘要按空行连接，交给 Markdown 渲染时不被折成一段', () => {
+  const output = [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }]
+  assert.equal(buildWorkerReport({ ok: true, result: { output } }), '第一段\n\n第二段')
+  // 通知正文仍用单换行：同一个 blocksToText，分隔符由调用点决定。
+  const text = buildNotificationText({ name: 'w', childId: 'c' }, { ok: true, result: { output } })
+  assert.equal(text.includes('产物摘要：\n第一段\n第二段'), true)
+})
+
 test('父会话已销毁时通知留在队列等待补投', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')

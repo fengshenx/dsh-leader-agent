@@ -8,9 +8,9 @@
  * `client-ui-agent-team` 的成员卡。
  *
  * 数值约定：8px 卡间距、13px 标题、11px 弱化文字、22px 链接行缩进。颜色一律走
- * 宿主 `--dsw-*` 令牌，不写死色值——第三方 bundle 不能 import 宿主 UI 包
- * （见 docs/subsystems/web-client.zh.md:93），既没有 Tailwind 也没有宿主 CSS
- * module 可用，只能自注入样式表（沿用 `modal-shell.js` 的做法）。
+ * 宿主 `--dsw-*` 令牌，不写死色值。宿主跨 bundle 共享的是组件（`PLATFORM_MODULES`
+ * 里的 `ui-primitives`，见 `markdown.js`），它们的 CSS module 不在这张表里，也没有
+ * Tailwind 可用，因此样式只能自注入（沿用 `modal-shell.js` 的做法）。
  *
  * @module dsh-leader-kit/client/board-styles
  */
@@ -636,8 +636,21 @@ const STYLE_TEXT = `
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* 宿主 compact 变体把正文压成三级标签色：.markdown 与 .compact 挂在同一个根节点上、
+   特异性同为 (0,1,0)，.compact 靠源顺序压过 .markdown 的 primary。链接同理——
+   .compact a 的 color: inherit 压过 .markdown a 的 --dsw-alias-link。
+   这里用宿主暴露的 data-markdown-variant 钩子把容器内的正文与链接压回原色：
+   容器类 + 属性选择器是 (0,2,0)，高于 .compact 的 (0,1,0)；链接再叠标签选择器到
+   (0,2,1)，高于 .compact a 的 (0,1,1)。特异性严格更高，不依赖样式表注入顺序。 */
+.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] a {
+  color: var(--dsw-alias-link);
 }
 
 .dsh-leader-kit-card-detail-muted {

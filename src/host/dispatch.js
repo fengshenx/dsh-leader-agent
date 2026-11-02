@@ -97,7 +97,8 @@ export function buildWorkerReport(outcome) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
     return `失败：${reason}`.slice(0, NOTIFICATION_LIMIT)
   }
-  const summary = blocksToText(outcome.result?.output ?? [])
+  // 气泡按 Markdown 渲染：块间要空行，单个 \n 是软换行，多块会被折成一段。
+  const summary = blocksToText(outcome.result?.output ?? [], '\n\n')
   return (summary === '' ? '（worker 未产出文本）' : summary).slice(0, NOTIFICATION_LIMIT)
 }
 
