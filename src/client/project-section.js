@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -159,6 +159,20 @@ const STYLE_TEXT = `
   background: transparent;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
+}
+/* 收起且有会话在跑：目录图标换成加载器（尺寸与位置仍占行首槽位）。展开后
+   会话行各自带 spinner，这里回到目录图标，不重复画同一个状态。悬停规则对
+   槽位容器生效，箭头照常盖住它。 */
+.dsh-leader-kit-project-spinner {
+  display: block;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: dsh-leader-kit-spin 0.8s linear infinite;
 }
 .dsh-leader-kit-project-lead-arrow {
   display: none;
@@ -721,6 +735,9 @@ function ProjectRow(props) {
   })
   // 当前会话是协调者或本项目下的 worker 时，这一行就是用户正在看的那一组。
   const selected = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
+  // 收起时行首目录图标换成加载器：会话行藏起来了，这里是唯一的活动提示；
+  // 展开后每条会话行自己带 spinner，不再重复。判定读的就是上面那批会话行。
+  const working = showsProjectActivity({ expanded, rows: childSessions })
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -789,7 +806,12 @@ function ProjectRow(props) {
         createElement(
           'span',
           { className: 'dsh-leader-kit-project-lead-folder' },
-          productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
+          working
+            ? createElement('span', {
+                className: 'dsh-leader-kit-project-spinner',
+                'aria-hidden': 'true',
+              })
+            : productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
         ),
         createElement(
           'span',

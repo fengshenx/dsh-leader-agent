@@ -119,6 +119,27 @@ export function selectProjectSessionRows({
 }
 
 /**
+ * 项目行要不要显示「运行中」加载器。
+ *
+ * 只在收起时显示：展开后每条会话行自己带 spinner，目录行再加一个就是同一件事
+ * 画两遍；收起后会话行不可见，目录行是唯一的活动提示。
+ *
+ * 判定直接读**要渲染的会话行**（{@link selectProjectSessionRows} 的结果），不另
+ * 行判一遍身份与归属。这样「目录行有加载器」与「至少一条会话行有 spinner」严格
+ * 同源：归档会话、快照里还没有的会话、以及不在会话列表里的当前协调者都不参与，
+ * 也不会因为换协调者留下的退役会话而误判。
+ *
+ * @param {object} options - 选项
+ * @param {boolean} options.expanded - 项目的会话列表是否展开
+ * @param {object[]} options.rows - 要渲染的会话行
+ * @returns {boolean} 是否显示加载器
+ */
+export function showsProjectActivity({ expanded, rows }) {
+  if (expanded === true) return false
+  return (Array.isArray(rows) ? rows : []).some((row) => row?.running === true)
+}
+
+/**
  * 挑出要从官方工作区树里排除的会话 id。
  *
  * 项目的协调者与 worker 都由项目区块呈现，官方树里再来一份就是重复。worker 是

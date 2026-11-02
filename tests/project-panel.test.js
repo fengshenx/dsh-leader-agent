@@ -20,6 +20,7 @@ import {
   projectSectionLayout,
   quietWorkspaceOf,
   selectProjectSessionRows,
+  showsProjectActivity,
   isArchiveActiveRefusal,
   validateProjectName,
 } from '../src/client/project-panel-logic.js'
@@ -100,6 +101,42 @@ test('已归档的会话不再列出——宿主的会话索引按磁盘扫，�
     archivedSessionIds: new Set(['s-archived']),
   })
   assert.deepEqual(rows.map((row) => row.id), ['s-live'])
+})
+
+test('项目行收起时，任一会话行在跑就显示加载器', () => {
+  const running = (id) => ({ id, running: true })
+  const idle = (id) => ({ id, running: false })
+  assert.equal(showsProjectActivity({ expanded: false, rows: [idle('s1'), running('s2')] }), true)
+  assert.equal(showsProjectActivity({ expanded: false, rows: [idle('s1')] }), false)
+  // 会话刚建、快照里还没有它的行：没有 spinner 可对应，不当成在跑。
+  assert.equal(showsProjectActivity({ expanded: false, rows: [] }), false)
+  assert.equal(showsProjectActivity({ expanded: false, rows: undefined }), false)
+})
+
+test('项目行展开后不显示加载器——会话行自己带 spinner', () => {
+  assert.equal(showsProjectActivity({ expanded: true, rows: [{ id: 's1', running: true }] }), false)
+})
+
+test('目录行的加载器与渲染出来的会话行同源：归档会话与当前协调者不算', () => {
+  const rowsOf = (sessionRows) => selectProjectSessionRows({
+    sessionIds: ['s-coordinator', 's-worker', 's-archived'],
+    sessionRows,
+    coordinatorSessionId: 's-coordinator',
+    archivedSessionIds: new Set(['s-archived']),
+  })
+  const base = {
+    's-coordinator': { id: 's-coordinator', running: true },
+    's-worker': { id: 's-worker', running: false },
+    's-archived': { id: 's-archived', running: true },
+  }
+  // 在跑的是当前协调者（它没有会话行）与被归档的会话：目录行不亮。
+  assert.equal(showsProjectActivity({ expanded: false, rows: rowsOf(base) }), false)
+  // 对照：同一批数据里把 worker 换成在跑，加载器点亮——上面那条的 false 是排除
+  // 生效，不是判定恒为 false。
+  assert.equal(showsProjectActivity({
+    expanded: false,
+    rows: rowsOf({ ...base, 's-worker': { id: 's-worker', running: true } }),
+  }), true)
 })
 
 test('官方工作区树的排除集含协调者与全部 worker 会话', () => {
