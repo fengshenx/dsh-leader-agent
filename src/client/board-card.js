@@ -21,6 +21,7 @@ import {
   slotViewsForCard,
 } from './board-projection.js'
 import { isJumpableLink, linkRowKey, planLinkRow } from './link-row.js'
+import { slotLabel } from './locales.js'
 import { productIcon } from './icons.js'
 
 /** 链接行左侧缩进，对齐标题文字起点（信号灯槽 14px + 间距 8px）。 */
@@ -183,26 +184,31 @@ const STATE_LABELS = {
 }
 
 /**
- * 槽位 chip：状态点 + 槽位名，点击打开该槽位绑定的会话。
+ * 槽位 chip：状态点 + 槽位显示名，点击打开该槽位绑定的会话。
+ *
+ * 显示名来自 locale 字典（内置槽位按界面语言翻译），无翻译的自定义槽位显示
+ * 原名。槽位键本身仍是机器标识，不随语言变化。
  *
  * 未派工的槽位（没有绑定会话）不是按钮——没有会话可打开。
  *
  * @param {object} props - 组件属性
  * @param {object} props.slot - 槽位视图
  * @param {(sessionId: string) => void} props.onOpenSession - 打开会话
+ * @param {(key: string) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
-function BoardSlot({ slot, onOpenSession }) {
+function BoardSlot({ slot, onOpenSession, t }) {
   const dot = createElement('span', {
     className: `dsh-leader-kit-board-slot-dot dsh-leader-kit-board-slot-dot-${slot.state}`,
   })
-  const label = STATE_LABELS[slot.state] ?? slot.state
+  const stateLabel = STATE_LABELS[slot.state] ?? slot.state
+  const name = slotLabel(slot.name, t)
   if (slot.sessionId === '') {
     return createElement(
       'span',
-      { className: 'dsh-leader-kit-board-slot-chip', title: `${slot.name}：${label}` },
+      { className: 'dsh-leader-kit-board-slot-chip', title: `${name}：${stateLabel}` },
       dot,
-      slot.name,
+      name,
     )
   }
   return createElement(
@@ -210,14 +216,14 @@ function BoardSlot({ slot, onOpenSession }) {
     {
       type: 'button',
       className: 'dsh-leader-kit-board-slot-chip',
-      title: `${slot.name}：${label}`,
+      title: `${name}：${stateLabel}`,
       onClick: (event) => {
         event.stopPropagation()
         onOpenSession(slot.sessionId)
       },
     },
     dot,
-    slot.name,
+    name,
   )
 }
 
@@ -230,9 +236,10 @@ function BoardSlot({ slot, onOpenSession }) {
  * @param {number} props.now - 当前时间戳
  * @param {(card: object, anchor: HTMLElement) => void} props.onOpenDetail - 开详情
  * @param {(sessionId: string) => void} props.onOpenSession - 打开会话
+ * @param {(key: string) => string} props.t - 当前语言的翻译函数（槽位显示名）
  * @returns {object} React 元素
  */
-function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
+function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, t }) {
   const links = Array.isArray(card.links) ? card.links : []
   const done = card.status === 'done'
 
@@ -300,7 +307,7 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession }) {
       ? createElement(
           'div',
           { className: 'dsh-leader-kit-board-card-meta' },
-          slots.map((slot) => createElement(BoardSlot, { key: slot.name, slot, onOpenSession })),
+          slots.map((slot) => createElement(BoardSlot, { key: slot.name, slot, onOpenSession, t })),
         )
       : null,
   )

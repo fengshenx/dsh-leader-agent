@@ -196,19 +196,19 @@ test('改卡工具拒绝空标题', async () => {
   }
 })
 
-test('建卡与改卡工具接受中文槽位名', async () => {
+test('建卡与改卡工具接受 ASCII 槽位名', async () => {
   const { home, tools } = await createTools()
   try {
     const created = await tools.create_card.execute(
-      { title: '任务', slots: { 开发: { sessionId: 's1' } } },
+      { title: '任务', slots: { dev: { sessionId: 's1' } } },
       exec,
     )
-    assert.deepEqual(Object.keys(created.card.slots), ['开发'])
+    assert.deepEqual(Object.keys(created.card.slots), ['dev'])
     const updated = await tools.update_card.execute(
-      { id: created.card.id, slots: { 开发: { sessionId: 's1' }, 审核: { sessionId: 's2' } } },
+      { id: created.card.id, slots: { dev: { sessionId: 's1' }, review: { sessionId: 's2' } } },
       exec,
     )
-    assert.deepEqual(Object.keys(updated.card.slots), ['开发', '审核'])
+    assert.deepEqual(Object.keys(updated.card.slots), ['dev', 'review'])
   } finally {
     await rm(home, { recursive: true, force: true })
   }
@@ -227,10 +227,10 @@ test('建卡与改卡工具拒绝非法槽位名', async () => {
     const created = await tools.create_card.execute({ title: '任务' }, exec)
     await assert.rejects(
       () => tools.update_card.execute(
-        { id: created.card.id, slots: { '开发/审核': { sessionId: 's1' } } },
+        { id: created.card.id, slots: { 开发: { sessionId: 's1' } } },
         exec,
       ),
-      /槽位名 "开发\/审核" 不合法/,
+      /槽位名 "开发" 不合法/,
     )
   } finally {
     await rm(home, { recursive: true, force: true })

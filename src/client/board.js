@@ -61,13 +61,14 @@ const PROJECT_RECHECK_MS = 30_000
  * @returns {object} React 元素
  */
 export function BoardBody(props) {
-  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote } = props
+  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote, t } = props
   return createElement(BoardPanel, {
     sessionId,
     getSessions,
     getUiWorkspace,
     useSessionStatus,
     callRemote,
+    t,
   })
 }
 
@@ -311,9 +312,10 @@ function BoardSkeleton() {
  * @param {() => object | undefined} props.getUiWorkspace - 取导航服务的延迟取值器
  * @param {(method: string, args: unknown[]) => Promise<unknown>} props.callRemote - 项目通道调用
  * @param {Function} [props.useSessionStatus] - 宿主会话状态 hook
+ * @param {(key: string) => string} props.t - 当前语言的翻译函数（槽位显示名）
  * @returns {object} React 元素
  */
-function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote }) {
+function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote, t }) {
   const [project, setProject] = useState(undefined)
   // 项目解析完成与否要和「解析出来是不属于项目」分开：解析是个异步往返，中间
   // 不能先闪一句「不属于任何项目」——那是还没问完就下的结论。
@@ -540,6 +542,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               card,
               states,
               now,
+              t,
               onOpenDetail: openDetail,
               onOpenSession: openSession,
             })),
@@ -579,6 +582,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
                     card,
                     states,
                     now,
+                    t,
                     onOpenDetail: openDetail,
                     onOpenSession: openSession,
                   })),

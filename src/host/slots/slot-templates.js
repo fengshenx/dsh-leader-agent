@@ -19,12 +19,12 @@ export const SLOT_TEMPLATE_FILE = 'SLOTS.md'
 /**
  * 槽位名的合法形态。
  *
- * 槽位名只作 JSON 键、Map 键与提示词文本使用，不进文件名、URL 或 CSS class，
- * 所以没有「需要转义」的字符——中文、日文等 Unicode 字母与数字都可以直接用。
- * 被拒的是空白与标点：它们会让 `## <槽位名>` 的标题与卡片键对不上（解析器会
- * trim 标题），或留下肉眼难以区分的重复键。
+ * 槽位名是**机器标识**：`SLOTS.md` 的分节名、卡片 `slots` 的 JSON 键、槽位
+ * 注入的反查键都用它。界面上的显示名不在这一层——client 按名称查 locale
+ * 字典翻译（`src/client/locales.js`），项目自定义槽位没有翻译时显示原名。
+ * 限制为小写 ASCII，保证同一份配置在任何语言环境下都是同一个键。
  */
-const SLOT_NAME_PATTERN = /^[\p{L}\p{N}_-]{1,32}$/u
+const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
 
 /**
  * 判断槽位名是否合法。

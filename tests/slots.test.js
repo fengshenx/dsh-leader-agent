@@ -54,45 +54,29 @@ test('同名槽位先见为准，后一节整节忽略', () => {
   assert.equal(slots.get('dev'), '第一个定义')
 })
 
-test('槽位名可用中文等 Unicode 字母数字', () => {
+test('槽位名是 ASCII 机器标识，中文标题整节忽略', () => {
   const slots = parseSlotTemplates([
-    '## 开发',
+    '## dev',
     '你是开发者。',
-    '## 审核',
+    '## 开发',
+    '中文标题的正文。',
+    '## review',
     '你是审查者。',
-    '## 開発',
-    '日语槽位正文。',
   ].join('\n'))
-  assert.equal(slots.size, 3)
-  assert.equal(slots.get('开发'), '你是开发者。')
-  assert.equal(slots.get('审核'), '你是审查者。')
-  assert.equal(slots.get('開発'), '日语槽位正文。')
+  assert.equal(slots.size, 2)
+  assert.equal(slots.get('dev'), '你是开发者。')
+  assert.equal(slots.get('review'), '你是审查者。')
 })
 
-test('槽位名接受字母数字下划线连字符，拒绝空白、标点与超长', () => {
-  for (const name of ['开发', 'review', 'dev_1', 'dev-1', '開発', '１２３']) {
+test('槽位名只接受小写 ASCII 字母数字下划线连字符，拒绝空白、标点与超长', () => {
+  for (const name of ['review', 'dev_1', 'dev-1']) {
     assert.equal(isValidSlotName(name), true, name)
   }
-  for (const name of ['', 'Bad Name', ' 开发', '开发 ', '开发/审核', '开发、审核', 'a'.repeat(33)]) {
+  for (const name of ['', 'Dev', '开发', 'Bad Name', ' dev', 'dev ', 'dev/review', 'a'.repeat(33)]) {
     assert.equal(isValidSlotName(name), false, JSON.stringify(name))
   }
   assert.equal(isValidSlotName(undefined), false)
   assert.equal(isValidSlotName(42), false)
-})
-
-test('中文槽位名绑定后注入对应正文', async () => {
-  const project = await createProject('## 开发\n你是开发者。\n')
-  try {
-    const text = renderRoleContext({
-      sessionId: 'session-a',
-      slotIndex: new Map([['session-a', '开发']]),
-      resolveDirectory: () => project.directory,
-    })
-    assert.match(text, /「开发」槽位/)
-    assert.match(text, /你是开发者。/)
-  } finally {
-    await project.cleanup()
-  }
 })
 
 test('非法槽位名整节忽略，正文不归到上一节', () => {
