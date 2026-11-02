@@ -1,0 +1,95 @@
+{
+  "unmeasured": {
+    "src/client/board-card.js": "看板卡片组件（React.createElement），单测无渲染环境，行为由 npm run e2e 的看板场景覆盖",
+    "src/client/board-guide-entry.js": "看板空态引导入口，挂在宿主 sidebar 注入点上，只有真实宿主能加载",
+    "src/client/board-styles.js": "看板 CSS 模板字符串，没有分支逻辑；样式正确性归 e2e 截图",
+    "src/client/board.js": "看板外壳组件，依赖宿主模块表，归 e2e",
+    "src/client/card-detail.js": "卡片详情弹层组件，归 e2e",
+    "src/client/card-links-editor.js": "链接编辑器组件，归 e2e",
+    "src/client/confirm-dialog.js": "确认弹层组件，归 e2e",
+    "src/client/coordinator-view.js": "协调者运行态视图组件，归 e2e",
+    "src/client/icons.js": "图标 SVG 常量，没有逻辑",
+    "src/client/index.js": "客户端入口：注册项目树、看板与 sidebar 注入，只能由宿主加载",
+    "src/client/markdown.js": "MarkdownText 适配层，复用宿主基线模块，单测里拿不到那个模块表",
+    "src/client/modal-shell.js": "弹层外壳（焦点陷阱与 Escape 处理），归 e2e",
+    "src/client/project-panel.js": "项目面板组件，归 e2e",
+    "src/client/project-section.js": "项目树分区组件，归 e2e",
+    "src/client/toast-view.js": "toast 渲染组件，归 e2e",
+    "src/client/worker-report-styles.js": "worker 报告 CSS 模板字符串，没有逻辑",
+    "src/client/worker-report-view.js": "worker 报告渲染组件，归 e2e"
+  },
+  "thresholds": {
+    "src/client/project-board-monitor.js": {
+      "lines": 63,
+      "reason": "轮询与宿主事件回调的分支只在真实实例里走到，逐步补"
+    },
+    "src/client/project-remote.js": {
+      "lines": 95,
+      "reason": "宿主回调的错误分支，逐步补"
+    },
+    "src/client/workspace-exclusion.js": {
+      "lines": 70,
+      "reason": "路径匹配分支多，逐步补"
+    },
+    "src/host/cards/store.js": {
+      "lines": 99,
+      "reason": "落盘失败分支，逐步补"
+    },
+    "src/host/dispatch.js": {
+      "lines": 97,
+      "reason": "派工失败与重试分支，逐步补"
+    },
+    "src/host/index.js": {
+      "lines": 93,
+      "reason": "工具面装配依赖宿主能力探测，缺能力的分支未覆盖"
+    },
+    "src/host/notification-store.js": {
+      "lines": 98,
+      "reason": "落盘失败分支，逐步补"
+    },
+    "src/host/permission-inherit.js": {
+      "lines": 95,
+      "reason": "宿主权限快照的异常形态，逐步补"
+    },
+    "src/host/projects/remote.js": {
+      "lines": 98,
+      "reason": "远端错误分支，逐步补"
+    },
+    "src/host/projects/service.js": {
+      "lines": 95,
+      "reason": "项目服务里失败与并发分支，逐步补"
+    },
+    "src/host/projects/store.js": {
+      "lines": 99,
+      "reason": "落盘失败分支，逐步补"
+    },
+    "src/host/skills.js": {
+      "lines": 96,
+      "reason": "skill 读取失败分支，逐步补"
+    },
+    "src/host/tools/cards.js": {
+      "lines": 96,
+      "reason": "参数校验与失败回执分支，逐步补"
+    },
+    "src/host/tools/read-worker.js": {
+      "lines": 95,
+      "reason": "会话读取失败分支，逐步补"
+    },
+    "src/host/tools/spawn-worker.js": {
+      "lines": 94,
+      "reason": "派工入参解析的兼容分支，逐步补"
+    },
+    "src/host/worker-registry.js": {
+      "lines": 99,
+      "reason": "名册落盘失败分支，逐步补"
+    },
+    "src/host/worker-sessions.js": {
+      "lines": 99,
+      "reason": "会话创建失败分支，逐步补"
+    },
+    "src/client/coordinator-session-index.js": {
+      "lines": 94,
+      "reason": "会话索引的空态分支，逐步补"
+    }
+  }
+}
