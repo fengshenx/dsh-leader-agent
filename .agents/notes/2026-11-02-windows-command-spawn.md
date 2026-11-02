@@ -52,14 +52,14 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 ## 验证
 
-`tests/spawn-command.test.js` 21 条：解析（`.cmd` 优先于无扩展名、PATHEXT 顺序、多 PATH 目录、显式路径不回落 PATHEXT、带引号的 PATH 条目、空条目、PATH 大小写与精确优先、同名的目录不算命中）、引号（普通、含空格、空串、结尾反斜杠翻倍、引号前反斜杠按 CRT 计数、`%` 不加处理）、`buildCommandLine`、真实起进程（`process.execPath` 在 `C:\Program Files\…`，顺带验证带空格路径）、`CommandNotFoundError`，以及 Windows 上四条：经 `cmd.exe` 起带空格的 `.cmd` shim 且参数原样到达、按 PATH 解析出的 `.cmd` shim 真的被起起来、解析结果与 cmd 自行 PATHEXT 顺序不一致时起的是解析结果、参数里的 `%VAR%` 被展开（已知边界）。后三条非 Windows 跳过。
+`tests/spawn-command.test.js` 21 条：解析（`.cmd` 优先于无扩展名、PATHEXT 顺序、多 PATH 目录、显式路径不回落 PATHEXT、带引号的 PATH 条目、空条目、PATH 大小写与精确优先、同名的目录不算命中）、引号（普通、含空格、空串、结尾反斜杠翻倍、引号前反斜杠按 CRT 计数、`%` 不加处理）、`buildCommandLine`、真实起进程（`process.execPath` 在 `C:\Program Files\…`，顺带验证带空格路径）、`CommandNotFoundError`，以及 Windows 上四条（非 Windows 跳过）：经 `cmd.exe` 起带空格的 `.cmd` shim 且参数原样到达、按 PATH 解析出的 `.cmd` shim 真的被起起来、解析结果与 cmd 自行 PATHEXT 顺序不一致时起的是解析结果、参数里的 `%VAR%` 被展开（已知边界）。
 
 双向验证（Windows 11 / node 24.18.1）：
 
 | 撤销的修复 | 读数 |
 |---|---|
 | `quoteForCmd` 换回 cmd 的 `""` 实现 | 2 条引号用例红（`结尾反斜杠翻倍`、`按 C runtime 规则处理引号前的反斜杠`） |
-| `buildCommandLine({ file })` 换回 `command` | `解析结果决定起哪个文件` 红：actual `from-bat` / expected `from-cmd`；只传 PATH 的那条仍绿——cmd 自己也能解析，守不住，故补了 PATHEXT 顺序那条 |
+| `buildCommandLine({ file })` 换回 `command` | `解析结果决定起哪个文件` 红：actual `from-bat` / expected `from-cmd`；只传 PATH 的那条仍绿——cmd 自己也能解析，守不住「解析结果被用上」，所以另加了 PATHEXT 顺序一条 |
 | `exists` 默认换回 `existsSync` | `PATH 上与命令同名的目录不算可执行文件` 红 |
 | `scripts/check-syntax.mjs` 前，把 `src/shared/frontmatter.js` 写坏 | 门禁 exit 1，打印 `src\shared\frontmatter.js` 与 `SyntaxError: Unexpected end of input`；还原后 exit 0 |
 
