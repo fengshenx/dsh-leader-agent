@@ -35,9 +35,9 @@
   <img src="docs/assets/readme/board.png" alt="dsh-leader-kit：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
 </div>
 
-左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。
+左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。你可以看到开发的Agent，点击可以下钻到它的Session，绕开Leader直接和它对话。
 
-截图用的是本地 mock provider 与 seed 的项目、卡片、会话，没有真实模型调用。
+截图用的是本地 mock数据做的展示。
 
 ## 它是怎么跑起来的
 

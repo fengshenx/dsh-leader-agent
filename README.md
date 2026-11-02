@@ -35,9 +35,9 @@
   <img src="docs/assets/readme/board.png" alt="dsh-leader-kit: the project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
 </div>
 
-Left: projects and the workers each Leader spawned. Center: the Leader's session — the task, the dispatch, the worker reporting back, the verdict. Right: the delivery board for the project, with one card per task and a slot chip per executor.
+Left: projects and the workers each Leader spawned. Center: the Leader's session — the task, the dispatch, the worker reporting back, the verdict. Right: the delivery board for the project, with one card per task and a slot chip per executor. You can see the agents that are working, click one to drill into its session and talk to it directly, without going through the Leader.
 
-The screenshot uses a local mock provider and seeded projects, cards and sessions; no real model calls were made.
+The screenshot uses locally mocked data for demonstration.
 
 ## How it runs
 
