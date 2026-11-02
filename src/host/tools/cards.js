@@ -297,6 +297,24 @@ async function assertCardWriter(sessionId, canWrite) {
 }
 
 /**
+ * 建卡的身份闸：worker 不能建卡。
+ *
+ * 协议层的建卡动作全部属于协调者（`COORDINATOR.md` 的「一个 worker 一张卡」、
+ * `leader-mode` 的协调者动作表），`SLOTS.md` 的各槽位也没有让执行者建卡的步骤——
+ * worker 攒下的待办由它回报、协调者建卡并派工。放开这个口子会造出没有槽位、
+ * 没人认领的卡，和普通会话建卡是同一种问题，只是少一道工具面拒绝。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean) | undefined} isWorkerSession - worker 判定
+ * @returns {void}
+ * @throws {Error} 调用方是 worker
+ */
+function assertCardCreator(sessionId, isWorkerSession) {
+  if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
+  throw new Error('create_card: worker 不建卡——卡由协调者建并派工；需要新任务请在回报里说明，交付物挂到自己卡上用 update_card 的 addLinks')
+}
+
+/**
  * worker 的写卡范围闸：只允许改自己挂着的卡，且不许动槽位绑定。
  *
  * 身份闸只回答「能不能写卡」，回答不了「能写哪张」：worker 的 cwd 就是项目目录，
@@ -336,13 +354,15 @@ async function assertWorkerCardScope(sessionId, cardId, slots, { isWorkerSession
  *   解析调用方会话所属项目；卡片按项目归属，模型不传项目参数
  * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWrite] - 写卡身份判定；
  *   省略时放行，仅供文档取名字与单测构造
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   worker 不建卡，建卡与派工是协调者的一条动作链
  * @returns {object} dsh 工具定义
  */
-export function createCreateCardTool({ store, resolveProject, canWrite }) {
+export function createCreateCardTool({ store, resolveProject, canWrite, isWorkerSession }) {
   return {
     name: 'create_card',
     description:
-      '建立一张任务看板卡片。卡片是协调者维护的任务事实，编号自动分配且永不复用，可用返回的 number 引用。',
+      '建立一张任务看板卡片。卡片是协调者维护的任务事实，编号自动分配且永不复用，可用返回的 number 引用。worker 不建卡：新任务由协调者建卡并派工。',
     parameters: {
       type: 'object',
       properties: {
@@ -382,6 +402,7 @@ export function createCreateCardTool({ store, resolveProject, canWrite }) {
     async execute(args, exec) {
       const input = /** @type {{ title: string, spec?: string, links?: object[], slots?: object, checkpoint?: unknown }} */ (args)
       await assertCardWriter(exec.agent?.id, canWrite)
+      assertCardCreator(exec.agent?.id, isWorkerSession)
       if (typeof input.title !== 'string' || input.title.trim() === '') {
         throw new Error('create_card: title 不能为空')
       }

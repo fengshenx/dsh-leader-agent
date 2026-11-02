@@ -5,6 +5,7 @@ import {
   COORDINATOR_ONLY_TOOLS,
   COORDINATOR_UNUSABLE_TOOLS,
   PLAIN_SESSION_DENY_TOOLS,
+  WORKER_DENY_TOOLS,
   applyToolGate,
   canWriteCardsFor,
   deniedToolsFor,
@@ -60,13 +61,16 @@ test('协调者拿不到收作业的工具，也拿不到对 worker 无效的三
   assert.deepEqual(denied, [...COORDINATOR_UNUSABLE_TOOLS])
 })
 
-test('worker 看不到派工与全库查询', () => {
+test('worker 看不到派工、全库查询与建卡，但保留改卡', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('worker-1'),
     isCoordinatorSession: () => false,
     isWorkerSession: (id) => id === 'worker-1',
   })
-  assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
+  assert.deepEqual(denied, [...WORKER_DENY_TOOLS])
+  // 建卡与派工是协调者的一条动作链；worker 只在自己的卡上写回状态。
+  assert.ok(denied.includes('create_card'))
+  assert.ok(!denied.includes('update_card'))
 })
 
 test('普通会话没有派工、全库查询与卡片写入', () => {
@@ -103,8 +107,8 @@ test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限
     isCoordinatorSession: () => false,
     isWorkerSession: () => true,
   })
-  assert.deepEqual(worker.restrictions, [{ deny: [...COORDINATOR_ONLY_TOOLS] }])
-  assert.deepEqual(workerDenied, [...COORDINATOR_ONLY_TOOLS])
+  assert.deepEqual(worker.restrictions, [{ deny: [...WORKER_DENY_TOOLS] }])
+  assert.deepEqual(workerDenied, [...WORKER_DENY_TOOLS])
 
   const plain = makeAgent('p')
   const plainDenied = applyToolGate({

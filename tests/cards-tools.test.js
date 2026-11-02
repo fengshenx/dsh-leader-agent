@@ -954,3 +954,28 @@ test('worker 只能改自己挂着的卡，且不能改槽位绑定', async () =
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('worker 不能建卡：建卡与派工是协调者的一条动作链', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const createCard = createCreateCardTool({
+      store,
+      canWrite: () => true,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    })
+    const worker = { agent: { id: 'worker-1' }, signal: undefined }
+    await assert.rejects(
+      () => createCard.execute({ title: 'worker 攒的待办' }, worker),
+      /worker 不建卡/,
+    )
+    // 被拒时不落盘：卡库里没有无主卡
+    assert.deepEqual(await store.list(), [])
+
+    const coordinator = { agent: { id: 'coordinator-1' }, signal: undefined }
+    const created = await createCard.execute({ title: '协调者的卡' }, coordinator)
+    assert.equal(created.card.title, '协调者的卡')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

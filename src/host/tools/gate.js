@@ -43,6 +43,19 @@ export const PLAIN_SESSION_DENY_TOOLS = Object.freeze([
 ])
 
 /**
+ * worker 要禁掉的：派工与全库查卡，外加建卡。
+ *
+ * worker 保留 `update_card`（写回自己挂的卡），但不建卡：建卡与派工是协调者的一条
+ * 动作链（`COORDINATOR.md` 的「一个 worker 一张卡」、`leader-mode` 的协调者动作表），
+ * `SLOTS.md` 的各槽位也没有让执行者建卡的步骤。worker 攒下的待办由它回报、协调者
+ * 建卡。执行时另有一道 `assertCardCreator`。
+ */
+export const WORKER_DENY_TOOLS = Object.freeze([
+  ...COORDINATOR_ONLY_TOOLS,
+  'create_card',
+])
+
+/**
  * 宿主 subagent 组合提供的三件工具：它们只作用在 subagent 体系上。
  *
  * 单独导出是为了给「宿主侧有哪些工具名」一个语义正确的来源，文档允许集
@@ -82,7 +95,7 @@ export const COORDINATOR_UNUSABLE_TOOLS = HOST_SUBAGENT_TOOLS
  */
 export function deniedToolsFor({ agent, isCoordinatorSession, isWorkerSession }) {
   const worker = typeof isWorkerSession === 'function' && isWorkerSession(agent?.id) === true
-  if (worker) return [...COORDINATOR_ONLY_TOOLS]
+  if (worker) return [...WORKER_DENY_TOOLS]
   if (isCoordinatorSession(agent?.id)) return [...COORDINATOR_UNUSABLE_TOOLS]
   return [...PLAIN_SESSION_DENY_TOOLS]
 }

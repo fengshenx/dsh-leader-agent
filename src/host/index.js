@@ -94,7 +94,12 @@ export function createBundleTools({
   return [
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
-    createCreateCardTool({ store: cards, resolveProject, canWrite: canWriteCards }),
+    createCreateCardTool({
+      store: cards,
+      resolveProject,
+      canWrite: canWriteCards,
+      isWorkerSession,
+    }),
     createUpdateCardTool({
       store: cards,
       resolveProject,
