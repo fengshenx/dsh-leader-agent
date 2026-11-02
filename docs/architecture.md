@@ -186,6 +186,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 初始化 skill | `.agents/skills/init-project/` | 一次性把仓库工程约定写入目标项目：skill 给出方法与正文，模型用宿主的文件能力写 `AGENTS.md` 受管区块，幂等 |
 | `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话，**不开工、立即返回**会话 id；可选带 `cardId` + `slot` 把卡槽位绑到它身上（卡必须是本项目的 `active` 卡），绑定在返回前完成 |
 | `message_worker` 工具 | `src/host/tools/message-worker.js` | 投递任务与续聊：第一条消息即开工；活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
+| `read_worker_session` 工具 | `src/host/tools/read-worker.js`、`src/host/worker-transcript.js` | 只读回看 worker 的会话回合：走 `sessionQuery.readSession()` 取事件，按 `turn/start` / `turn/end` 折成回合（任务、正文、工具与失败原因、终态）；不唤醒 worker、不产生模型调用。三层上限见[已知限制](#worker-的控制面) |
 | worker 会话 | `src/host/worker-sessions.js` | worker 的创建、投递、销毁：`agents.create` 建的**普通根会话**，常驻、可被人下钻对话、进程重启后能冷恢复 |
 | 权限继承 | `src/host/permission-inherit.js` | 派工时把协调者的有效沙箱模式与审批策略写到新 worker 会话上（`source: 'delegation'` 的两条覆盖事件）；协调者是 `auto` 时补写 `permission/preset` 保住审查门；宿主默认 preset 不等于协调者当前那套 |
 | worker 登记表 | `src/host/worker-registry.js` | 会话 id → 父会话与名字的落盘映射（`workers.json`）：续聊跨进程也要找得到归属 |
