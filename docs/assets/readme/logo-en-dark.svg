@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="470" height="104" viewBox="0 0 470 104" role="img" aria-label="dsh-leader-kit">
+  <title>dsh-leader-kit</title>
+  <!-- 编排拓扑：Leader 扇出到 worker，右下角是项目看板 -->
+  <g stroke="#7da1de" stroke-width="2" stroke-linecap="round" fill="none">
+    <path d="M42 52 H58 Q64 52 64 46 V30 Q64 24 70 24 H76" />
+    <path d="M42 52 H76" />
+    <path d="M42 52 H58 Q64 52 64 58 V74 Q64 80 70 80 H76" />
+  </g>
+  <circle cx="32" cy="52" r="10" fill="#7da1de" />
+  <circle cx="84" cy="24" r="7" fill="none" stroke="#3f5680" stroke-width="2" />
+  <circle cx="84" cy="52" r="7" fill="#7da1de" />
+  <circle cx="84" cy="80" r="7" fill="none" stroke="#3f5680" stroke-width="2" />
+  <circle cx="84" cy="52" r="13" fill="none" stroke="#7da1de" stroke-width="1" opacity="0.35" />
+  <g fill="#22304c">
+    <rect x="112" y="34" width="64" height="36" rx="6" />
+    <rect x="120" y="43" width="30" height="3" rx="1.5" fill="#7da1de" />
+    <rect x="120" y="52" width="44" height="3" rx="1.5" fill="#3f5680" />
+    <rect x="120" y="61" width="22" height="3" rx="1.5" fill="#3f5680" />
+  </g>
+  <text x="200" y="52" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="34" font-weight="700" fill="#eef3fb" letter-spacing="-0.5">dsh-leader-kit</text>
+  <text x="201" y="76" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" fill="#93a3c0">One Leader, ten features in parallel</text>
+</svg>

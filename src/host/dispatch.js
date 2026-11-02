@@ -35,6 +35,7 @@
  */
 
 import { createUserMessage, blocksToText } from './message.js'
+import { foldTurns, renderTranscript } from './worker-transcript.js'
 import { workerReportSource } from '../shared/worker-report.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
@@ -647,6 +648,62 @@ export function createDispatcher({
   }
 
   /**
+   * 读一个 worker 会话最近的回合内容。
+   *
+   * 与完成通知的分工：通知只说「这一轮结束了、产物是什么」；这里回看它是怎么做
+   * 的——中间调了哪些工具、哪一步失败、失败原因是什么。读取走宿主的
+   * `sessionQuery.readSession()`（完整事件数组，live 会话读内存快照），不唤醒
+   * worker、不产生模型调用。
+   *
+   * 归属判据与 `message` 同一套：登记表是跨进程真源，本进程的 `owners` 补窗口。
+   * 身份校验与派工同档——退役协调者手里仍留着这个工具，不能在调用时放行。
+   *
+   * @param {object} options - 读取参数
+   * @param {object} options.parent - 调用方 agent
+   * @param {string} options.sessionId - worker 会话 id
+   * @param {number} options.turns - 保留的最近回合数
+   * @returns {Promise<{ sessionId: string, name: string, totalTurns: number, running: boolean, text: string }>} 回合视图
+   */
+  async function transcript({ parent, sessionId, turns }) {
+    await assertCoordinator(parent, {
+      pending: 'read_worker_session: 项目注册表尚未读出，无法确认协调者身份，暂不能读 worker 的会话',
+      refused: 'read_worker_session: 只有项目协调者能读 worker 的会话——这个会话已不是任何项目的协调者（换下的协调者降级为项目里的普通会话）',
+    })
+    const worker = await workers.get(sessionId) ?? owners.get(sessionId)
+    if (worker === undefined) {
+      throw new Error(`read_worker_session: 没有会话 ${sessionId} 的派工记录，它不是本协调体系派出的 worker`)
+    }
+    if (worker.parentSessionId !== parent.id) {
+      throw new Error('read_worker_session: 该 worker 是别的会话派的，不能跨会话读它的会话内容')
+    }
+    const query = ctx.get('sessionQuery')
+    if (query === undefined || typeof query.readSession !== 'function') {
+      throw new Error('read_worker_session: 当前组合缺少会话查询后端（sessionQuery），读不了 worker 的会话日志')
+    }
+    let snapshot
+    try {
+      snapshot = await query.readSession(sessionId)
+    } catch (error) {
+      // 还没投过消息的 worker 没有落盘日志：这是预期状态，不是故障，要说清。
+      throw new Error(`read_worker_session: 读不到 worker ${sessionId} 的会话日志（可能还没跑过任何回合，或日志不可读）：${error instanceof Error ? error.message : String(error)}`)
+    }
+    // 空会话也是合法日志（`events` 是空数组），但形状不对说明后端契约变了：
+    // 静默当成空日志会让协调者以为 worker「什么都没做」。
+    if (!Array.isArray(snapshot?.events)) {
+      throw new Error(`read_worker_session: 会话查询后端返回的日志形状不符（缺 events 数组），无法读 worker ${sessionId} 的会话`)
+    }
+    const { turns: list, running } = foldTurns(snapshot.events)
+    const displayName = typeof worker.name === 'string' ? worker.name : sessionId
+    return {
+      sessionId,
+      name: displayName,
+      totalTurns: list.length,
+      running,
+      text: renderTranscript({ turns: list, sessionId, name: displayName, limit: turns, running }),
+    }
+  }
+
+  /**
    * 建一个 worker 会话并登记，**不投递任务、不产生模型调用**。
    *
    * 开工由协调者随后的 `message` 触发。分成两步是为了让槽位绑定先落盘：第一条
@@ -873,6 +930,7 @@ export function createDispatcher({
   return {
     dispatch,
     message,
+    transcript,
 
     /**
      * 补投队列里属于某个父会话的通知。

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   basenameOf,
   buildProjectMenuItems,
@@ -10,8 +13,10 @@ import {
   defaultProjectName,
   describeDeletionNotice,
   describeProjectRemoval,
-  isProjectOpenable,
+  isCoordinatorCurrent,
+  isCoordinatorRunning,
   isProjectCurrent,
+  isProjectOpenable,
   moveProjectBefore,
   openCoordinatorSession,
   planProjectRename,
@@ -20,9 +25,28 @@ import {
   projectSectionLayout,
   quietWorkspaceOf,
   selectProjectSessionRows,
+  showsProjectActivity,
   isArchiveActiveRefusal,
   validateProjectName,
 } from '../src/client/project-panel-logic.js'
+
+// 会话行的选中态没有渲染测试可跑：仓里不引 jsdom，React 组件不硬测。断言只能落在
+// 源码接线与元素属性上——这一层断了，界面上的表现就是「点开 worker 却没有任何标记」。
+const sectionPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'src/client/project-section.js')
+
+/**
+ * 切出 SessionRow 的函数体：项目行也写着同名的 `data-selected` 属性，全局匹配
+ * 证明不了会话行自己接了选中态。
+ *
+ * @param {string} source - project-section.js 全文
+ * @returns {string} SessionRow 的源码片段
+ */
+function sliceSessionRow(source) {
+  const startAt = source.indexOf('function SessionRow(props)')
+  assert.notEqual(startAt, -1, '找不到 SessionRow 定义')
+  const endAt = source.indexOf('\nfunction ', startAt + 1)
+  return endAt === -1 ? source.slice(startAt) : source.slice(startAt, endAt)
+}
 
 test('目录末段在两种分隔符下都能取到', () => {
   assert.equal(basenameOf('/work/alpha'), 'alpha')
@@ -102,6 +126,91 @@ test('已归档的会话不再列出——宿主的会话索引按磁盘扫，�
   assert.deepEqual(rows.map((row) => row.id), ['s-live'])
 })
 
+test('项目行收起时，任一会话行在跑就显示加载器', () => {
+  const running = (id) => ({ id, running: true })
+  const idle = (id) => ({ id, running: false })
+  assert.equal(showsProjectActivity({ expanded: false, rows: [idle('s1'), running('s2')] }), true)
+  assert.equal(showsProjectActivity({ expanded: false, rows: [idle('s1')] }), false)
+  // 会话刚建、快照里还没有它的行：没有 spinner 可对应，不当成在跑。
+  assert.equal(showsProjectActivity({ expanded: false, rows: [] }), false)
+  assert.equal(showsProjectActivity({ expanded: false, rows: undefined }), false)
+})
+
+test('行首加载圈的合成判定：收起看并集，展开只认协调者', () => {
+  const busy = [{ id: 's-worker', running: true }]
+  const calm = [{ id: 's-worker', running: false }]
+  // 三种「亮」的组合各自一条独占判据：下面的接线用例把三个入参逐一钉在源码上，
+  // 这里把三者的判定结果分开断言，任一路径失效都能指出是哪一组。
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: busy, coordinatorRunning: false }),
+    true,
+    '收起 + worker 在跑：行首代显（会话行被藏起来）',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: calm, coordinatorRunning: true }),
+    true,
+    '收起 + 协调者在跑：它没有会话行，行首是唯一提示',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: true, rows: calm, coordinatorRunning: true }),
+    true,
+    '展开 + 协调者在跑：仍然只有行首能表达',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: true, rows: busy, coordinatorRunning: false }),
+    false,
+    '展开 + worker 在跑：会话行自带 spinner，行首不重复画',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: busy, coordinatorRunning: true }),
+    true,
+    '收起 + 两者都在跑',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: calm, coordinatorRunning: false }),
+    false,
+    '收起 + 都没跑',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: true, rows: calm, coordinatorRunning: false }),
+    false,
+    '展开 + 都没跑',
+  )
+})
+
+test('项目行展开后 worker 在跑不点亮行首——会话行自己带 spinner', () => {
+  assert.equal(showsProjectActivity({ expanded: true, rows: [{ id: 's1', running: true }] }), false)
+  // 协调者不在会话行里，展开时它的运行态仍只能落在行首。
+  assert.equal(showsProjectActivity({ expanded: true, rows: [], coordinatorRunning: true }), true)
+})
+
+test('目录行的加载器与渲染出来的会话行同源：归档会话与当前协调者不算', () => {
+  const rowsOf = (sessionRows) => selectProjectSessionRows({
+    sessionIds: ['s-coordinator', 's-worker', 's-archived'],
+    sessionRows,
+    coordinatorSessionId: 's-coordinator',
+    archivedSessionIds: new Set(['s-archived']),
+  })
+  const base = {
+    's-coordinator': { id: 's-coordinator', running: true },
+    's-worker': { id: 's-worker', running: false },
+    's-archived': { id: 's-archived', running: true },
+  }
+  // 在跑的是当前协调者（它没有会话行）与被归档的会话：只算会话行那一半时不亮。
+  assert.equal(showsProjectActivity({
+    expanded: false,
+    rows: rowsOf(base),
+    coordinatorRunning: false,
+  }), false)
+  // 对照：同一批数据里把 worker 换成在跑，加载器点亮——上面那条的 false 是排除
+  // 生效，不是判定恒为 false。
+  assert.equal(showsProjectActivity({
+    expanded: false,
+    rows: rowsOf({ ...base, 's-worker': { id: 's-worker', running: true } }),
+    coordinatorRunning: false,
+  }), true)
+})
+
 test('官方工作区树的排除集含协调者与全部 worker 会话', () => {
   const projects = [
     { id: 'p1', coordinatorSessionId: 'session-c1' },
@@ -135,7 +244,88 @@ test('当前会话取主区域持有的那条', () => {
   assert.equal(currentSessionIdOf(undefined), undefined)
 })
 
-test('当前会话是协调者或项目下的 worker 时点亮项目行', () => {
+test('整行选中态只给协调者会话', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  assert.equal(isCoordinatorCurrent(project, 'session-coordinator'), true)
+  // worker 会话被打开时选中态归它自己那一行，项目行只点亮文件夹。
+  assert.equal(isCoordinatorCurrent(project, 'session-worker'), false)
+  assert.equal(isCoordinatorCurrent(project, 'session-other'), false)
+  assert.equal(isCoordinatorCurrent(project, undefined), false)
+  assert.equal(isCoordinatorCurrent(project, ''), false)
+  assert.equal(isCoordinatorCurrent({}, 'session-coordinator'), false)
+  // 归档协调者在项目树里没有可点的行，整行不能亮。
+  assert.equal(
+    isCoordinatorCurrent(project, 'session-coordinator', new Set(['session-coordinator'])),
+    false,
+  )
+})
+
+test('会话行把当前会话接线到 data-selected 与 aria-current', () => {
+  const source = readFileSync(sectionPath, 'utf8')
+  // 接线：只有 id 等于当前会话的那一行才是选中行。
+  assert.match(source, /selected:\s*row\.id\s*===\s*currentSessionId/)
+  // 渲染：选中态要落到可观测量上——整行底色看 data-selected，读屏看 aria-current。
+  const rowSource = sliceSessionRow(source)
+  assert.match(rowSource, /'data-selected':\s*selected\s*\?\s*'true'\s*:\s*undefined/)
+  assert.match(rowSource, /'aria-current':\s*selected\s*\?\s*'page'\s*:\s*undefined/)
+})
+
+test('协调者在运行时项目行显示运行态', () => {
+  const project = { coordinatorSessionId: 'session-coordinator' }
+  assert.equal(isCoordinatorRunning(project, { 'session-coordinator': { running: true } }), true)
+  assert.equal(isCoordinatorRunning(project, { 'session-coordinator': { running: false } }), false)
+  // worker 在跑不算：项目行只反映现任协调者，worker 各自的行上有自己的加载圈。
+  assert.equal(isCoordinatorRunning(project, { 'session-worker': { running: true } }), false)
+  // 会话列表还没同步回来、协调者已经没有会话行时按未运行处理。
+  assert.equal(isCoordinatorRunning(project, {}), false)
+  assert.equal(isCoordinatorRunning(project, undefined), false)
+  assert.equal(isCoordinatorRunning({}, { 'session-coordinator': { running: true } }), false)
+  assert.equal(isCoordinatorRunning({ coordinatorSessionId: '' }, { '': { running: true } }), false)
+  // 归档的协调者不算：与整行选中态（isCoordinatorCurrent）同一条口径，宿主的
+  // 会话索引里还留着它的记录。
+  assert.equal(
+    isCoordinatorRunning(
+      project,
+      { 'session-coordinator': { running: true } },
+      new Set(['session-coordinator']),
+    ),
+    false,
+  )
+})
+
+test('协调者运行态接线到行首加载圈', () => {
+  // 按行匹配源码：Windows 检出会把换行转成 CRLF，先归一化。
+  const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
+  // 三个入参逐一钉住，不写成松散匹配：只认 coordinatorRunning 的话，把 rows
+  // 改空或把 expanded 写死都还能通过，而渲染当场就退化成「只跟协调者走」。
+  assert.match(
+    source,
+    /const leadActivity = showsProjectActivity\(\{\n\s*expanded,\n\s*rows: childSessions,\n\s*coordinatorRunning: isCoordinatorRunning\(project, sessionRows, archivedSessionIds\),\n\s*\}\)/,
+  )
+  // 加载圈画在槽位容器内部：替换掉容器的话，组内有当前会话时的激活色（挂在
+  // 容器的 color 上）就没有承载对象了。
+  assert.match(
+    source,
+    /'dsh-leader-kit-project-lead-folder' \},\s*leadActivity\s*\n\s*\? createElement\('span', \{\s*className: 'dsh-leader-kit-project-spinner',\s*'aria-hidden': 'true',/,
+  )
+  // 装饰性元素：旋转没有语义，别让读屏念出来。
+  assert.match(source, /className: 'dsh-leader-kit-project-spinner',\s*'aria-hidden': 'true',/)
+  // 只有一个加载圈类与一条样式规则：两套判据合成后不该留下第二个入口。
+  assert.equal(source.match(/\.dsh-leader-kit-project-spinner \{/g)?.length, 1)
+  assert.doesNotMatch(source, /dsh-leader-kit-project-lead-spinner/)
+  assert.doesNotMatch(source, /'data-running'/)
+  // 样式：边框跟随槽位容器的 color（激活色才生效），自己会转。
+  const spinnerAt = source.indexOf('.dsh-leader-kit-project-spinner {')
+  assert.notEqual(spinnerAt, -1, '找不到加载圈的样式规则')
+  const spinnerRule = source.slice(spinnerAt, source.indexOf('}', spinnerAt))
+  assert.match(spinnerRule, /border: 1\.5px solid currentColor/)
+  assert.doesNotMatch(spinnerRule, /--dsw-alias-label-tertiary/)
+  assert.match(spinnerRule, /animation: dsh-leader-kit-spin/)
+  // hover 让位给展开箭头：槽位容器整条隐藏，加载圈跟着一起收起来。
+  assert.match(source, /:hover \.dsh-leader-kit-project-lead-folder \{\s*display: none;/)
+})
+
+test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {
   const project = {
     coordinatorSessionId: 'session-coordinator',
     retiredCoordinatorSessionIds: ['session-retired'],

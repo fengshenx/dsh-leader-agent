@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  CARD_WRITE_TOOLS,
   COORDINATOR_ONLY_TOOLS,
   COORDINATOR_UNUSABLE_TOOLS,
+  PLAIN_SESSION_DENY_TOOLS,
+  WORKER_DENY_TOOLS,
   applyToolGate,
+  canWriteCardsFor,
   deniedToolsFor,
 } from '../src/host/tools/gate.js'
 
@@ -21,7 +25,8 @@ import {
  */
 function makeAgent(id, registered = [
   'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
-  'spawn_worker', 'message_worker', 'list_cards',
+  'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
+  'create_card', 'update_card',
 ]) {
   const restrictions = []
   const names = new Set(registered)
@@ -57,22 +62,51 @@ test('协调者拿不到收作业的工具，也拿不到对 worker 无效的三
   assert.deepEqual(denied, [...COORDINATOR_UNUSABLE_TOOLS])
 })
 
-test('worker 看不到派工与全库查询', () => {
+test('worker 看不到派工、全库查询与建卡，但保留改卡', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('worker-1'),
     isCoordinatorSession: () => false,
     isWorkerSession: (id) => id === 'worker-1',
   })
-  assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
+  assert.deepEqual(denied, [...WORKER_DENY_TOOLS])
+  // 建卡与派工是协调者的一条动作链；worker 只在自己的卡上写回状态。
+  assert.ok(denied.includes('create_card'))
+  assert.ok(!denied.includes('update_card'))
 })
 
-test('普通会话禁掉派工与全库查询', () => {
+test('普通会话没有派工、全库查询与卡片写入', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('plain-1'),
     isCoordinatorSession: () => false,
     isWorkerSession: () => false,
   })
-  assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
+  // 卡片是项目里的任务事实：普通会话建的卡没有槽位、没有协调者认领，只会污染看板。
+  assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
+  assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
+})
+
+test('read_worker_session 只给协调者：worker 与普通会话的工具面都摘掉它', () => {
+  const workerDenied = deniedToolsFor({
+    agent: makeAgent('worker-1'),
+    isCoordinatorSession: () => false,
+    isWorkerSession: (id) => id === 'worker-1',
+  })
+  const plainDenied = deniedToolsFor({
+    agent: makeAgent('plain-1'),
+    isCoordinatorSession: () => false,
+    isWorkerSession: () => false,
+  })
+  // 断言写字面量而不是比 WORKER_DENY_TOOLS：名单推导的断言会跟着名单一起缩，
+  // 把工具从 COORDINATOR_ONLY_TOOLS 里删掉时仍然全绿，钉不住工具面这条承诺。
+  assert.ok(workerDenied.includes('read_worker_session'))
+  assert.ok(plainDenied.includes('read_worker_session'))
+
+  const coordinatorDenied = deniedToolsFor({
+    agent: makeAgent('coordinator-1'),
+    isCoordinatorSession: (id) => id === 'coordinator-1',
+    isWorkerSession: () => false,
+  })
+  assert.ok(!coordinatorDenied.includes('read_worker_session'))
 })
 
 test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {
@@ -80,7 +114,7 @@ test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {
     agent: makeAgent('whatever'),
     isCoordinatorSession: () => false,
   })
-  assert.deepEqual(denied, [...COORDINATOR_ONLY_TOOLS])
+  assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
 })
 
 test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限制', () => {
@@ -98,8 +132,17 @@ test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限
     isCoordinatorSession: () => false,
     isWorkerSession: () => true,
   })
-  assert.deepEqual(worker.restrictions, [{ deny: [...COORDINATOR_ONLY_TOOLS] }])
-  assert.deepEqual(workerDenied, [...COORDINATOR_ONLY_TOOLS])
+  assert.deepEqual(worker.restrictions, [{ deny: [...WORKER_DENY_TOOLS] }])
+  assert.deepEqual(workerDenied, [...WORKER_DENY_TOOLS])
+
+  const plain = makeAgent('p')
+  const plainDenied = applyToolGate({
+    agent: plain,
+    isCoordinatorSession: () => false,
+    isWorkerSession: () => false,
+  })
+  assert.deepEqual(plain.restrictions, [{ deny: [...PLAIN_SESSION_DENY_TOOLS] }])
+  assert.deepEqual(plainDenied, [...PLAIN_SESSION_DENY_TOOLS])
 })
 
 test('三件宿主工具改由 preset 子树注册时仍然被 deny', () => {
@@ -158,7 +201,53 @@ test('只依赖 engines 下限的 tools 方法面', () => {
   }))
 })
 
-test('两组名单不重叠，改名时不会悄悄互相覆盖', () => {
+test('三组名单互不重叠，改名时不会悄悄互相覆盖', () => {
   const overlap = COORDINATOR_ONLY_TOOLS.filter((name) => COORDINATOR_UNUSABLE_TOOLS.includes(name))
   assert.deepEqual(overlap, [])
+  // 卡片写入与「只有协调者能用」是两条独立的规则：worker 保留前者、没有后者。
+  const cardOverlap = CARD_WRITE_TOOLS.filter((name) => COORDINATOR_ONLY_TOOLS.includes(name))
+  assert.deepEqual(cardOverlap, [])
+})
+
+test('写卡身份判定：worker 直接放行，不等项目索引', async () => {
+  let waits = 0
+  const allowed = await canWriteCardsFor({
+    sessionId: 'worker-1',
+    isCoordinatorSession: () => false,
+    isWorkerSession: (id) => id === 'worker-1',
+    awaitIndex: async () => { waits += 1; return false },
+  })
+  // worker 是进程内的内存集合，不依赖项目注册表：索引读不出来也不该牵连它。
+  assert.equal(allowed, true)
+  assert.equal(waits, 0)
+})
+
+test('写卡身份判定：索引未就绪时拒绝，不吃 isCoordinatorSession 的宽松放行', async () => {
+  const sessionId = 'plain-1'
+  const allowed = await canWriteCardsFor({
+    sessionId,
+    // 索引未就绪时真实实现对所有会话返回 true——这里照抄那个宽松行为。
+    isCoordinatorSession: () => true,
+    isWorkerSession: () => false,
+    awaitIndex: async () => false,
+  })
+  // 问不出身份就不给写：卡片会落盘并归属到项目，与派工同口径 fail closed。
+  assert.equal(allowed, false)
+})
+
+test('写卡身份判定：索引就绪后只认当前协调者', async () => {
+  const options = {
+    isWorkerSession: () => false,
+    awaitIndex: async () => true,
+  }
+  assert.equal(await canWriteCardsFor({
+    sessionId: 'coordinator-1',
+    isCoordinatorSession: (id) => id === 'coordinator-1',
+    ...options,
+  }), true)
+  assert.equal(await canWriteCardsFor({
+    sessionId: 'plain-1',
+    isCoordinatorSession: (id) => id === 'coordinator-1',
+    ...options,
+  }), false)
 })

@@ -18,11 +18,14 @@
     "lib/client.js",
     ".agents/skills/**",
     "locale/*.json",
-    "README.md"
+    "README.md",
+    "README_ZH.md"
   ],
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node scripts/verify-agent-note-format.mjs && node scripts/verify-doc-tool-names.mjs && node scripts/check-syntax.mjs && node --test tests/*.test.js",
+    "e2e": "npm run build:client && node --test \"tests/e2e/*.e2e.js\"",
+    "e2e:install": "playwright install chromium",
+    "check": "node scripts/verify-agent-note-format.mjs && node scripts/verify-doc-tool-names.mjs && node scripts/verify-doc-budgets.mjs && node scripts/check-syntax.mjs && node --test tests/*.test.js",
     "build:client": "node build/client.mjs",
     "dev": "node scripts/dev.mjs",
     "start": "node scripts/start.mjs",
@@ -54,7 +57,8 @@
   ],
   "license": "MIT",
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "playwright": "^1.64.1"
   },
   "dependencies": {
     "minidenticons": "^4.2.1"

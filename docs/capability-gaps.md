@@ -1,6 +1,6 @@
 # 能力缺口清单（P0–P5 实测）
 
-本清单由 P0–P5 阶段在真实 dsh（0.2.1-rc.2）上实测得出，不是文档推断。每条给出对比形态、dsh 实测现状、证据与影响。**目标形态**指希望达成的能力，**参照形态**指已有实现的实际做法；本仓是否已达成，看条目结论。
+本清单由 P0–P5 阶段在真实 dsh（0.2.1-rc.2）上实测得出，不是文档推断。每条给出对比形态、dsh 实测现状、证据与影响。**目标形态**指希望达成的能力，**参照形态**指已有实现的实际做法；本仓是否已达成，看条目结论。条目里的 P0–P5 是早期交付阶段编号，此后不再维护，保留原样只为读懂当时的分期。
 
 复现环境：macOS arm64，dsh `0.2.1-rc.2`，web、headless 与 sdk 三个 profile。
 
@@ -129,7 +129,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 | `@deepseek-ai/dsh-tool-subagent-control`（base bundle 默认启用） | 父子 | `agent_id` 即子会话 id | 调用者派出的子会话 |
 | `@deepseek-ai/dsh-tool-agent-team`（experimental，base bundle 未启用） | 同伴 | teammate 名字 | team 成员 |
 
-**影响**：本流程两者都不用。worker 是本 bundle 用 `ctx.agents.create` 建的普通根会话，不在任何 subagent 目录里：`list_agents` 列不到它；`send_message` 的 `authorizeLineage` 要求子会话头的 `parentSession`（根会话没有），走不通；`interrupt_agent` 对非 resident 目标静默 `return`，工具却仍报成功。worker 的所有交互只经本 bundle 的 `spawn_worker` / `message_worker`，协调者的工具面也把这三件 deny 掉了（普通会话保留：它可能真的用官方 subagent）——也因此协调者没有中止常驻 worker 的手段，worker 卡住只能请人去那个会话处理（见[架构文档的已知限制](architecture.md#已知限制与取舍)）。早期方案文档按 team 工具写过映射表，同样不适用于本流程。
+**影响**：本流程两者都不用。worker 是本 bundle 用 `ctx.agents.create` 建的普通根会话，不在任何 subagent 目录里：`list_agents` 列不到它；`send_message` 的 `authorizeLineage` 要求子会话头的 `parentSession`（根会话没有），走不通；`interrupt_agent` 对非 resident 目标静默 `return`，工具却仍报成功。worker 的所有交互只经本 bundle 的 `spawn_worker` / `message_worker`，协调者的工具面也把这三件 deny 掉了（普通会话保留：它可能真的用官方 subagent）——也因此协调者没有中止常驻 worker 的手段，worker 卡住只能请人去那个会话处理（见[已知限制的 worker 控制面](limitations.md#worker-的控制面)）。早期方案文档按 team 工具写过映射表，同样不适用于本流程。
 
 ### 14. 工具的结构化结果不进事件流 content，只在 `presentationMeta` 投影的 `meta` 里
 
@@ -145,11 +145,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **右栏入口的过滤边界**：tab 类型的 `guide` 是静态注册，注册表没有按会话过滤的扩展点，guide 页会把每个入口画给所有会话。能收紧的只有一处：`sidebar.right.tab.guide.entry` 是 keyed slot（key 为 tab 类型的 `providerId`），插件接管自己那一个入口的渲染，按会话决定画或不画；但 guide 的 More 菜单走 `sidebar.right.tab.guide.actions`（root scope，不带会话），列出的入口名单无法过滤。接管渲染的代价是胶囊要自己复刻宿主 `EntryBox` 的数值，宿主改版式时要跟。
 
-### 16. 读子会话原始回合内容没有默认可用的工具
+### 16. 读子会话原始回合内容没有默认可用的工具，但底层读取服务是公开的
 
-**实测**：`session_event_read` / `session_search` / `session_trace` 属 `@deepseek-ai/dsh-tool-session-query`（experimental），base bundle 未启用；其「authorized session」授权校验在 dsh 内部，仓外插件无法零依赖正确复刻。
+**实测**：模型侧的 `session_search` / `session_event_search` / `session_trace` / `session_event_trace` / `session_event_read` 五个工具属 `@deepseek-ai/dsh-tool-session-query`（`packages/experimental/tool-session-query/src/index.ts:66-109`），base bundle 未启用。
 
-**影响**：读 worker 原始回合没有直接对应物，降级为「完成通知携带产物摘要」；需要深挖时用 `message_worker` 向该 worker 追问（会唤醒它开新回合）。若要直读会话原始事件，须显式安装 `tool-session-query` 并接受其 experimental 状态。
+**但它不是「只有实验包能用」**：底层 `ctx.sessionQuery.readSession(sessionId)` 是公开服务方法，rc.2 就有（`packages/session-query/session-query/src/index.ts:184`），返回 `{ session, inheritedEventCount, events }`，实现里没有身份校验，只做 live-preferred 读取与回放校验；`filterSessions` 同样公开。实验包在工具层自己加授权，判据只有两条：调用方 `header.cwd` 存在，且目标会话 `cwd` 与之相同（`packages/experimental/tool-session-query/src/workspace-access.ts` 的 `authorizeTarget` / `headerAuthorized`）。这条判据仓外可零依赖复刻，本 bundle 的 worker 与协调者又必然同 cwd（派工时 worker 的目录取自项目）。
+
+**影响**：本仓用 `readSession` 自建了 `read_worker_session`（`src/host/dispatch.js` 的 `transcript`），授权比官方更严：调用方必须是项目协调者、目标必须在本 bundle 的派工登记里、且归属就是该协调者。折叠逻辑在 `src/host/worker-transcript.js`。完成通知仍然只给产物摘要，两者分工：通知说「是什么」，这个工具说「怎么做的」。要读**任意**会话（含非本体系派出的）仍须安装 `tool-session-query` 并接受其 experimental 状态——本仓不越界替所有会话开读取口。
 
 ### 17. storage domain 需要 dsh 内部包与 zod，与「bundle 零内部依赖」冲突
 
@@ -396,7 +398,21 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：`agents.create` 建的 worker 拿到的是默认 preset（web profile 下 `workspace-write` + `ask`）。协调者切到 `danger-full-access` / `never` 之后，worker 的同一个命令会被沙箱拒绝；需要审批的调用在后台无人应答，同样被拒——两个方向的偏差都表现为「协调者能干、worker 干不了」。本仓在派工建会话后、首轮之前按协调者的有效值追加两条 `source: 'delegation'` 覆盖，协调者是 `auto` 时再补一条 `permission/preset`（`src/host/permission-inherit.js`）。读不到协调者的 preset 身份时整体放弃继承——排除不了 auto 就不能只写裸 knobs，否则得到的是无沙箱、无审查门的 worker；此时 worker 停在**部署默认 preset** 上，默认可能是任意一档，不保证比协调者更严。继承是派工那一刻的快照，协调者之后切换 preset 不影响已派出的 worker。`spawn_worker` 回执带的是**回读到的实际值**（`resolve` / `overrideOf` / `permissionPresets.current`），不是继承目标：写失败时如实报告 worker 真正跑的权限；读不到的键不写——值为 `undefined` 的键过不了工具结果的 lossless JSON 判定（`snapshotJsonValue` 返回 `undefined`），而报错发生在派工完成之后，会留下挂卡的孤儿 worker。
 
-### 42. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
+### 42. macOS 原生目录选择器在 0.2.1-rc.x 有初始灰态——修复只在 0.2.2-alpha.2 起
+
+**目标形态**：点「加项目」、宿主弹出系统目录选择框后，键盘与鼠标立刻可用。
+
+**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出在浏览器窗口之上但没有被激活——框体呈灰态，点它没反应；必须先点一下浏览器窗口（让 Chrome 重新成为 active app），面板才变成可交互。症状与宿主 #7320 一致。
+
+**证据**：
+
+- 宿主 `packages/host/directory-picker-native/src/native-picker.ts` 的 `MAC_PANEL` 脚本在 `0.2.1-rc.2`～`rc.5` 里都是 `app.activateIgnoringOtherApps(true)` 直接在 `panel.runModal` 之前同步调用；modal 事件循环还没起来，激活请求落空。
+- 提交 `7333a38c7a`（2026-10-26，Fixes #7320）把激活放进 `NSOperationQueue.mainQueue.addOperationWithBlock(...)`，等 modal 循环启动后再激活。该提交只进了 `0.2.2-alpha.2` 及之后（`git tag --contains 7333a38c7a` → `dsh-v0.2.2-alpha.2`），`rc.2`～`rc.5` 逐个 tag 核验均为修复前形态。
+- web 端走哪条选择器由 `dsh-host-directory-picker-auto` 启动时判定：darwin + loopback bind + 非 SSH 启动 → `native`，所以本机 web 实例弹的就是这个 NSOpenPanel。
+
+**影响**：本仓「加项目」只读调用 `uiWorkspace.pickDirectory()`，面板由宿主进程的 `osascript` 弹出、激活时机也在那支脚本里——bundle 侧没有任何 hook 能改它，也不能自带一条目录选择路径（浏览器拿不到绝对路径）。因此这一条只能靠升级宿主修复：`dsh` 升到 `0.2.2-alpha.2` 或更新的 `0.2.x`。本仓的工具与 UI 仍按 `engines.dsh` 下限 `0.2.1-rc.2` 的 API 面写，升级宿主不改这条规矩。
+
+### 43. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
 
 **目标形态**：看板所在的右栏首次打开时默认 400px（或至少允许插件给出宽度偏好）。
 

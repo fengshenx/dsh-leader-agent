@@ -17,14 +17,15 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协�
 
 | 任务 | 先读 |
 |---|---|
-| 理解整体架构、查模块归属与完整限制 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、已知限制） |
+| 理解整体架构、查模块归属 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、宿主契约落点） |
+| 查某处限制、为什么这样取舍 | [docs/limitations.md](docs/limitations.md)（完整限制清单） |
 | 改 host 侧、加工具、动 `agent/created` | [docs/capability-gaps.md](docs/capability-gaps.md)（宿主能力边界，每条都有实测依据） |
 | 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/2026-10-23-client-side-findings-and-build-constraints.md) |
-| 起开发实例、多 worktree 并行 | [README 的开发一节](README.md#开发)、`scripts/dev.mjs` |
+| 起开发实例、多 worktree 并行、构建与测试机制 | [docs/development.md](docs/development.md) |
 | worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/2026-10-23-dispatch-and-wakeup.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
 | 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/2026-10-27-project-bound-board.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
 | 项目级提示词（`COORDINATOR.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/coordinator-context.js`、`src/host/slots/` |
-| 真机 / GUI 取证 | [docs/e2e-testing.md](docs/e2e-testing.md) |
+| 写浏览器 e2e 场景、跑 `npm run e2e`、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、场景模板、mock 标记约定、截图落点、断言纪律；脚本化不了的才走人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
@@ -37,9 +38,10 @@ src/client/         浏览器侧：项目树、看板、会话行（React.create
 src/shared/         两端共用的纯函数与消息来源约定
 .agents/skills/     协议层 skill（leader-mode 派工协议、init-project 初始化方法）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
+tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
-scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名）
-docs/               长期文档（架构、宿主能力边界、真机取证指引）
+scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名、文档预算）
+docs/               长期文档（架构地图、已知限制、宿主能力边界、开发与构建、e2e 车道与人工取证）
 .agents/notes/      非平凡改动的决策记忆
 COORDINATOR.md      本仓作为项目时，协调者会话自动注入的手册
 SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / dev / review）
@@ -48,8 +50,10 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / de
 ## 常用命令
 
 ```bash
-npm run check                     # Agent Note 格式门禁 + 文档工具名门禁 + 语法检查（index/src/scripts/build）+ 全部单测
+npm run check                     # Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查（index/src/scripts/build）+ 全部单测
 npm run test                      # 只跑单测
+npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
+npm run e2e:install               # 首次跑 e2e 前下载 chromium
 npm run build:client              # 重建客户端产物 lib/client.js（加 `-- --watch` 常驻，改 src/client/ 自动替换运行中的插件）
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
@@ -60,7 +64,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 ## 测试
 
 - 只有 `node:test`，**没有 lint**：未使用的 import、死代码、拼写错误都抓不到，改完要手扫。
-- 可判定逻辑抽成纯函数模块再测（`*-logic.js`、`dev-plan.mjs` 这类）；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用真机取证。
+- 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——命令、场景写法、截图落点与断言纪律见 [docs/e2e-testing.md](docs/e2e-testing.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。
@@ -83,7 +87,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - 建会话的实现接受调用方传入的 `sessionId`（`sessionController.create({ sessionId })` 与 `agents.create({ sessionId })`），预生成 id 是唯一不需要事后纠正的手段。
 - 仓外插件不能新增 session event 类型（capability-gaps 第 8 条），卡片与项目状态只能走独立存储域 + session projection。
 - client 产物不能用 `node:` 内置模块（第 23 条）。
-- 客户端依赖解析走宿主冻结模块表（`PLATFORM_MODULES`）：基线模块由构建期 `build/client-bundle.mjs` 的 `BASELINE_EXTERNALS` 留在产物外、运行时同一实例，基线里的宿主包（如 `ui-primitives`）可直接复用；基线外的宿主 UI 包不保证可用。`dsh.client.external` 只用于宿主规则允许的其他插件行（需要 supplier），基线模块不要写进去（重复声明判违规）。Markdown 渲染复用基线的 `MarkdownText`，理由与例外见 [architecture 的客户端与宿主耦合](docs/architecture.md#客户端与宿主耦合)。
+- 客户端依赖解析走宿主冻结模块表（`PLATFORM_MODULES`）：基线模块由构建期 `build/client-bundle.mjs` 的 `BASELINE_EXTERNALS` 留在产物外、运行时同一实例，基线里的宿主包（如 `ui-primitives`）可直接复用；基线外的宿主 UI 包不保证可用。`dsh.client.external` 只用于宿主规则允许的其他插件行（需要 supplier），基线模块不要写进去（重复声明判违规）。Markdown 渲染复用基线的 `MarkdownText`，理由与例外见[已知限制的客户端与宿主耦合](docs/limitations.md#客户端与宿主耦合)。
 - `ctx.sessions.list()` 只返回 live session，从会话推导的列表会随重启漂移（第 21 条）。
 - profile 名要落在 `PROFILE_TEMPLATES`（`web` / `acp` / `headless` / `sdk` / `sdk-minimal`）里：自定义名会被 `dsh plugin` 按只含 `@deepseek-ai/dsh-base` 的默认模板建出来，缺 web-app bundle，插件客户端半边不加载。文档与脚本一律用 `web`。
 - **agent-team（experimental）并存时 worker 会被当成隐式 Lead**：团队工具注册在 Agent scope，`restrict({ deny })` 只认全局名、挡不住，本 bundle 只做告警与运行时上下文禁令（`src/host/team-guard.js`）。机制与取舍见 [architecture 的 agent-team 并存时](docs/architecture.md#agent-team-并存时)。
@@ -113,8 +117,21 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - **别用 `gh api user` 验身份**：installation token 访问该端点一律 403（`Resource not accessible by integration`），那是预期形态不是故障——身份由 App slug 决定（`GET /app` 的 `slug` 是 `telov-review-bot`），用它签出的 token 发评必然显示为 `[bot]`。要确认可用性就查 `gh api /installation/repositories` 里有没有目标仓库。
 - App 权限只有 `issues` / `pull_requests` / `metadata`：能发评论，不能 merge、不能 push；也**不要**把 token `export` 成全局 `GH_TOKEN`，那会让后续所有 `gh` 操作变成 bot 身份。
 
-## 编辑本文件
+## 编辑本文件与文档分层
 
+**一个事实只有一个归属，别处只放链接。** 改代码时只改事实已经变化的那一层；架构文档只在组成、接缝或数据流变化时改。
+
+| 层 | 管什么 | 不写什么 |
+|---|---|---|
+| `AGENTS.md` | 每个任务都适用的铁律 + 按任务查阅入口 | 背景、实例、按场景的流程、已链接文档的复述 |
+| `docs/architecture.md` | 有序地图：分层、运行时模型、数据流、持久化布局、宿主契约落点 | 逐文件职责、决策理由、实现状态标注 |
+| `docs/limitations.md` | 限制是什么、为什么这样取舍 | 实现细节（链到代码或笔记） |
+| `docs/development.md` | 开发环境、实例、构建契约、测试机制 | 架构接缝与运行时语义 |
+| `docs/capability-gaps.md` | 宿主做不到什么，每条带实测依据 | 本仓自己的取舍 |
+| `docs/usage.md` | 使用者视角的完整交互 | 实现与取舍 |
+| `.agents/notes/` | 永久决策与边界（why、放弃了什么、怎么验证） | 迁移计划、验收清单、状态播报 |
+
+- 文档体量由 `scripts/doc-budgets.json` 管，`npm run check` 里的 `scripts/verify-doc-budgets.mjs` 超限变红。`docs/` 与根目录的 Markdown 必须全部登记，漏登记同样变红。红了按顺序处理：**搬到对的层 → 压缩 → 抬天花板**；抬天花板要在 PR 里写明为什么，并按同一比例重算余量。（计数口径：CJK 字符逐个算 1，非 CJK 按空白分词，代码块与表格一并计入；天花板按当前值留至少 5% 余量，每个任务都要改的 `AGENTS.md` 与高频追加的 `capability-gaps.md` 留 10%，不贴线。）
 - 每条规则自包含，或一行断言加链接指向归属文档；背景与理由链到归属，不就地展开。
-- 别处已有的规则不复制：在归属处改，此处只放链接（宿主限制归 `docs/capability-gaps.md`，构建约束归对应 Agent Note）。
+- 别处已有的规则不复制：在归属处改，此处只放链接（宿主限制归 `docs/capability-gaps.md`，构建约束归 `docs/development.md` 与对应 Agent Note）。
 - 清晰度不损时优先压缩。
