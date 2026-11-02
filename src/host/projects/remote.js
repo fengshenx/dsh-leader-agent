@@ -142,6 +142,16 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     }
 
     /**
+     * 调整项目在列表里的位置：移到 `beforeId` 之前，空串表示末尾。
+     * @param {string} id - 项目 id
+     * @param {string} beforeId - 落点项目 id；空串表示末尾
+     * @returns {Promise<void>} 完成
+     */
+    async reorder(id, beforeId) {
+      return this.projects.reorder(id, beforeId)
+    }
+
+    /**
      * 换新协调者会话并改绑。
      * @param {string} id - 项目 id
      * @returns {Promise<object>} 更新后的项目

@@ -144,7 +144,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 | 文件 | 内容 |
 |---|---|
-| `projects.json` | 项目注册表：名字、目录、协调者会话、退役协调者会话列表、自建工作区 id |
+| `projects.json` | 项目注册表：名字、目录、协调者会话、退役协调者会话列表、自建工作区 id；数组顺序即左栏显示顺序（拖拽改，见[笔记](../.agents/notes/2026-11-02-project-row-drag-order.md)） |
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
 | `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |

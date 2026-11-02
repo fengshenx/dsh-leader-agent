@@ -384,3 +384,104 @@ export function projectSectionLayout({ remoteStatus, listExpanded, projectCount 
     showEmpty: list && projectCount === 0,
   }
 }
+
+/**
+ * 拖拽落点的锚点：把拖起来的项目插到哪一项之前。
+ *
+ * 判据与宿主工作区的拖拽一致：落在目标行上半插到它之前，下半插到它之后（也就是
+ * 下一项之前），最后一行下半即末尾。空串代表末尾——远程协议里的 `beforeId` 是
+ * 字符串，空串就是「没有下一项」。
+ *
+ * 顺序不会变的落点返回 null：拖回原处是常见动作，客户端不该为它发远程调用。
+ *
+ * @param {string[]} projectIds - 当前显示顺序
+ * @param {string} activeId - 被拖起的项目 id
+ * @param {string} overId - 悬停其上的项目 id
+ * @param {'before' | 'after'} half - 落点在目标行的哪一半
+ * @returns {string | null} 锚点项目 id（空串表示末尾）；null 表示顺序不变
+ */
+export function projectDropAnchor(projectIds, activeId, overId, half) {
+  const ids = Array.isArray(projectIds) ? projectIds : []
+  const from = ids.indexOf(activeId)
+  const over = ids.indexOf(overId)
+  // 落在自己身上一定不变：上半会得到「插到自己之前」，下半是「插到自己之后」。
+  if (from === -1 || over === -1 || over === from) return null
+  const anchor = half === 'after' ? (ids[over + 1] ?? '') : overId
+  // 锚点是自己（插到自身之前）或紧邻的下一项（本来就排在那里）都等于没动。
+  return anchor === activeId || ids[from + 1] === anchor ? null : anchor
+}
+
+/**
+ * 一次拖拽悬停的完整判定：落到哪、以及要不要画插入线。
+ *
+ * 落在源行本身不画线：拖拽开始后指针从行上划过就会经过自己，线亮着而松手什么
+ * 都不发生，看起来像上一次的落点没清掉。顺序本来就对但落点在别的行上时线照画
+ * ——落点是真的，只是不发请求。
+ *
+ * @param {string[]} projectIds - 当前显示顺序
+ * @param {string} activeId - 被拖起的项目 id
+ * @param {string} overId - 悬停其上的项目 id
+ * @param {'before' | 'after'} half - 落点在目标行的哪一半
+ * @returns {{anchor: string | null, indicator: {id: string, half: 'before' | 'after'} | null}} 判定
+ */
+export function projectDropPlan(projectIds, activeId, overId, half) {
+  const ids = Array.isArray(projectIds) ? projectIds : []
+  if (ids.indexOf(overId) === -1) return { anchor: null, indicator: null }
+  const side = half === 'after' ? 'after' : 'before'
+  return {
+    anchor: projectDropAnchor(ids, activeId, overId, side),
+    indicator: overId === activeId ? null : { id: overId, half: side },
+  }
+}
+
+/**
+ * 连续写入的串行队列。
+ *
+ * 同一份真源上连续发起的写（如拖拽排序）并发发出时，服务端收到的先后不一定等于
+ * 用户操作的先后，收尾刷新也可能倒序到达——界面最后停在哪一份快照上就成了碰运气。
+ * 队列让每一笔等前一笔的请求与收尾都完成再发出，并把「我还是不是最后一笔」交给
+ * 执行体：不是最后一笔就别再改界面，后一笔的收尾刷新才是最终顺序。
+ *
+ * 一笔失败不堵住队列（执行体自己负责报错），链条照常前进。
+ *
+ * @returns {{push: (task: (isLatest: () => boolean) => Promise<void>) => Promise<void>}} 队列
+ */
+export function createWriteQueue() {
+  let tail = Promise.resolve()
+  let issued = 0
+  return {
+    /**
+     * 排一笔写入。
+     * @param {(isLatest: () => boolean) => Promise<void>} task - 执行体
+     * @returns {Promise<void>} 这一笔完成
+     */
+    push(task) {
+      issued += 1
+      const mine = issued
+      const next = tail.then(() => task(() => mine === issued))
+      tail = next.then(() => {}, () => {})
+      return next
+    },
+  }
+}
+
+/**
+ * 按锚点重排项目列表，供拖拽落地后的本地乐观更新。
+ *
+ * 与服务端的 `move` 同语义（DOM insertBefore + 空串表示末尾），锚点找不到时落到
+ * 末尾。
+ *
+ * @param {object[]} projects - 项目列表
+ * @param {string} activeId - 被拖动的项目 id
+ * @param {string} anchorId - 锚点项目 id；空串表示末尾
+ * @returns {object[]} 重排后的新列表
+ */
+export function moveProjectBefore(projects, activeId, anchorId) {
+  const list = Array.isArray(projects) ? [...projects] : []
+  const from = list.findIndex((item) => item?.id === activeId)
+  if (from === -1) return list
+  const [record] = list.splice(from, 1)
+  const to = anchorId === '' ? -1 : list.findIndex((item) => item?.id === anchorId)
+  list.splice(to === -1 ? list.length : to, 0, record)
+  return list
+}

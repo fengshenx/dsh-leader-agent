@@ -38,12 +38,14 @@ import {
   classifyDeletionResult,
   collectExcludedSessionIds,
   collectHiddenWorkspaceIds,
+  createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
   describeDeletionNotice,
   describeProjectRemoval,
   isArchiveActiveRefusal,
   isProjectOpenable,
+  moveProjectBefore,
   openCoordinatorSession,
   quietWorkspaceOf,
   validateProjectName,
@@ -103,6 +105,8 @@ export function ProjectPanel(props) {
    * 的「重命名」也不存在。给一个能改名的输入框，比让用户去终端重来强。
    */
   const [naming, setNaming] = useState(null)
+  /** 拖拽排序的写入队列：连续拖动时一笔一笔地发，见 `reorderProject`。 */
+  const [reorderQueue] = useState(() => createWriteQueue())
 
   const refresh = useCallback(async () => {
     // 通道还没挂好时不发请求：报错只会写一条看不懂的「通道不可用」，
@@ -385,6 +389,34 @@ export function ProjectPanel(props) {
     }
   }, [busy, callRemote, refresh])
 
+  /**
+   * 拖拽落地后调整项目顺序。
+   *
+   * 先按落点本地重排再发请求：远程往返几十毫秒，行停在原处再跳过去会看成「没
+   * 拖动」。失败时用宿主快照兜回来——那才是真源，界面不该停在一个没存下的顺序上。
+   *
+   * 连续拖动走串行队列：两笔并发时服务端收到的先后不等于用户操作的先后，两次
+   * `projects/list` 的响应也可能倒序到达。只有最后一笔做收尾刷新——早先那笔刷新
+   * 回来会先把界面退到中间态，再被最后一笔的刷新跳回去。
+   *
+   * @param {string} projectId - 被拖动的项目 id
+   * @param {string} beforeId - 落点项目 id；空串表示末尾
+   * @returns {Promise<void>} 完成
+   */
+  const reorderProject = useCallback((projectId, beforeId) => {
+    setProjects((current) => moveProjectBefore(current, projectId, beforeId))
+    return reorderQueue.push(async (isLatest) => {
+      try {
+        await callRemote('reorder', [projectId, beforeId])
+      } catch (error) {
+        showToast(`调整项目顺序失败：${error instanceof Error ? error.message : String(error)}`)
+      }
+      // 成功时把宿主算出的顺序（协调者状态等派生字段也一并刷新）拉回来；失败时
+      // 用同一份快照把本地乐观重排撤销掉。
+      if (isLatest()) await refresh()
+    })
+  }, [callRemote, refresh, reorderQueue])
+
   const replaceCoordinator = useCallback(async (project) => {
     if (busy) return
     setBusy(true)
@@ -502,6 +534,7 @@ export function ProjectPanel(props) {
     onRename: (project, name) => { void renameProject(project, name) },
     onReplace: (project) => { void replaceCoordinator(project) },
     onRemove: requestDelete,
+    onReorder: (projectId, beforeId) => { void reorderProject(projectId, beforeId) },
     sessionsByProject,
     sessionRows,
     expandedProjects,

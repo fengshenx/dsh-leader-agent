@@ -749,6 +749,19 @@ export function createProjectService({
     },
 
     /**
+     * 调整项目在列表里的位置：移到 `beforeId` 之前，空串表示末尾。
+     *
+     * 顺序就是用户拖拽出来的显示顺序，与建项时间无关。
+     *
+     * @param {string} id - 项目 id
+     * @param {string} beforeId - 落点项目 id；空串表示末尾
+     * @returns {Promise<void>} 完成
+     */
+    async reorder(id, beforeId) {
+      await store.move(id, beforeId)
+    },
+
+    /**
      * 换新协调者：建一个新会话并改绑，旧会话降级为项目里的普通会话。
      *
      * 旧会话 id 记进 `retiredCoordinatorSessionIds`：它换下后既不是当前协调者

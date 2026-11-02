@@ -222,12 +222,48 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
     },
 
     /**
-     * 列出全部项目，按创建时间升序。
+     * 列出全部项目，按显示顺序（注册表里的数组顺序）。
+     *
+     * 顺序由用户拖拽决定（`move`），新建项目追加到末尾；不另存序号，数组本身
+     * 就是顺序的真源，读写都只改它的位置。
+     *
      * @returns {Promise<object[]>} 项目列表
      */
     async list() {
       const store = await readStore(file, recoverFromCorruption)
-      return [...store.projects].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      return [...store.projects]
+    },
+
+    /**
+     * 把项目移到另一个项目之前（DOM insertBefore 语义）并落盘。
+     *
+     * `beforeId` 为空串表示移到末尾。落点与当前位置相同时不写盘——拖回原处是
+     * 常见操作，没必要每次都重写文件。
+     *
+     * 锚点已不存在（并发删掉了那个项目）时按末尾处理：拖拽的目标已经没了，就近
+     * 落到末尾比报一个用户无从修复的错好。
+     *
+     * @param {string} id - 要移动的项目 id
+     * @param {string} beforeId - 落点项目 id；空串表示末尾
+     * @returns {Promise<{moved: boolean, projectIds: string[]}>} 是否真的移动，以及落盘后的顺序
+     */
+    async move(id, beforeId) {
+      return serialize(async () => {
+        const store = await readStore(file, recoverFromCorruption)
+        const index = store.projects.findIndex((item) => item.id === id)
+        if (index === -1) throw new Error(`项目不存在：${id}`)
+        const anchor = typeof beforeId === 'string' ? beforeId : ''
+        if (anchor === id) {
+          return { moved: false, projectIds: store.projects.map((item) => item.id) }
+        }
+        const [record] = store.projects.splice(index, 1)
+        const anchorIndex = anchor === '' ? -1 : store.projects.findIndex((item) => item.id === anchor)
+        const insertAt = anchorIndex === -1 ? store.projects.length : anchorIndex
+        store.projects.splice(insertAt, 0, record)
+        const moved = insertAt !== index
+        if (moved) await writeStore(store)
+        return { moved, projectIds: store.projects.map((item) => item.id) }
+      })
     },
 
     /**

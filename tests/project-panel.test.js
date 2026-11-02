@@ -6,14 +6,18 @@ import {
   classifyDeletionResult,
   collectExcludedSessionIds,
   collectHiddenWorkspaceIds,
+  createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
   describeDeletionNotice,
   describeProjectRemoval,
   isProjectOpenable,
   isProjectCurrent,
+  moveProjectBefore,
   openCoordinatorSession,
   planProjectRename,
+  projectDropAnchor,
+  projectDropPlan,
   projectSectionLayout,
   quietWorkspaceOf,
   selectProjectSessionRows,
@@ -388,3 +392,132 @@ function menuHandlers() {
     onRemove: noop,
   }
 }
+
+test('拖到目标行上半插到它之前，下半插到它之后', () => {
+  const ids = ['a', 'b', 'c']
+  // 把 c 拖到 a 之前。
+  assert.equal(projectDropAnchor(ids, 'c', 'a', 'before'), 'a')
+  // 把 a 拖到 b 之后：锚点是 b 的下一项 c。
+  assert.equal(projectDropAnchor(ids, 'a', 'b', 'after'), 'c')
+  // 落到最后一行下半就是末尾。
+  assert.equal(projectDropAnchor(ids, 'a', 'c', 'after'), '')
+})
+
+test('顺序不会变的落点返回 null，不发远程调用', () => {
+  const ids = ['a', 'b', 'c']
+  // a 本来就在 b 之前。
+  assert.equal(projectDropAnchor(ids, 'a', 'b', 'before'), null)
+  // c 本来就在 b 之后。
+  assert.equal(projectDropAnchor(ids, 'c', 'b', 'after'), null)
+  // 落在自己身上：上半插到自己之前、下半插到自己之后，都没动。
+  assert.equal(projectDropAnchor(ids, 'b', 'b', 'before'), null)
+  assert.equal(projectDropAnchor(ids, 'b', 'b', 'after'), null)
+  // 最后一行落在自己下半同样是末尾原地。
+  assert.equal(projectDropAnchor(ids, 'c', 'c', 'after'), null)
+})
+
+test('落点认不出来时不动顺序', () => {
+  const ids = ['a', 'b']
+  assert.equal(projectDropAnchor(ids, 'missing', 'a', 'before'), null)
+  assert.equal(projectDropAnchor(ids, 'a', 'missing', 'before'), null)
+  assert.equal(projectDropAnchor(undefined, 'a', 'b', 'before'), null)
+})
+
+test('拖到源行本身不画插入线', () => {
+  const ids = ['a', 'b', 'c']
+  // 拖起来之后指针会从行上划过：这时线亮着而松手什么都不发生，看着像上次的落点没清。
+  assert.deepEqual(projectDropPlan(ids, 'b', 'b', 'before'), { anchor: null, indicator: null })
+  assert.deepEqual(projectDropPlan(ids, 'b', 'b', 'after'), { anchor: null, indicator: null })
+  // 拖出列表：既不画线也不发请求。
+  assert.deepEqual(projectDropPlan(ids, 'a', 'missing', 'after'), { anchor: null, indicator: null })
+})
+
+test('落点在别的行上时线照画，顺序本来就对则只省掉请求', () => {
+  const ids = ['a', 'b', 'c']
+  assert.deepEqual(
+    projectDropPlan(ids, 'c', 'a', 'before'),
+    { anchor: 'a', indicator: { id: 'a', half: 'before' } },
+  )
+  // a 本来就在 b 之前：落点是真的，只是不用发远程调用。
+  assert.deepEqual(
+    projectDropPlan(ids, 'a', 'b', 'before'),
+    { anchor: null, indicator: { id: 'b', half: 'before' } },
+  )
+})
+
+test('线画在落点那一侧的缝里：上半在块顶、下半在块底', () => {
+  const ids = ['a', 'b', 'c']
+  // 下半区的线在目标块的 after 边，锚点是它的下一项——线所在缝与插入点同一处。
+  assert.deepEqual(
+    projectDropPlan(ids, 'a', 'b', 'after'),
+    { anchor: 'c', indicator: { id: 'b', half: 'after' } },
+  )
+  assert.deepEqual(
+    projectDropPlan(ids, 'c', 'a', 'after'),
+    { anchor: 'b', indicator: { id: 'a', half: 'after' } },
+  )
+  // 末行下半是末尾：锚点为空串，线仍画在末块的 after 边。
+  assert.deepEqual(
+    projectDropPlan(ids, 'a', 'c', 'after'),
+    { anchor: '', indicator: { id: 'c', half: 'after' } },
+  )
+})
+
+test('连续拖拽串行写入：后一笔等前一笔收尾，只有最后一笔刷新界面', async () => {
+  const queue = createWriteQueue()
+  const log = []
+  const latestFlags = []
+  let settled = null
+  const write = (name) => async (isLatest) => {
+    log.push(`start:${name}`)
+    await new Promise((resolve) => setTimeout(resolve, 5))
+    latestFlags.push([name, isLatest()])
+    if (isLatest()) settled = name
+    log.push(`end:${name}`)
+  }
+  await Promise.all([queue.push(write('a')), queue.push(write('b'))])
+
+  // 串行：第一笔必须等第二笔排进来之后才跑，两笔不会同时在途。
+  assert.deepEqual(log, ['start:a', 'end:a', 'start:b', 'end:b'])
+  // 第一笔已经过期：它的收尾刷新会把界面退到中间态，界面只认最后一笔。
+  assert.deepEqual(latestFlags, [['a', false], ['b', true]])
+  assert.equal(settled, 'b')
+})
+
+test('一笔写入失败不堵住后面的写入', async () => {
+  const queue = createWriteQueue()
+  const ran = []
+  const failing = queue.push(async () => {
+    throw new Error('写失败')
+  })
+  const after = queue.push(async (isLatest) => {
+    ran.push(['after', isLatest()])
+  })
+
+  await assert.rejects(failing, /写失败/)
+  await after
+  assert.deepEqual(ran, [['after', true]])
+})
+
+test('本地乐观重排与服务端 move 同语义', () => {
+  const projects = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  assert.deepEqual(
+    moveProjectBefore(projects, 'c', 'a').map((project) => project.id),
+    ['c', 'a', 'b'],
+  )
+  assert.deepEqual(
+    moveProjectBefore(projects, 'a', '').map((project) => project.id),
+    ['b', 'c', 'a'],
+  )
+  // 锚点不存在时落到末尾；被拖项不在列表里时原样返回。
+  assert.deepEqual(
+    moveProjectBefore(projects, 'b', 'missing').map((project) => project.id),
+    ['a', 'c', 'b'],
+  )
+  assert.deepEqual(
+    moveProjectBefore(projects, 'missing', 'a').map((project) => project.id),
+    ['a', 'b', 'c'],
+  )
+  // 不改动入参。
+  assert.deepEqual(projects.map((project) => project.id), ['a', 'b', 'c'])
+})
