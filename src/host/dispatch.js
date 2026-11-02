@@ -723,7 +723,7 @@ export function createDispatcher({
     //
     // 权限跟着会话一起交下去：宿主的默认 preset 不一定是协调者当前那套，而
     // worker 在后台跑，需要审批的调用没人应答。
-    const childId = await workerSessions.spawn({
+    const { sessionId: childId, permission } = await workerSessions.spawn({
       cwd,
       workspaceId,
       name,
@@ -752,6 +752,9 @@ export function createDispatcher({
       parent,
       name,
       startedAt: Date.now(),
+      // worker 以什么权限跑要跟着派工结果回去：继承到完全权限时，用户在派工
+      // 那一刻就该知道，而不是事后翻 worker 的会话日志。
+      permission,
     }
     // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
     owners.set(childId, { parentSessionId: parent.id, name })

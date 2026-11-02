@@ -14,6 +14,35 @@
 import { isValidSlotName } from '../slots/slot-templates.js'
 
 /**
+ * 把继承到的权限写成给协调者看的一行（多行时按行拼）。
+ *
+ * worker 的输入来自项目文件、issue 与 PR 正文这类外部内容；继承到完全权限、
+ * 无审批时，prompt injection 直接等于任意代码执行。派工这一刻必须让用户看见，
+ * 才有机会否决。
+ *
+ * @param {object | undefined} permission - `inheritPermission()` 的返回值
+ * @returns {string | undefined} 文案；组合里没有权限旋钮时 undefined
+ */
+function describePermission(permission) {
+  if (permission === undefined) return undefined
+  const sandbox = permission.sandbox ?? '未知沙箱模式'
+  const approval = permission.approval ?? '未知审批策略'
+  const lines = []
+  if (permission.preset === 'auto') {
+    lines.push('权限：自动审查（auto）——无沙箱，每次工具调用先经自动审查。')
+  } else if (sandbox === 'danger-full-access' && approval === 'never') {
+    lines.push('权限：完全访问、无审批——它能读写工作区外的文件并执行任意命令，不会向你请求确认。')
+  } else {
+    lines.push(`权限：沙箱 ${sandbox}、审批 ${approval}。`)
+  }
+  if (permission.skipped.length > 0) {
+    lines.push(`权限未完整继承：${permission.skipped.map((item) => `${item.knob}（${item.reason}）`).join('、')}。`)
+  }
+  return lines.join('\n')
+}
+
+
+/**
  * 创建 `spawn_worker` 工具定义。
  * @param {object} options - 工具选项
  * @param {{ dispatch: (input: object) => Promise<object> }} options.dispatcher - 派工器
@@ -53,15 +82,39 @@ export function createSpawnWorkerTool({ dispatcher }) {
           childId: { type: 'string' },
           name: { type: 'string' },
           status: { type: 'string' },
+          permission: {
+            type: 'object',
+            properties: {
+              sandbox: { type: 'string' },
+              approval: { type: 'string' },
+              preset: { type: 'string' },
+              skipped: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    knob: { type: 'string' },
+                    reason: { type: 'string' },
+                  },
+                  required: ['knob', 'reason'],
+                },
+              },
+            },
+            required: ['skipped'],
+          },
         },
         required: ['childId', 'status'],
       },
       render(args, value) {
-        const result = /** @type {{ childId: string, name?: string, status: string }} */ (value)
+        const result = /** @type {{ childId: string, name?: string, status: string, permission?: object }} */ (value)
+        const permission = describePermission(result.permission)
         return [
           {
             type: 'text',
-            text: `已建 worker「${result.name ?? result.childId}」（子会话 ${result.childId}），尚未开工。用 message_worker 投递任务正文；worker 开工时自动获得挂卡事实、之后卡片变化会同步过来，不用在消息里抄 spec。`,
+            text: [
+              `已建 worker「${result.name ?? result.childId}」（子会话 ${result.childId}），尚未开工。用 message_worker 投递任务正文；worker 开工时自动获得挂卡事实、之后卡片变化会同步过来，不用在消息里抄 spec。`,
+              ...permission === undefined ? [] : [permission],
+            ].join('\n'),
           },
         ]
       },
@@ -106,7 +159,12 @@ export function createSpawnWorkerTool({ dispatcher }) {
         force: typeof input.force === 'string' && input.force.trim() !== '' ? input.force.trim() : undefined,
         signal: exec.signal,
       })
-      return { childId: record.childId, name: record.name, status: 'spawned' }
+      return {
+        childId: record.childId,
+        name: record.name,
+        status: 'spawned',
+        ...record.permission === undefined ? {} : { permission: record.permission },
+      }
     },
   }
 }

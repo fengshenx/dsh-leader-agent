@@ -47,7 +47,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 挂上的是**整个标准组合**，不只一两个工具：persona、`agent-instructions`（会读项目 `AGENTS.md`）、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web` 等一起进来。worker 是常驻后台会话，因此它也能向用户提问。
 
-worker 的**权限**（沙箱模式 + 审批策略）在派工时从协调者继承。宿主的 `permissionPresets` 会按用户默认 preset 给每个新会话钉权限，协调者自己切过的 `danger-full-access` / `never` 不会跟过来（[capability-gaps 第 41 条](capability-gaps.md)）；于是 worker 建好之后、首轮之前追加两条 `source: 'delegation'` 的覆盖事件（`permission-inherit.js`）。不继承的后果不对称：worker 在后台跑，审批 answerer 按会话 UI 作用域注册，没人应答的 `ask` 一律落到 `unavailable`——需要审批的调用直接被拒。继承是一次性快照，协调者之后切换 preset 不影响已派出的 worker：权限在宿主里本来就是逐会话的。
+worker 的**权限**（沙箱模式 + 审批策略）在派工时从协调者继承。宿主的 `permissionPresets` 会按用户默认 preset 给每个新会话钉权限，协调者自己切过的 `danger-full-access` / `never` 不会跟过来（[capability-gaps 第 41 条](capability-gaps.md)）；于是 worker 建好之后、首轮之前追加两条 `source: 'delegation'` 的覆盖事件（`permission-inherit.js`）。协调者是 `auto` 时再补一条 `permission/preset`：auto 的身份不在 knob 值里（bundle 不匹配任何配置 preset），只写 knobs 会让 `derive()` 落到 `custom`，审查门关闭而沙箱已经放开。不继承的后果不对称：worker 在后台跑，审批 answerer 按会话 UI 作用域注册，没人应答的 `ask` 一律落到 `unavailable`——需要审批的调用直接被拒（继承 `ask` 给后台 worker 仍是死路，只有打开这个会话才可能应答）。继承是一次性快照，协调者之后切换 preset 不影响已派出的 worker：权限在宿主里本来就是逐会话的。继承到的值与没继承成功的缺口都随 `spawn_worker` 回执返回，完全权限会被点名——worker 的输入含项目文件、issue 与 PR 正文，静默给完全权限等于把 prompt injection 变成任意代码执行。
 
 ### 派工与唤醒
 
@@ -187,7 +187,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话，**不开工、立即返回**会话 id；可选带 `cardId` + `slot` 把卡槽位绑到它身上（卡必须是本项目的 `active` 卡），绑定在返回前完成 |
 | `message_worker` 工具 | `src/host/tools/message-worker.js` | 投递任务与续聊：第一条消息即开工；活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
 | worker 会话 | `src/host/worker-sessions.js` | worker 的创建、投递、销毁：`agents.create` 建的**普通根会话**，常驻、可被人下钻对话、进程重启后能冷恢复 |
-| 权限继承 | `src/host/permission-inherit.js` | 派工时把协调者的有效沙箱模式与审批策略写到新 worker 会话上（`source: 'delegation'` 的两条覆盖事件）；宿主默认 preset 不等于协调者当前那套 |
+| 权限继承 | `src/host/permission-inherit.js` | 派工时把协调者的有效沙箱模式与审批策略写到新 worker 会话上（`source: 'delegation'` 的两条覆盖事件）；协调者是 `auto` 时补写 `permission/preset` 保住审查门；宿主默认 preset 不等于协调者当前那套 |
 | worker 登记表 | `src/host/worker-registry.js` | 会话 id → 父会话与名字的落盘映射（`workers.json`）：续聊跨进程也要找得到归属 |
 | 派工与唤醒 | `src/host/dispatch.js` | 建会话、在 worker 轮次结束时从会话事件结算产出、落盘完成通知、唤醒父会话开新 turn |
 | 通知落盘队列 | `src/host/notification-store.js` | 完成通知先写盘再唤醒；投递失败留队，父会话重开时补投 |

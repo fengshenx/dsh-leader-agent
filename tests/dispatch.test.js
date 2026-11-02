@@ -986,6 +986,36 @@ test('派工时 worker 继承协调者的权限（沙箱模式 + 审批策略）
     { type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
     { type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
   ])
+  // 派工结果要带着继承到的权限：完全权限的 worker 不能在用户不知情时开跑。
+  assert.equal(record.permission.sandbox, 'danger-full-access')
+  assert.equal(record.permission.approval, 'never')
+  assert.deepEqual(record.permission.skipped, [])
+})
+
+test('spawn_worker 把继承到的权限写进回执，完全权限要让协调者看见', async () => {
+  const fixture = createFixture({
+    permissions: {
+      sandbox: { 'coordinator-1': 'danger-full-access' },
+      approval: { 'coordinator-1': 'never' },
+    },
+  })
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const tool = createSpawnWorkerTool({ dispatcher })
+
+  const result = await tool.execute(
+    { name: '实现派工' },
+    {
+      signal: new AbortController().signal,
+      agent: { ...createParent('coordinator-1', fixture.delivered), session: { id: 'coordinator-1' } },
+    },
+  )
+
+  assert.equal(result.permission.sandbox, 'danger-full-access')
+  assert.equal(result.permission.approval, 'never')
+  const rendered = tool.output.render({}, result).map((block) => block.text).join('\n')
+  assert.match(rendered, /完全访问、无审批/)
 })
 
 test('派工带 cardId 与 slot 时，绑定先于开工完成', async () => {

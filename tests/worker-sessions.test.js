@@ -153,7 +153,7 @@ test('建会话时用带前缀的会话 id，且不投递任务——开工等�
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     cwd: '/repo',
     name: 'research-sources',
     signal: new AbortController().signal,
@@ -177,18 +177,22 @@ test('建会话时继承协调者的权限，而不是宿主的默认 preset', a
   })
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const sessionId = await sessions.spawn({
+  const { sessionId, permission } = await sessions.spawn({
     cwd: '/repo',
     permissionFrom: { id: 'coordinator-1' },
     signal: new AbortController().signal,
   })
 
-  // 宿主的 permissionPresets 在 `agent/created` 上给新会话 pin 的是用户默认 preset
+  // 宿主的 permissionPresets 在 `session/created` 上给新会话 pin 的是用户默认 preset
   // （夹具默认 workspace-write + ask）；协调者的覆盖必须在首轮之前落到 worker 上。
   assert.deepEqual(fixture.appended, [
     { id: sessionId, type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
     { id: sessionId, type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
   ])
+  // 派工结果带着继承到的权限：协调者要知道这个 worker 以什么权限在跑。
+  assert.equal(permission.sandbox, 'danger-full-access')
+  assert.equal(permission.approval, 'never')
+  assert.deepEqual(permission.skipped, [])
 })
 
 test('没有权限来源时不碰 worker 会话的权限事件', async () => {
@@ -204,7 +208,7 @@ test('建会话时把显示名钉成会话标题', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'research-sources',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -218,7 +222,7 @@ test('deferPresentation 时建会话不做呈现，present 才补标题与工作
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'research-sources',
     workspaceId: 'ws-1',
     deferPresentation: true,
@@ -421,7 +425,7 @@ test('派出的会话立刻算 worker，供同步的工具面裁剪判定', asyn
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
   assert.equal(sessions.isWorkerSession('worker-1'), false)
 
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -442,7 +446,7 @@ test('登记表收编的历史会话也算 worker', () => {
 test('活着时续聊直接投到当前会话，不算冷恢复', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -482,7 +486,7 @@ test('不在内存时续聊走冷恢复，并重新算作 worker', async () => {
 test('续聊不带名字时不改标题，消息署名取会话头里的标题', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -502,7 +506,7 @@ test('续聊不带名字时不改标题，消息署名取会话头里的标题',
 test('销毁调宿主 dispose，并从活表与 worker 集合里移除', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -519,12 +523,12 @@ test('销毁调宿主 dispose，并从活表与 worker 集合里移除', async (
 test('销毁全部只收在内存的会话', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
-  const first = await sessions.spawn({
+  const { sessionId: first } = await sessions.spawn({
     name: 'a',
     parentSessionId: 'c',
     signal: new AbortController().signal,
   })
-  const second = await sessions.spawn({
+  const { sessionId: second } = await sessions.spawn({
     name: 'b',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -573,7 +577,7 @@ test('宿主销毁失败只记日志，不改判成没销毁', async () => {
   const fixture = createFixture()
   const warnings = []
   const sessions = createWorkerSessions({ ctx: fixture.ctx, logger: (message) => warnings.push(message) })
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -611,7 +615,7 @@ test('建会话失败时不留 worker 身份', async () => {
 test('宿主要求忘掉已销毁的会话时只摘记录，不再调 dispose', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     signal: new AbortController().signal,
@@ -630,7 +634,7 @@ test('派出的 worker 挂进项目工作区：不挂就落在官方树的「未
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     workspaceId: 'ws-1',
@@ -646,7 +650,7 @@ test('没有工作区可挂时照常派工', async () => {
   const fixture = createFixture({ workspaceExists: false })
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const sessionId = await sessions.spawn({
+  const { sessionId } = await sessions.spawn({
     name: 'w',
     parentSessionId: 'c',
     workspaceId: 'ws-gone',
