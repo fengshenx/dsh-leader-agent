@@ -48,6 +48,29 @@ export const name = 'dsh-leader-kit-host'
 export const inject = ['skills', 'tools', 'systemPrompt']
 
 /**
+ * 本 bundle 注册到宿主的工具定义。
+ *
+ * 装配与文档门禁（`scripts/verify-doc-tool-names.mjs`）都从这里取名字，工具名因此
+ * 只有一处来源：工厂返回什么，门禁就比对什么。依赖只在 `call` 里用到，取名字时
+ * 不传也能拿到完整的工具定义。
+ *
+ * @param {object} [options] - 工具依赖
+ * @param {object} [options.dispatcher] - 派工器
+ * @param {object} [options.cards] - 卡片存储
+ * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
+ * @returns {object[]} 工具定义
+ */
+export function createBundleTools({ dispatcher, cards, resolveProject } = {}) {
+  return [
+    createSpawnWorkerTool({ dispatcher }),
+    createMessageWorkerTool({ dispatcher }),
+    createCreateCardTool({ store: cards, resolveProject }),
+    createUpdateCardTool({ store: cards, resolveProject }),
+    createListCardsTool({ store: cards, resolveProject }),
+  ]
+}
+
+/**
  * 挂载本 bundle 的能力。
  * @param {object} ctx - Cordis 上下文
  * @returns {void}
@@ -127,14 +150,9 @@ export function apply(ctx) {
   // 装配收尾：接管动作依赖上面全部组件，现在才成形。
   handover = createCoordinatorHandover({ projects, workers, notifications: store, dispatcher, logger })
 
-  ctx.tools.register(createSpawnWorkerTool({ dispatcher }))
-  ctx.tools.register(createMessageWorkerTool({ dispatcher }))
-
   // 建卡与改卡对所有会话开放：worker 边干活边把状态写回卡片，普通会话也能为
-  // 项目登记待办；查全库卡片只给协调者。
-  ctx.tools.register(createCreateCardTool({ store: cards, resolveProject }))
-  ctx.tools.register(createUpdateCardTool({ store: cards, resolveProject }))
-  ctx.tools.register(createListCardsTool({ store: cards, resolveProject }))
+  // 项目登记待办；查全库卡片、派工与续聊只给协调者（见 `applyToolGate`）。
+  for (const tool of createBundleTools({ dispatcher, cards, resolveProject })) ctx.tools.register(tool)
 
   // 角色槽位注入：会话被卡片绑到某个槽位时，每轮 turn 注入该槽位在项目
   // `SLOTS.md` 里的正文。槽位不注册工具、不改工具可见性。
