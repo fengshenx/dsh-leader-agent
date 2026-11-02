@@ -122,27 +122,32 @@ export function WorkerReportView({ node, openSession }) {
     ),
     createElement(
       'div',
-      {
-        ref: bubbleRef,
-        className: 'dsh-leader-kit-worker-report__bubble',
-        'data-collapsed': expanded ? undefined : 'true',
-      },
-      markdown
-        ? createElement(Markdown, { source: body })
-        : createElement('div', { className: 'dsh-leader-kit-worker-report__plain' }, body),
+      { className: 'dsh-leader-kit-worker-report__bubble' },
+      // 裁剪只发生在正文层：按钮在气泡内、正文外，否则展开开关会跟着两行水位被裁掉
+      createElement(
+        'div',
+        {
+          ref: bubbleRef,
+          className: 'dsh-leader-kit-worker-report__content',
+          'data-collapsed': expanded ? undefined : 'true',
+        },
+        markdown
+          ? createElement(Markdown, { source: body })
+          : createElement('div', { className: 'dsh-leader-kit-worker-report__plain' }, body),
+      ),
+      overflowing
+        ? createElement(
+            'button',
+            {
+              type: 'button',
+              className: 'dsh-leader-kit-worker-report__toggle',
+              'aria-expanded': expanded,
+              onClick: () => setExpanded((value) => !value),
+            },
+            expanded ? '收起' : '展示更多',
+          )
+        : null,
     ),
-    overflowing
-      ? createElement(
-          'button',
-          {
-            type: 'button',
-            className: 'dsh-leader-kit-worker-report__toggle',
-            'aria-expanded': expanded,
-            onClick: () => setExpanded((value) => !value),
-          },
-          expanded ? '收起' : '展示更多',
-        )
-      : null,
     createElement(
       'div',
       { className: 'dsh-leader-kit-worker-report__meta' },

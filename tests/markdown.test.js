@@ -80,7 +80,30 @@ test('两处容器用 data-markdown-variant 钩子恢复正文与链接色', () 
 test('worker 气泡折叠按块级内容计算，退回 line-clamp 会失效', () => {
   const source = read('src/client/worker-report-styles.js')
   assert.equal(source.includes('-webkit-line-clamp'), false, 'line-clamp 只能截纯文本行，正文已是块级元素')
-  assert.match(source, /max-height: calc\(2 \* var\(--dsh-leader-kit-report-line\) \+ 22px\)/)
+  // 裁剪落在正文层，气泡内的展开按钮不跟着被截
+  assert.match(
+    source,
+    /\.dsh-leader-kit-worker-report__content\[data-collapsed='true'\] \{[^}]*max-height: calc\(2 \* var\(--dsh-leader-kit-report-line\) \+ 4px\)/,
+  )
+  const bubble = /\.dsh-leader-kit-worker-report__bubble \{([\s\S]*?)\n\}/.exec(source)
+  assert.notEqual(bubble, null, '找不到气泡规则')
+  assert.equal(/max-height|overflow: hidden/.test(bubble[1]), false, '气泡本身不该裁剪，否则按钮被一起截掉')
   // 行高必须取 compact 变体的值，否则折叠水位与实际排版差半行
   assert.match(source, /--dsh-leader-kit-report-line: calc\(20px \+ var\(--dsh-content-font-delta-secondary, 0px\)\)/)
+})
+
+test('worker 气泡沿用宿主消息气泡的底色，不自混前景色', () => {
+  const source = read('src/client/worker-report-styles.js')
+  assert.match(source, /background: var\(--dsw-specific-bubble\)/)
+  // 按 label-primary 混百分比在深浅主题下强度不一致，看上去偏灰
+  assert.equal(source.includes('color-mix(in srgb, var(--dsw-alias-label-primary) 2%'), false)
+  assert.equal(/#[0-9a-fA-F]{3,8}\b/.test(source), false, '样式里出现了写死的色值')
+})
+
+test('展开/收起按钮在气泡内，与正文是同一层的两个兄弟', () => {
+  const view = read('src/client/worker-report-view.js')
+  assert.match(view, /className: 'dsh-leader-kit-worker-report__bubble'/)
+  assert.match(view, /className: 'dsh-leader-kit-worker-report__content'/)
+  // 折叠状态挂在正文层，按钮不带折叠属性
+  assert.match(view, /'data-collapsed': expanded \? undefined : 'true'/)
 })

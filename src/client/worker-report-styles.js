@@ -48,20 +48,30 @@ const STYLE_TEXT = `
 }
 
 .dsh-leader-kit-worker-report__bubble {
-  /* 正文是 Markdown 块级元素，折叠高度按 content-box 算行高，显式声明不随主题漂移；
-     行高取 compact 变体的值，与 MarkdownText 内部排版一致，否则折叠水位会差半行 */
-  box-sizing: border-box;
+  /* 行高取 compact 变体的值，与 MarkdownText 内部排版一致，否则折叠水位会差半行 */
   --dsh-leader-kit-report-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* 展开开关与正文之间留够呼吸位：2px 时它看着像最后一块内容的一部分 */
+  gap: 6px;
   max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
-  /* 极淡底：按前景色混出几乎看不出的一层，靠 1px 边框交代气泡边界。 */
-  background: color-mix(in srgb, var(--dsw-alias-label-primary) 2%, transparent);
-  border: 1px solid var(--dsw-alias-border-l3);
+  /* 与宿主消息气泡同一材质：--dsw-specific-bubble 是主题给气泡的专属底色，
+     自己按前景色混会偏灰，且深浅主题下强度不一致。宿主的用户气泡也没有描边。 */
+  background: var(--dsw-specific-bubble);
+  border: none;
   border-radius: var(--dsw-radius-xl);
-  padding: 10px 16px;
+  padding: 10px 16px 12px;
   font-size: var(--dsh-content-font-size, 14px);
   line-height: var(--dsh-leader-kit-report-line);
   color: var(--dsw-alias-label-primary);
   word-break: break-word;
+}
+
+.dsh-leader-kit-worker-report__content {
+  /* flex 容器里 align-items: flex-start 会让子项按内容收缩，显式撑满才不会提前换行 */
+  width: 100%;
 }
 
 /* 同 card-detail-text：compact 变体把正文压成三级标签色、链接变成 inherit。
@@ -83,14 +93,15 @@ const STYLE_TEXT = `
 
 /* 默认只露两行：worker 的回报动辄一屏，协调者扫一眼摘要就够，细节按需展开。
    正文是块级元素（段落、列表、代码块），line-clamp 只能截纯文本行；按行高算
-   max-height 才对块级内容生效。22px 是上下 padding 20px 加边框 2px。 */
-.dsh-leader-kit-worker-report__bubble[data-collapsed='true'] {
-  max-height: calc(2 * var(--dsh-leader-kit-report-line) + 22px);
+   max-height 才对块级内容生效。多出的 4px 是 compact 段落的上边距，不加会把第二行
+   的下缘裁掉。裁剪只落在正文层，气泡内的展开按钮不跟着被截。 */
+.dsh-leader-kit-worker-report__content[data-collapsed='true'] {
+  max-height: calc(2 * var(--dsh-leader-kit-report-line) + 4px);
   overflow: hidden;
 }
 
 .dsh-leader-kit-worker-report__toggle {
-  margin-top: -2px;
+  align-self: flex-start;
   padding: 0 2px;
   border: none;
   background: none;
