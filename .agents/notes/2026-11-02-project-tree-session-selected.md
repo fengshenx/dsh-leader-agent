@@ -28,13 +28,13 @@
 
 ### 协调者运行中：行首目录图标换成加载圈
 
-项目行的行首槽位原本固定画目录图标。协调者跑起来时这个位置换成加载圈（新增 `isCoordinatorRunning(project, sessionRows)` 读当前协调者会话行的 `running`）。
+项目行的行首槽位原本固定画目录图标。协调者跑起来时这个位置换成加载圈（新增 `isCoordinatorRunning(project, sessionRows)` 读当前协调者会话行的 `running`；归档口径由 #64 合成时补成第三个参数）。
 
 理由与上一节相同：协调者在项目树下不单独出行，项目收起或 worker 行被水位折叠时，行首是唯一能看出「它还在干活」的位置。只认现任协调者——worker 在跑不影响项目行，它们各自的行上有自己的加载圈。
 
 加载圈画在 `.dsh-leader-kit-project-lead-folder` 槽位**内部**，不替换容器：组内有当前会话的激活色挂在容器的 `color` 上（`project-section.js` 的 `[data-active='true'] .dsh-leader-kit-project-lead-folder`），容器一被顶掉，收起态下的活动提示与「本组有当前会话」就丢了同一处承载。边框因此写 `currentColor`（与目录图标的 `stroke: currentColor` 同源），不写死 `label-tertiary`；加载圈本身是装饰，挂 `aria-hidden="true"`。
 
-hover 时整个槽位让位给展开箭头（既有规则对容器生效），加载圈跟着一起收起来，移开指针就回来。行上同时留 `data-running` 作为可断言的观测量。
+hover 时整个槽位让位给展开箭头（既有规则对容器生效），加载圈跟着一起收起来，移开指针就回来。
 
 ### 与 #64 的合成：行首活动提示分两种来源
 
@@ -46,11 +46,14 @@ hover 时整个槽位让位给展开箭头（既有规则对容器生效），�
 合成公式（合并顺序定为先 #74、后 #64，合成落在 #64 侧）：
 
 ```js
-leadActivity = isCoordinatorRunning(project, sessionRows)
-  || showsProjectActivity({ expanded, rows: childSessions })
+leadActivity = showsProjectActivity({
+  expanded,
+  rows: childSessions,
+  coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds),
+})
 ```
 
-本 PR 只落地前半句；`showsProjectActivity` 由 #64 rebase 时接上，`docs/usage.md` 与 `README.md` 已按合成后的完整规则写。
+本 PR 只落地前半句；#64 rebase 时把两半并进 `showsProjectActivity` 一个判定，`data-running` 属性与 `lead-spinner` 类随之删除（统一成 `.dsh-leader-kit-project-spinner`）。合成后的取舍、归档口径与验证读数见 [2026-11-02-project-activity-indicator.md](2026-11-02-project-activity-indicator.md)。
 
 ## 边界
 
@@ -65,9 +68,9 @@ leadActivity = isCoordinatorRunning(project, sessionRows)
 
 - 单测：新增「整行选中态只给协调者会话」，覆盖协调者 / worker / 别的会话 / 空值与 `undefined` / 项目不存在 / 归档协调者；新增「协调者在运行时项目行显示运行态」，覆盖协调者运行 / 未运行 / worker 在跑 / 会话表缺失 / 项目没有协调者。`tests/project-panel.test.js` 47 pass。
 - 双向验证：临时删掉 `isCoordinatorCurrent()` 里的协调者判据（`project?.coordinatorSessionId !== currentSessionId`）→ 对应新用例变红（1 fail）；把 `isCoordinatorRunning()` 改成「任一 worker 在跑都算」→ 运行态用例变红（1 fail）；删掉项目行的运行态渲染分支 → 接线守卫变红（1 fail）；把加载圈改回「替代槽位容器」的结构 → 1 fail；把边框写回 `--dsw-alias-label-tertiary` → 1 fail；删掉 `aria-hidden` → 1 fail；还原 → 47 pass。
-- 会话行的接线守卫：仓里没有 jsdom，`SessionRow` 渲染不出可断言的元素，所以「当前会话 → `data-selected` / `aria-current`」这条链只能读 `src/client/project-section.js` 源码断言（同 `tests/board-styles.test.js` 读样式表的做法）：`ProjectRow` 传 `selected: row.id === currentSessionId`，`SessionRow` 把它映射到两个属性。双向验证：删掉传入 `selected` 那一行 → 1 fail；删掉 `SessionRow` 里的 `data-selected` → 1 fail；还原 → 47 pass。旧口径下这两处都能静默通过（44 pass）。运行态的接线（`coordinatorRunning` → 渲染分支 → `data-running` → 样式与 hover 让位）走同一种源码断言。
+- 会话行的接线守卫：仓里没有 jsdom，`SessionRow` 渲染不出可断言的元素，所以「当前会话 → `data-selected` / `aria-current`」这条链只能读 `src/client/project-section.js` 源码断言（同 `tests/board-styles.test.js` 读样式表的做法）：`ProjectRow` 传 `selected: row.id === currentSessionId`，`SessionRow` 把它映射到两个属性。双向验证：删掉传入 `selected` 那一行 → 1 fail；删掉 `SessionRow` 里的 `data-selected` → 1 fail；还原 → 47 pass。旧口径下这两处都能静默通过（44 pass）。运行态的接线（`leadActivity` → spinner → 样式与 hover 让位）走同一种源码断言，合成后的实现与验证读数见 [2026-11-02-project-activity-indicator.md](2026-11-02-project-activity-indicator.md)。
 - `npm run check`：788 tests / 779 pass / 9 skipped / 0 fail。
-- `npm run build:client` 重建产物，`lib/client.js` 里 `data-selected` 4 处命中（项目行、会话行与两处样式选择器），`project-lead-spinner` 2 处命中（样式选择器与组件类名各一）。
+- `npm run build:client` 重建产物，`lib/client.js` 里 `data-selected` 4 处命中（项目行、会话行与两处样式选择器），`project-lead-spinner` 2 处命中（样式选择器与组件类名各一；类名在 #64 合成时统一成 `project-spinner`）。
 - 真机（隔离 dev 实例，`DSH_HOME` 在 `.dev/home`，端口 4321；项目与 worker 登记用 seed 写入 `dsh-leader-kit/projects.json` / `workers.json`，会话目录从既有会话复制；无头 Chrome 1440×940 走 CDP 读 `data-*` 与 `getComputedStyle`，console error 计数 0）：
 
   | 场景 | 修复前 | 修复后 |

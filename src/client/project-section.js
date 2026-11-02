@@ -15,7 +15,7 @@
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isCoordinatorCurrent, isCoordinatorRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isCoordinatorCurrent, isCoordinatorRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -166,19 +166,12 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
-.dsh-leader-kit-project-lead-arrow {
-  display: none;
-  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-tertiary));
-  transition: transform 150ms var(--ds-ease-in-out, ease);
-}
-.dsh-leader-kit-project-lead-arrow[data-open='true'] {
-  transform: rotate(90deg);
-}
-/* 协调者运行中：槽位里的目录图标换成加载圈（尺寸与位置仍占行首槽位）。12px 与
-   16px 的目录图标视觉重量相近，又留得下旋转的边。边框用 currentColor：目录图标
-   本身是 stroke: currentColor，组内有当前会话的激活色挂在槽位容器的 color 上，
-   写死色值会把那层配色丢掉。 */
-.dsh-leader-kit-project-lead-spinner {
+/* 行首加载圈：本组有活动时替换目录图标（尺寸与位置仍占行首槽位）。收起时
+   任一会话行在跑、或协调者自己在跑；展开后只剩协调者——其它会话行自己带
+   spinner，不重复画同一个状态。悬停规则对槽位容器生效，箭头照常盖住它。
+   边框用 currentColor 而不是写死色值：图标本身是 stroke: currentColor，激活
+   色挂在 lead-folder 上，写死就会把那层配色丢掉。 */
+.dsh-leader-kit-project-spinner {
   display: block;
   flex: none;
   width: 12px;
@@ -188,6 +181,14 @@ const STYLE_TEXT = `
   border-top-color: transparent;
   border-radius: 50%;
   animation: dsh-leader-kit-spin 0.8s linear infinite;
+}
+.dsh-leader-kit-project-lead-arrow {
+  display: none;
+  color: var(--dsw-alias-label-caption, var(--dsw-alias-label-tertiary));
+  transition: transform 150ms var(--ds-ease-in-out, ease);
+}
+.dsh-leader-kit-project-lead-arrow[data-open='true'] {
+  transform: rotate(90deg);
 }
 @media (hover: hover) {
   .dsh-leader-kit-project-row:hover .dsh-leader-kit-project-lead-arrow {
@@ -750,9 +751,14 @@ function ProjectRow(props) {
   // （工作区分组亮文件夹图标，会话行铺整行底色）。
   const selected = isCoordinatorCurrent(project, currentSessionId, archivedSessionIds)
   const active = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
-  // 协调者在跑：行首目录图标换成加载圈。折叠态下这是唯一能看出「它还在干活」
-  // 的位置——协调者不在项目树下单独出行。
-  const coordinatorRunning = isCoordinatorRunning(project, sessionRows)
+  // 行首加载圈 = 本组有活动，两个来源（会话行、协调者自身）在判定函数里合成，
+  // 渲染上只有一个入口。协调者在项目树下不单独出行，它跑起来时任何展开状态都
+  // 只能靠行首提示；其它会话在跑则只在收起时算——展开后会话行自己带 spinner。
+  const leadActivity = showsProjectActivity({
+    expanded,
+    rows: childSessions,
+    coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds),
+  })
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -801,7 +807,6 @@ function ProjectRow(props) {
         'data-dead': openable ? undefined : 'true',
         'data-selected': selected ? 'true' : undefined,
         'data-active': active ? 'true' : undefined,
-        'data-running': coordinatorRunning ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
         'aria-current': selected ? 'true' : undefined,
         title: `${project.name} · ${project.directory}`,
@@ -823,9 +828,9 @@ function ProjectRow(props) {
         createElement(
           'span',
           { className: 'dsh-leader-kit-project-lead-folder' },
-          coordinatorRunning
+          leadActivity
             ? createElement('span', {
-                className: 'dsh-leader-kit-project-lead-spinner',
+                className: 'dsh-leader-kit-project-spinner',
                 'aria-hidden': 'true',
               })
             : productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),

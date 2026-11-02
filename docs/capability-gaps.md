@@ -400,6 +400,22 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ---
 
+### 42. macOS 原生目录选择器在 0.2.1-rc.x 有初始灰态——修复只在 0.2.2-alpha.2 起
+
+**目标形态**：点「加项目」、宿主弹出系统目录选择框后，键盘与鼠标立刻可用。
+
+**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出在浏览器窗口之上但没有被激活——框体呈灰态，点它没反应；必须先点一下浏览器窗口（让 Chrome 重新成为 active app），面板才变成可交互。症状与宿主 #7320 一致。
+
+**证据**：
+
+- 宿主 `packages/host/directory-picker-native/src/native-picker.ts` 的 `MAC_PANEL` 脚本在 `0.2.1-rc.2`～`rc.5` 里都是 `app.activateIgnoringOtherApps(true)` 直接在 `panel.runModal` 之前同步调用；modal 事件循环还没起来，激活请求落空。
+- 提交 `7333a38c7a`（2026-10-26，Fixes #7320）把激活放进 `NSOperationQueue.mainQueue.addOperationWithBlock(...)`，等 modal 循环启动后再激活。该提交只进了 `0.2.2-alpha.2` 及之后（`git tag --contains 7333a38c7a` → `dsh-v0.2.2-alpha.2`），`rc.2`～`rc.5` 逐个 tag 核验均为修复前形态。
+- web 端走哪条选择器由 `dsh-host-directory-picker-auto` 启动时判定：darwin + loopback bind + 非 SSH 启动 → `native`，所以本机 web 实例弹的就是这个 NSOpenPanel。
+
+**影响**：本仓「加项目」只读调用 `uiWorkspace.pickDirectory()`，面板由宿主进程的 `osascript` 弹出、激活时机也在那支脚本里——bundle 侧没有任何 hook 能改它，也不能自带一条目录选择路径（浏览器拿不到绝对路径）。因此这一条只能靠升级宿主修复：`dsh` 升到 `0.2.2-alpha.2` 或更新的 `0.2.x`。本仓的工具与 UI 仍按 `engines.dsh` 下限 `0.2.1-rc.2` 的 API 面写，升级宿主不改这条规矩。
+
+---
+
 ## 四、工具级（已验证可用，无缺口）
 
 表里的工具名反映实测当时的版本：项目注册表工具（`add_project` 等）与 `init_project` 已在后续版本删除，项目改由左栏区块操作、初始化改为纯 skill；这些行保留为宿主能力的实测证据。

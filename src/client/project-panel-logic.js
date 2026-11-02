@@ -119,6 +119,31 @@ export function selectProjectSessionRows({
 }
 
 /**
+ * 项目行行首要不要显示加载圈。
+ *
+ * 两个来源合成一个判定：本组任一会话行在跑（只在收起时算），以及协调者自己在跑
+ * （任何展开状态都算）。收起后会话行不可见，行首是唯一的活动提示；展开后每条
+ * 会话行自己带 spinner，其它会话在跑就不再画第二遍——但它没有自己的行，协调者
+ * 跑起来只能靠行首。
+ *
+ * 会话行那一半读**要渲染的会话行**（{@link selectProjectSessionRows} 的结果），
+ * 不另行判一遍身份与归属。这样「目录行有加载器」与「至少一条会话行有 spinner」
+ * 严格同源：归档会话、快照里还没有的会话、以及不在会话列表里的当前协调者都不
+ * 参与，也不会因为换协调者留下的退役会话而误判。
+ *
+ * @param {object} options - 选项
+ * @param {boolean} options.expanded - 项目的会话列表是否展开
+ * @param {object[]} options.rows - 要渲染的会话行
+ * @param {boolean} [options.coordinatorRunning] - 协调者是否在运行
+ * @returns {boolean} 是否显示加载圈
+ */
+export function showsProjectActivity({ expanded, rows, coordinatorRunning }) {
+  if (coordinatorRunning === true) return true
+  if (expanded === true) return false
+  return (Array.isArray(rows) ? rows : []).some((row) => row?.running === true)
+}
+
+/**
  * 挑出要从官方工作区树里排除的会话 id。
  *
  * 项目的协调者与 worker 都由项目区块呈现，官方树里再来一份就是重复。worker 是
@@ -186,18 +211,22 @@ export function isCoordinatorCurrent(project, currentSessionId, archivedSessionI
  * 判定项目的协调者会话是否在运行。
  *
  * 会话行有自己的运行状态位，项目行没有——协调者在项目树下不单独出行，它跑起来
- * 时唯一能看出「还在干活」的位置就是项目行的行首图标（会话行那一层被折叠或项目
- * 收起时更是如此）。
+ * 时唯一能看出「还在干活」的位置就是项目行的行首图标。行首加载圈的另一半是
+ * 会话行的运行态（{@link showsProjectActivity}），两者在 `ProjectRow` 里合成。
  *
- * 只认现任协调者：worker 在跑不影响项目行的状态，它们各自的行上有自己的加载圈。
+ * 只认现任协调者：worker 在跑各自的行上有自己的加载圈。归档的协调者不算——与
+ * {@link isCoordinatorCurrent} / {@link isProjectCurrent} 同一条口径，宿主会话
+ * 索引里还留着它的记录。
  *
  * @param {object} project - 项目记录
  * @param {Record<string, {running?: boolean}>} [sessionRows] - 会话 id 到会话行
+ * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
  * @returns {boolean} 协调者是否在运行
  */
-export function isCoordinatorRunning(project, sessionRows) {
+export function isCoordinatorRunning(project, sessionRows, archivedSessionIds) {
   const id = project?.coordinatorSessionId
   if (typeof id !== 'string' || id === '') return false
+  if (archivedSessionIds?.has(id) === true) return false
   return sessionRows?.[id]?.running === true
 }
 
