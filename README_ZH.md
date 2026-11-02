@@ -102,7 +102,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个协调者会话；点项目行就是打开这个 Leader，当前会话属于该项目（协调者或它派出的 worker）时该行亮着选中底色（注册的工作区被删过的话会顺手重建并归位会话）。
 2. **加载协议**：协调者会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
 3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从协调者继承（协调者是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。
-4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。
+4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。`list_cards` 与 `create_card` 只给协调者，普通会话一件也没有；`update_card` 协调者与 worker 都有。worker 只能改自己挂着的卡，且只能挂 `links` 这类派生字段：`title` / `spec` / `status` / `slots` 都归协调者（前两者是验收锚点与注入内容，后两者决定谁在执行、卡是否算完成）。
 5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看详情（链接可编辑，其余只读），点槽位 chip 打开执行者会话。
 
 ## 编排：把规则写进文件
