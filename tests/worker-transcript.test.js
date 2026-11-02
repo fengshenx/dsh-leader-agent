@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { foldTurns, renderTranscript } from '../src/host/worker-transcript.js'
+import { WORKER_TASK_SOURCE_KIND } from '../src/host/message.js'
 
 /**
  * 造一条会话事件。
@@ -18,12 +19,53 @@ function event(type, data, time = 0) {
 }
 
 /**
- * 造一条带文本块的用户消息事件。
+ * 造一条真人输入的消息事件。
+ *
+ * 三种生产者的 `user/message` 只靠 `source.kind` 区分：`user` 是真人输入，
+ * `dsh-leader-kit/worker-task` 是协调者投递的任务，其余是宿主注入的上下文。
+ *
  * @param {string} text - 正文
  * @returns {object} 事件
  */
 function user(text) {
-  return event('user/message', { content: [{ type: 'text', text }] })
+  return event('user/message', { content: [{ type: 'text', text }], source: { kind: 'user' } })
+}
+
+/**
+ * 造一条协调者投递的任务消息事件。
+ * @param {string} text - 正文
+ * @returns {object} 事件
+ */
+function task(text) {
+  return event('user/message', { content: [{ type: 'text', text }], source: { kind: WORKER_TASK_SOURCE_KIND } })
+}
+
+/**
+ * 造一条宿主注入的上下文消息事件（换目录、plan 模式、hooks 等）。
+ * @param {string} [text] - 正文
+ * @returns {object} 事件
+ */
+function injected(text = '工作目录已切换到 /repo') {
+  return event('user/message', { content: [{ type: 'text', text }], source: { kind: 'working-directory' } })
+}
+
+/**
+ * 找正文里的孤立代理项。
+ * @param {string} text - 待检查文本
+ * @returns {number | undefined} 首个孤立代理的下标；没有则 undefined
+ */
+function loneSurrogateAt(text) {
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index)
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1)
+      if (!(next >= 0xdc00 && next <= 0xdfff)) return index
+      index += 1
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return index
+    }
+  }
+  return undefined
 }
 
 /**
@@ -38,7 +80,7 @@ function assistant(text) {
 test('按 turn/start 与 turn/end 切成回合，正文与工具调用各归其位', () => {
   const { turns, running } = foldTurns([
     event('turn/start', { turn: 1 }, 100),
-    user('把登录页的文案改掉'),
+    task('把登录页的文案改掉'),
     assistant('先看一下现有实现。'),
     event('tool/call', { callId: 'c1', name: 'read', arguments: '{}' }),
     event('tool/result', { message: { toolCallId: 'c1', isError: false, content: [{ type: 'text', text: 'ok' }] } }),
@@ -50,7 +92,7 @@ test('按 turn/start 与 turn/end 切成回合，正文与工具调用各归其�
   assert.equal(turns.length, 1)
   assert.equal(turns[0].turn, 1)
   assert.equal(turns[0].startedAt, 100)
-  assert.deepEqual(turns[0].user, ['把登录页的文案改掉'])
+  assert.deepEqual(turns[0].task, ['把登录页的文案改掉'])
   assert.deepEqual(turns[0].assistant, ['先看一下现有实现。', '改完了，三个文件。'])
   assert.deepEqual(turns[0].tools.map((tool) => tool.name), ['read'])
   assert.equal(turns[0].tools[0].failed, false)
@@ -110,13 +152,13 @@ test('最后一轮没有 turn/end 时标成进行中', () => {
 test('turn/end 之后的消息另起一段，不会并进已收尾的回合', () => {
   const { turns } = foldTurns([
     event('turn/start', { turn: 1 }),
-    user('第一轮'),
+    task('第一轮'),
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
     user('人在会话里补的一句话'),
   ])
   // 人下钻聊的轮次没有 turn/start：按「未标号回合」保留，不污染上一轮。
   assert.equal(turns.length, 2)
-  assert.deepEqual(turns[0].user, ['第一轮'])
+  assert.deepEqual(turns[0].task, ['第一轮'])
   assert.deepEqual(turns[1].user, ['人在会话里补的一句话'])
   assert.equal(turns[1].turn, undefined)
 })
@@ -125,7 +167,7 @@ test('只渲染最近 N 个回合，并写明还有多少没展示', () => {
   const events = []
   for (let turn = 1; turn <= 4; turn += 1) {
     events.push(event('turn/start', { turn }))
-    events.push(user(`任务 ${turn}`))
+    events.push(task(`任务 ${turn}`))
     events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
   }
   const folded = foldTurns(events)
@@ -134,7 +176,7 @@ test('只渲染最近 N 个回合，并写明还有多少没展示', () => {
   assert.match(text, /任务 3/)
   assert.match(text, /任务 4/)
   assert.doesNotMatch(text, /任务 1/)
-  assert.match(text, /更早的 2 个回合未展示/)
+  assert.match(text, /更早的 2 个回合超出 turns=2 的范围/)
 })
 
 test('进行中的最后一轮在正文里标出，避免把半截当结论', () => {
@@ -200,10 +242,123 @@ test('无关事件（step、请求头、压缩）不进回合视图', () => {
     event('system/message', { content: [{ type: 'text', text: '系统提示词' }] }),
     event('compaction/start', {}),
     event('step/start', { turn: 1, step: 1 }),
-    user('真正的话'),
+    task('真正的话'),
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
   ])
-  assert.deepEqual(turns[0].user, ['真正的话'])
+  assert.deepEqual(turns[0].task, ['真正的话'])
   assert.deepEqual(turns[0].assistant, [])
   assert.deepEqual(turns[0].tools, [])
+})
+
+test('宿主注入的上下文不冒充用户，也不占任务正文的预算', () => {
+  const { turns } = foldTurns([
+    event('turn/start', { turn: 1 }),
+    injected('工作目录已切换到 /repo'),
+    task('把登录页的文案改掉'),
+    user('顺便看下测试'),
+    event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+  ])
+  assert.deepEqual(turns[0].task, ['把登录页的文案改掉'])
+  assert.deepEqual(turns[0].user, ['顺便看下测试'])
+  assert.equal(turns[0].injected, 1)
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+  assert.match(text, /任务：把登录页的文案改掉/)
+  assert.match(text, /用户：顺便看下测试/)
+  assert.match(text, /另有 1 条注入上下文，已省略/)
+  assert.doesNotMatch(text, /工作目录已切换到/)
+})
+
+test('单条正文截断不切在代理对中间', () => {
+  const { turns } = foldTurns([
+    event('turn/start', { turn: 1 }),
+    // 切点正好落在 😀 的高位代理上：按码元切会留下孤立代理。
+    task(`${'a'.repeat(1999)}😀`),
+    event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+  ])
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+  assert.equal(loneSurrogateAt(text), undefined)
+  assert.match(text, /已截断，原长 2001 字符/)
+})
+
+test('失败原因截断不切在代理对中间', () => {
+  const { turns } = foldTurns([
+    event('turn/start', { turn: 1 }),
+    event('tool/call', { callId: 'c1', name: 'bash', arguments: '{}' }),
+    event('tool/result', {
+      message: { toolCallId: 'c1', isError: true, content: [] },
+      error: { name: 'E', code: 'E', reason: `${'r'.repeat(199)}😀` },
+    }),
+    event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+  ])
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+  assert.equal(loneSurrogateAt(text), undefined)
+})
+
+test('总上限硬截断不切在代理对中间', () => {
+  // 工具名把一回合撑过 12000：最新回合自身超限，走 clip 的硬截断路径。
+  const tools = Array.from({ length: 600 }, () => ({ name: '😀'.repeat(10), failed: undefined, reason: undefined }))
+  const text = renderTranscript({
+    turns: [{ turn: 1, task: [], user: [], injected: 0, assistant: [], tools, end: { kind: 'completed', error: undefined } }],
+    sessionId: 'w-1',
+    name: 'dev',
+    limit: 1,
+  })
+  assert.equal(loneSurrogateAt(text), undefined)
+  assert.match(text, /已截断/)
+})
+
+test('CJK 正文按上限截断，字符完整', () => {
+  const { turns } = foldTurns([
+    event('turn/start', { turn: 1 }),
+    task('甲'.repeat(2500)),
+    event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+  ])
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+  assert.match(text, new RegExp('甲'.repeat(2000)))
+  assert.equal(loneSurrogateAt(text), undefined)
+  assert.doesNotMatch(text, /\uFFFD/)
+})
+
+test('组合字符截断只丢重音，不出乱码', () => {
+  const { turns } = foldTurns([
+    event('turn/start', { turn: 1 }),
+    // 组合序列 e + U+0301 被切点分开：保留基字符，丢掉组合标记。
+    task(`${'a'.repeat(1999)}e\u0301`),
+    event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
+  ])
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+  assert.equal(loneSurrogateAt(text), undefined)
+  assert.doesNotMatch(text, /\uFFFD/)
+  assert.match(text, new RegExp(`${'a'.repeat(1999)}e…`))
+})
+
+test('两种丢弃成因分开说，体积受限时建议调小 turns', () => {
+  const events = []
+  for (let turn = 1; turn <= 20; turn += 1) {
+    events.push(event('turn/start', { turn }))
+    events.push(task(`${'甲'.repeat(1900)}第${turn}轮`))
+    events.push(assistant(`${'乙'.repeat(1900)}第${turn}轮`))
+    events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
+  }
+  const { turns } = foldTurns(events)
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 5 })
+  // 15 个在 turns=5 窗口外，另有若干个在窗口内被体积挤掉：两种成因都要说清。
+  assert.match(text, /更早的 15 个回合超出 turns=5 的范围/)
+  assert.match(text, /最近的 \d+ 个回合因正文超出单次读取上限被丢弃/)
+  assert.match(text, /调小 turns 可以让更早的回合装进上限/)
+  assert.doesNotMatch(text, /调大 turns 可以多看更早的回合/)
+})
+
+test('只有窗口外的回合被丢时，建议调大 turns', () => {
+  const events = []
+  for (let turn = 1; turn <= 4; turn += 1) {
+    events.push(event('turn/start', { turn }))
+    events.push(task(`任务 ${turn}`))
+    events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
+  }
+  const { turns } = foldTurns(events)
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 2 })
+  assert.match(text, /更早的 2 个回合超出 turns=2 的范围/)
+  assert.doesNotMatch(text, /超出单次读取上限/)
+  assert.match(text, /调大 turns 可以多看更早的回合/)
 })

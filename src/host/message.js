@@ -12,6 +12,14 @@
 import { randomUUID } from 'node:crypto'
 
 /**
+ * 协调者投递任务消息的 source kind。
+ *
+ * 读侧（`worker-transcript`）靠它把任务正文与宿主注入的上下文区分开：两者都是
+ * `user/message`，只有 `source.kind` 不同。
+ */
+export const WORKER_TASK_SOURCE_KIND = 'dsh-leader-kit/worker-task'
+
+/**
  * 构造一条 dsh 用户消息。
  *
  * `source` 默认是真人输入；worker 回报走自己的 source kind，客户端据此换渲染

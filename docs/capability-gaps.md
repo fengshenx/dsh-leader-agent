@@ -147,7 +147,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 16. 读子会话原始回合内容没有默认可用的工具，但底层读取服务是公开的
 
-**实测**：模型侧的 `session_event_read` / `session_search` / `session_trace` / `session_trace_read` 属 `@deepseek-ai/dsh-tool-session-query`（`packages/experimental/tool-session-query`），base bundle 未启用。
+**实测**：模型侧的 `session_search` / `session_event_search` / `session_trace` / `session_event_trace` / `session_event_read` 五个工具属 `@deepseek-ai/dsh-tool-session-query`（`packages/experimental/tool-session-query/src/index.ts:66-109`），base bundle 未启用。
 
 **但它不是「只有实验包能用」**：底层 `ctx.sessionQuery.readSession(sessionId)` 是公开服务方法，rc.2 就有（`packages/session-query/session-query/src/index.ts:184`），返回 `{ session, inheritedEventCount, events }`，实现里没有身份校验，只做 live-preferred 读取与回放校验；`filterSessions` 同样公开。实验包在工具层自己加授权，判据只有两条：调用方 `header.cwd` 存在，且目标会话 `cwd` 与之相同（`packages/experimental/tool-session-query/src/workspace-access.ts` 的 `authorizeTarget` / `headerAuthorized`）。这条判据仓外可零依赖复刻，本 bundle 的 worker 与协调者又必然同 cwd（派工时 worker 的目录取自项目）。
 

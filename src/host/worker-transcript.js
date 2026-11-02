@@ -9,7 +9,7 @@
  * @module dsh-leader-kit/host/worker-transcript
  */
 
-import { blocksToText } from './message.js'
+import { blocksToText, WORKER_TASK_SOURCE_KIND } from './message.js'
 
 /** 单条消息正文的保留上限。 */
 const MESSAGE_LIMIT = 2000
@@ -42,7 +42,16 @@ export function foldTurns(events) {
    * @returns {object} 新回合
    */
   function open() {
-    current = { turn: undefined, startedAt: undefined, user: [], assistant: [], tools: [], end: undefined }
+    current = {
+      turn: undefined,
+      startedAt: undefined,
+      task: [],
+      user: [],
+      injected: 0,
+      assistant: [],
+      tools: [],
+      end: undefined,
+    }
     turns.push(current)
     return current
   }
@@ -69,7 +78,14 @@ export function foldTurns(events) {
       case 'user/message': {
         const item = current ?? open()
         const text = blocksToText(data.content)
-        if (text !== '') item.user.push(text)
+        if (text === '') break
+        // 三种生产者共用 `user/message`，只有 `source.kind` 区分：靠它把宿主注入的
+        // 上下文（换目录、plan 模式、hooks）与真正的投递正文分开，否则注入会占掉
+        // 任务正文的预算，协调者看到的是「用户」说过一段自己没说过的话。
+        const kind = typeof data.source?.kind === 'string' ? data.source.kind : undefined
+        if (kind === WORKER_TASK_SOURCE_KIND) item.task.push(text)
+        else if (kind === 'user') item.user.push(text)
+        else item.injected += 1
         break
       }
       case 'assistant/message': {
@@ -129,13 +145,20 @@ function describeToolFailure(data) {
 
 /**
  * 按字符数截断并标注。
+ *
+ * 切点落在 UTF-16 代理对中间时会留下孤立代理，渲染成 U+FFFD；回退一个码元到
+ * 码点边界。只保证码点完整，不切字素簇：丢掉组合标记只影响重音，不是乱码。
+ *
  * @param {string} text - 原文
- * @param {number} limit - 上限
+ * @param {number} limit - 上限（UTF-16 码元数）
  * @returns {string} 截断后的文本
  */
 function clip(text, limit) {
   if (text.length <= limit) return text
-  return `${text.slice(0, limit)}…（已截断，原长 ${text.length} 字符）`
+  let end = limit
+  const last = text.charCodeAt(end - 1)
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1
+  return `${text.slice(0, end)}…（已截断，原长 ${text.length} 字符）`
 }
 
 /**
@@ -176,14 +199,21 @@ export function renderTranscript({ turns, sessionId, name, limit, running = fals
     size += block.length
   }
   const shown = kept.length
-  const dropped = turns.length - shown
+  const outsideTurns = turns.length - selected.length
+  const overflowTurns = selected.length - shown
   const lines = [
     `${header}，以下是最新的 ${shown} 个${running ? '（最后一轮仍在执行中，内容可能不完整）' : ''}：`,
     ...kept,
   ]
-  if (dropped > 0) {
-    const reason = shown < selected.length ? '超出单次读取上限' : '超出 turns 范围'
-    lines.push('', `更早的 ${dropped} 个回合未展示（${reason}）：调大 turns 缩小范围再读，或用 message_worker 让 worker 自己复述。`)
+  if (outsideTurns > 0 || overflowTurns > 0) {
+    // 两种丢弃成因给出相反的操作建议：窗口外的要调大 turns，体积溢出的调小才有效。
+    const facts = []
+    if (outsideTurns > 0) facts.push(`更早的 ${outsideTurns} 个回合超出 turns=${limit} 的范围`)
+    if (overflowTurns > 0) facts.push(`最近的 ${overflowTurns} 个回合因正文超出单次读取上限被丢弃`)
+    const hint = overflowTurns > 0
+      ? '调小 turns 可以让更早的回合装进上限；要看更远的回合请用 message_worker 让 worker 自己复述。'
+      : '调大 turns 可以多看更早的回合。'
+    lines.push('', `${facts.join('；')}，未展示。${hint}`)
   }
   return lines.join('\n')
 }
@@ -200,7 +230,10 @@ function renderTurn(turn) {
     ? '进行中'
     : turn.end.error === undefined ? turn.end.kind : `${turn.end.kind}：${clip(turn.end.error, REASON_LIMIT)}`
   const lines = ['', `## ${label} · ${outcome}`]
-  lines.push(`用户：${turn.user.length === 0 ? '（无）' : clip(turn.user.join('\n\n'), MESSAGE_LIMIT)}`)
+  if (turn.task.length > 0) lines.push(`任务：${clip(turn.task.join('\n\n'), MESSAGE_LIMIT)}`)
+  if (turn.user.length > 0) lines.push(`用户：${clip(turn.user.join('\n\n'), MESSAGE_LIMIT)}`)
+  if (turn.task.length === 0 && turn.user.length === 0) lines.push('用户：（无）')
+  if (turn.injected > 0) lines.push(`（另有 ${turn.injected} 条注入上下文，已省略）`)
   lines.push(`助手：${turn.assistant.length === 0 ? '（无）' : clip(turn.assistant.join('\n\n'), MESSAGE_LIMIT)}`)
   if (turn.tools.length > 0) {
     const tools = turn.tools.map((tool) => {

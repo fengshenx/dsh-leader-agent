@@ -51,6 +51,11 @@ const noopStore = {
  */
 function makeFixture({ sessionQuery, coordinator = true, indexReady = true, workers = createMemoryRegistry() } = {}) {
   const spawned = []
+  /**
+   * 写方法的调用记录。读取路径必须一条都没有：`read_worker_session` 承诺只读、
+   * 不唤醒 worker（`send` 会真的开一轮），这条列表就是它的回归护栏。
+   */
+  const mutations = []
   const ctx = {
     // 派工器构造时订阅 `session/event` 结算轮次；读取路径不产生事件。
     on() {
@@ -58,7 +63,13 @@ function makeFixture({ sessionQuery, coordinator = true, indexReady = true, work
     },
     get(key) {
       if (key === 'sessionQuery') return sessionQuery
-      if (key === 'sessionPersistence') return { append() {} }
+      if (key === 'sessionPersistence') {
+        return {
+          append() {
+            mutations.push('sessionPersistence.append')
+          },
+        }
+      }
       return undefined
     },
   }
@@ -68,15 +79,21 @@ function makeFixture({ sessionQuery, coordinator = true, indexReady = true, work
     workers,
     workerSessions: {
       async spawn({ name }) {
+        mutations.push('workerSessions.spawn')
         const sessionId = `worker-${spawned.length + 1}`
         spawned.push({ sessionId, name })
         return { sessionId, permission: undefined }
       },
       async send() {
+        mutations.push('workerSessions.send')
         return 'merged'
       },
-      present() {},
-      async dispose() {},
+      present() {
+        mutations.push('workerSessions.present')
+      },
+      async dispose() {
+        mutations.push('workerSessions.dispose')
+      },
       isWorkerSession: () => true,
     },
     coordinatorIndex: {
@@ -86,7 +103,7 @@ function makeFixture({ sessionQuery, coordinator = true, indexReady = true, work
       isCoordinatorSession: () => coordinator,
     },
   })
-  return { dispatcher, workers, spawned, tool: createReadWorkerTool({ dispatcher }) }
+  return { dispatcher, workers, spawned, mutations, tool: createReadWorkerTool({ dispatcher }) }
 }
 
 /**
@@ -100,14 +117,18 @@ function event(type, data) {
 }
 
 /**
- * 一段完整的回合事件：用户投任务、助手说了两段、一次成功的工具调用。
+ * 一段完整的回合事件：协调者投任务、助手说了两段、一次成功的工具调用。
  * @param {number} turn - 回合号
  * @returns {object[]} 事件
  */
 function fullTurn(turn) {
   return [
     event('turn/start', { turn }),
-    event('user/message', { content: [{ type: 'text', text: `第 ${turn} 轮任务` }] }),
+    // 真实的派工消息带 `dsh-leader-kit/worker-task` 来源（`worker-sessions.taskMessage`）。
+    event('user/message', {
+      content: [{ type: 'text', text: `第 ${turn} 轮任务` }],
+      source: { kind: 'dsh-leader-kit/worker-task' },
+    }),
     event('assistant/message', { message: { content: [{ type: 'text', text: `第 ${turn} 轮产物` }] } }),
     event('tool/call', { callId: `c-${turn}`, name: 'bash', arguments: '{}' }),
     event('tool/result', { message: { toolCallId: `c-${turn}`, isError: false, content: [] } }),
@@ -161,6 +182,40 @@ test('协调者能读自己派出的 worker：正文、回合数与进行中标�
   assert.match(result.text, /工具：bash/)
 })
 
+test('读路径不调用任何写方法：不唤醒 worker、不写会话事件', async () => {
+  const fixture = await fixtureWithWorker({
+    sessionQuery: {
+      async readSession(sessionId) {
+        return { session: { id: sessionId }, inheritedEventCount: 0, events: [...fullTurn(1), ...fullTurn(2)] }
+      },
+    },
+  })
+  await fixture.tool.execute({ sessionId: WORKER_ID, turns: 2 }, { agent: parent })
+  // `send` 会真的让 worker 再跑一轮——只读承诺一旦破了，这里必须红。
+  assert.deepEqual(fixture.mutations, [], 'read_worker_session 不该 send / spawn / dispose / append')
+})
+
+test('读失败时同样没有写动作', async () => {
+  const fixture = await fixtureWithWorker({
+    sessionQuery: {
+      async readSession() {
+        throw new Error('session not found: worker-1')
+      },
+    },
+  })
+  await assert.rejects(() => fixture.tool.execute({ sessionId: WORKER_ID }, { agent: parent }), /读不到 worker/)
+  assert.deepEqual(fixture.mutations, [])
+})
+
+test('授权拒绝发生在读取之前，更不会有写动作', async () => {
+  const fixture = await fixtureWithWorker({
+    coordinator: false,
+    sessionQuery: { async readSession() { throw new Error('不该被调用') } },
+  })
+  await assert.rejects(() => fixture.tool.execute({ sessionId: WORKER_ID }, { agent: parent }), /只有项目协调者能读/)
+  assert.deepEqual(fixture.mutations, [])
+})
+
 test('turns 只影响渲染的回合数，不影响读取', async () => {
   const fixture = await fixtureWithWorker({
     sessionQuery: {
@@ -173,7 +228,7 @@ test('turns 只影响渲染的回合数，不影响读取', async () => {
   assert.equal(result.totalTurns, 3)
   assert.match(result.text, /第 3 轮任务/)
   assert.doesNotMatch(result.text, /第 2 轮任务/)
-  assert.match(result.text, /更早的 2 个回合未展示/)
+  assert.match(result.text, /更早的 2 个回合超出 turns=1 的范围/)
 })
 
 test('退役或非项目协调者不能读（工具面不会重裁，身份在调用时再判一次）', async () => {
