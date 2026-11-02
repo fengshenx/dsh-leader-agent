@@ -79,6 +79,9 @@ export function assertUsableName(name) {
  * @param {(sessionId: string) => Promise<boolean | undefined>} [options.sessionExists] - 判断会话是否仍存在
  * @param {(sessionId: string) => boolean} options.isWorkerSession - worker 会话判定。
  *   会话头看不出身份（worker 是普通根会话），列项目的会话树只能按登记表判。
+ * @param {(change: { projectId: string }) => Promise<void>} [options.onCoordinatorReplaced] -
+ *   换协调者成功后的接管动作（派工归属与未投递通知改投新会话）。参数只给项目 id：
+ *   接管要按**当前落盘记录**算退役集与接手方，两次并发换人不至于各按自己那次写。
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 项目服务接口
  */
@@ -88,6 +91,7 @@ export function createProjectService({
   createCoordinatorSession,
   sessionExists,
   isWorkerSession,
+  onCoordinatorReplaced,
   logger = () => {},
 }) {
   if (typeof isWorkerSession !== 'function') {
@@ -233,6 +237,10 @@ export function createProjectService({
   /**
    * 项目摘要：客户端拿它判定看板可见性，以及协调者会话是否还在。
    *
+   * `retiredCoordinatorSessionIds` 要带出来：这些会话现在和 worker 一起列在
+   * `sessionsByProject` 里，但身份不同——它们已经被换下，不再是项目会话
+   * （看板入口与派工都不该给它们）。
+   *
    * @param {object} project - 项目记录
    * @returns {Promise<object>} 项目摘要
    */
@@ -243,6 +251,39 @@ export function createProjectService({
       directory: project.directory,
       coordinatorSessionId: project.coordinatorSessionId ?? '',
       coordinatorAlive: await coordinatorAliveOf(project.coordinatorSessionId),
+      retiredCoordinatorSessionIds: Array.isArray(project.retiredCoordinatorSessionIds)
+        ? [...project.retiredCoordinatorSessionIds]
+        : [],
+    }
+  }
+
+  /**
+   * 让协调者索引与当前的落盘记录对齐。
+   *
+   * 判据是**重新读出来的记录**，不是那次 `store.update` 的返回值：返回值是「这一次
+   * 写下的状态」，两次并发换协调者时有两次写入，按各自的返回值对齐就等于认定
+   * 「后完成的那次同步一定对」——那只在「两次 update 的续体按写入顺序兑现」时成立，
+   * 是把正确性押在微任务顺序上。落选的那次同步晚到一步，就会把已被退役的会话重新
+   * 写成协调者，落盘的协调者和索引对不上。重读记录则每次同步都朝最新值收敛，与
+   * 完成顺序无关。
+   *
+   * @param {string} id - 项目 id
+   * @returns {Promise<void>} 索引已对齐
+   */
+  async function syncCoordinatorIndex(id) {
+    const project = await store.get(id)
+    // 项目在并发里被删掉了：没有协调者可登记，索引项由 remove() 清。
+    if (project === undefined) return
+    for (const sessionId of Array.isArray(project.retiredCoordinatorSessionIds)
+      ? project.retiredCoordinatorSessionIds
+      : []) {
+      coordinatorIndex.delete(sessionId)
+    }
+    if (typeof project.coordinatorSessionId === 'string' && project.coordinatorSessionId !== '') {
+      coordinatorIndex.set(project.coordinatorSessionId, {
+        projectId: project.id,
+        directory: project.directory,
+      })
     }
   }
 
@@ -341,7 +382,8 @@ export function createProjectService({
      *
      * @param {string} sessionId - 会话 id
      * @returns {Promise<object | undefined>} 所属项目（`{ id, name, directory,
-     *   coordinatorSessionId, coordinatorAlive }`）；不归属时 undefined
+     *   coordinatorSessionId, coordinatorAlive, retiredCoordinatorSessionIds }`）；
+     *   不归属时 undefined
      */
     async resolveProjectOfSession(sessionId) {
       if (typeof sessionId !== 'string' || sessionId === '') return undefined
@@ -616,6 +658,9 @@ export function createProjectService({
      * （排除集不再覆盖它），也不是 worker（目录判据认不出插件建的会话），不记的话
      * 会掉回官方工作区树里当普通会话，项目下反而看不到它的历史。
      *
+     * 改绑之后跑 `onCoordinatorReplaced`：派工归属与未投递的完成通知要从旧会话改投
+     * 新会话，否则新协调者对着原班 worker 什么都做不了（见 `coordinator-handover`）。
+     *
      * @param {string} id - 项目 id
      * @returns {Promise<object>} 更新后的项目
      */
@@ -629,31 +674,36 @@ export function createProjectService({
         await store.update(id, { workspaceId: ensured.workspace.id })
       }
       const coordinatorSessionId = await openRegisteredCoordinatorSession(project.directory)
-      const previous = project.coordinatorSessionId
-      const retired = Array.isArray(project.retiredCoordinatorSessionIds)
-        ? project.retiredCoordinatorSessionIds
-        : []
-      // 退役列表与改绑同一次写入：分开写的话，中途失败会留下一条「协调者已换、
-      // 旧会话谁都不认」的记录。
-      const retirePrevious = typeof previous === 'string' && previous !== ''
-        && previous !== coordinatorSessionId && !retired.includes(previous)
       let updated
       try {
-        updated = await store.update(id, retirePrevious
-          ? { coordinatorSessionId, retiredCoordinatorSessionIds: [...retired, previous] }
-          : { coordinatorSessionId })
-        if (typeof previous === 'string') {
-          coordinatorIndex.delete(previous)
-        }
-        coordinatorIndex.set(coordinatorSessionId, {
-          projectId: id,
-          directory: project.directory,
+        // 退役列表与改绑同一次写入：分开写的话，中途失败会留下一条「协调者已换、
+        // 旧会话谁都不认」的记录。要退役的是**落盘记录里的**当前协调者，不是进
+        // 函数时读到的那个：两个客户端并发点击时，各读同一份快照、各建一个会话，
+        // 按快照算的话先建的那个既不在退役列表、又留在协调者索引里。函数形态的
+        // update 把读-改-写放进存储的串行链，后写的那次能看见前一次的落盘值。
+        updated = await store.update(id, (current) => {
+          const previous = current.coordinatorSessionId
+          const retired = Array.isArray(current.retiredCoordinatorSessionIds)
+            ? current.retiredCoordinatorSessionIds
+            : []
+          const retirePrevious = typeof previous === 'string' && previous !== ''
+            && previous !== coordinatorSessionId && !retired.includes(previous)
+          return retirePrevious
+            ? { coordinatorSessionId, retiredCoordinatorSessionIds: [...retired, previous] }
+            : { coordinatorSessionId }
         })
       } catch (error) {
         coordinatorIndex.delete(coordinatorSessionId)
         await abandonCoordinatorSession(coordinatorSessionId)
         throw error
       }
+      // 对齐放在失败路径之外：这次写已经落盘、新会话就是记录里的协调者，重读失败
+      // 不该把它连带撤销（那会留下「记录指向一条被停掉的会话」）。
+      await syncCoordinatorIndex(id)
+      // 接管：新会话要接过原班 worker 与未投递的回报，否则「新会话立刻接手项目」
+      // 只成立在项目记录上。每次都跑一遍而不是只在本轮真退役时跑——它按记录里的
+      // 退役集幂等推进，顺带补上早先漏迁的记录。
+      await onCoordinatorReplaced?.({ projectId: id })
       return updated
     },
 

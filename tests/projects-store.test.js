@@ -59,6 +59,45 @@ test('退役协调者列表可写，落盘后可读回', async () => {
   assert.deepEqual(stored.retiredCoordinatorSessionIds, ['session-1'])
 })
 
+test('update 传函数时按磁盘当前值算字段，并发追加不互相覆盖', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  await store.insert(draft)
+
+  // 两次并发调用各读同一份快照再整体写回的话，后写的那次会把先写的覆盖掉；
+  // 函数形态的读-改-写落在同一条串行链里，两次追加都要落盘。
+  await Promise.all([
+    store.update(draft.id, (current) => ({
+      retiredCoordinatorSessionIds: [...current.retiredCoordinatorSessionIds ?? [], 'session-1'],
+    })),
+    store.update(draft.id, (current) => ({
+      retiredCoordinatorSessionIds: [...current.retiredCoordinatorSessionIds ?? [], 'session-2'],
+    })),
+  ])
+
+  const stored = await createProjectStore({ home }).get(draft.id)
+  assert.deepEqual(stored.retiredCoordinatorSessionIds, ['session-1', 'session-2'])
+  // 函数自身的属性（`name`）不能借白名单漏进记录
+  assert.equal(stored.name, 'alpha')
+})
+
+test('update 传函数时同样只接受白名单字段', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  await store.insert(draft)
+
+  const updated = await store.update(draft.id, (current) => ({
+    coordinatorSessionId: `${current.coordinatorSessionId}-2`,
+    directory: '/work/other',
+    id: 'forged',
+  }))
+  assert.equal(updated.coordinatorSessionId, 'session-1-2')
+  assert.equal(updated.directory, '/work/alpha')
+  assert.equal(updated.id, draft.id)
+})
+
 test('改不存在的项目会报错', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })

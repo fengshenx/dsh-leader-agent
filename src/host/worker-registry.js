@@ -98,6 +98,25 @@ export function createWorkerRegistry({
     return result
   }
 
+  /**
+   * 串行执行一次读改写，写不写由变更函数自己决定。
+   *
+   * 没改到任何一条时跳过整表写盘：换协调者会对每个退役 id 调一次改绑，退役列表
+   * 只增不删，每次换人都是 N 次空读改写。`write` 传进来而不是让调用方自己写——
+   * 同一条串行链上的写必须在这里发生，否则会与别的读改写抢同一个临时文件。
+   * @template T
+   * @param {(registry: { version: number, workers: object[] }, write: () => Promise<void>) => Promise<T> | T} mutate - 变更函数
+   * @returns {Promise<T>} 变更结果
+   */
+  function serializeDeferredWrite(mutate) {
+    const result = tail.then(async () => {
+      const registry = await read()
+      return await mutate(registry, () => write(registry))
+    })
+    tail = result.then(() => undefined, () => undefined)
+    return result
+  }
+
   return {
     /**
      * 登记一个派出去的 worker。
@@ -167,6 +186,36 @@ export function createWorkerRegistry({
         if (existing === undefined) return undefined
         existing.name = name
         return existing
+      })
+    },
+
+    /**
+     * 把一个父会话派出的工改绑到另一个父会话（换协调者后的接管）。
+     *
+     * 只改「现在还归它」的记录：`parentSessionId` 等于 `fromId` 的那些。改过的
+     * 记录追加一条 `reassignedFrom`（按顺序记历史父会话 id），不抹掉「谁派的工」。
+     * 已在别处的记录不动——改绑是幂等的，重复调用不会叠记录。
+     *
+     * @param {string} fromId - 退役的父会话 id
+     * @param {string} toId - 接手的父会话 id
+     * @returns {Promise<string[]>} 改绑的 worker 会话 id
+     */
+    async reassignParent(fromId, toId) {
+      if (typeof fromId !== 'string' || fromId === '' || typeof toId !== 'string' || toId === '') return []
+      if (fromId === toId) return []
+      return serializeDeferredWrite(async (registry, flush) => {
+        const moved = []
+        for (const record of registry.workers) {
+          if (record.parentSessionId !== fromId) continue
+          record.reassignedFrom = Array.isArray(record.reassignedFrom)
+            ? [...record.reassignedFrom, fromId]
+            : [fromId]
+          record.parentSessionId = toId
+          moved.push(record.childId)
+        }
+        // 一条都没改到就不写盘（见 serializeDeferredWrite）
+        if (moved.length > 0) await flush()
+        return moved
       })
     },
 
