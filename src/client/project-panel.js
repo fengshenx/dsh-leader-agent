@@ -398,11 +398,9 @@ export function ProjectPanel(props) {
         return
       }
       setPendingDelete(null)
-      // 项目已经不在了（别人先删了、或重复确认）：目标已达成，按幂等成功收尾，
-      // 不再念叨工作区的事。
-      setNotice(outcome === 'alreadyGone'
-        ? `已删除项目「${project.name}」。`
-        : describeDeletionNotice(project, result))
+      // 项目已经不在了（别人先删了、或重复确认）：目标已达成，按幂等成功收尾。
+      // 成功不留常驻提示——项目行消失本身就是回执，只有工作区摘除失败才报。
+      setNotice(describeDeletionNotice(project, result))
       await refresh()
     } catch (error) {
       setDeleteError(`删除失败：${error instanceof Error ? error.message : String(error)}`)

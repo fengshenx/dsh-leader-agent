@@ -251,15 +251,14 @@ test('没有插件工作区时删除说明不提工作区', () => {
   assert.doesNotMatch(text, /工作区/)
 })
 
-test('删除成功的提示按工作区结果分三种', () => {
-  assert.match(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: true }), /未分组/)
+test('删除成功的提示只在工作区没摘掉时出现', () => {
+  // 项目行消失就是回执，成功不留常驻提示。
+  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: true }), '')
+  // 没有工作区可摘（宿主报 skipped）是正常删除，同样静默。
+  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, skipped: true }), '')
   const failed = describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, reason: '宿主不支持删除工作区。' })
   assert.match(failed, /工作区未移除/)
   assert.match(failed, /宿主不支持删除工作区/)
-  // 没有工作区可摘（宿主报 skipped）是正常删除，不能说成「工作区未移除」。
-  const quiet = describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, skipped: true })
-  assert.doesNotMatch(quiet, /工作区/)
-  assert.match(quiet, /文件夹与会话记录保留/)
 })
 
 test('重复删除按幂等成功收尾，不报成失败', () => {

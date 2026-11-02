@@ -270,28 +270,23 @@ export function describeProjectRemoval(project) {
 }
 
 /**
- * 删除成功后的提示。
+ * 删除成功后要不要留提示。
  *
- * 三支按工作区结果分：真移除了、真摘失败（`reason`）、没有工作区可摘。第三支
- * 覆盖宿主没有工作区服务、项目没有插件注册的工作区、工作区已不在宿主里三种
- * （宿主都报 `skipped`），不能并进失败支——那会把正常删除说成「工作区未移除」，
- * 与确认弹窗「只删项目、不提工作区」自相矛盾。
+ * 成功一律静默：项目行当场消失，行消失本身就是回执（与建项目同一口径），
+ * 常驻一句「已删除项目」只会长期挂在侧栏里。`notFound` 走幂等成功，同样静默
+ * ——它的 `reason` 是给失败支用的，不能拿来当工作区告警。
  *
- * 摘失败必须报出来：项目记录已经没了，用户再也看不到这个工作区属于谁，只能去
- * 官方面板手动删。
+ * 只有工作区真摘除失败才报：项目记录已经没了，用户再也看不到这个工作区属于谁，
+ * 只能去官方面板手动删。
  *
  * @param {object} project - 被删的项目
- * @param {{workspaceRemoved?: boolean, skipped?: boolean, reason?: string}} result - 宿主返回的删除结果
- * @returns {string} 提示文字
+ * @param {{notFound?: boolean, reason?: string}} result - 宿主返回的删除结果
+ * @returns {string} 提示文字；成功时为空字符串
  */
 export function describeDeletionNotice(project, result) {
-  if (result?.workspaceRemoved === true) {
-    return `已删除项目「${project.name}」。文件夹与会话记录保留，其会话显示在“未分组”下。`
-  }
-  if (typeof result?.reason === 'string' && result.reason !== '') {
-    return `已删除项目「${project.name}」。工作区未移除：${result.reason}`
-  }
-  return `已删除项目「${project.name}」。文件夹与会话记录保留。`
+  if (result?.notFound === true) return ''
+  if (typeof result?.reason !== 'string' || result.reason === '') return ''
+  return `已删除项目「${project.name}」。工作区未移除：${result.reason}`
 }
 
 /**

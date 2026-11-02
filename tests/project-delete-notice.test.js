@@ -72,19 +72,18 @@ async function makeChain({ withRegistry = true, deletable = true } = {}) {
   return { remote, store, registry, workspaces, directory }
 }
 
-test('插件注册了工作区：删除成功提示讲清会话落未分组', async () => {
+test('插件注册了工作区：删除成功后不留提示', async () => {
   const { remote, directory } = await makeChain()
   const project = await remote.create(directory, 'alpha')
 
   const result = await remote.deleteProject(project.id)
 
   assert.deepEqual(result, { removed: true, workspaceRemoved: true })
-  const notice = describeDeletionNotice(project, result)
-  assert.doesNotMatch(notice, /未移除/)
-  assert.match(notice, /未分组/)
+  // 项目行消失就是回执；常驻一句「已删除项目…」只会挂在侧栏里。
+  assert.equal(describeDeletionNotice(project, result), '')
 })
 
-test('复用的用户工作区不碰：提示不说工作区未移除', async () => {
+test('复用的用户工作区不碰：删除成功不留提示', async () => {
   const { remote, registry, workspaces, directory } = await makeChain()
   const userWorkspace = {
     id: 'ws-user',
@@ -100,14 +99,11 @@ test('复用的用户工作区不碰：提示不说工作区未移除', async ()
 
   assert.deepEqual(result, { removed: true, workspaceRemoved: false, skipped: true })
   assert.equal(registry.list().length, 1)
-  const notice = describeDeletionNotice(project, result)
   // 正常删除被说成「工作区未移除：该项目没有由插件注册的工作区」就是这条链路的旧 bug。
-  assert.doesNotMatch(notice, /未移除/)
-  assert.doesNotMatch(notice, /工作区/)
-  assert.match(notice, /文件夹与会话记录保留/)
+  assert.equal(describeDeletionNotice(project, result), '')
 })
 
-test('记录里的工作区已悬空：提示按「没有可移的」处理', async () => {
+test('记录里的工作区已悬空：按「没有可移的」静默成功', async () => {
   const { remote, store, directory } = await makeChain()
   const project = await remote.create(directory, 'alpha')
   // 模拟宿主里工作区被别的途径删掉、项目记录没跟上。
@@ -116,21 +112,17 @@ test('记录里的工作区已悬空：提示按「没有可移的」处理', as
   const result = await remote.deleteProject(project.id)
 
   assert.deepEqual(result, { removed: true, workspaceRemoved: false, skipped: true })
-  const notice = describeDeletionNotice(project, result)
-  assert.doesNotMatch(notice, /未移除/)
-  assert.match(notice, /文件夹与会话记录保留/)
+  assert.equal(describeDeletionNotice(project, result), '')
 })
 
-test('宿主没有工作区服务：提示按「没有可移的」处理', async () => {
+test('宿主没有工作区服务：按「没有可移的」静默成功', async () => {
   const { remote, directory } = await makeChain({ withRegistry: false })
   const project = await remote.create(directory, 'alpha')
 
   const result = await remote.deleteProject(project.id)
 
   assert.deepEqual(result, { removed: true, workspaceRemoved: false, skipped: true })
-  const notice = describeDeletionNotice(project, result)
-  assert.doesNotMatch(notice, /未移除/)
-  assert.match(notice, /文件夹与会话记录保留/)
+  assert.equal(describeDeletionNotice(project, result), '')
 })
 
 test('宿主工作区服务不支持删除：真失败要报出来，项目照样删', async () => {
@@ -161,4 +153,6 @@ test('删不存在的项目：不算删掉，也不该报成工作区问题', as
     notFound: true,
     reason: '项目不存在。',
   })
+  // `reason` 在这里是「项目不存在」而不是工作区摘除失败，不能落成工作区告警。
+  assert.equal(describeDeletionNotice({ name: 'alpha' }, result), '')
 })
