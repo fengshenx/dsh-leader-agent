@@ -135,7 +135,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 - **AGENTS.md 渐进式披露**：根文件只放每个任务都适用的规则与「按任务查阅」入口，细节进归属文档。
 - **文档防腐化**：能机械判的交给 `npm run check`，行为变更同 PR 同步文档，临时证据不入库。
 
-机制与各自落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。把这套玩法搬进自己的项目时，也建议先搬这四条——编排能不能长期跑住，取决于项目自己的隔离与文档机制。
+机制与各自落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。把这套玩法搬进自己的项目时，也建议先搬这四条——编排能不能长期跑住，取决于项目自己的隔离与文档机制。本仓已按这四条落地，分层归属与编辑纪律见 [AGENTS.md 的编辑本文件与文档分层](AGENTS.md#编辑本文件与文档分层)。
 
 ## 当前限制
 
@@ -148,7 +148,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 - **项目树与官方工作区树并存**：项目会话从官方树里的隐藏是渲染层排除，官方计数与搜索仍包含它们；项目目录本身也作为一行工作区显示在官方树里，两处都能进。
 - **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状，协调者会话形态依赖宿主的会话视图服务——宿主升级时要同步本仓。
 
-完整清单与取舍（信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[架构文档的已知限制](docs/architecture.md#已知限制与取舍)。
+完整清单与取舍（信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[已知限制与取舍](docs/limitations.md)。
 
 ## 开发
 
@@ -163,13 +163,9 @@ npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真�
 
 其余命令见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
-`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。启动前会把 `~/.dsh/.credentials.yaml` 里的 `refs`（按环境变量名存的 API key）并进开发实例的凭据文件，新工作树第一次起实例不用再填一遍；只搬 refs，账号授权记录不搬。客户端产物由常驻 esbuild watch 重建，宿主 `client-hmr` 把运行中的插件换掉——改 `src/client/` 不用刷新页面（插件内的 React 状态会重置，会话与连接数据保留）；宿主侧代码重启实例即可。
+`npm run dev` 的数据根在工作树内的 `.dev/home`，不碰日常 `~/.dsh`，几个工作树可以同时跑；客户端产物由常驻 watch 重建，宿主侧代码重启实例即可。`npm start` 走日常那套，起之前逐项检查并给出可复制的修复命令。
 
-`npm start` 走日常那套（数据根 `~/.dsh`、日常 profile 里链接的版本），起之前逐项检查并给出可复制的修复命令：dsh 不可用（`DSH_DSH` 可指定路径）、profile 缺失、bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有隔离——在 worktree 里跑加载的仍是链接指向的那份代码，验证本目录改动请用 `npm run dev`。
-
-开发实例的覆盖项、worktree 清理守卫、取证流程与构建约束见[架构文档的开发一节](docs/architecture.md#开发)与 [docs/e2e-testing.md](docs/e2e-testing.md)。
-
-浏览器侧的行为用 `npm run e2e` 证明：真实 `dsh` 实例 + 本地 mock 模型 + chromium，无密钥、无网络，一条命令跑完（首次先 `npm run e2e:install` 下载浏览器）。场景写在 `tests/e2e/*.e2e.js`，怎么写、什么算证据、哪些不行，见 [docs/e2e-testing.md](docs/e2e-testing.md)。
+开发实例的覆盖项与凭据处理、worktree 清理守卫、构建契约与测试口径见[开发](docs/development.md)；浏览器侧取证跑 `npm run e2e`（首次先 `npm run e2e:install`），场景与断言纪律见 [docs/e2e-testing.md](docs/e2e-testing.md)。
 
 ## 文档
 
@@ -177,7 +173,9 @@ npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真�
 |---|---|
 | [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
 | [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
-| [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、完整已知限制 |
+| [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、宿主契约落点 |
+| [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |
+| [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、断言纪律）与人工取证规范 |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |

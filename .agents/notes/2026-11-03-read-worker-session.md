@@ -59,6 +59,10 @@
 
 工具面这条承诺由字面量断言守着，不比 `WORKER_DENY_TOOLS` 常量：比对名单的用例会跟着名单一起缩，把工具从 `COORDINATOR_ONLY_TOOLS` 里删掉时仍然全绿（复审实测 30 例全绿）。执行时另有 `assertCoordinator` 兜越权，但它管不到「工具面根本没发下去」这件事。
 
+### 文档落位
+
+说明按 #77 的分层各归各位：亮点进 `README.md` / `README_ZH.md` 的 Highlights，交互与参数进 `docs/usage.md` 的「回看 worker 的会话」，限制与取舍进 `docs/limitations.md` 的「worker 的控制面」，架构事实只留 `docs/architecture.md` 的编排动作表一行与工具数。README 不写细节层，限制细节不重复到 usage——两处超预算时先按分层搬，再压缩，本 PR 没有抬天花板。
+
 ## 边界
 
 - **不是会话导出**。正文有总量上限、工具参数不返回；要完整日志用宿主的会话导出，要任意会话的读取口装 `tool-session-query`（experimental）。
@@ -73,7 +77,7 @@
 
 ## 验证
 
-- `npm run check`：886 例，877 pass，0 fail（9 skipped）。
+- `npm run check`：896 例，887 pass，0 fail（9 skipped）；57 篇笔记、11 篇文档工具名、11 篇 standing docs 预算全过（`docs/usage.md` 5011/5020 最紧）。
 - 新增用例分两层：
   - `tests/worker-transcript.test.js`（21 例）：回合切分、工具失败原因与兜底、未配对结果、进行中标记、`turn/end` 后的独立消息段、turns 裁剪、总上限、空日志、无关事件过滤；注入上下文与任务正文分开（不冒充用户、不占任务预算）；三层上限各自的代理对截断（单条正文 / 失败原因 / 总上限硬截断）；CJK 与组合字符截断；体积溢出时的提示不承诺调 `turns` 可达（`turns=2/3/4` 三种取值都断言）。
   - `tests/read-worker-tool.test.js`（17 例）：正常读取、turns 只影响渲染、非协调者/索引未就绪被拒、未登记与跨会话归属被拒、缺 `sessionQuery` / 缺 `readSession`、读失败转述、日志形状不符、`turns` 与 `sessionId` 校验、`owners` 兜底、schema 子集；**读路径与读失败/授权拒绝路径的写调用记录为空**。
