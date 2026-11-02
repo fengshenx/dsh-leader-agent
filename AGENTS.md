@@ -37,7 +37,7 @@ src/shared/         两端共用的纯函数与消息来源约定
 skills/             leader-mode 协议层（SKILL.md + playbooks + references）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 build/client.mjs    esbuild 客户端构建（closure-factory 封装）
-scripts/            开发实例（dev.mjs）与 worktree 工具（worktree-spawn.mjs）
+scripts/            开发实例、worktree 工具、Agent Note 格式门禁（verify-agent-note-format.mjs）
 docs/               长期文档（宿主能力边界、真机取证指引）
 .agents/notes/      非平凡改动的决策记忆
 COORDINATOR.md      本仓作为项目时，协调者会话自动注入的手册
@@ -47,7 +47,7 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / de
 ## 常用命令
 
 ```bash
-npm run check                     # 语法检查（index/src/scripts/build）+ 全部单测
+npm run check                     # Agent Note 格式门禁 + 语法检查（index/src/scripts/build）+ 全部单测
 npm run test                      # 只跑单测
 npm run build:client              # 重建客户端产物 lib/client.js
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
@@ -87,7 +87,8 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 
 - 非平凡改动同 PR 携带 `.agents/notes/` 笔记：只记永久决策与边界，不写流水账。正文按
   `## 背景` / `## 决策` / `## 边界` / `## 验证` 分节（同现有笔记）：决策拆得开时用 `###`，
-  验证写用例与双向验证读数。
+  验证写用例与双向验证读数。结构由 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`
+  机械校验（文件名、唯一 H1、首节与决策节、节名不重复），判定逻辑在 `scripts/agent-note-format.mjs`。
 - 先 `npm run check` 再 `git add`。
 - PR 附证据：单测数与新增用例、双向验证结果、真机读数；截图等临时证据不入库。
 - 行为变更同步 README 与相关 `docs/`。
