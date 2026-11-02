@@ -13,6 +13,11 @@
  *   列表（复现日常组合），只把 `dsh-leader-kit` 换成工作树链接；
  * - `node_modules` 不复制，逐条符号链接到源 profile 的同名条目——依赖仍由源里那
  *   一份承担，源里升级 dsh 或增删插件时开发实例自动跟随；
+ * - 凭据文件里的 `refs` 从源 HOME 继承：数据根独立，凭据也跟着独立，新工作树第一次
+ *   起实例本来要重填 API key。不做成 `DEEPSEEK_API_KEY` 启动环境注入——那样 key 会
+ *   留在 agent 工具进程的环境里。只搬 `refs` 不搬 `records`（账号授权的刷新令牌两个
+ *   实例各持一份会互相踢掉登录）；目标实例里已有的条目不动，界面上改过的 key 优先，
+ *   要重新跟随源就删掉那一条；
  * - 端口默认交给系统分配（`--port 0`），设 `DEV_PORT` 可固定。
  *
  * 环境变量：
@@ -27,15 +32,15 @@
 
 import { spawnSync } from 'node:child_process'
 import {
-  copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync,
-  writeFileSync,
+  chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync,
+  symlinkSync, writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import {
   COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, devWebBundleHint,
-  planNodeModules, resolveDevPaths,
+  mergeCredentialRefs, planNodeModules, resolveDevPaths,
 } from './dev-plan.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -57,6 +62,29 @@ function run(command, args, options) {
   if (result.status !== 0) {
     throw new Error(`退出码 ${result.status}: ${command} ${args.join(' ')}`)
   }
+}
+
+/**
+ * 从源 HOME 的凭据文件继承 `refs`，返回新增的键名。
+ *
+ * 开发实例的数据根是独立的，凭据文件也跟着独立，新工作树第一次起实例要在界面上
+ * 重填 API key。只搬 `refs`（按环境变量名存的密钥），不搬 `records`：账号授权带
+ * 刷新令牌，两个实例各持一份会互相踢掉登录。目标里已有的条目不动。
+ *
+ * @returns {string[]} 新增的键名，没有变化时为空数组
+ */
+function inheritCredentialRefs() {
+  if (!existsSync(paths.sourceCredentialsPath)) return []
+  const targetText = existsSync(paths.credentialsPath) ? readFileSync(paths.credentialsPath, 'utf8') : null
+  const { text, keys } = mergeCredentialRefs({
+    sourceText: readFileSync(paths.sourceCredentialsPath, 'utf8'),
+    targetText,
+  })
+  if (text === null) return []
+  writeFileSync(paths.credentialsPath, text, { mode: 0o600 })
+  // 已存在的文件不受创建模式约束，dsh 会拒绝加载其他用户可读的凭据文件。
+  chmodSync(paths.credentialsPath, 0o600)
+  return keys
 }
 
 // 任何写操作之前先挡「数据根 = 源 HOME」——那条路径会把源 profile 改写成自指
@@ -138,11 +166,16 @@ for (const { name, target } of plan.links) {
   symlinkSync(target, linkPath, 'junction')
 }
 
+const inheritedCredentials = inheritCredentialRefs()
+
 console.log('')
 console.log('== dsh-leader-kit 开发实例 ==')
 console.log(`  工作树    ${worktree}`)
 console.log(`  数据根    ${paths.home}  （会话、项目、卡片都在这里；删掉即重置）`)
 console.log(`  插件链接  ${join(nodeModulesDir, 'dsh-leader-kit')} -> ${worktree}`)
+if (inheritedCredentials.length > 0) {
+  console.log(`  凭据引用  ${paths.sourceCredentialsPath} -> ${paths.credentialsPath}（${inheritedCredentials.join(', ')}）`)
+}
 console.log('')
 
 run('npm', ['run', 'build:client'], { cwd: worktree })

@@ -31,6 +31,9 @@ export const WEB_APP_BUNDLE = '@deepseek-ai/dsh-web-app'
 /** 从源 profile 复制过来的配置：用户在源里改过就跟着走。 */
 export const COPIED_PROFILE_FILES = ['cordis.yml', 'cordis.patch.yml']
 
+/** `dsh-credentials-local` 的存储文件名，落在各自的数据根里。 */
+export const CREDENTIALS_FILE = '.credentials.yaml'
+
 /**
  * 算出开发实例的各个目录。
  *
@@ -52,6 +55,8 @@ export function resolveDevPaths({ worktree, homeDir, env = {} }) {
     sourceNodeModules: join(sourceProfileDir, 'node_modules'),
     home,
     profileDir: join(home, 'profiles', profile),
+    credentialsPath: join(home, CREDENTIALS_FILE),
+    sourceCredentialsPath: join(sourceHome, CREDENTIALS_FILE),
   }
 }
 
@@ -70,6 +75,85 @@ function identityOf(path) {
     if (error.code !== 'ENOENT') throw error
     return resolve(path)
   }
+}
+
+/** `refs:` 节里的条目行：两格缩进加键名。 */
+const REF_ENTRY = /^ {2}([^\s:#][^:]*):/
+
+/**
+ * 从凭据文档里取出 `refs` 节的条目块。
+ *
+ * 只认 `dsh-credentials-local` 生成的形态（顶层 `refs:`，条目缩进两格，续行更深），
+ * 值原样保留——多行值与引号都不重新转义，避免把密钥改坏。
+ *
+ * @param {string | null | undefined} text - 凭据文档内容
+ * @returns {Map<string, string[]>} 键名到该条目原始行（含首行）的映射
+ */
+export function credentialRefBlocks(text) {
+  const blocks = new Map()
+  let inRefs = false
+  let current = null
+  for (const line of String(text ?? '').split('\n')) {
+    // 顶层键结束 refs 节；顶层注释不算结束，它可能是条目的注解。
+    if (/^\S/.test(line) && !line.startsWith('#')) {
+      inRefs = /^refs:\s*$/.test(line)
+      current = null
+      continue
+    }
+    if (!inRefs) continue
+    const match = REF_ENTRY.exec(line)
+    if (match !== null) {
+      current = [line]
+      blocks.set(match[1].trim(), current)
+      continue
+    }
+    if (current !== null) current.push(line)
+  }
+  for (const block of blocks.values()) {
+    while (block.length > 0 && block.at(-1).trim() === '') block.pop()
+  }
+  return blocks
+}
+
+/**
+ * 把源凭据的 `refs` 条目并入开发实例的凭据文档。
+ *
+ * 只搬 `refs`：`records` 里的账号授权带刷新令牌，两个实例各持一份会互相踢掉登录。
+ * 目标里已有的条目不动——那是用户在这个实例里保存过的值，应当优先。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.sourceText - 源 HOME 的凭据文档
+ * @param {string | null | undefined} options.targetText - 开发实例的凭据文档，文件不存在为 null
+ * @returns {{ text: string | null, keys: string[] }} 合并后的文档（无需变更时为 null）与新增的键名
+ */
+export function mergeCredentialRefs({ sourceText, targetText }) {
+  const source = credentialRefBlocks(sourceText)
+  const target = credentialRefBlocks(targetText)
+  const keys = [...source.keys()].filter((key) => !target.has(key))
+  const blocks = keys.flatMap((key) => source.get(key))
+  if (blocks.length === 0) return { text: null, keys: [] }
+
+  if (targetText === null || targetText === undefined || targetText.trim() === '') {
+    return { text: `version: 1\nrefs:\n${blocks.join('\n')}\n`, keys }
+  }
+
+  const lines = targetText.split('\n')
+  const refsStart = lines.findIndex((line) => /^refs:\s*$/.test(line))
+  if (refsStart === -1) {
+    const head = targetText.endsWith('\n') ? targetText : `${targetText}\n`
+    return { text: `${head}refs:\n${blocks.join('\n')}\n`, keys }
+  }
+
+  let insertAt = lines.length
+  for (let index = refsStart + 1; index < lines.length; index += 1) {
+    if (/^\S/.test(lines[index]) && !lines[index].startsWith('#')) {
+      insertAt = index
+      break
+    }
+  }
+  while (insertAt > refsStart + 1 && lines[insertAt - 1].trim() === '') insertAt -= 1
+  const merged = [...lines.slice(0, insertAt), ...blocks, ...lines.slice(insertAt)]
+  return { text: merged.join('\n'), keys }
 }
 
 /**

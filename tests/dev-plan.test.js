@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertLeaderKitBundle, assertSeparateHome, assertWebBundle,
-  corruptProfilePackageMessage, deriveProfilePackage, devWebBundleHint, planNodeModules, resolveDevPaths,
-  startWebBundleHint,
+  corruptProfilePackageMessage, credentialRefBlocks, deriveProfilePackage, devWebBundleHint, mergeCredentialRefs,
+  planNodeModules, resolveDevPaths, startWebBundleHint,
 } from '../scripts/dev-plan.mjs'
 
 const WORKTREE = '/work/repo/.worktrees/feature-a'
@@ -36,6 +36,8 @@ test('默认数据根落在工作树内，源 HOME 取 ~/.dsh', () => {
   assert.equal(paths.sourceProfileDir, join(SOURCE_HOME, 'profiles', 'web'))
   assert.equal(paths.sourceNodeModules, join(SOURCE_HOME, 'profiles', 'web', 'node_modules'))
   assert.equal(paths.profileDir, join(WORKTREE, '.dev', 'home', 'profiles', 'web'))
+  assert.equal(paths.credentialsPath, join(WORKTREE, '.dev', 'home', '.credentials.yaml'))
+  assert.equal(paths.sourceCredentialsPath, join(SOURCE_HOME, '.credentials.yaml'))
 })
 
 test('DSH_HOME 与 DSH_HOME_SOURCE 都能覆盖', () => {
@@ -266,4 +268,110 @@ test('日常 profile 没写 bundles 时也拒绝', () => {
     () => assertLeaderKitBundle({ profileDir: '/x', bundles: undefined, worktree: WORKTREE }),
     /dsh-leader-kit/,
   )
+})
+
+const SOURCE_CREDENTIALS = [
+  'version: 1',
+  'refs:',
+  '  DEEPSEEK_API_KEY: sk-source',
+  'records:',
+  '  deepseek-account-platform/default:',
+  '    kind: grant',
+  '',
+].join('\n')
+
+test('凭据 refs 按键名取块，多行值原样保留', () => {
+  const blocks = credentialRefBlocks([
+    'version: 1',
+    'refs:',
+    '  DEEPSEEK_API_KEY: sk-a',
+    '  MULTI_LINE: |-',
+    '    line one',
+    '    line two',
+    'records:',
+    '  owner/id:',
+    '    kind: grant',
+    '',
+  ].join('\n'))
+  assert.deepEqual([...blocks.keys()], ['DEEPSEEK_API_KEY', 'MULTI_LINE'])
+  assert.deepEqual(blocks.get('MULTI_LINE'), ['  MULTI_LINE: |-', '    line one', '    line two'])
+})
+
+test('凭据 refs 节前的顶层注释不影响取块', () => {
+  const blocks = credentialRefBlocks([
+    'version: 1',
+    '# 这一行是顶层注释',
+    'refs:',
+    '  DEEPSEEK_API_KEY: sk-a',
+    '',
+  ].join('\n'))
+  assert.deepEqual([...blocks.keys()], ['DEEPSEEK_API_KEY'])
+})
+
+test('开发实例还没有凭据文件时，写出一份只含 refs 的文档', () => {
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: null })
+  assert.deepEqual(merged.keys, ['DEEPSEEK_API_KEY'])
+  assert.equal(merged.text, 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-source\n')
+})
+
+test('目标只有 records 时在末尾补 refs，records 原样保留', () => {
+  const target = [
+    'version: 1',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: grant',
+    '',
+  ].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.match(merged.text, /client-connection\/browser-session:\n {4}kind: grant/)
+  assert.match(merged.text, /refs:\n {2}DEEPSEEK_API_KEY: sk-source\n$/)
+})
+
+test('目标已有 refs 节但缺键时插到该节末尾，不碰后面的 records', () => {
+  const target = [
+    'version: 1',
+    'refs:',
+    '  OPENAI_API_KEY: sk-other',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: grant',
+    '',
+  ].join('\n')
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text, [
+    'version: 1',
+    'refs:',
+    '  OPENAI_API_KEY: sk-other',
+    '  DEEPSEEK_API_KEY: sk-source',
+    'records:',
+    '  client-connection/browser-session:',
+    '    kind: grant',
+    '',
+  ].join('\n'))
+})
+
+test('目标已有同名键时不动——实例里保存过的值优先', () => {
+  const target = 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-edited-in-instance\n'
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: target })
+  assert.equal(merged.text, null)
+  assert.deepEqual(merged.keys, [])
+})
+
+test('源凭据没有 refs 时不做任何改动', () => {
+  const merged = mergeCredentialRefs({ sourceText: 'version: 1\nrecords: {}\n', targetText: null })
+  assert.equal(merged.text, null)
+  assert.deepEqual(merged.keys, [])
+})
+
+test('目标文件为空时按不存在处理，写出完整文档', () => {
+  const merged = mergeCredentialRefs({ sourceText: SOURCE_CREDENTIALS, targetText: '' })
+  assert.equal(merged.text, 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-source\n')
+})
+
+test('目标文件末尾没有换行时补上换行再加 refs', () => {
+  const merged = mergeCredentialRefs({
+    sourceText: SOURCE_CREDENTIALS,
+    targetText: 'version: 1\nrecords:\n  owner/id:\n    kind: grant',
+  })
+  assert.match(merged.text, /kind: grant\nrefs:\n {2}DEEPSEEK_API_KEY: sk-source\n$/)
 })
