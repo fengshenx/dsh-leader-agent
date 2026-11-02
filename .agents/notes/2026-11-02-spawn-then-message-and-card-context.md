@@ -24,8 +24,22 @@
 - **为什么不在 `spawn` 内部先绑卡再 `followup`**：那样首轮能带角色与卡片，但派工语义仍是一次调用完成「建人」与「派活」两件事。用户要的是显式分工：绑定与任务都落定之后才开工，重启/复用同一条投递路径。
 - **绑卡在返回前完成**：会话 id 是预生成的，绑定写入成功后才返回 `childId`；协调者随后的第一条消息请求组装时，`slotIndex` 与 `cardIndex` 都已就绪。
 - **绑定失败即回滚**：`bindSlot` 抛错时销毁刚建的会话，不写登记表——留一个没挂卡的会话，协调者会以为指派好了。
+- **呈现推后到绑定成功之后**：改名（`renameTitle`）与挂工作区原本在建会话时立即做，而改名会追加 `session/title` 事件、让零 turn 会话在磁盘上 materialize。绑定失败时活会话可以 dispose，宿主的 `SessionPersistence` 却没有 delete，jsonl 会留成孤儿；把呈现推到绑定成功之后再执行，失败回滚时磁盘上就没有任何会话。派工因此用 `spawn({ deferPresentation: true })` + `present()` 两段。
 - **派工不建在飞记录**：没有消息就没有 turn，先挂一条在飞记录会让结算等一个永远不来的 `turn/end`。在飞记录由 `message` 首次投递建立。
 - **本进程归属兜底**（`owners`）：`message` 的归属校验原本只读落盘登记表，登记失败时同一轮里连自己刚建的 worker 都投不进。内存归属只补本进程窗口，登记表仍是跨进程真源；换协调者时 `owners` 与在飞记录一起改投。
+
+### 绑卡前校验项目归属与卡状态
+
+`spawn_worker` 的 `cardId` 路径在**建会话之前**做两道校验，与 `update_card` 同口径：
+
+- **项目归属**：卡有 `projectId` 时，调用方协调者所属项目必须与它一致；无归属的存量卡不拦。原先 `bindSlot` 只看「卡在不在、是否归档」，A 项目的协调者拿 `list_cards(scope:'all')` 读到的 B 项目 cardId 能直接写 B 的 `slots`/`revision`（作废 B 侧持有的 `expectedRevision`），A 派出的 worker 还会每轮带着 B 的 spec 全文。
+- **卡状态**：`done` 与 `archived` 都拒绝。关闭即释放执行者，把 done 卡绑到新会话会让投递门禁（按 `active` 过滤）看不见这条绑定，而 `cardIndex` 照旧注入卡片事实。
+- 拒绝是抛错，不静默跳过：调用方拿不到成功回执，`spawn_worker` 也不会留下一条没挂卡的会话。
+- `card-context` 按**会话 id** 取绑定，绑定写不进去就不会给这个 worker 注入那张卡；跨项目注入的入口是绑定本身，堵在写入侧。存量已绑错的数据不自动迁移。
+
+### 写 `slots` 的两条路径都拒绝非 `active` 卡
+
+`bindSlot` 与 `update({ slots })` 共用同一道状态闸：`done` 拒绝，`archived` 拒绝（终态）。`update` 同次把状态改回 `active` 是显式重新指派，放行——这样「重开再绑」仍然是一次调用能完成的事。
 
 ### 卡片事实走运行时上下文，不拼进任务消息
 
@@ -43,6 +57,7 @@
 - worker 不需要先读整卡，也不会覆盖协调者刚写的条目；并发追加由写链串行化，条目不丢。
 - 放 worker 进 `list_cards` 也能解决冲突重读，但那扩大了读取面与工具语义；增量合并把冲突消掉，改动更小。
 - 卡片上下文里已带 `revision` 与当前链接，worker 有现状可对照。
+- `addLinks` 与整体替换共用同一份链接校验与归一化（`normalizeHttpUrl`，按 WHATWG URL 落盘规范形式），只由 `assignIds` 区分是否补 id：增量路径不补 id，store 才能按 `label + url` 去重；非法 URL 在两条路径上报同样的「第几条、哪个标签」错误。
 
 ### 挂卡门禁：挂着未完成卡的 worker 不接新活
 
@@ -50,7 +65,7 @@
 
 - 挂卡的 worker 已经有活，再派一条会让一个会话同时服务两张卡，产物落错卡。
 - 候选清单必须过滤：把挂着卡的 worker 推荐成「可复用」，协调者投递就会被门禁拒，提示与实际能力自相矛盾。
-- `describeRoster` 逐 worker 调 `listCardBindings` 读盘而不是查同步 `cardIndex`：索引未就绪时查不到绑定，门禁会 fail-open 把挂卡 worker 当空闲。`idle` 通常很少，读盘开销可接受。
+- `describeRoster` 用一次读盘（`cardBindingsBySession`）取全量绑定再分组，不逐 worker 读 `cards.json`。逐 worker 读是 O(N × 文件体积)：审查实测 20 个 worker 时一次派工 20 次 `readFile`、约 8.9× 文件放大、2ms；卡片库随 spec 全文增长后比例还会变大。不查同步 `cardIndex` 的原因不变：启动时索引可能未就绪，查不到绑定会让门禁 fail-open 把挂卡 worker 当空闲。
 - **同时挂多张 `active` 卡直接拒绝**，与声明哪张卡无关：那种会话在并行服务多条工作线，产物无从归属；角色注入本来就只按一张卡算（`slotIndex` 后绑胜出），上下文与实际服务对象已经不一致。这种状态只有整卡替换 `slots` 才造得出来，正常派工与关卡释放都不会。修法是拿着被拒提示先关掉多余的卡。
 
 ### 关闭卡片自动释放执行者
@@ -69,7 +84,9 @@
 ## 边界
 
 - **空会话窗口**：建了 worker 但没投递时，它是一条空闲会话，占项目树一行与名册名额。协议要求同一轮投递；本方案不做超时回收。
-- **空会话冷恢复未取证**：worker 没跑过 turn 时没有会话日志，进程重启后 `agents.resume` 能否恢复并投递，需真机验证（见下）。若不可行，退路是建会话时投递一条占位消息——不提前引入。
+- **绑定失败不留盘靠的是「不 materialize」**：宿主没有删除会话文件的能力（`SessionPersistence` 无 delete，`close()` 只排空与释放租约），所以回滚不能删 jsonl。本方案把改名这个 materialize 步骤推后，绑定失败时磁盘上还没有文件；如果将来建会话本身就开始落事件，这条保证会失效。
+- **空会话冷恢复未取证，且依赖改名这个间接保证**：两段化后「建了 worker 没投递 → 重启 → `message_worker`」要求 `agents.resume` 能恢复一条**零 turn** 的会话。宿主 `flush()` 才会 materialize 空会话、`close()` 不会，未 materialize 的会话「leaves nothing behind」；当前能成立靠的是派工成功时的 `renameTitle` 追加了 `session/title`。装配里缺 `sessionTitle`（`worker-sessions.js` 已有降级日志）或将来去掉改名，这条链路就断，重启后 `message_worker` 会冷恢复失败、而卡还绑在会话上。更稳的做法是用宿主允许的插件记录显式落一条事件，但 rc.2 是否提供、需要按 `engines.dsh` 下限核对——本 PR 不做，记为已知边界。
+- **GUI 与首轮上下文仍未真机取证**：本次只在隔离 home + 假件上验证了「绑定失败无 jsonl」；「首个模型请求同时含角色槽位与卡片事实」「worker `addLinks` 后看板 2 秒内出现链接」「空会话冷恢复」都需要隔离 `DSH_HOME` + mock/keyless provider 的 GUI 实例，未做。
 - **卡片上下文的体积**：spec 全文在首次注入与每次变更时进入上下文；按现有 spec 纪律（稳定需求，不追加历史）约束，不做截断（截断会让 worker 按残缺规格开工）。
 - **不是每轮注入**：卡片没变的轮次不产生新消息；旧快照仍留在历史里，模型按最新的读。
 - **注入不授予权限**：卡片事实与槽位一致，只贡献文本，工具面仍由 `tools/gate.js` 裁剪。
@@ -80,11 +97,17 @@
 
 ## 验证
 
-- 单测：668 例全绿（`npm test`）。新增覆盖：`card-context.test.js` 8 例（provider 属性、空绑定、规格/链接渲染、多卡提示、归档标注、渲染异常）；`cards-store.test.js` 9 例（`addLinks` 合并/同 id 更新/去重/互斥/无变化不 bump、`bindSlot` 绑定与拒绝顶替、`cardIndex` 随建卡改卡摘绑同步）；`cards-tools.test.js` 4 例（`addLinks` 追加、互斥、缺标签、schema 暴露）；`dispatch.test.js` 5 例（带卡派工在返回前完成绑定、槽位被占回滚且不登记、装配缺 `bindCardSlot` 时明确报错、名册到顶不推荐挂卡 worker、关闭卡后 worker 被释放）与工具参数用例；`worker-sessions.test.js` 改为断言建会话不投递；`cards-store.test.js` / `cards-tools.test.js` 追加「关闭卡片释放槽位」「关闭没绑槽位的卡不额外 bump」「拒绝关闭同时绑槽位」。
-- 双向验证：
-  1. 把 `dispatch` 的绑卡分支临时改成恒不执行 → 「派工带 cardId 与 slot 时，绑定先于开工完成」变红；还原后绿。
-  2. 把 store 的 `addLinks` 临时改成整体替换 → 「addLinks 追加链接并保留原有条目」变红；还原后绿。
-  3. 把 store 的关闭释放分支临时改成恒不执行 → 「关闭卡片后 worker 被释放，可以接新任务」变红；还原后绿。该用例最初只断言「能接新任务」，撤掉释放后仍绿——门禁按卡的 `status` 过滤，卡标 done 后即使 `slots` 未清也放行。断言改为落在 `slots` 为空与 `slotIndex`/`cardIndex` 无绑定之后才具备判别力。
-  4. 去掉 `describeRoster` 里「挂卡即 `continue`」 → 「名册到顶时不推荐挂着未完成卡的 worker」变红；还原后绿。
-  5. 把多卡门禁的条件临时改成「超过 99 张才拦」 → 「同时挂两张未完成的卡时拒绝投递，声明哪张都一样」变红；还原后绿。
-- 未做真机取证：需要隔离 `DSH_HOME` + mock provider 验证「首轮请求同时含角色槽位与卡片事实」「worker `addLinks` 后看板 2 秒内出现链接」以及空会话冷恢复，留待下一次 GUI 取证。
+- 单测：**757 例全绿**（`npm test`）。rebase 到 main 后基数变了：PR 正文原写 667、审查实测 668，都是切分支时的旧基数；main 之后合入的 PR 又带来一批用例。当前 `main@732202b` 是 715 例，本 head 相对它新增 42 例（原分支 29 + 审查修复 11 + 与 #53 合并时补的 2）。
+- 本 PR 覆盖：`card-context.test.js` 8 例（provider 属性、空绑定、规格/链接渲染、多卡提示、归档标注、渲染异常）；`cards-store.test.js` 的 `addLinks` 合并/同 id 更新/去重/互斥/无变化不 bump、`bindSlot` 绑定与拒绝顶替、`cardIndex` 随建卡改卡摘绑同步、关闭释放与重新打开，本轮另加 4 例（`bindingsBySession` 分组与逐个反查同口径、`bindSlot` 拒绝 done、拒绝 archived、整卡替换 `slots` 拒绝 done 且允许同次重开）；`cards-tools.test.js` 的 `addLinks` 追加、互斥、缺标签、schema 暴露，以及与 #53 合并后补的 2 例（`addLinks` 也走 URL 归一化且不补 id、非法 URL 与整体替换同口径拒绝）；`dispatch.test.js` 的带卡派工绑定先于开工、槽位被占回滚且不登记、装配缺 `bindCardSlot` 明确报错、名册到顶不推荐挂卡 worker、关闭卡后 worker 被释放，本轮另加 6 例（跨项目绑卡拒绝且不建会话、同项目放行、done/archived 绑卡拒绝且不建会话、绑定失败不做呈现、owners 与在飞记录一起改投、名册一次读盘）；`worker-sessions.test.js` 改为断言建会话不投递，另加 `deferPresentation`/`present` 1 例。
+- 双向验证（本轮）：
+  1. 去掉 `dispatch` 的 `assertCardAssignable` → 「spawn_worker 拒绝把别的项目的卡…」变红；还原后绿。
+  2. 把 `assertActiveForBinding` 改成直接 return → 「bindSlot 拒绝已关闭」「bindSlot 拒绝已归档」「整卡替换 slots…」三条变红；还原后绿。
+  3. 把派工的 `deferPresentation: true` 改回 `false` → 「绑定失败回滚时不做呈现」变红；还原后绿。
+  4. 去掉 `reassignParent` 的 owners 改投 → 「owners 与在飞记录一起改投」变红；只去掉 inflight 改投，同用例也变红（`handedOver` 为 0）；还原后绿。
+  5. 让 `describeRoster` 不走 `cardBindingsBySession` → 「名册一次读盘…」变红（bulk 0 / per-worker 2）；还原后绿。
+  6. 把 `addLinks` 的 `{ assignIds: false }` 去掉 → 「重复 addLinks」「addLinks 与整体替换共用 URL 归一化」变红；把 URL 归一化改成原样落盘 → 后者变红；还原后绿。
+- 绑定失败无 jsonl 探针（临时 home，`DSH_HOME` 指同一目录；会话存储按宿主 jsonl 语义建模：`create` 只留未 materialize 句柄、`append` 才落盘、`dispose` 不删文件）：
+  - 绑卡成功 → `sessions/` 下 1 个 jsonl；
+  - 绑卡失败（槽位已占）→ 新增 0 个 jsonl；
+  - 修复前的等价路径（`spawn` 默认立即改名）→ jsonl 已生成，`dispose` 后仍在（`legacyFileSurvivesDispose: true`），正是要避免的孤儿。
+- 未做真机取证：需要隔离 `DSH_HOME` + mock/keyless provider 验证「首轮请求同时含角色槽位与卡片事实」「worker `addLinks` 后看板 2 秒内出现链接」以及空会话冷恢复，留待下一次 GUI 取证。这三项在审查里仍是待确认项，本 PR 不声称已验证。

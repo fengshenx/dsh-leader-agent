@@ -160,6 +160,27 @@ test('建会话时把显示名钉成会话标题', async () => {
   assert.deepEqual(fixture.titles, [{ sessionId, title: 'research-sources' }])
 })
 
+test('deferPresentation 时建会话不做呈现，present 才补标题与工作区', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const sessionId = await sessions.spawn({
+    name: 'research-sources',
+    workspaceId: 'ws-1',
+    deferPresentation: true,
+    signal: new AbortController().signal,
+  })
+  // 改名会追加 session/title 事件、让零 turn 会话在磁盘上 materialize；派工要等
+  // 绑卡成功才做，否则绑定失败回滚时磁盘上会留下一条空会话。
+  assert.deepEqual(fixture.titles, [])
+  assert.deepEqual(fixture.attached, [])
+
+  sessions.present(sessionId, { name: 'research-sources', workspaceId: 'ws-1' })
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+  assert.deepEqual(fixture.titles, [{ sessionId, title: 'research-sources' }])
+  assert.deepEqual(fixture.attached, [{ workspaceId: 'ws-1', sessionId }])
+})
+
 test('建会话时带上默认模型选择，否则系统提示里的 {{model}} 变量没值', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })

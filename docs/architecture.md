@@ -100,7 +100,7 @@ dsh 另有一套同名的同伴模型工具（`tool-agent-team`，experimental�
 - **目录不可改**：目录是项目身份的一部分，改目录等于换项目。
 - **会话归属按 realpath**：`session-index.js` 把会话按 cwd 与项目目录的 realpath 精确相等归到项目；两个项目指向同一目录时先注册的归属。子目录里的 worker 不算项目下的 worker。项目树的名单在它之上再并两类：worker 看登记表，退役协调者看项目记录的 `retiredCoordinatorSessionIds`。
 - **worker 建完挂进同一工作区**：`agents.create` 不接受 `workspaceId`，派工器按父会话反查项目的 `workspaceId`，在会话建好后调 `attachToWorkspace` 挂进去。fire-and-forget：归属只影响分组，挂失败只记日志，下次点项目行自愈。
-- **派工两段化**：`spawn_worker` 只建会话、登记、可选把卡片槽位绑到它身上，随后立即返回，**不投递任务、不产生模型调用**；开工由 `message_worker` 的第一条消息触发。这样绑定先于第一条任务请求，角色槽位与卡片事实都能在首轮上下文中出现。派工本身不建在飞记录（没有 turn 就没有 `turn/end`），在飞记录由首次投递建立。
+- **派工两段化**：`spawn_worker` 只建会话、登记、可选把卡片槽位绑到它身上，随后立即返回，**不投递任务、不产生模型调用**；开工由 `message_worker` 的第一条消息触发。这样绑定先于第一条任务请求，角色槽位与卡片事实都能在首轮上下文中出现。派工本身不建在飞记录（没有 turn 就没有 `turn/end`），在飞记录由首次投递建立。绑卡前按当前身份校验卡属于协调者所在项目且状态为 `active`（跨项目、已关闭/归档都拒绝）；改名与挂工作区推迟到绑定成功之后，绑定失败回滚时磁盘上不会留下空会话。名册分类一次读盘取全量绑定再分组，不逐 worker 读 `cards.json`。
 - **协调者换人**：原班 worker 的派工归属与未投递的完成回报一并改投新协调者（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` 在调用时按当前身份判定并拒绝。
 
 项目注册表**只经左栏项目区块操作**，模型没有 `add_project` / `list_projects` / `switch_project` / `remove_project`。
@@ -170,7 +170,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 卡片事实包含编号、标题、状态、槽位、revision、spec 全文与链接列表。它在**派工绑卡时**就已经可用：`spawn_worker` 在建会话返回前写入 `slots`，而开工要等 `message_worker` 的第一条消息，所以首轮请求就带着角色槽位与卡片事实。worker 自己用 `addLinks` 挂上 PR 后，下一次请求会看到递增的 revision 与新链接。
 
-卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**，绑定、槽位索引与卡片事实一起失效，worker 不再挂卡。重新打开卡片不恢复绑定——那是新的指派，要显式再绑一次。工具层拒绝「关闭卡片 + 同次绑定槽位」的组合，避免调用方以为绑定生效而实际被释放。投递门禁按绑定卡的 `status === 'active'` 判断，所以挂卡 worker 只能同卡续跑；同时挂**多张** `active` 卡的会话一律拒绝投递（与声明哪张卡无关）——角色注入只按一张卡算（`slotIndex` 后绑胜出），上下文与产物归属都对不上，要把卡先收敛到一张。名册到顶给候选时也把挂卡 worker 单独列出（`describeRoster` 的 `bound`），不当作可复用。
+卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**，绑定、槽位索引与卡片事实一起失效，worker 不再挂卡。重新打开卡片不恢复绑定——那是新的指派，要显式再绑一次。写 `slots` 的两条路径（`bindSlot` 与 `update` 的整卡替换）都拒绝非 `active` 卡；同次把状态改回 `active` 是显式重新指派，放行。工具层拒绝「关闭卡片 + 同次绑定槽位」的组合，避免调用方以为绑定生效而实际被释放。投递门禁按绑定卡的 `status === 'active'` 判断，所以挂卡 worker 只能同卡续跑；同时挂**多张** `active` 卡的会话一律拒绝投递（与声明哪张卡无关）——角色注入只按一张卡算（`slotIndex` 后绑胜出），上下文与产物归属都对不上，要把卡先收敛到一张。名册到顶给候选时也把挂卡 worker 单独列出（`describeRoster` 的 `bound`），不当作可复用。
 
 `SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 声明界面显示名，只影响界面，不进入注入正文。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`（正文为空）。
 
@@ -182,7 +182,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | 协议层 skill | `.agents/skills/leader-mode/` | `SKILL.md` + 4 个 playbook + 2 份参考：派工、接力、事件调度、卡片维护、传话纪律、验收裁决、进度说明 |
 | 初始化 skill | `.agents/skills/init-project/` | 一次性把仓库工程约定写入目标项目：skill 给出方法与正文，模型用宿主的文件能力写 `AGENTS.md` 受管区块，幂等 |
-| `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话，**不开工、立即返回**会话 id；可选带 `cardId` + `slot` 把卡槽位绑到它身上，绑定在返回前完成 |
+| `spawn_worker` 工具 | `src/host/tools/spawn-worker.js` | 建一个常驻 worker 会话，**不开工、立即返回**会话 id；可选带 `cardId` + `slot` 把卡槽位绑到它身上（卡必须是本项目的 `active` 卡），绑定在返回前完成 |
 | `message_worker` 工具 | `src/host/tools/message-worker.js` | 投递任务与续聊：第一条消息即开工；活着就直接投，进程重启后冷恢复再投；可顺手 `rename` 改名 |
 | worker 会话 | `src/host/worker-sessions.js` | worker 的创建、投递、销毁：`agents.create` 建的**普通根会话**，常驻、可被人下钻对话、进程重启后能冷恢复 |
 | worker 登记表 | `src/host/worker-registry.js` | 会话 id → 父会话与名字的落盘映射（`workers.json`）：续聊跨进程也要找得到归属 |

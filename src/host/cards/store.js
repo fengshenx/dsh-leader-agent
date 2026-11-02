@@ -232,6 +232,14 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         if (status !== undefined && !CARD_STATUSES.includes(status)) {
           throw new Error(`卡片状态非法：${String(status)}`)
         }
+        // 写 slots 的另一条路径：done 卡整卡替换 slots 同样会绕过投递门禁。
+        // 同次把状态改回 active 是合法的重新指派，放行。
+        if (slots !== undefined && Object.keys(slots).length > 0) {
+          assertActiveForBinding(
+            typeof status === 'string' ? { ...card, status } : card,
+            '绑执行者',
+          )
+        }
         const now = clock()
         const next = { ...card }
         if (title !== undefined) next.title = title
@@ -290,9 +298,9 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         const store = await readStore(file, recoverFromCorruption, io)
         const card = store.cards.find((item) => item.id === cardId)
         if (card === undefined) throw new Error(`卡片不存在：${cardId}`)
-        if (card.status === 'archived') {
-          throw new Error(`卡片 ${cardId} 已归档，不能再绑执行者`)
-        }
+        // 关闭即释放执行者：绑定一个 done 卡会让它绕过投递门禁（门禁按 active
+        // 过滤）、却仍然通过 cardIndex 继续给会话注入卡片事实。
+        assertActiveForBinding(card, '绑执行者')
         const slots = card.slots !== null && typeof card.slots === 'object' && !Array.isArray(card.slots)
           ? card.slots
           : {}
@@ -422,25 +430,54 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
      */
     async bindingsOf(sessionId) {
       const store = await readStore(file, recoverFromCorruption, io)
-      const bindings = []
-      for (const card of [...store.cards].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))) {
-        const slots = card?.slots
-        if (slots === null || typeof slots !== 'object' || Array.isArray(slots)) continue
-        for (const [slot, binding] of Object.entries(slots)) {
-          if (binding === null || typeof binding !== 'object' || Array.isArray(binding)) continue
-          if (binding.sessionId !== sessionId) continue
-          bindings.push({
-            cardId: String(card.id),
-            number: typeof card.number === 'number' ? card.number : 0,
-            title: String(card.title ?? ''),
-            status: String(card.status ?? 'active'),
-            slot,
-          })
-        }
-      }
-      return bindings
+      return groupBindings(store.cards).get(sessionId) ?? []
+    },
+
+    /**
+     * 一次读盘，按会话分组列出全部绑定。
+     *
+     * 名册分类要一次看全部 worker 的绑定。逐 worker 调 `bindingsOf` 每次都读完整
+     * 份 `cards.json`（spec 全文落盘，文件比 worker 数增长得更快），一次派工就是
+     * O(N × 文件体积)。写链之外的读不需要串行化，这里只读一次。
+     *
+     * @returns {Promise<Map<string, { cardId: string, number: number, title: string, status: string, slot: string }[]>>} 会话 id 到绑定的映射
+     */
+    async bindingsBySession() {
+      const store = await readStore(file, recoverFromCorruption, io)
+      return groupBindings(store.cards)
     },
   }
+}
+
+/**
+ * 把卡片库里的槽位绑定按会话分组。
+ *
+ * 排序规则与展示一致：按卡片编号升序，同一会话的绑定按卡片新旧排列。
+ *
+ * @param {object[]} cards - 卡片数组
+ * @returns {Map<string, { cardId: string, number: number, title: string, status: string, slot: string }[]>} 会话 id 到绑定的映射
+ */
+function groupBindings(cards) {
+  /** @type {Map<string, object[]>} */
+  const bySession = new Map()
+  for (const card of [...cards].sort((a, b) => (a.number ?? 0) - (b.number ?? 0))) {
+    const slots = card?.slots
+    if (slots === null || typeof slots !== 'object' || Array.isArray(slots)) continue
+    for (const [slot, binding] of Object.entries(slots)) {
+      if (binding === null || typeof binding !== 'object' || Array.isArray(binding)) continue
+      if (typeof binding.sessionId !== 'string' || binding.sessionId === '') continue
+      const list = bySession.get(binding.sessionId) ?? []
+      list.push({
+        cardId: String(card.id),
+        number: typeof card.number === 'number' ? card.number : 0,
+        title: String(card.title ?? ''),
+        status: String(card.status ?? 'active'),
+        slot,
+      })
+      bySession.set(binding.sessionId, list)
+    }
+  }
+  return bySession
 }
 
 /**
@@ -482,6 +519,26 @@ function rebuildIndexes(cards, slotTarget, cardTarget) {
       })
       cardTarget.set(sessionId, list)
     }
+  }
+}
+
+/**
+ * 写槽位绑定前的状态闸：只有 active 卡能挂执行者。
+ *
+ * archived 是终态；done 卡挂上执行者会被投递门禁漏掉（门禁按 `active` 过滤），
+ * 而卡片事实索引不区分状态，worker 仍会读到卡的事实——这正是「关闭即释放」要
+ * 堵的洞。
+ *
+ * @param {object} card - 卡片（或它的待写入副本）
+ * @param {string} action - 报错里的动作名
+ * @returns {void}
+ */
+function assertActiveForBinding(card, action) {
+  if (card.status === 'archived') {
+    throw new Error(`卡片 #${card.number} 已归档，归档是终态，不能再${action}`)
+  }
+  if (card.status === 'done') {
+    throw new Error(`卡片 #${card.number} 已关闭（done），关闭即释放执行者，不能再${action}；要重新指派请先 update_card 把状态改回 active`)
   }
 }
 

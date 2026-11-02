@@ -117,7 +117,10 @@ export function buildWorkerReport(outcome) {
  * @param {(parentSessionId: string) => Promise<string | undefined>} [options.resolveWorkerWorkspaceId] - 取 worker 该挂的工作区
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
+ * @param {() => Promise<Map<string, { cardId: string, number: number, title: string, status: string, slot: string }[]>>} [options.cardBindingsBySession] - 一次读盘取全部会话的绑定；名册用它避免逐 worker 读卡
  * @param {(input: { cardId: string, slot: string, sessionId: string }) => Promise<object>} [options.bindCardSlot] - 派工时把卡槽位绑到新会话；缺省时传了 cardId 就报错
+ * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 调用方会话所属项目；与 `getCard` 一起校验绑卡归属
+ * @param {(cardId: string) => Promise<object | undefined>} [options.getCard] - 按 id 读卡；派工绑卡前校验归属与状态
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 派工器接口
  */
@@ -133,7 +136,10 @@ export function createDispatcher({
   resolveWorkerWorkspaceId,
   archivedSessionIds,
   listCardBindings,
+  cardBindingsBySession,
   bindCardSlot,
+  resolveProject,
+  getCard,
   logger = () => {},
 }) {
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
@@ -144,6 +150,10 @@ export function createDispatcher({
   // worker 会话是派工的唯一落点，漏传会让派工在运行到一半时炸。
   if (typeof workerSessions?.spawn !== 'function' || typeof workerSessions?.send !== 'function') {
     throw new Error('dsh-leader-kit: createDispatcher 缺少 workerSessions，无法创建或唤醒 worker 会话')
+  }
+  // 绑卡归属校验要同时读调用方项目与卡片；只给一半会静默少一道闸。
+  if ((typeof resolveProject === 'function') !== (typeof getCard === 'function')) {
+    throw new Error('dsh-leader-kit: createDispatcher 的 resolveProject 与 getCard 必须成对提供，否则跨项目绑卡校验会静默失效')
   }
   /** @type {Map<string, object>} 派工记录，key 为 worker 会话 id */
   const inflight = new Map()
@@ -453,15 +463,24 @@ export function createDispatcher({
     if (typeof archivedSessionIds !== 'function') return null
     const archived = new Set(archivedSessionIds())
     const active = (await workers.list()).filter((item) => !archived.has(item.childId))
+    // 绑定一次读盘取全量再分组：逐 worker 读 `cards.json` 会让一次派工付 O(N × 文件体积)。
+    // 两个提供方都没有时不做分类，与投递门禁的降级口径一致。
+    let bindingsFor
+    if (typeof cardBindingsBySession === 'function') {
+      const all = await cardBindingsBySession()
+      bindingsFor = (sessionId) => all.get(sessionId) ?? []
+    } else if (typeof listCardBindings === 'function') {
+      bindingsFor = (sessionId) => listCardBindings(sessionId)
+    }
     /** 空闲但挂着未完成卡的 worker：不能接新活，关闭卡后槽位才会释放。 */
     const bound = []
     const idle = []
     for (const item of active) {
       // 在跑的记录不算可复用：它这一轮还没回报完，再投一条只会排在后面。
       if (inflight.has(item.childId)) continue
-      const cards = typeof listCardBindings === 'function'
-        ? (await listCardBindings(item.childId)).filter((binding) => binding.status === 'active')
-        : []
+      const cards = bindingsFor === undefined
+        ? []
+        : (await bindingsFor(item.childId)).filter((binding) => binding.status === 'active')
       if (cards.length > 0) {
         bound.push({ ...item, cards })
         continue
@@ -526,6 +545,40 @@ export function createDispatcher({
     const ready = await coordinatorIndex.awaitIndex()
     if (!ready) throw new Error(pending)
     if (!coordinatorIndex.isCoordinatorSession(parent?.id)) throw new Error(refused)
+  }
+
+  /**
+   * 派工绑卡前的归属与状态校验。
+   *
+   * 与 `update_card` 同口径：卡有归属时，调用方所属项目必须与它一致；无归属的
+   * 存量卡不拦（没有归属可冲突）。`bindSlot` 自己只看得见「卡在不在、是不是
+   * 归档」，拿不到调用方是谁——跨项目写会作废对方持有的 `expectedRevision`，
+   * 还会让 A 项目的 worker 每轮上下都带着 B 项目的 spec 全文。
+   *
+   * 已关闭（done）的卡同样拒绝：关闭即释放执行者，再把它绑到新会话会让门禁按
+   * `active` 过滤时看不见这条绑定，worker 却能靠 `cardIndex` 继续读到卡的事实。
+   * 归档是终态，另有一条更明确的报错。
+   *
+   * @param {string} cardId - 卡片 id
+   * @param {object} parent - 发起派工的父 agent
+   * @returns {Promise<void>} 校验通过
+   */
+  async function assertCardAssignable(cardId, parent) {
+    if (typeof getCard !== 'function') return
+    const card = await getCard(cardId)
+    if (card === undefined) throw new Error(`spawn_worker: 卡片 ${cardId} 不存在`)
+    if (card.status === 'archived') {
+      throw new Error(`spawn_worker: 卡片 ${cardId} 已归档，归档是终态，不能再绑执行者`)
+    }
+    if (card.status === 'done') {
+      throw new Error(`spawn_worker: 卡片 ${cardId} 已关闭（done），关闭即释放执行者，不能再绑新 worker；要重新指派请先 update_card 把状态改回 active`)
+    }
+    const project = await resolveProject?.(parent?.id)
+    const owner = typeof card.projectId === 'string' ? card.projectId : ''
+    const scope = typeof project?.id === 'string' ? project.id : ''
+    if (owner !== '' && owner !== scope) {
+      throw new Error(`spawn_worker: 卡片 ${cardId} 属于另一个项目，不能跨项目把它绑给 worker；请用本项目的卡片，或让那个项目的协调者派工`)
+    }
   }
 
   /**
@@ -630,6 +683,9 @@ export function createDispatcher({
     if (ctx.get('sessionQuery') === undefined) {
       throw new Error('dsh-leader-kit: 当前组合缺少会话查询后端，worker 无法冷恢复续聊，拒绝派工')
     }
+    // 绑卡前先校验归属与状态：跨项目写会污染对方的看板与上下文，已关闭的卡绑上去
+    // 会绕过投递门禁。校验放在建会话之前，被拒时磁盘上连会话都不会留下。
+    if (cardId !== undefined) await assertCardAssignable(cardId, parent)
     // 名册上限：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
     // 一条干净上下文时才值得。`force` 非空是明确的逃逸声明，理由随工具调用进
     // 会话历史，可审计。
@@ -662,9 +718,11 @@ export function createDispatcher({
     // worker 与协调者同属项目工作区：不挂就落官方树的「未分组」，而它由项目区块
     // 呈现，两处都在就是重复。
     const workspaceId = await resolveWorkerWorkspaceId?.(parent.id)
-    const childId = await workerSessions.spawn({ cwd, workspaceId, name, signal })
+    // 「呈现」（改名、挂工作区）推到绑定成功之后：改名会追加 `session/title`
+    // 事件、让会话在磁盘上 materialize，先做就没有东西可回滚了。
+    const childId = await workerSessions.spawn({ cwd, workspaceId, name, signal, deferPresentation: true })
     // 绑卡必须在返回前完成：协调者接下来投递的第一条消息就该带着角色与卡片事实。
-    // 绑不上就销毁刚建的会话——留一个没挂卡的会话，协调者以为已经指派好了。
+    // 绑不上就销毁刚建的会话——它还没 materialize，磁盘上不会留下半成品。
     if (cardId !== undefined && slot !== undefined) {
       if (typeof bindCardSlot !== 'function') {
         await workerSessions.dispose(childId)
@@ -677,6 +735,7 @@ export function createDispatcher({
         throw error
       }
     }
+    workerSessions.present(childId, { name, workspaceId })
     const record = {
       childId,
       parentSessionId: parent.id,

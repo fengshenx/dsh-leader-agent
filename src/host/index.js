@@ -166,9 +166,16 @@ export function apply(ctx) {
     // 卡片库。两者缺失时各自降级（不限数量 / 不做门禁），不阻塞派工。
     archivedSessionIds: () => ctx.get('workspaceRegistry')?.archivedSessionIds ?? [],
     listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
+    // 名册一次读盘取全量绑定再分组：逐 worker 读 cards.json 会让一次派工付
+    // O(N × 文件体积)。
+    cardBindingsBySession: () => cards.bindingsBySession(),
     // 派工时绑卡：会话 id 是预生成的，绑好之后协调者投递的第一条消息就带着
     // 角色槽位与卡片事实。
     bindCardSlot: (input) => cards.bindSlot(input),
+    // 绑卡前校验归属与状态：与 update_card 同口径，跨项目、已关闭或已归档的卡
+    // 都不能拿来绑 worker。
+    resolveProject,
+    getCard: (cardId) => cards.get(cardId),
     logger,
   })
 

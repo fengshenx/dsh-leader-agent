@@ -33,7 +33,7 @@ export function createSpawnWorkerTool({ dispatcher }) {
         },
         cardId: {
           type: 'string',
-          description: '可选：要绑定的卡片 id，必须与 slot 一起给。绑好后 worker 每轮都能看到该卡的事实（规格、链接、revision）。',
+          description: '可选：要绑定的卡片 id，必须是本项目（调用方所属项目）的卡片且状态为 active；必须与 slot 一起给。绑好后 worker 每轮都能看到该卡的事实（规格、链接、revision）。',
         },
         slot: {
           type: 'string',

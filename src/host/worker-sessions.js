@@ -124,6 +124,20 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   }
 
   /**
+   * 补做建会话时的「呈现」：改标题、挂项目工作区。
+   *
+   * @param {object} handle - AgentHandle
+   * @param {string} sessionId - 会话 id
+   * @param {string | undefined} name - 显示名
+   * @param {string | undefined} workspaceId - 目标工作区
+   * @returns {void}
+   */
+  function presentOne(handle, sessionId, name, workspaceId) {
+    if (typeof name === 'string' && name !== '') renameTitle(handle, name)
+    attachToWorkspace(ctx, workspaceId, sessionId, logger)
+  }
+
+  /**
    * 销毁一个 worker 会话。
    *
    * @param {string} sessionId - 会话 id
@@ -201,12 +215,13 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      *
      * @param {object} options - 派工参数
      * @param {string | undefined} options.cwd - 工作目录
-     * @param {string} options.name - 显示名（同时用作会话标题）
+     * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
      * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
+     * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<string>} 新会话 id
      */
-    async spawn({ cwd, name, workspaceId, signal }) {
+    async spawn({ cwd, name, workspaceId, signal, deferPresentation = false }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -236,9 +251,27 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
-      renameTitle(handle, name)
-      attachToWorkspace(ctx, workspaceId, sessionId, logger)
+      if (!deferPresentation) presentOne(handle, sessionId, name, workspaceId)
       return sessionId
+    },
+
+    /**
+     * 补做建会话时的「呈现」：改标题、挂项目工作区。
+     *
+     * `renameTitle` 会追加 `session/title` 事件，这是让一条零 turn 会话在磁盘上
+     * materialize 的步骤；派工把它推后到绑卡成功之后，绑定失败回滚时磁盘上就
+     * 不会留下一条空会话。
+     *
+     * @param {string} sessionId - 会话 id
+     * @param {object} options - 呈现参数
+     * @param {string} [options.name] - 显示名
+     * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
+     * @returns {void}
+     */
+    present(sessionId, { name, workspaceId }) {
+      const handle = live.get(sessionId)
+      if (handle === undefined) throw new Error(`dsh-leader-kit: 会话 ${sessionId} 不在活表里，无法补做标题与工作区归属`)
+      presentOne(handle, sessionId, name, workspaceId)
     },
 
     /**

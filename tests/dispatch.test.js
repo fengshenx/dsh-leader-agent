@@ -1033,6 +1033,136 @@ test('装配没有 bindCardSlot 时带卡派工明确报错，不静默不绑', 
   }
 })
 
+test('spawn_worker 拒绝把别的项目的卡绑给本项目的 worker', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+      bindCardSlot: (input) => cards.bindSlot(input),
+      getCard: (cardId) => cards.get(cardId),
+      resolveProject: async (sessionId) => ({ id: sessionId === 'parent-a' ? 'project-a' : 'project-b' }),
+    })
+    const foreign = await cards.create({ title: 'B 项目的任务', projectId: 'project-b' })
+
+    await assert.rejects(
+      () => dispatcher.dispatch({
+        parent: createParent('parent-a', fixture.delivered),
+        name: '实现派工',
+        cardId: foreign.id,
+        slot: 'dev',
+        signal: new AbortController().signal,
+      }),
+      /属于另一个项目/,
+    )
+    // 校验在建会话之前完成：不建 worker，也就不会把 B 项目的卡注入 A 的上下文。
+    assert.equal(fixture.spawned.length, 0)
+    assert.equal((await cards.get(foreign.id)).slots, undefined)
+  } finally {
+  }
+})
+
+test('spawn_worker 允许绑本项目的卡，归属闸不误伤正常派工', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+      bindCardSlot: (input) => cards.bindSlot(input),
+      getCard: (cardId) => cards.get(cardId),
+      resolveProject: async () => ({ id: 'project-a' }),
+    })
+    const card = await cards.create({ title: '本项目的任务', projectId: 'project-a' })
+
+    const record = await dispatcher.dispatch({
+      parent: createParent('parent-a', fixture.delivered),
+      name: '实现派工',
+      cardId: card.id,
+      slot: 'dev',
+      signal: new AbortController().signal,
+    })
+
+    assert.deepEqual((await cards.get(card.id)).slots, { dev: { sessionId: record.childId } })
+  } finally {
+  }
+})
+
+test('spawn_worker 带卡时拒绝已关闭或已归档的卡，不建会话', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+      bindCardSlot: (input) => cards.bindSlot(input),
+      getCard: (cardId) => cards.get(cardId),
+      resolveProject: async () => ({ id: 'project-a' }),
+    })
+    const done = await cards.create({ title: '已关闭', projectId: 'project-a' })
+    await cards.update({ id: done.id, status: 'done' })
+    const archived = await cards.create({ title: '已归档', projectId: 'project-a' })
+    await cards.update({ id: archived.id, status: 'archived' })
+
+    for (const [card, pattern] of [[done, /已关闭/], [archived, /已归档/]]) {
+      await assert.rejects(
+        () => dispatcher.dispatch({
+          parent: createParent('parent-a', fixture.delivered),
+          name: '实现派工',
+          cardId: card.id,
+          slot: 'dev',
+          signal: new AbortController().signal,
+        }),
+        pattern,
+      )
+    }
+    // 拒绝而不是静默跳过：一条会话都没建，调用方拿不到「成功」回执。
+    assert.equal(fixture.spawned.length, 0)
+  } finally {
+  }
+})
+
+test('绑定失败回滚时不做呈现：不改标题、不挂工作区', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+      bindCardSlot: (input) => cards.bindSlot(input),
+      getCard: (cardId) => cards.get(cardId),
+      resolveProject: async () => ({ id: 'project-a' }),
+    })
+    const card = await cards.create({ title: '任务', projectId: 'project-a', slots: { dev: { sessionId: 'worker-old' } } })
+
+    await assert.rejects(
+      () => dispatcher.dispatch({
+        parent: createParent('parent-a', fixture.delivered),
+        name: '实现派工',
+        cardId: card.id,
+        slot: 'dev',
+        signal: new AbortController().signal,
+      }),
+      /已绑到会话 worker-old/,
+    )
+
+    // 改名会追加 session/title 事件、让零 turn 会话在磁盘上 materialize；
+    // 绑定失败时它必须还没发生，回滚才真的不留半成品。
+    assert.equal(fixture.titles.size, 0)
+    assert.equal(fixture.spawned[0].disposed, true)
+  } finally {
+  }
+})
+
 test('未启用 agents 服务时派工明确报错', async () => {
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   try {
@@ -1273,6 +1403,64 @@ test('换协调者后新协调者接管原班 worker，退役会话仍然投不�
 
   // 退役会话自己仍然被身份闸挡住
   await assert.rejects(() => send('retired-1'), /只有项目协调者能给 worker 发消息/)
+})
+
+test('换协调者时 owners 与在飞记录一起改投，登记失败的 worker 也能续聊', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  const store = createNotificationStore({ home })
+  // 登记落盘失败（磁盘满这一类）：归属只剩本进程的 `owners`，跨进程真源里没有
+  // 这条 worker。换协调者时 `owners` 不改投，接手会话连同一轮都投不进去。
+  const workers = createMemoryRegistry()
+  workers.register = async () => {
+    throw new Error('磁盘满')
+  }
+  const handedOver = []
+  const newParent = createParent('parent-2', handedOver)
+  const ctx = {
+    ...fixture.ctx,
+    get(key) {
+      if (key === 'sessionController') {
+        return {
+          async resolveAgent(sessionId) {
+            return sessionId === 'parent-2' ? { agent: newParent } : { error: '会话不在内存' }
+          },
+        }
+      }
+      return fixture.ctx.get(key)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx, store, workers })
+  const oldParent = createParent('parent-1', fixture.delivered)
+  const record = await dispatcher.dispatch({
+    parent: oldParent,
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  // 登记表里没有它，同轮投递靠 owners 兜底。
+  await dispatcher.message({
+    parent: oldParent,
+    sessionId: record.childId,
+    message: '做一件事',
+    signal: new AbortController().signal,
+  })
+  const workerId = record.childId
+
+  dispatcher.reassignParent('parent-1', 'parent-2')
+
+  // 在飞记录改投：这一轮的回报要送到新协调者。
+  await fixture.finishTurn(workerId, { text: '改完了' })
+  assert.equal(handedOver.length, 1)
+  assert.equal(fixture.delivered.length, 0)
+
+  // owners 改投：登记表里没有这条记录，新协调者仍能接着给同一个 worker 派活。
+  const sent = await dispatcher.message({
+    parent: newParent,
+    sessionId: workerId,
+    message: '接着做',
+    signal: new AbortController().signal,
+  })
+  assert.equal(sent.code, 'merged')
 })
 
 test('换协调者后，在飞 worker 的回报投给新协调者', async () => {
@@ -1639,6 +1827,47 @@ test('名册到顶时不推荐挂着未完成卡的 worker，单独说明怎么�
         return true
       },
     )
+  } finally {
+  }
+})
+
+test('名册一次读盘取全部卡绑定，不逐 worker 读 cards.json', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-kit-dispatch-')
+  try {
+    const workers = createMemoryRegistry()
+    await workers.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工 1' })
+    await workers.register({ childId: 'child-2', parentSessionId: 'parent-1', name: '工 2' })
+    let bulkReads = 0
+    let perWorkerReads = 0
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers,
+      activeWorkerLimit: 1,
+      archivedSessionIds: () => [],
+      // 名册要按全部绑定分类；逐 worker 读盘是 O(N × 文件体积)。
+      cardBindingsBySession: async () => {
+        bulkReads += 1
+        return new Map()
+      },
+      listCardBindings: async () => {
+        perWorkerReads += 1
+        return []
+      },
+    })
+
+    await assert.rejects(
+      () => dispatcher.dispatch({
+        parent: createParent('parent-1', fixture.delivered),
+        name: '新工',
+        signal: new AbortController().signal,
+      }),
+      /已达上限/,
+    )
+
+    assert.equal(bulkReads, 1)
+    assert.equal(perWorkerReads, 0)
   } finally {
   }
 })

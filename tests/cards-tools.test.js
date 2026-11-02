@@ -140,6 +140,39 @@ test('改卡工具重复 addLinks 同一条链接不会长出重复条目', asyn
   }
 })
 
+test('addLinks 与整体替换共用 URL 归一化，且不补 id', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: '单斜杠', url: 'https:/example.com' }] },
+      exec,
+    )
+    // 归一化在落盘前做：增量路径不能绕过 #53 的写入边界。
+    assert.equal(updated.card.links[0].url, 'https://example.com/')
+    // 不补 id 是增量路径的语义：store 靠 label+url 判重。
+    assert.equal('id' in updated.card.links[0], false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('addLinks 的非法 URL 与整体替换同口径拒绝', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    await assert.rejects(
+      () => tools.update_card.execute(
+        { id: created.card.id, addLinks: [{ label: '本地文件', url: 'docs/report.md' }] },
+        exec,
+      ),
+      /第 1 条.*http\(s\) 绝对地址/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('改卡工具拒绝同次传 links 与 addLinks', async () => {
   const { home, tools } = await createTools()
   try {
