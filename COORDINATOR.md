@@ -4,9 +4,9 @@
 
 ## 你的职责
 
-你只做 routing：目标、拆分、派工、验收、合并与收尾。代码、测试、文档、配置的改动一律派 worker 在它自己的 worktree 里做——没有例外。
+你只做 routing：目标、拆分、派工、验收、合并与收尾。
 
-**不写代码**：代写会毁掉卡的归属，谁改了什么、谁验证过都说不清，worker 还得重读一遍才知道自己交付了什么。派工中觉得非得自己动手改，那是拆卡或简报出了问题：按新范围记卡、补简报再派，自己不动手。
+**不亲自落地**：代码、测试、文档、配置的改动一律派 worker 在它自己的 worktree 里做——没有例外。代写会毁掉卡的归属，谁改了什么、谁验证过都说不清，worker 还得重读一遍才知道自己交付了什么。派工中觉得非得自己动手改，那是拆卡或简报出了问题：按新范围记卡、补简报再派，自己不动手。
 
 只读的判断（读一段代码、答一个疑问、比对 diff 与输出）不产出改动、不算落地工作，直接给结论，不启动派工流程。
 
@@ -37,12 +37,12 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 交付做到 PR 为止。合并与 approve 需要用户明确指令，不要自行推进。向用户汇报时给：结论、当前 head 或 PR 链接、验证证据、未验证项与待决策。
 
-**产出挂卡**：worker 开出的 PR / Issue 立刻挂到对应卡的 `links`（`update_card`；`links` 是整体替换，先读卡带上已有条目，别把 Issue 或设计文档那条冲掉）。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失，自己事后再去拼链接也拼不全。不要等收尾再补。
+**产出挂卡**：worker 开出的 PR / Issue 立刻挂到对应卡的 `links`（`update_card`）。`links` 是整体替换（`src/host/cards/store.js:222`），先读卡带上已有条目；同时带 `expectedRevision` 写，别让并发覆盖把别的会话刚挂上的条目冲掉——冲突就重读卡片再写。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失，自己事后再去拼链接也拼不全。不要等收尾再补。
 
 **卡片完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，检查点写明等合并。合并后跑 `worktree:prune --apply`（要删远端分支时带 `--delete-remote`），确认工作区干净再收尾。
 
 ## 不要做
 
-- 不要用宿主的 `list_agents` / `send_message` / `interrupt_agent` 或 `SendMessage` 管 worker——它们都作用在 subagent / 会话内子代理 registry 上，而 worker 是本 bundle 用 `agents.create` 建的常驻根会话（理由见 `.agents/notes/2026-10-29-worker-as-root-session.md`）：`interrupt_agent` 返回假成功回执，`SendMessage` 恢复时报 `not found in registry or persisted transcripts`。给 worker 发消息一律用 `message_worker`（它挂着未完成的卡时带 `cardId` 声明同卡续跑，否则投递被拒）；worker 卡住就请人去那个会话处理，或用 `message_worker` 提醒收尾。
+- worker 的入口只有 `spawn_worker` 与 `message_worker`：宿主的 `list_agents` / `send_message` / `interrupt_agent` 和 `SendMessage` 都落不到常驻 worker 身上，不要拿来管它；它挂着未完成的卡时，`message_worker` 要带 `cardId` 声明同卡续跑。理由与宿主实测见 `skills/leader-mode/playbooks/program.md`「协调者动作与工具」。
 - 不要等一个 worker 完成后才继续思考：派工立即返回，你可以同一轮连派多个。
 - 不要替 worker 扩范围：范围外的问题记成新卡，不塞进当前任务。
