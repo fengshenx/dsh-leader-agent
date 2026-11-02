@@ -69,13 +69,25 @@ test('围栏没闭合时报出错位置，不静默跳过后半篇', () => {
   assert.deepEqual(scanToolNames(text, registered), { violations: [], unclosedFence: 3 })
 })
 
-test('工具名从装配处取，不借用 deny 名单', () => {
+test('门禁的已知集合只来自 documentedToolNames，不碰 gate.js', () => {
   const names = documentedToolNames()
   for (const name of ['spawn_worker', 'message_worker', 'create_card', 'update_card', 'list_cards']) {
     assert.ok(names.includes(name), `${name} 应在文档可引用的工具名里`)
   }
+
+  // 正向断言来源，而不是「不含某个名字」：只查一个符号名的话，改成 import
+  // `HOST_SUBAGENT_TOOLS`、甚至把数组字面量抄进门禁，都能照样全绿。
   const source = readFileSync(join(root, 'scripts/verify-doc-tool-names.mjs'), 'utf8')
-  assert.ok(!source.includes('COORDINATOR_UNUSABLE_TOOLS'), '门禁不该把 deny 名单当已知工具名')
+  const imports = [...source.matchAll(/^import\s+(.+?)\s+from\s+'([^']+)'/gm)].map(([, , path]) => path)
+  assert.ok(imports.includes('../src/host/index.js'), '门禁要从宿主装配处取工具名')
+  assert.ok(source.includes('documentedToolNames'), '门禁要用 documentedToolNames()，不要自己拼集合')
+  assert.ok(
+    !imports.some((path) => path.endsWith('/gate.js')),
+    '门禁不该 import gate.js 的任何符号：那份名单的变化理由是「协调者能不能用」',
+  )
+  for (const name of ['HOST_SUBAGENT_TOOLS', 'list_agents', 'send_message', 'interrupt_agent']) {
+    assert.ok(!source.includes(name), `门禁里不该出现 ${name}：那是 gate.js 的符号或宿主工具名的副本`)
+  }
 })
 
 test('仓库里注入会话的文档零误报', () => {

@@ -12,7 +12,9 @@ issue #45：`src/host/projects/service.js` 与 `remote.js` 里几处注释仍在
 
 ### 工具名只从装配列表取
 
-`src/host/index.js` 导出 `createBundleTools()`，`apply` 遍历它注册，门禁 `import` 的 `documentedToolNames()` 也遍历它取名字。没有第二份名单：删工具、改工具名，装配列表与门禁同时变。宿主提供、本仓文档会引用的三件（`list_agents` / `send_message` / `interrupt_agent`）从 `HOST_SUBAGENT_TOOLS` 取——它描述的是「宿主 subagent 组合提供哪些工具」，而 `COORDINATOR_UNUSABLE_TOOLS` 只是它在工具面裁剪里的用法。拿 deny 名单当「已知工具集合」会让门禁跟着「协调者能不能用」漂移，那是另一个问题。
+`src/host/index.js` 导出 `createBundleTools()`，`apply` 遍历它注册，门禁 `import` 的 `documentedToolNames()` 也遍历它取名字。没有第二份名单：删工具、改工具名，装配列表与门禁同时变。宿主提供、本仓文档会引用的三件（`list_agents` / `send_message` / `interrupt_agent`）从 `HOST_SUBAGENT_TOOLS` 取——它描述的是「宿主 subagent 组合提供哪些工具」。`COORDINATOR_UNUSABLE_TOOLS` 是同一份数据的别名、用在工具面裁剪上：两者共享数据但语义不同，拿 deny 名单当「已知工具集合」会让门禁跟着「协调者能不能用」漂移。
+
+守门用例因此用正向断言：门禁模块必须 import `documentedToolNames()`、不 import `gate.js` 的任何符号，源码里也不得出现宿主三件的名字（防内联副本）。只断言「不含某个符号名」有两个窄口，实测都能绕过——改成 `import { HOST_SUBAGENT_TOOLS }`，或直接把数组抄进门禁，都会全绿。
 
 ### 判定只看形状，不按语境界定
 
@@ -28,7 +30,7 @@ issue 建议「同行含调/用/工具」才当候选。实测这条会漏：11 
 
 ### 注释改写成定稿理由
 
-`coordinatorAttached` 的语义是「协调者此刻是否挂在工作区上」，客户端并不消费这个字段——旧注释写的「决定浏览器侧能不能打开」既过时，也没有实现依据。六处（`service.js` 的 `list` / `attachCoordinator` / `replaceCoordinator` / `ensureWorkspace` / `createCoordinatorSessionWithCtx`，`remote.js` 与 `client/project-panel.js` 的 `attachCoordinator`/打开项目）统一改成「归属决定分组：不归属落『未分组』，而项目会话行被渲染层藏了，只剩空组头」，并在 `ensureWorkspace` 留下「官方 UI 打开会话不要求归属」的显式更正，防止下一个人又被旧论证带偏。
+`coordinatorAttached` 的语义是「协调者此刻是否挂在工作区上」，客户端并不消费这个字段——旧注释写的「决定浏览器侧能不能打开」既过时，也没有实现依据。七处（`service.js` 的 `list` / `attachCoordinator` / `replaceCoordinator` / `ensureWorkspace` / `createCoordinatorSessionWithCtx`，`remote.js` 的 `attachCoordinator`，`client/project-panel.js` 的打开项目）统一改成「归属决定分组：不归属落『未分组』，而项目会话行被渲染层藏了，只剩空组头」，并在 `ensureWorkspace` 留下「官方 UI 打开会话不要求归属」的显式更正，防止下一个人又被旧论证带偏。
 
 ## 边界
 
@@ -47,6 +49,6 @@ issue 建议「同行含调/用/工具」才当候选。实测这条会漏：11 
   2. 让 `scanToolNames` 恒返回空违规 →「不存在的工具名报出所在行」「一行里的多个未知工具名逐个报」「工具清单…」「围栏代码块里的内容不扫」4 条红；
   3. 还原 → 9 / 9 绿。
 - 双向验证 C（围栏不配对）：`scanToolNames` 不再返回 `unclosedFence` →「围栏没闭合时报出错位置」红；还原后绿。
-- 双向验证 D（工具名来源）：门禁改回 `COORDINATOR_UNUSABLE_TOOLS` 当已知集合 →「工具名从装配处取，不借用 deny 名单」红；还原后绿。这条集合取值与修复前相同（5 + 3），门禁自身仍绿——守的是来源语义，所以用源码断言固定。
+- 双向验证 D（工具名来源，正向断言）：两种绕过各试一次——门禁 `import { HOST_SUBAGENT_TOOLS } from gate.js`、门禁内联八个名字面量——都让「门禁的已知集合只来自 documentedToolNames」红；还原后绿。两次门禁自身都仍然绿（集合取值与修复前相同），守的是来源语义，所以必须用正向断言固定。
 - 出处探针（工具名只有一处来源）：从 `createBundleTools` 删掉 `createListCardsTool` → 门禁报 3 处（`skills/leader-mode/SKILL.md:80` 两次、`playbooks/program.md:16`），集成用例「仓库里注入会话的文档零误报」同时红；还原后全绿。
 - 覆盖率读数：语境界定版漏 6 / 41 处候选；改成形状判定后这 6 处进入校验，现有文档仍 0 误报。审查独立复算 41 处命中、8 个唯一工具名、0 处非工具名。
