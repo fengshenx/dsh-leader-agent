@@ -28,9 +28,10 @@ export const SLOT_TEMPLATE_FILE = 'SLOTS.md'
  * 槽位名是**机器标识**：`SLOTS.md` 的分节名、卡片 `slots` 的 JSON 键、槽位
  * 注入的反查键都用它。界面上的显示名不在这一层——项目在 frontmatter 的
  * `slots:` 下声明，没声明时由 client 回落 locale 字典（`src/client/locales.js`）。
- * 限制为小写 ASCII，保证同一份配置在任何语言环境下都是同一个键。
+ * 限制为小写 ASCII，保证同一份配置在任何语言环境下都是同一个键。卡片工具的
+ * JSON Schema 复用它的 `.source` 做 `propertyNames.pattern`，两边不会漂移。
  */
-const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
+export const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
 
 /** 显示名的长度上限。它只进界面，不需要容纳长句。 */
 const MAX_SLOT_LABEL_LENGTH = 64
@@ -128,10 +129,30 @@ export function parseSlotTemplates(content) {
 }
 
 /**
+ * 已告警过的目录。
+ *
+ * `loadSlotTemplates` 走两条热路径：每轮注入（`role-context`）与看板每 30 秒复核
+ * （`projects/remote` 的 `projectSlots`）。配置坏了是静态事实，重复告警只会刷日志。
+ */
+const warnedDirectories = new Set()
+
+/**
+ * 同一目录只告警一次。
+ * @param {string} directory - 项目目录
+ * @param {string} message - 告警内容
+ */
+function warnOnce(directory, message) {
+  if (warnedDirectories.has(directory)) return
+  warnedDirectories.add(directory)
+  console.warn(message)
+}
+
+/**
  * 读取项目目录下的槽位配置。
  *
  * 文件缺失、读失败或零合法条目时回落到默认槽位名（正文为空、无显示名）。回落是
- * 刻意的：槽位配置缺失是常态，不该让整个插件报错。
+ * 刻意的：槽位配置缺失是常态，不该让整个插件报错。但「文件不存在」与「文件在、
+ * 却一个合法节都没有」是两回事：后者是配置错误，会让注入静默变空串，告警一次。
  *
  * @param {string} directory - 项目目录绝对路径
  * @returns {Map<string, { label?: string, body: string }>} 槽位名到配置
@@ -140,13 +161,21 @@ export function loadSlotTemplates(directory) {
   const fallback = new Map()
   for (const name of DEFAULT_SLOT_NAMES) fallback.set(name, { body: '' })
   if (typeof directory !== 'string' || directory === '') return fallback
+  const file = join(directory, SLOT_TEMPLATE_FILE)
   let content
   try {
-    content = readFileSync(join(directory, SLOT_TEMPLATE_FILE), 'utf8')
+    content = readFileSync(file, 'utf8')
   } catch (error) {
+    // 文件不存在是常态，不告警；其它读失败（权限、路径是目录）是异常。
+    if (error.code !== 'ENOENT') {
+      warnOnce(directory, `dsh-leader-kit: 读取 ${file} 失败（${error.code ?? error.message}），已回落默认槽位。`)
+    }
     return fallback
   }
   const parsed = parseSlotTemplates(content)
-  if (parsed.size === 0) return fallback
+  if (parsed.size === 0) {
+    warnOnce(directory, `dsh-leader-kit: ${file} 存在但没有合法的「## <槽位名>」分节，已回落默认槽位 ${DEFAULT_SLOT_NAMES.join(' / ')}。槽位名须为小写 ASCII（字母、数字、下划线、连字符，最长 32 字符）。`)
+    return fallback
+  }
   return parsed
 }

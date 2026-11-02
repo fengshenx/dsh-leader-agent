@@ -237,6 +237,23 @@ test('建卡与改卡工具拒绝非法槽位名', async () => {
   }
 })
 
+test('两个卡片工具的 slots 参数在 schema 层就限定机器标识', async () => {
+  const { home, tools } = await createTools()
+  try {
+    for (const tool of [tools.create_card, tools.update_card]) {
+      const slots = tool.parameters.properties.slots
+      const pattern = new RegExp(slots.propertyNames.pattern)
+      assert.match(slots.description, /小写 ASCII 机器标识/)
+      assert.equal(pattern.test('dev'), true)
+      assert.equal(pattern.test('dev_impl-2'), true)
+      assert.equal(pattern.test('开发'), false)
+      assert.equal(pattern.test('Dev'), false)
+    }
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('建卡与改卡工具拒绝缺 sessionId 的槽位绑定', async () => {
   const { home, tools } = await createTools()
   try {

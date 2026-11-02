@@ -15,7 +15,7 @@ import {
   parseListQuery,
   renderCardList,
 } from '../cards/card-list-view.js'
-import { isValidSlotName } from '../slots/slot-templates.js'
+import { isValidSlotName, SLOT_NAME_PATTERN } from '../slots/slot-templates.js'
 
 /**
  * 校验可选字符串字段。
@@ -70,16 +70,17 @@ function linkSchema() {
 /**
  * 槽位绑定的 JSON Schema。
  *
- * 槽位名由项目 `SLOTS.md` 决定，不是固定枚举——中文、日文等 Unicode 字母
- * 数字都可以。`properties` 里的 dev / review 只是常见示例，其余名字由
- * `additionalProperties` 接受。名字的合法性在 `normalizeSlots` 里校验，
- * 与解析 `SLOTS.md` 共用同一条规则。
+ * 槽位名是机器标识：小写 ASCII 字母、数字、下划线、连字符，最长 32 字符（显示名
+ * 走 `SLOTS.md` 的 `label`）。名字不是固定枚举——`properties` 里的 dev / review
+ * 只是常见示例，其余名字由 `additionalProperties` 接受。合法性由 `propertyNames`
+ * 在 schema 层先挡一道，落盘前再由 `normalizeSlots` 用解析器同一条规则复核。
  *
  * @returns {object} schema
  */
 function slotsSchema() {
   return {
     type: 'object',
+    propertyNames: { pattern: SLOT_NAME_PATTERN.source },
     properties: {
       dev: {
         type: 'object',
@@ -182,7 +183,7 @@ function normalizeSlots(slots) {
   }
   for (const [name, binding] of Object.entries(slots)) {
     if (!isValidSlotName(name)) {
-      throw new Error(`卡片工具: 槽位名 ${JSON.stringify(name)} 不合法（只允许字母、数字、下划线、连字符，最长 32 字符）`)
+      throw new Error(`卡片工具: 槽位名 ${JSON.stringify(name)} 不合法（只允许小写 ASCII 字母、数字、下划线、连字符，最长 32 字符）`)
     }
     if (binding === null || typeof binding !== 'object' || Array.isArray(binding)) {
       throw new Error(`卡片工具: 槽位 ${name} 必须是对象`)
@@ -236,7 +237,7 @@ export function createCreateCardTool({ store, resolveProject }) {
         },
         slots: {
           ...slotsSchema(),
-          description: '槽位绑定：把执行或评审会话挂到卡片上。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，可用中文。',
+          description: '槽位绑定：把执行或评审会话挂到卡片上。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，是小写 ASCII 机器标识（字母、数字、下划线、连字符，最长 32 字符），不是显示名。',
         },
       },
       required: ['title'],
@@ -317,7 +318,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
         links: { type: 'array', items: linkSchema(), description: '新的链接条目（整体替换）。' },
         slots: {
           ...slotsSchema(),
-          description: '新的槽位绑定（整体替换）。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，可用中文。',
+          description: '新的槽位绑定（整体替换）。槽位名与项目 SLOTS.md 的 `## <槽位名>` 一致，是小写 ASCII 机器标识（字母、数字、下划线、连字符，最长 32 字符），不是显示名。',
         },
         sortOrder: { type: 'number', description: '手动排序序号（小的在前）。' },
       },

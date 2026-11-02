@@ -170,6 +170,26 @@ test('零合法条目时回落默认槽位名', async () => {
   }
 })
 
+test('文件在但零合法节时告警一次，文件缺失不告警', async () => {
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = (message) => { warnings.push(message) }
+  const broken = await createProject('## 开发\n正文\n')
+  const missing = await createProject(undefined)
+  try {
+    loadSlotTemplates(broken.directory)
+    loadSlotTemplates(broken.directory)
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0], /没有合法的/)
+    loadSlotTemplates(missing.directory)
+    assert.equal(warnings.length, 1)
+  } finally {
+    console.warn = originalWarn
+    await broken.cleanup()
+    await missing.cleanup()
+  }
+})
+
 test('有合法条目时读出正文', async () => {
   const project = await createProject('## dev\n你是实现者。\n')
   try {

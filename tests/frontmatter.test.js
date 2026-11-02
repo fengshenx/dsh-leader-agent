@@ -58,3 +58,44 @@ test('没有归属的缩进行忽略，不影响后续标量', () => {
   assert.equal(data.other, 'y')
   assert.deepEqual(Object.keys(data).sort(), ['name', 'other'])
 })
+
+test('无值键后跟更浅缩进时，键仍归它自己那一层', () => {
+  const shallow = parseFrontmatter('---\nslots:\n  dev:\nname: demo\n---\n')
+  assert.deepEqual(shallow.data, { slots: { dev: '' }, name: 'demo' })
+  const nested = parseFrontmatter('---\nslots:\n  dev:\n    label:\nname: demo\n---\n')
+  assert.deepEqual(nested.data, { slots: { dev: { label: '' } }, name: 'demo' })
+})
+
+test('重复的 slots 块合并，前一段的显示名不丢', () => {
+  const { data } = parseFrontmatter([
+    '---',
+    'slots:',
+    '  dev:',
+    '    label: 开发',
+    'slots:',
+    '  review:',
+    '    label: 审核',
+    '---',
+  ].join('\n'))
+  assert.deepEqual(data.slots, { dev: { label: '开发' }, review: { label: '审核' } })
+})
+
+test('剥离行内注释，引号内的井号保留', () => {
+  const { data } = parseFrontmatter([
+    '---',
+    'label: 开发 # 显示名',
+    'empty: # 只有注释',
+    'described: "含 # 号的说明"',
+    "single: 'a # b'",
+    '---',
+  ].join('\n'))
+  assert.equal(data.label, '开发')
+  assert.equal(data.empty, '')
+  assert.equal(data.described, '含 # 号的说明')
+  assert.equal(data.single, 'a # b')
+})
+
+test('一致的 tab 缩进按一层处理', () => {
+  const { data } = parseFrontmatter('---\nslots:\n\tdev:\n\t\tlabel: 开发\n---\n')
+  assert.deepEqual(data.slots, { dev: { label: '开发' } })
+})
