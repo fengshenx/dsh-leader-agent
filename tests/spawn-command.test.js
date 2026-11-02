@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   CommandNotFoundError, buildCommandLine, pathValueOf, quoteForCmd, resolveExecutable, spawnCommandSync,
@@ -72,14 +72,33 @@ test('pathValueOf 认大写或小写的 PATH，两者都在时认精确的 PATH'
   assert.equal(pathValueOf({ HOME: '/home/me' }), '')
 })
 
+test('PATH 上与命令同名的目录不算可执行文件，继续找下一个扩展名', async () => {
+  const dir = await makeTempDir('dsh-leader-kit spawn dir-')
+  mkdirSync(join(dir, 'probe-dir.exe'))
+  assert.equal(resolveExecutable({ command: 'probe-dir', pathValue: dir }), null)
+  writeFileSync(join(dir, 'probe-dir.cmd'), '@echo off\r\n')
+  assert.equal(resolveExecutable({ command: 'probe-dir', pathValue: dir }), join(dir, 'probe-dir.cmd'))
+})
+
 test('quoteForCmd 只在需要时加引号', () => {
   assert.equal(quoteForCmd('--port'), '--port')
   assert.equal(quoteForCmd('a b'), '"a b"')
   assert.equal(quoteForCmd(''), '""')
 })
 
-test('quoteForCmd 给结尾反斜杠补一个，别和收尾引号粘成转义', () => {
+test('quoteForCmd 给结尾反斜杠翻倍，别和收尾引号粘成转义', () => {
   assert.equal(quoteForCmd('C:\\my dir\\'), '"C:\\my dir\\\\"')
+  assert.equal(quoteForCmd('a b\\\\'), `"a b${'\\'.repeat(4)}"`)
+})
+
+test('quoteForCmd 按 C runtime 规则处理引号前的反斜杠', () => {
+  assert.equal(quoteForCmd('a\\"b'), `"a${'\\'.repeat(3)}"b"`)
+  assert.equal(quoteForCmd('x\\\\"y'), `"x${'\\'.repeat(5)}"y"`)
+})
+
+test('quoteForCmd 不对 % 做处理：cmd 的变量展开拦不住（已知边界）', () => {
+  assert.equal(quoteForCmd('%OS%'), '%OS%')
+  assert.equal(quoteForCmd('a b %OS%'), '"a b %OS%"')
 })
 
 test('buildCommandLine 把可执行文件与参数拼成一条命令行', () => {
@@ -110,4 +129,38 @@ test('Windows 上经 cmd.exe 起带空格的 .cmd shim，参数原样到达', { 
   const result = spawnCommandSync({ command: shim, args: ['a b'], encoding: 'utf8' })
   assert.equal(result.status, 0)
   assert.equal(result.stdout.trim(), '[a b]')
+})
+
+test('Windows 上按 PATH 解析出无扩展名命令的 .cmd shim 并起起来', { skip: process.platform !== 'win32' }, async () => {
+  const dir = await makeTempDir('dsh-leader-kit spawn path-')
+  writeFileSync(join(dir, 'probe-path.cmd'), '@echo off\r\necho resolved [%~1]\r\n')
+  const result = spawnCommandSync({
+    command: 'probe-path', args: ['ok'], encoding: 'utf8', env: { ...process.env, PATH: dir },
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout.trim(), 'resolved [ok]')
+})
+
+test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己找', { skip: process.platform !== 'win32' }, async () => {
+  const dir = await makeTempDir('dsh-leader-kit spawn pick-')
+  writeFileSync(join(dir, 'probe-pick.cmd'), '@echo off\r\necho from-cmd\r\n')
+  writeFileSync(join(dir, 'probe-pick.bat'), '@echo off\r\necho from-bat\r\n')
+  // PATHEXT 里 .BAT 排在 .CMD 前面：只看 PATH 的话 cmd 会起 .bat，走解析则按
+  // WINDOWS_EXTENSIONS 的顺序选 .cmd。两者结果不同，才能守住 file 有没有被用上。
+  const result = spawnCommandSync({
+    command: 'probe-pick', encoding: 'utf8',
+    env: { ...process.env, PATH: dir, PATHEXT: '.BAT;.CMD' },
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout.trim(), 'from-cmd')
+})
+
+test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）', { skip: process.platform !== 'win32' }, () => {
+  const result = spawnCommandSync({
+    command: process.execPath,
+    args: ['-e', 'process.stdout.write(String(process.argv[1]))', '--', '%OS%'],
+    encoding: 'utf8',
+  })
+  assert.equal(result.status, 0)
+  assert.equal(result.stdout.trim(), process.env.OS)
 })

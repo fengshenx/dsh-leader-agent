@@ -15,7 +15,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** Windows 上可以直接起进程的扩展名，按 PATHEXT 的默认顺序。 */
@@ -55,6 +55,24 @@ export function pathValueOf(env) {
 }
 
 /**
+ * 默认的存在性探测：目录不算。
+ *
+ * `existsSync` 会把 PATH 上与命令同名的目录认下来，解析结果随后以「退出码 1 + 空输出」
+ * 的形式落到调用方，看不出真实原因是「解析到的是目录」。
+ *
+ * @param {string} path - 候选路径
+ * @returns {boolean} 是否是文件
+ */
+function isFile(path) {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    // statSync 对不存在的路径抛 ENOENT，「不存在」正是这里要回答的。
+    return false
+  }
+}
+
+/**
  * 按 PATHEXT 的规则把命令名解析成可执行文件的绝对路径。
  *
  * 无扩展名的同名文件不算命中：Windows 上那是给 sh 用的脚本，`cmd` 起不来它。
@@ -62,11 +80,11 @@ export function pathValueOf(env) {
  * @param {object} options - 选项
  * @param {string} options.command - 命令名（`dsh`）或路径（`/opt/dsh/bin/dsh`）
  * @param {string} [options.pathValue] - PATH 原值，按 `;` 分隔
- * @param {(path: string) => boolean} options.exists - 文件存在性探测
+ * @param {(path: string) => boolean} [options.exists] - 文件存在性探测
  * @param {readonly string[]} [options.extensions] - 扩展名候选，按优先级
  * @returns {string | null} 绝对路径；找不到时为 null
  */
-export function resolveExecutable({ command, pathValue = '', exists, extensions = WINDOWS_EXTENSIONS }) {
+export function resolveExecutable({ command, pathValue = '', exists = isFile, extensions = WINDOWS_EXTENSIONS }) {
   const lower = command.toLowerCase()
   const candidates = extensions.some((ext) => lower.endsWith(ext)) ? [command] : extensions.map((ext) => `${command}${ext}`)
 
@@ -90,8 +108,10 @@ export function resolveExecutable({ command, pathValue = '', exists, extensions 
 /**
  * 拼一个 cmd.exe 认得的参数。
  *
- * 只有含空白、引号或 cmd 元字符时才加引号；引号按 cmd 的规则写成两个。结尾的反斜杠
- * 会和收尾引号粘成 `\"`，被目标程序当成转义引号，补一个反斜杠抵消。
+ * 只有含空白、引号或 cmd 元字符时才加引号。引号内交给目标程序的 C runtime 剥：引号前的
+ * 反斜杠按 `2n` 个留 `n` 个、`2n+1` 个留 `n` 个再补一个字面引号，收尾的反斜杠翻倍才不会
+ * 和收尾引号粘成转义。不能照搬 cmd 自己的 `""`——外层 `"${line}"` 被 `/s` 剥掉一层后，
+ * 这段字符串原样进了 runtime 的 argv 解析。
  *
  * @param {string} argument - 原始参数
  * @returns {string} 可以直接拼进命令行的样子
@@ -99,8 +119,22 @@ export function resolveExecutable({ command, pathValue = '', exists, extensions 
 export function quoteForCmd(argument) {
   if (argument === '') return '""'
   if (!/[\s"&|<>^(),;=]/.test(argument)) return argument
-  const escaped = argument.replaceAll('"', '""')
-  return `"${escaped.endsWith('\\') ? `${escaped}\\` : escaped}"`
+  let text = '"'
+  let backslashes = 0
+  for (const character of argument) {
+    if (character === '\\') {
+      backslashes += 1
+      continue
+    }
+    if (character === '"') {
+      text += `${'\\'.repeat(backslashes * 2 + 1)}"`
+      backslashes = 0
+      continue
+    }
+    text += `${'\\'.repeat(backslashes)}${character}`
+    backslashes = 0
+  }
+  return `${text}${'\\'.repeat(backslashes * 2)}"`
 }
 
 /**
@@ -132,7 +166,7 @@ export function buildCommandLine({ file, args }) {
  * @param {readonly string[]} [options.extensions] - 扩展名候选，测试用
  * @returns {import('node:child_process').SpawnSyncReturns<string | Buffer>} `spawnSync` 的结果
  */
-export function spawnCommandSync({ command, args = [], platform = process.platform, env = process.env, exists = existsSync, extensions = WINDOWS_EXTENSIONS, ...options }) {
+export function spawnCommandSync({ command, args = [], platform = process.platform, env = process.env, exists = isFile, extensions = WINDOWS_EXTENSIONS, ...options }) {
   const spawnOptions = { env, ...options }
   if (platform !== 'win32') return checkSpawned(spawnSync(command, args, spawnOptions), command)
 

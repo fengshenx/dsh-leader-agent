@@ -13,7 +13,9 @@
  * - `DSH_HOME` 日常数据根，默认 `~/.dsh`
  * - `DSH_DSH`  dsh 可执行文件名或路径，默认 `dsh`
  *
- * 额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
+ * 额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。Windows 上这条命令要经
+ * `cmd.exe`，参数里的 `%NAME%` 会被它展开成环境变量的值（加引号也拦不住），想传字面量的
+ * `%` 得自己避开。
  */
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
