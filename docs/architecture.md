@@ -1,6 +1,6 @@
 # dsh-leader-kit 架构
 
-本文是 dsh-leader-kit 的架构文档：分层与模块职责、运行时模型、数据流、持久化布局、宿主契约与取舍。安装与入门见 [README](../README.md)，每个动作的完整交互见[使用手册](usage.md)；宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)；设计决策与实测记录见 [.agents/notes/](../.agents/notes/)。
+本文是 dsh-leader-kit 的架构文档：分层与模块职责、运行时模型、数据流、持久化布局、宿主契约与取舍。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)；宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)；设计决策与实测记录见 [.agents/notes/](../.agents/notes/)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)，再看自己要改的那一块；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
@@ -236,7 +236,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ### 多 worktree 并发
 
-每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见 README 的[前提](../README.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
+每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见[中文 README 的前提](../README_ZH.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
 
 `npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 
