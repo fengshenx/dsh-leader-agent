@@ -84,7 +84,7 @@ export class CommandShellError extends Error {
    * @param {Error} cause - `spawnSync` 给出的错误
    */
   constructor(shell, cause) {
-    super(`起不了 Windows 命令解释器 ${shell}：${cause.message}`)
+    super(`起不了 Windows 命令解释器 ${shell}：${cause.message}`, { cause })
     this.name = 'CommandShellError'
     this.shell = shell
   }
@@ -214,8 +214,13 @@ export function spawnCommandSync({ command, args = [], platform = process.platfo
     windowsVerbatimArguments: true,
     ...spawnOptions,
   })
-  // 命令已经解析成功，这里再失败只可能是 cmd 自己起不来——不能归成「找不到命令」。
-  if (result.error !== undefined) throw new CommandShellError(shell, result.error)
+  // cmd 自己起不来只有两种形态：找不到（ENOENT）与不是可执行文件（EFTYPE）。其余错误
+  // 与 cmd 无关——参数超过命令行上限的 ENAMETOOLONG、句柄耗尽的 EMFILE——原样抛，别把
+  // 人引向 cmd。
+  if (result.error !== undefined) {
+    if (result.error.code === 'ENOENT' || result.error.code === 'EFTYPE') throw new CommandShellError(shell, result.error)
+    throw result.error
+  }
   return checkSpawned(result, command)
 }
 

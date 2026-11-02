@@ -180,6 +180,13 @@ test('cmd 自己起不来时抛 CommandShellError，不误报成命令找不到'
   }
 })
 
+test('参数超过命令行上限时抛原始错误，不归成 CommandShellError', { skip: process.platform !== 'win32' }, () => {
+  assert.throws(
+    () => spawnCommandSync({ command: process.execPath, args: ['-e', '', 'x'.repeat(33000)], encoding: 'utf8' }),
+    (error) => error.code === 'ENAMETOOLONG' && !(error instanceof CommandShellError),
+  )
+})
+
 test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）', { skip: process.platform !== 'win32' }, () => {
   const result = spawnCommandSync({
     command: process.execPath,

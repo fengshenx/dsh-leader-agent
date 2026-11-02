@@ -43,7 +43,7 @@ import {
   COPIED_PROFILE_FILES, assertSeparateHome, assertWebBundle, deriveProfilePackage, devWebBundleHint,
   mergeCredentialRefs, planNodeModules, resolveDevPaths,
 } from './dev-plan.mjs'
-import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
+import { CommandNotFoundError, CommandShellError, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
 const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: process.env })
@@ -201,6 +201,12 @@ const dshCommand = process.env.DEV_DSH || 'dsh'
 try {
   run(dshCommand, args, { cwd: worktree, env: { ...process.env, DSH_HOME: paths.home } })
 } catch (error) {
+  // dev 没有顶层 catch，这个错误落下去只有原始栈；说清是 cmd 起不来，别让人去查 dsh。
+  if (error instanceof CommandShellError) {
+    console.error(`错误: ${error.message}`)
+    console.error('这是 Windows 的 cmd.exe 起不来，不是 dsh 没装：检查 ComSpec 或 %SystemRoot%\\System32\\cmd.exe。')
+    process.exit(1)
+  }
   if (!(error instanceof CommandNotFoundError)) throw error
   console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
   console.error('用 DEV_DSH 指定路径，例如 DEV_DSH=/opt/dsh/bin/dsh npm run dev。')
