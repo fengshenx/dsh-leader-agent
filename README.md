@@ -49,6 +49,15 @@ Three mechanisms make this more than "a smarter prompt":
 - **Completion is settled by the runtime, which wakes the Leader.** When a worker's turn ends, the Leader receives a report (rendered as the worker speaking), with no polling from the Leader and no submit step from the worker.
 - **Workers are persistent root sessions.** Several run at once, you can open any of them and keep the conversation going, and they cold-resume after a restart. The cost: the Leader cannot stop one, see [Current limitations](#current-limitations).
 
+## Design trade-offs
+
+- This project does not aim to rebuild dsh's own super agent. It solves one concrete problem: letting one person manage 20+ sessions.
+- Today's agents are not reliable enough to run unattended, so the design assumes you can interrupt or push any worker at any point.
+- The routing layer runs a full-size model. In practice, holding the global picture, it often connects several PRs in one thought and resolves what a single worker cannot see.
+- Agent orchestration generalizes. A card describes the task itself, so it works outside coding and composes with any skill.
+- Initialization is still manual: in your own project you write `COORDINATOR.md` (the Leader's persona prompt and orchestration flow) and `SLOTS.md` (the role split and each role's persona prompt).
+- The Leader leads and workers never talk to each other; the tool surface rules it out. Today's agents are trained for strict instruction-following, and one noisy message between two agents can derail the entire conversation.
+
 ## Quick Start
 
 ### Install
