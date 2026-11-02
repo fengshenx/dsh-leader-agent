@@ -41,9 +41,11 @@
 
 ### worker 只改自己挂着的卡
 
-身份闸回答「能不能写卡」，回答不了「能写哪张」：worker 的 cwd 就是项目目录，同项目里别的 worker 的卡它一样能改，也能整卡替换 `slots`。后者正是投递门禁（`dispatch.js` 的 `assertCardGateOpen`）认定必须拦下的坏状态——一个会话同时挂多张 active 卡，产物无从归属。`update_card` 因此加一道 `assertWorkerCardScope`：worker 的目标卡必须在 `bindingsOf(sessionId)` 里，且本次不能带 `slots`。协调者不受限，换执行者归它。
+身份闸回答「能不能写卡」，回答不了「写哪张、写什么」。worker 的 cwd 就是项目目录，同项目里别的 worker 的卡它一样能改；也能整卡替换 `slots`——后者正是投递门禁（`dispatch.js` 的 `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂多张 active 卡，产物无从归属）；还能把卡标 `done`，提前关掉自己的卡、释放执行者，绕过协调者的验收。`update_card` 因此加一道 `assertWorkerCardScope`：worker 的目标卡必须在 `bindingsOf(sessionId)` 里，且本次不能带 `slots` 或 `status`。协调者不受限，换执行者与判定完成都归它。
 
-范围校验放在跨项目校验之后、`store.update` 之前：跨项目先给出更准确的原因，范围闸只在同项目内兜「哪张卡」。
+**状态归协调者的依据**：`playbooks/implementation.md` 的交付一节写明「卡片规格与状态仍由协调者维护，不自行标 done」「开发完成不代整卡验收，不标整卡 done；有卡时回交协调者按验收判断」；`playbooks/program.md` 的协调者动作说明同样写「`status` 与 `spec` 仍归协调者」；`SLOTS.md` 的 dev 槽位写的是「交付做到 PR；合并与 approve 不由你决定」——worker 连合并都不能决定，判不了完成。`#60` 的「关闭卡片自动释放执行者」也是按协调者的收工动作设计的（关闭会抽走 worker 的卡片上下文，协议层要求关闭前确认该轮已交活）。因此收窄实现，而不是改协议。
+
+范围校验放在跨项目校验之后、`store.update` 之前：跨项目先给出更准确的原因，范围闸只在同项目内兜「哪张卡、写什么」。
 
 `create_card` 的 worker 限制另有一道 `assertCardCreator`，紧跟在身份闸之后：工具面已经把 `create_card` 从 worker 摘掉，但工具面是创建时一次性的，执行时再判一次才与其余写卡规则同构。
 
@@ -59,18 +61,18 @@
 - **索引未就绪时同样拒绝写卡**：`isCoordinatorSession()` 在索引读不出来时对所有会话返回 true（`projects/service.js:354-357`），写卡闸等一次 `awaitIndex()`，问不出身份就不写。协调者在同一状态下也会被拒，与派工/续聊的 `assertCoordinator` 一致——宁可让协调者晚一轮再建卡，也不给普通会话一个真实落盘的越权窗口。索引失败后 `index.js` 重试 3 次（2s/4s），之后保持拒绝。项目存储本身对损坏文件做恢复（重写空表），所以索引失败实际只剩 IO 与装配异常这两条路径。
 - **装配漏传判定直接失败**：`createBundleTools` 在 `cards` 有值而 `canWriteCards`、`isWorkerSession`、`cardBindingsOf` 有任一不是函数时抛错。缺省放行只剩「文档门禁无参取名字」与「单测直接调工具工厂」两个合法场景，这两条都不需要「有 cards 但没判定」这个组合。旧版本下漏传是静默失效：工具面照裁、执行时却对所有会话开放，全量用例不会红。
 - **worker 建卡两面都关**：工具面（`WORKER_DENY_TOOLS` 的 `create_card`）与执行时（`assertCardCreator`）。执行时那道是决定性的——工具面在 `agent/created` 一次性裁，与其余写卡规则保持同一结构。
-- **worker 标完 done 后再改同一张卡会被拒**：`done` 会释放槽位上的执行者，卡随即不在它的绑定里。完成后再补链接没有意义，协调者能改。
+- **worker 不能改状态**：`done` / `archived` 与重开都归协调者（依据见上一节）。worker 在交付完成后只在 `links` 里挂产物，卡片的完成由协调者按验收判断（本仓是 PR 合并 + worktree 移除）。
 - **产品行为变更**：在普通会话里对模型说「把这个记成卡」不再能落盘，需要切到项目协调者会话。这是有意的取舍——普通会话没有项目归属，卡落盘后看板上没人认领。
 - **文档门禁仍认三件**：`documentedToolNames()` 从 `createBundleTools()` 取名字，工具名没有变化，`scripts/verify-doc-tool-names.mjs` 的允许集不用改。
 
 ## 验证
 
-- 单测：合 main（`98891c8`）后全量 `npm run check` 820 例（811 pass / 9 skip / 0 fail）。
+- 单测：合 main（`98891c8`）后全量 `npm run check` 821 例（812 pass / 9 skip / 0 fail）。
 - 本轮新增用例：
   - `tool-gate`：普通会话禁掉三组工具、worker 只禁建卡而保留改卡、`applyToolGate` 对普通会话留下完整限制、名单互不重叠；`canWriteCardsFor` 的三态——worker 短路不碰索引、索引未就绪拒绝（不吃 `isCoordinatorSession()` 的宽松）、就绪后只认当前协调者；
-  - `cards-tools`：普通会话建卡与改卡都被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验、`createBundleTools` 把判定透传给两件工具、传了 `cards` 不传判定时抛错、worker 只能改自己挂着的卡且不能改 `slots`（协调者不受限）、worker 建卡被拒且不落盘；
+  - `cards-tools`：普通会话建卡与改卡都被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验、`createBundleTools` 把判定透传给两件工具、传了 `cards` 不传判定时抛错、worker 只能改自己挂着的卡、不能改 `slots` 与 `status`（协调者不受限）、worker 建卡被拒且不落盘；
   - `coordinator-wiring`（装配层，跑真实 `apply`）：普通会话写卡被拒且协调者能建卡、真实 `replaceCoordinator` 之后退役会话的 `create_card` / `update_card` 都被拒而新协调者通过；
-  - `worker-sessions`：resume 期间已登记为 worker、resume 失败只回滚这次新登记的身份（已收编的 worker 保留、未登记 id 清掉）、同一会话并发续聊只恢复一次（两个 handle 泄漏成唯一一个、两条消息投同一 handle）、并发恢复失败时两条调用都拿到同一个错误。
+  - `worker-sessions`：resume 期间已登记为 worker、resume 失败只回滚这次新登记的身份（已收编的 worker 保留、未登记 id 清掉）、同一会话并发续聊只恢复一次（两个 handle 泄漏成唯一一个、两条消息投同一 handle）、并发恢复失败时两条调用都拿到同一个错误、恢复完成后清掉在飞记录（`forget()` 之后再 `send` 会重新恢复）。
 - 双向验证（逐条撤销 → 对应用例变红 → 还原 → 全绿）：
   1. `deniedToolsFor` 普通会话分支改回 `COORDINATOR_ONLY_TOOLS` → `tool-gate` 3 例变红（普通会话没有派工/全库查询与卡片写入、缺 worker 判定按普通会话、applyToolGate 留下限制）。
   2. 删掉两处 `assertCardWriter` 调用 → `cards-tools` 3 例变红（建卡与改卡被拒且不落盘、协调者与 worker 放行、身份闸先于入参校验）。
@@ -84,4 +86,5 @@
   10. 删掉 `index.js` 装配处的 `isWorkerSession` / `cardBindingsOf` 实参 → 4 条装配层用例变红（`createBundleTools` 拒绝启动），还原后绿。
   11. `send()` 改回「每条各自 resume」→ 两条并发用例与身份回滚用例变红（resume 调了 2 次），还原后绿。
   12. 删掉 `create_card` 的 `assertCardCreator` 调用 → 「worker 不能建卡」变红；`deniedToolsFor` 的 worker 分支改回 `COORDINATOR_ONLY_TOOLS` → `tool-gate` 2 例变红；均还原后绿。
+  13. 删掉 `assertWorkerCardScope` 的 `status` 检查 → worker 改状态的三条断言变红；删掉 `resumeOnce` 的 `resuming.delete` → 「恢复完成后清掉在飞记录」变红（第二次 `send` 命中旧 promise、`resume` 只调了 1 次）；均还原后绿。
 - 未做真机取证：工具面变化需要在隔离 `DSH_HOME` + mock provider 的实例里看普通会话的工具列表，本次只验证了判定与执行闸；留待下一次 GUI 取证。

@@ -833,9 +833,14 @@ test('协调者与 worker 都过写卡身份闸', async () => {
     const created = await tools.create_card.execute({ title: '任务' }, exec)
     assert.equal(created.card.title, '任务')
 
+    // worker 挂产物链接：这是协议层给它的写卡动作（`implementation.md` 的交付一节）
     const worker = { agent: { id: 'worker-1' }, signal: undefined }
-    const updated = await tools.update_card.execute({ id: created.card.id, status: 'done' }, worker)
-    assert.equal(updated.card.status, 'done')
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/1' }] },
+      worker,
+    )
+    assert.equal(updated.card.links.length, 1)
+    assert.equal(updated.card.status, 'active')
 
     const plain = { agent: { id: 'plain-1' }, signal: undefined }
     await assert.rejects(
@@ -912,7 +917,7 @@ test('createBundleTools 缺 worker 写卡范围依赖时同样直接报错', () 
   )
 })
 
-test('worker 只能改自己挂着的卡，且不能改槽位绑定', async () => {
+test('worker 只能改自己挂着的卡，且不能改槽位与状态', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   try {
     const store = createCardStore({ home })
@@ -926,7 +931,7 @@ test('worker 只能改自己挂着的卡，且不能改槽位绑定', async () =
     })
     const worker = { agent: { id: 'worker-1' }, signal: undefined }
 
-    // 自己的卡：标题、状态、链接都能写
+    // 自己的卡：标题与链接能写
     const renamed = await updateCard.execute({ id: mine.id, title: '改了我的标题' }, worker)
     assert.equal(renamed.card.title, '改了我的标题')
 
@@ -947,8 +952,15 @@ test('worker 只能改自己挂着的卡，且不能改槽位绑定', async () =
     const byCoordinator = await updateCard.execute({ id: other.id, title: '协调者改的' }, coordinator)
     assert.equal(byCoordinator.card.title, '协调者改的')
 
-    // 把自己的卡标 done：写入时仍在绑定里，释放槽位发生在写入之后
-    const done = await updateCard.execute({ id: mine.id, status: 'done' }, worker)
+    // 状态归协调者：关闭会释放执行者、抽走卡片上下文，协议层要求它验收后再关
+    for (const status of ['done', 'archived', 'active']) {
+      await assert.rejects(
+        () => updateCard.execute({ id: mine.id, status }, worker),
+        /worker 不能改卡片状态/,
+      )
+    }
+    // 协调者能关自己的卡
+    const done = await updateCard.execute({ id: mine.id, status: 'done' }, coordinator)
     assert.equal(done.card.status, 'done')
   } finally {
     await rm(home, { recursive: true, force: true })

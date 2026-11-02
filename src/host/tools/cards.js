@@ -317,27 +317,37 @@ function assertCardCreator(sessionId, isWorkerSession) {
 /**
  * worker 的写卡范围闸：只允许改自己挂着的卡，且不许动槽位绑定。
  *
- * 身份闸只回答「能不能写卡」，回答不了「能写哪张」：worker 的 cwd 就是项目目录，
- * 同项目里别的 worker 的卡它一样能改，也能整卡替换 `slots`——那正是投递门禁
- * （`dispatch.js` 的 `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂
- * 多张 active 卡）。放开范围要能说出谁会因此干不了活，目前没有这样的流程：
- * worker 在自己的卡上写 spec、状态与链接都够了。
+ * 身份闸只回答「能不能写卡」，回答不了「写哪张、写什么」。对 worker 有三条：
+ *
+ * - **只能改自己挂着的卡**：worker 的 cwd 就是项目目录，同项目里别的 worker 的卡
+ *   它一样能改；改别人的卡会把产物落错地方。
+ * - **不能改槽位绑定**：整卡替换 `slots` 正是投递门禁（`dispatch.js` 的
+ *   `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂多张 active 卡）。
+ * - **不能改状态**：`done` / `archived` 会释放执行者、抽走卡片上下文，是协调者的
+ *   收工动作；重开同样是它的指派动作。协议层（`implementation.md` 的「卡片规格与
+ *   状态仍由协调者维护，不自行标 done」、`program.md` 的「status 与 spec 仍归协调者」）
+ *   也把状态判给协调者——worker 连合并与 approve 都不决定，判不了完成。
  *
  * 协调者不受这条约束：它本来就在管整个项目。
  *
  * @param {string} sessionId - 调用方会话 id
- * @param {string} cardId - 目标卡 id
- * @param {object | undefined} slots - 本次要写入的槽位绑定
+ * @param {object} input - 本次写入的意图
+ * @param {string} input.cardId - 目标卡 id
+ * @param {object | undefined} input.slots - 要写入的槽位绑定
+ * @param {string | undefined} input.status - 要写入的状态
  * @param {object} options - 判定依赖
  * @param {((sessionId: string | undefined) => boolean) | undefined} options.isWorkerSession - worker 判定
  * @param {((sessionId: string) => Promise<object[]>) | undefined} options.cardBindingsOf - 会话的卡片绑定
  * @returns {Promise<void>} 范围校验通过
- * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定
+ * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态
  */
-async function assertWorkerCardScope(sessionId, cardId, slots, { isWorkerSession, cardBindingsOf }) {
+async function assertWorkerCardScope(sessionId, { cardId, slots, status }, { isWorkerSession, cardBindingsOf }) {
   if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
   if (slots !== undefined) {
-    throw new Error('update_card: worker 不能改卡片的槽位绑定——换执行者请在协调者会话里做；关掉多余的卡用 status: done')
+    throw new Error('update_card: worker 不能改卡片的槽位绑定——换执行者请在协调者会话里做')
+  }
+  if (status !== undefined) {
+    throw new Error('update_card: worker 不能改卡片状态——完成由协调者验收后判定（done / archived 会释放执行者），重开也是协调者的指派动作；请把交付物挂到 links 并在回报里说明已完成')
   }
   if (typeof cardBindingsOf !== 'function') return
   const bindings = await cardBindingsOf(sessionId)
@@ -543,7 +553,11 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
       if (owner !== '' && owner !== scope) {
         throw new Error(`update_card: 卡片 ${input.id.trim()} 属于另一个项目，不能跨项目改卡`)
       }
-      await assertWorkerCardScope(exec.agent?.id, input.id.trim(), slots, { isWorkerSession, cardBindingsOf })
+      await assertWorkerCardScope(
+        exec.agent?.id,
+        { cardId: input.id.trim(), slots, status: input.status },
+        { isWorkerSession, cardBindingsOf },
+      )
       const card = await store.update({
         id: input.id.trim(),
         ...input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision },

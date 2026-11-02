@@ -833,3 +833,37 @@ test('并发冷恢复失败时两条调用都拿到同一个错误，身份只�
   // 失败后不留身份：下一次还能重新恢复
   assert.equal(sessions.isWorkerSession('worker-unknown'), false)
 })
+
+test('冷恢复完成后清掉在飞记录：forget 之后再 send 会重新恢复', async () => {
+  const fixture = createFixture()
+  let resumeCalls = 0
+  const ctx = {
+    ...fixture.ctx,
+    get: (key) => {
+      const value = fixture.ctx.get(key)
+      if (key !== 'agents') return value
+      return {
+        ...value,
+        async resume(options) {
+          resumeCalls += 1
+          await new Promise((resolve) => { setTimeout(resolve, 10) })
+          return value.resume(options)
+        },
+      }
+    },
+  }
+  const sessions = createWorkerSessions({ ctx })
+  const signal = new AbortController().signal
+  await Promise.all([
+    sessions.send({ sessionId: 'worker-1', text: '一', parentSessionId: 'c', signal }),
+    sessions.send({ sessionId: 'worker-1', text: '二', parentSessionId: 'c', signal }),
+  ])
+  assert.equal(resumeCalls, 1)
+
+  // 宿主销毁会话后 forget：活表清空。在飞记录要是在完成后没清，下一次 send 会
+  // 命中那个已完成的旧 promise，拿到旧 handle——恢复根本不会再发生。
+  sessions.forget('worker-1')
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+  await sessions.send({ sessionId: 'worker-1', text: '三', parentSessionId: 'c', signal })
+  assert.equal(resumeCalls, 2)
+})
