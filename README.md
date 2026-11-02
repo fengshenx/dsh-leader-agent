@@ -85,7 +85,7 @@ profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类
 npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任务名>
 cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
-npm run check                     # Agent Note 门禁 + 语法检查 + 全部单测
+npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
 ```
 
 其余命令（`build:client` / `worktree:prune` 等）见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。

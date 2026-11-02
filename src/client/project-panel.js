@@ -338,7 +338,8 @@ export function ProjectPanel(props) {
       showToast('导航服务不可用：无法打开会话。')
       return
     }
-    // 只有归属工作区的会话能被官方 UI 打开成主区域，先确保它挂上了。
+    // 归属是为了分组：不归属就落「未分组」，而项目会话行被藏了，那里只剩空组头。
+    // 打开前先确保它挂上（工作区被删过时这一步会重建并归位）。
     const result = await openCoordinatorSession({
       project,
       callRemote,

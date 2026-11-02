@@ -28,7 +28,7 @@ import { createProjectService } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { createDispatcher } from './dispatch.js'
 import { createCoordinatorHandover } from './coordinator-handover.js'
-import { applyToolGate } from './tools/gate.js'
+import { applyToolGate, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyCoordinatorContext } from './coordinator-context.js'
 
@@ -46,6 +46,42 @@ export const name = 'dsh-leader-kit-host'
 // 在特定 bundle 上。声明成必需依赖会让不含该服务的 profile 整个插件挂起。
 // 建 worker 会话要的 `agents` 也在这里——缺它时派工报错说清是哪个缺口。
 export const inject = ['skills', 'tools', 'systemPrompt']
+
+/**
+ * 本 bundle 注册到宿主的工具定义。
+ *
+ * 装配与文档门禁（`scripts/verify-doc-tool-names.mjs`）都从这里取名字，工具名因此
+ * 只有一处来源：工厂返回什么，门禁就比对什么。依赖只在 `call` 里用到，取名字时
+ * 不传也能拿到完整的工具定义。
+ *
+ * @param {object} [options] - 工具依赖
+ * @param {object} [options.dispatcher] - 派工器
+ * @param {object} [options.cards] - 卡片存储
+ * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
+ * @returns {object[]} 工具定义
+ */
+export function createBundleTools({ dispatcher, cards, resolveProject } = {}) {
+  return [
+    createSpawnWorkerTool({ dispatcher }),
+    createMessageWorkerTool({ dispatcher }),
+    createCreateCardTool({ store: cards, resolveProject }),
+    createUpdateCardTool({ store: cards, resolveProject }),
+    createListCardsTool({ store: cards, resolveProject }),
+  ]
+}
+
+/**
+ * 文档里可以引用的工具名：本 bundle 注册的，加上宿主 subagent 组合提供的三件。
+ *
+ * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主三件不进本 bundle 的
+ * 注册面，但文档会写它们——所以从 `HOST_SUBAGENT_TOOLS` 这个语义来源取，而不是
+ * 借用 deny 名单：那份名单的变化理由是「协调者能不能用」，与「文档能不能写」不同。
+ *
+ * @returns {string[]} 工具名
+ */
+export function documentedToolNames() {
+  return [...createBundleTools().map((tool) => tool.name), ...HOST_SUBAGENT_TOOLS]
+}
 
 /**
  * 挂载本 bundle 的能力。
@@ -127,14 +163,9 @@ export function apply(ctx) {
   // 装配收尾：接管动作依赖上面全部组件，现在才成形。
   handover = createCoordinatorHandover({ projects, workers, notifications: store, dispatcher, logger })
 
-  ctx.tools.register(createSpawnWorkerTool({ dispatcher }))
-  ctx.tools.register(createMessageWorkerTool({ dispatcher }))
-
   // 建卡与改卡对所有会话开放：worker 边干活边把状态写回卡片，普通会话也能为
-  // 项目登记待办；查全库卡片只给协调者。
-  ctx.tools.register(createCreateCardTool({ store: cards, resolveProject }))
-  ctx.tools.register(createUpdateCardTool({ store: cards, resolveProject }))
-  ctx.tools.register(createListCardsTool({ store: cards, resolveProject }))
+  // 项目登记待办；查全库卡片、派工与续聊只给协调者（见 `applyToolGate`）。
+  for (const tool of createBundleTools({ dispatcher, cards, resolveProject })) ctx.tools.register(tool)
 
   // 角色槽位注入：会话被卡片绑到某个槽位时，每轮 turn 注入该槽位在项目
   // `SLOTS.md` 里的正文。槽位不注册工具、不改工具可见性。

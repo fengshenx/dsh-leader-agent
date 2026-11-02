@@ -482,8 +482,10 @@ export function createProjectService({
     /**
      * 列项目，并标注协调者会话是否仍在、是否已挂到工作区。
      *
-     * `coordinatorAttached` 决定浏览器侧能不能把协调者会话打开成主区域：只有
-     * 归属工作区的会话才能被官方 UI 打开（见 `ensureWorkspace`）。
+     * `coordinatorAttached` 是协调者会话**此刻**是否挂在项目工作区上。归属只决定
+     * 官方左栏把它归进哪个分组：不归属就落「未分组」，而本仓渲染层把项目会话行
+     * 藏了，那里只剩一棵空组头（见 `ensureWorkspace`）。工作区被用户删掉后它为
+     * false，下次点项目行由 `attachCoordinator` 重建并归位。
      *
      * @returns {Promise<object[]>} 项目列表
      */
@@ -500,9 +502,10 @@ export function createProjectService({
     /**
      * 确保协调者会话挂在项目目录对应的工作区上。
      *
-     * 官方 UI 只能打开归属工作区的会话（宿主 `session.create` 传 `cwd` 建出的
-     * 会话不归属任何工作区，见 `ensureWorkspace`）。目录还不是
-     * 工作区时这里顺带注册一个——注册是幂等的，宿主侧已有同名工作区就直接复用。
+     * 归属是为了分组：官方左栏按工作区归组会话，不归属就落「未分组」，而本仓把
+     * 项目会话行藏了，那里只剩一棵空组头（见
+     * `.agents/notes/2026-11-02-project-owns-workspace.md`）。目录还不是工作区时
+     * 这里顺带注册一个——注册是幂等的，宿主侧已有同名工作区就直接复用。
      *
      * 工作区被用户删掉后再点项目行会走到这里：重建一个（`recreated`）并把协调者、
      * 退役协调者与本项目登记过的 worker 一起挂回去——工作区不在期间它们都是松散
@@ -764,8 +767,8 @@ export function createProjectService({
       // 与打开项目同一条前置检查：目录没了先给可读的中文原因，而不是让宿主在
       // 注册工作区时抛一句英文技术错。
       await assertUsableDirectory(project.directory)
-      // 建会话本身会注册工作区（会话要归属工作区才能被官方 UI 打开），这一步
-      // 顺带把归属记进项目记录——工作区被删过再换协调者时，归属会重新落回。
+      // 建会话本身会注册工作区（有归属才有分组可落），这一步顺带把归属记进项目
+      // 记录——工作区被删过再换协调者时，归属会重新落回。
       const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
       await recordWorkspaceOwnership(ctx, store, id, ensured, logger)
       const coordinatorSessionId = await openRegisteredCoordinatorSession(project.directory)
@@ -843,11 +846,15 @@ export function createProjectService({
 /**
  * 拿到项目目录对应的工作区，没有就注册一个。
  *
- * dsh 的会话只有挂到工作区上，UI 才能把它显示到主区域——宿主 `session.create`
- * 传 `cwd` 建出来的会话不属于任何工作区（`packages/api/session-controller/src/commands.ts`
- * 的 create 只在传 `workspaceId` 时 attach），于是官方 UI 没有任何路径能打开它。
- * 因此建协调者会话前先确保目录已注册为工作区；注册是幂等的，目录已是工作区时
- * 直接复用。
+ * 归属决定官方左栏把会话归进哪个分组：不归属就落「未分组」，而本仓把项目会话行
+ * 藏了，那里只剩一棵空组头。宿主 `session.create` 传 `cwd` 建出来的会话不属于任何
+ * 工作区（`packages/api/session-controller/src/commands.ts` 的 create 只在传
+ * `workspaceId` 时 attach），因此建协调者会话前先确保目录已注册为工作区；注册是
+ * 幂等的，目录已是工作区时直接复用。
+ *
+ * 官方 UI 打开会话**不**要求归属（`ui-workspace/src/client/navigation.ts:523-553`
+ * 能打开只带 `cwd` 的会话）。曾经按「不归属就打不开」实现过一版，那是被推翻的
+ * 旧方案：要归属的是分组，不是可打开性。
  *
  * 「有没有是我们建的」由 `created` 区分：复用的工作区可能是用户自己加的，
  * 那不是插件的东西，不该被隐藏、不该被记进项目记录。
@@ -978,8 +985,8 @@ export function isSessionAttachedToWorkspace(ctx, sessionId) {
  * bundle 提供，所有 profile 都有。两个服务都走惰性获取：它们不在本插件的
  * `inject` 列表里，声明成必需依赖会让不含该服务的 profile 整个插件挂起。
  *
- * 走 `sessionController` 时优先按工作区建（见 `ensureWorkspace`）：
- * 只有归属工作区的会话才能被 UI 打开成主区域。
+ * 走 `sessionController` 时优先按工作区建（见 `ensureWorkspace`）：以
+ * `workspaceId` 建出的会话当场就有分组，省掉建完再挂的一步。
  *
  * `sessionId` 由调用方给定，两条路径都原样用它建会话——协调者身份在建会话之前
  * 就登记好了，换成别的 id 会让工具面裁成普通会话（见

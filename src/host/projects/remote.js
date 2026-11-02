@@ -153,8 +153,8 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     /**
      * 确保协调者会话挂在项目目录对应的工作区上。
      *
-     * 只有归属工作区的会话能被官方 UI 打开成主区域；目录还不是工作区时顺带
-     * 注册一个（幂等）。
+     * 归属是为了分组：不归属就落官方左栏的「未分组」，而本仓把项目会话行藏了，
+     * 那里只剩一棵空组头。目录还不是工作区时顺带注册一个（幂等）。
      *
      * @param {string} id - 项目 id
      * @returns {Promise<{attached: boolean, workspaceId?: string, reason?: string}>} 挂载结果

@@ -24,6 +24,20 @@ export const COORDINATOR_ONLY_TOOLS = Object.freeze([
 ])
 
 /**
+ * 宿主 subagent 组合提供的三件工具：它们只作用在 subagent 体系上。
+ *
+ * 单独导出是为了给「宿主侧有哪些工具名」一个语义正确的来源，文档允许集
+ * （`src/host/index.js` 的 `documentedToolNames()`）取自这里。`COORDINATOR_UNUSABLE_TOOLS`
+ * 是同一份数据的另一种用法——工具面裁剪。两者共享数据、语义不同：前者的变化理由是
+ * 「宿主提供什么」，后者是「协调者能不能用」；文档侧只能走 `documentedToolNames()`。
+ */
+export const HOST_SUBAGENT_TOOLS = Object.freeze([
+  'list_agents',
+  'send_message',
+  'interrupt_agent',
+])
+
+/**
  * 协调者不该看到的三件宿主工具：它们只作用在 subagent 体系上。
  *
  * 协调者的 worker 由本 bundle 用 `agents.create` 建成普通根会话，因此在宿主那三
@@ -33,12 +47,10 @@ export const COORDINATOR_ONLY_TOOLS = Object.freeze([
  * 从工具面结构上消除诱因。
  *
  * 只裁协调者：普通会话可能真的用官方 subagent，那时这三件是有效的。
+ *
+ * 它是 `HOST_SUBAGENT_TOOLS` 的别名、不是另一份名单：要改集合请改那份。
  */
-export const COORDINATOR_UNUSABLE_TOOLS = Object.freeze([
-  'list_agents',
-  'send_message',
-  'interrupt_agent',
-])
+export const COORDINATOR_UNUSABLE_TOOLS = HOST_SUBAGENT_TOOLS
 
 /**
  * 算出某个会话要禁掉的工具名。

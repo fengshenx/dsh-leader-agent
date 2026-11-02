@@ -38,7 +38,7 @@ src/shared/         两端共用的纯函数与消息来源约定
 skills/             leader-mode 协议层（SKILL.md + playbooks + references）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 build/client.mjs    esbuild 客户端构建（closure-factory 封装）
-scripts/            开发实例、worktree 工具、Agent Note 格式门禁（verify-agent-note-format.mjs）
+scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名）
 docs/               长期文档（架构、宿主能力边界、真机取证指引）
 .agents/notes/      非平凡改动的决策记忆
 COORDINATOR.md      本仓作为项目时，协调者会话自动注入的手册
@@ -48,7 +48,7 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / de
 ## 常用命令
 
 ```bash
-npm run check                     # Agent Note 格式门禁 + 语法检查（index/src/scripts/build）+ 全部单测
+npm run check                     # Agent Note 格式门禁 + 文档工具名门禁 + 语法检查（index/src/scripts/build）+ 全部单测
 npm run test                      # 只跑单测
 npm run build:client              # 重建客户端产物 lib/client.js
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
@@ -63,6 +63,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。
+- 工具名只有一处来源：`src/host/index.js` 的 `createBundleTools`（门禁比对用的是它的 `documentedToolNames`）。`SLOTS.md`、`COORDINATOR.md`、`skills/**/*.md` 里反引号写的工具名由 `scripts/verify-doc-tool-names.mjs` 比对，删工具时漏改文档 `npm run check` 会红。
 
 ## 代码风格
 
