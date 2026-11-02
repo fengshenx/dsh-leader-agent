@@ -2,12 +2,16 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { isJumpableLink, linkRowKey, planLinkRow } from '../src/client/link-row.js'
 
-test('有 URL 的链接能跳转，空 URL 与非字符串 URL 不能', () => {
+test('只有 http(s) 链接能跳转，空值、非字符串与非 http scheme 都不能', () => {
   assert.equal(isJumpableLink({ label: '甲', url: 'https://example.com' }), true)
+  assert.equal(isJumpableLink({ label: '甲', url: 'http://example.com' }), true)
   assert.equal(isJumpableLink({ label: '甲', url: '' }), false)
   assert.equal(isJumpableLink({ label: '甲' }), false)
   assert.equal(isJumpableLink({ label: '甲', url: 42 }), false)
   assert.equal(isJumpableLink(undefined), false)
+  // 卡片工具不校验 scheme，存量卡里可能有这类 URL；渲染成 href 就是注入面。
+  assert.equal(isJumpableLink({ label: '甲', url: 'javascript:alert(1)' }), false)
+  assert.equal(isJumpableLink({ label: '甲', url: 'docs/report.md' }), false)
 })
 
 test('chip 的 key 优先用 id，缺 id 时用标签加序号兜底', () => {

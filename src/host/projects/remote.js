@@ -12,7 +12,9 @@
  * @module dsh-leader-kit/host/projects/remote
  */
 
+import { randomUUID } from 'node:crypto'
 import { loadSlotTemplates } from '../slots/slot-templates.js'
+import { normalizeLinkDrafts } from '../../shared/card-links.js'
 import {
   PROJECT_REMOTE_METHODS,
   PROJECT_REMOTE_NAMESPACE,
@@ -230,6 +232,40 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
      */
     async boardCards(projectId) {
       return this.cards.list({ projectId })
+    }
+
+    /**
+     * 整体替换一张卡的链接条目。
+     *
+     * 看板的写通道只有这一处：卡片其余字段仍归协调者工具，界面不越权改。
+     * 不传 `expectedRevision`——详情浮层拿的是打开瞬间的快照，用户编辑期间
+     * 协调者改过卡时，用快照版本号会稳定触发冲突，而用户在这里表达的意图就是
+     * 「这些链接现在是这样」。
+     *
+     * `links` 来自浏览器，必须在这里按同一份共享判定重新校验：客户端校验只
+     * 是即时反馈，不能当成写入边界。
+     *
+     * **不做项目归属校验**：远程方法在 `direct` 调用里拿不到调用方会话，无法像
+     * `create_card` / `update_card` 那样按会话反查项目、比对卡片归属。这是单机
+     * 单用户威胁模型下的取舍——这条通道走官方 `/api` 的同源链路，能调它的本机
+     * 页面或进程本来就能读写本机数据；它不比卡片工具更宽，只是少了一道「防误用」
+     * 的一致性检查。要挡 bug 可以给方法加 `projectId` 参数做一致性校验，但它
+     * 不提升安全性。
+     *
+     * @param {string} id - 卡片 id
+     * @param {object[]} links - 链接条目（整体替换）
+     * @returns {Promise<object>} 更新后的卡片
+     */
+    async updateCardLinks(id, links) {
+      if (typeof id !== 'string' || id === '') throw new Error('updateCardLinks: id 不能为空')
+      const normalized = normalizeLinkDrafts(links)
+      if (normalized.error !== undefined) throw new Error(`updateCardLinks: ${normalized.error}`)
+      // 缺 id 的条目在这里补：卡片链接的 id 是稳定标识，看板按它做 React key，
+      // 缺了就只能退回「标签 + 序号」，标签一改就换节点。
+      const prepared = normalized.links.map((link) => (
+        link.id === undefined ? { ...link, id: randomUUID() } : link
+      ))
+      return this.cards.update({ id, links: prepared })
     }
 
     /**

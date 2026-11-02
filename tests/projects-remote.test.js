@@ -87,6 +87,10 @@ function fakeCards() {
       calls.push(['detachSession', sessionId])
       return { cards: ['c1'], slots: 1 }
     },
+    async update(input) {
+      calls.push(['update', input])
+      return { id: input.id, number: 1, title: '任务', revision: 2, links: input.links }
+    },
   }
 }
 
@@ -155,7 +159,7 @@ test('方法的形参名与契约一致——宿主按源码里的形参名建 w
     const open = source.indexOf('(')
     const close = source.indexOf(')', open + 1)
     const names = source.slice(open + 1, close).split(',').map((part) => part.trim()).filter(Boolean)
-    assert.deepEqual(names, [...expected], `${method} 的形参名与契约不一致`)
+    assert.deepEqual(names, Object.keys(expected), `${method} 的形参名与契约不一致`)
   }
 })
 
@@ -295,4 +299,63 @@ test('归档 worker 会话时顺带销毁常驻 agent', async () => {
   // 归档只从列表里摘掉是不够的：常驻会话不 dispose 就还在内存里跑、还在写日志。
   assert.deepEqual(disposed, ['s5'])
   assert.equal(result.disposed, true)
+})
+
+test('改链接：trim、丢空行、补 id 后整体替换', async () => {
+  const { ctx } = fakeCtx()
+  const cards = fakeCards()
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
+
+  const updated = await remote.updateCardLinks('c1', [
+    { id: 'l1', label: ' PR ', url: ' https://github.com/o/r/pull/1 ', purpose: ' 交付 ' },
+    { label: '   ' },
+    { label: 'Issue', url: '' },
+  ])
+
+  const [input] = cards.calls.at(-1).slice(1)
+  assert.equal(input.id, 'c1')
+  assert.deepEqual(input.links.map((link) => link.label), ['PR', 'Issue'])
+  // 已有 id 保留，新增条目由宿主补一个稳定 id
+  assert.equal(input.links[0].id, 'l1')
+  assert.equal(typeof input.links[1].id, 'string')
+  assert.notEqual(input.links[1].id, '')
+  assert.equal(input.links[0].url, 'https://github.com/o/r/pull/1')
+  assert.equal(input.links[0].purpose, '交付')
+  // 空 url 不落空串字段
+  assert.equal('url' in input.links[1], false)
+  assert.deepEqual(updated.links, input.links)
+})
+
+test('改链接把非规范 http(s) 地址归一化后落盘', async () => {
+  const { ctx } = fakeCtx()
+  const cards = fakeCards()
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
+
+  await remote.updateCardLinks('c1', [
+    { label: '简写', url: 'http:example.test/mr/1' },
+    { label: '单斜杠', url: 'https:/example.test/mr/2' },
+    { label: '换行', url: 'https://exa\nmple.test/mr/3' },
+  ])
+
+  const [input] = cards.calls.at(-1).slice(1)
+  assert.deepEqual(input.links.map((link) => link.url), [
+    'http://example.test/mr/1',
+    'https://example.test/mr/2',
+    'https://example.test/mr/3',
+  ])
+})
+
+test('改链接拒绝空 id 与非 http(s) 的 URL，不碰卡片库', async () => {
+  const { ctx } = fakeCtx()
+  const cards = fakeCards()
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
+
+  await assert.rejects(() => remote.updateCardLinks('', []), /id 不能为空/)
+  // 浏览器侧会先拦一次，但写通道不能把客户端校验当边界：javascript: 落到
+  // `<a href>` 上就是可执行的注入面。
+  await assert.rejects(
+    () => remote.updateCardLinks('c1', [{ label: '恶意', url: 'javascript:alert(1)' }]),
+    /http\(s\) 绝对地址/,
+  )
+  assert.deepEqual(cards.calls, [])
 })

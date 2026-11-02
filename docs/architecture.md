@@ -183,7 +183,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 卡片工具 | `src/host/tools/cards.js` | `create_card` / `update_card` / `list_cards`：建卡、改卡、查卡。卡片按项目归属（宿主按调用方会话判定，模型不传项目参数），`list_cards` 默认只列本项目，`scope=all` 才跨项目 |
 | 卡片存储 | `src/host/cards/store.js` | 卡片落盘与领域规则：编号不复用、revision 乐观并发、归档终态、项目归属字段 |
 | 项目存储与服务 | `src/host/projects/` | 项目注册表（`projects.json`）与项目服务：建项目连带建协调者会话并绑定，失败整体回滚。注册表只经左栏项目区块读写，模型没有对应工具 |
-| 项目通道 | `src/host/projects/remote.js` | 浏览器侧 → 宿主侧的 Typert 远程通道（命名空间 `projects`，走官方 `/api` 共享通道） |
+| 项目通道 | `src/host/projects/remote.js` | 浏览器侧 → 宿主侧的 Typert 远程通道（命名空间 `projects`，走官方 `/api` 共享通道）；方法参数名与线上类型在 `src/shared/projects.js`，浏览器侧按类型选严格 codec |
+| 卡片链接判定 | `src/shared/card-links.js` | 链接草稿的规范化与 URL 校验：浏览器侧保存前与宿主侧写通道共用同一份判定（trim、丢空 label、只认 http(s)） |
 | 工具面分配 | `src/host/tools/gate.js` | 按调用方角色裁剪工具：协调者全有，普通会话与 worker 都没有编排与全库查询 |
 | 会话归属 | `src/host/projects/session-index.js` | 按 realpath 把会话归到项目目录，得出「项目 → 会话」映射 |
 | 角色槽位 | `src/host/slots/` | 读项目目录的 `SLOTS.md`，按卡片 `slots` 字段绑定到会话，作为运行时上下文注入 |
@@ -194,7 +195,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 看板取数 | `src/client/project-board-data.js` | 解析会话所属项目、判定项目会话（协调者 / worker）、拉该项目的卡片、算出新增卡片 id（纯函数，可单测） |
 | 看板监视器 | `src/client/project-board-monitor.js` | 建卡后自动打开（或聚焦）右栏看板 tab：只跟随项目协调者会话（worker 不自动弹），轮询项目卡片，出现新卡才开 |
 | 看板卡面 | `src/client/board-card.js`、`src/client/board-styles.js` | active 卡三层（标题行 / 链接行 / 槽位行）、done 卡单行变体、链接 chip 按实测宽度排布、信号灯七档、卡面零操作铬 |
-| 卡片详情浮层 | `src/client/card-detail.js`、`src/client/modal-shell.js` | 只读详情浮层（说明 / 链接）；浮层外壳（portal、遮罩、ESC、Tab 焦点陷阱、初始焦点、关闭回焦）与确认弹窗共用 |
+| 卡片详情浮层 | `src/client/card-detail.js`、`src/client/card-links-editor.js`、`src/client/modal-shell.js` | 详情浮层（说明 / 链接）：链接可编辑（行内 label / url / purpose、增删、保存经 `updateCardLinks` 整体替换），其余字段只读；浮层外壳（portal、遮罩、ESC、Tab 焦点陷阱、初始焦点、关闭回焦）与确认弹窗共用 |
 | 左栏项目区块 | `src/client/project-panel.js` | 左栏「项目」区块：在「自动化任务」之下、工作区之上（DOM 注入取位），加项目（选目录即建好）、点项目行打开协调者会话、换新协调者、删除项目 |
 | 项目树 | `src/client/project-section.js` | 点标题折叠/展开整个项目列表，点行首槽位展开/收起该项目的会话行（worker 与被换下的协调者；当前协调者与用户手动开的会话都不在其中，会话行是纯文字行，无左右图标）；点项目行本身是打开该项目的协调者会话；项目名后面不跟路径。行首槽位与官方工作区行同款：平时是目录图标，悬停整行换成展开箭头，展开时箭头旋转朝下；「更多」在行右端，悬停时出现。项目下的会话列表按水位折叠（见下一行） |
 | 会话水位折叠 | `src/client/session-watermark.js` | 复刻宿主工作区树的口径：默认露出 5 条，每次「展开其余 N 个会话」再加 5 条，剩余不足 5 条时一次放完；运行中的会话把水位抬到它所在位置（只在前 50 条内生效）；水位只升不降，收起回落到基线；每个项目各算各的，状态不持久化 |
@@ -313,8 +314,8 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 - **「看板」入口按会话画，残余在 More 菜单**。右栏 tab 类型与「开始」页的入口是静态注册，宿主没有按会话过滤的扩展点；本插件接管 `sidebar.right.tab.guide.entry` 里自己那一枚胶囊的渲染，只在项目会话（协调者与 worker）里画出来，样式复刻宿主 `EntryBox`。`sidebar.right.tab.guide.actions` 是 root scope、不带会话，「开始」页的 More 菜单仍会列出「看板」；自动弹出仍只跟随协调者会话（worker 建卡不弹）。
 - **卡片按项目归属，归属由宿主判定**。`create_card` 时宿主按调用方会话反查项目，把 `projectId` 写进卡片记录，模型不传项目参数——它未必知道自己在哪个项目的语境里调工具。`list_cards` 默认只列本项目，`scope=all` 才跨项目；有归属的卡只能被本项目的会话改，跨项目改卡会被拒绝。**存量卡片不迁移**（记录里没有创建会话 id，无法可靠反推归属），它们不出现在任何项目看板，只能用 `list_cards`（`scope=all`）看到。
 - **卡片编号仍是全局的**。按项目过滤后编号会有空洞，但全局唯一，`@#n` 不歧义——比按项目编号更好（见[卡片存储与编号作用域](../.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)）。归档与删除都不回收编号，跨项目也不复用。
-- **卡片详情只读**。完成、置顶、重命名、删除都要新增宿主远程方法才能做，本轮不做；卡面也不放操作按钮。
-- **卡片详情浮层是打开瞬间的快照**。卡片随后被协调者更新，浮层不会跟着刷新，要关掉重开。
+- **卡片详情只写链接**。链接编辑走项目通道的 `updateCardLinks`（整体替换 `links`，宿主侧按共享的 `card-links.js` 重新校验、把 http(s) 地址按 WHATWG URL 归一化后落盘并补条目 id）；完成、置顶、重命名、删除仍归协调者的卡片工具，卡面也不放操作按钮。归档卡是终态，详情不给编辑入口。**跨项目判定不在这条通道上**：远程方法拿不到调用方会话（`direct` 调用不带 ctx），归属之下的写卡限制仍只由工具层执行；这条通道经官方 `/api` 同源链路到达宿主，任何能调 `/api` 的本机页面或进程都能按 id 改任意项目的卡——这是单机单用户威胁模型下的取舍，不比工具更宽，只是少了「防误用」的一致性检查。
+- **卡片详情浮层是打开瞬间的快照**。卡片随后被协调者更新，浮层不会跟着刷新，要关掉重开；本浮层自己保存的链接会立刻回填到浮层与卡面。链接编辑不进乐观并发：详情里的 revision 是打开时的，用它做 `expectedRevision` 会在协调者改过卡后稳定冲突，而用户表达的意图就是「这些链接现在是这样」。
 - **卡面不显示所属项目/工作区**。看板已经按项目过滤，卡面不必再重复标注（无 workspace chip）。
 - **会话折叠只认运行态**。宿主的工作区树还会为「有子代理在跑」「等你输入」「未读完成」「当前会话」四种注意力抬高水位，我们手里只有会话行的 `running`，所以只按它抬。收起只在全部放完时出现，与宿主 `sessionsExpanded = hiddenCount === 0` 的口径一致——会话很多时要点若干次「展开其余 N 个会话」，而不是随时能收。
 - **「等你输入」档暂无数据源**。宿主的待处理交互机制在（`pendingInteraction`），但当前没有任何域发布它，这一档不会亮；机制与档位都留着，等真有域发布时自动生效。「未读」档已实测跑通。
