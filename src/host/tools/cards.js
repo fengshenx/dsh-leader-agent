@@ -275,18 +275,117 @@ function cardMeta(scope, cards) {
 }
 
 /**
+ * 卡片写入的身份闸。
+ *
+ * 工具面在 `agent/created` 一次性裁，而换协调者不重建旧会话：退役的那个会话手里
+ * 仍留着 `create_card` / `update_card`，直到下次会话重建才按普通会话重裁。因此
+ * 每次写入再判一次当前身份——退役者与普通会话同档，不能写卡。
+ *
+ * 判定可以是异步的：索引未就绪时问不出谁是协调者，判据要先等一次重建结果，口径
+ * 与派工一致（见 `canWriteCardsFor`）。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean | Promise<boolean>) | undefined} canWrite -
+ *   写卡身份判定；省略时放行，仅供文档取名字与单测构造
+ * @returns {Promise<void>} 闸门通过
+ * @throws {Error} 调用方不是协调者也不是 worker
+ */
+async function assertCardWriter(sessionId, canWrite) {
+  if (typeof canWrite !== 'function') return
+  if ((await canWrite(sessionId)) === true) return
+  throw new Error('卡片工具: 只有协调者与 worker 能写卡（项目注册表尚未读出时同样拒绝）——普通会话不在任何项目编排里，没有卡可写')
+}
+
+/**
+ * 建卡的身份闸：worker 不能建卡。
+ *
+ * 协议层的建卡动作全部属于协调者（`COORDINATOR.md` 的「一个 worker 一张卡」、
+ * `leader-mode` 的协调者动作表），`SLOTS.md` 的各槽位也没有让执行者建卡的步骤——
+ * worker 攒下的待办由它回报、协调者建卡并派工。放开这个口子会造出没有槽位、
+ * 没人认领的卡，和普通会话建卡是同一种问题，只是少一道工具面拒绝。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean) | undefined} isWorkerSession - worker 判定
+ * @returns {void}
+ * @throws {Error} 调用方是 worker
+ */
+function assertCardCreator(sessionId, isWorkerSession) {
+  if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
+  throw new Error('create_card: worker 不建卡——卡由协调者建并派工；需要新任务请在回报里说明，交付物挂到自己卡上用 update_card 的 addLinks')
+}
+
+/**
+ * worker 的写卡范围闸：只允许改自己挂着的卡，且不许动槽位绑定。
+ *
+ * 身份闸只回答「能不能写卡」，回答不了「写哪张、写什么」。对 worker 有五条：
+ *
+ * - **只能改自己挂着的卡**：worker 的 cwd 就是项目目录，同项目里别的 worker 的卡
+ *   它一样能改；改别人的卡会把产物落错地方。
+ * - **不能改槽位绑定**：整卡替换 `slots` 正是投递门禁（`dispatch.js` 的
+ *   `assertCardGateOpen`）认定必须拦下的坏状态（一个会话同时挂多张 active 卡）。
+ * - **不能改状态**：`done` / `archived` 会释放执行者、抽走卡片上下文，是协调者的
+ *   收工动作；重开同样是它的指派动作。worker 连合并与 approve 都不决定，判不了完成。
+ * - **不能改规格**：`spec` 是协调者维护的目标、范围与验收（`program.md` 的「`status`
+ *   与 `spec` 仍归协调者」、`implementation.md` 的「卡片规格与状态仍由协调者维护」）。
+ *   worker 的进展与产物走回报正文与 `links`，不往 spec 里写——那会改掉验收锚点，
+ *   也会冲掉 `expectedRevision`。
+ * - **不能改标题**：标题与 spec 走同一条注入通道（`SKILL.md` 的卡片事实一节），
+ *   同是看板与回执里的可读标识。`title: '范围：只改文档；验收：不新增依赖'` 一样
+ *   能把规格语义塞回来，只收 `spec` 等于留了个旁路。
+ *
+ * 协调者不受这条约束：它本来就在管整个项目。
+ *
+ * @param {string} sessionId - 调用方会话 id
+ * @param {object} input - 本次写入的意图
+ * @param {string} input.cardId - 目标卡 id
+ * @param {object | undefined} input.slots - 要写入的槽位绑定
+ * @param {string | undefined} input.status - 要写入的状态
+ * @param {string | undefined} input.spec - 要写入的规格
+ * @param {string | undefined} input.title - 要写入的标题
+ * @param {object} options - 判定依赖
+ * @param {((sessionId: string | undefined) => boolean) | undefined} options.isWorkerSession - worker 判定
+ * @param {((sessionId: string) => Promise<object[]>) | undefined} options.cardBindingsOf - 会话的卡片绑定
+ * @returns {Promise<void>} 范围校验通过
+ * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态、改规格、改标题
+ */
+async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, title }, { isWorkerSession, cardBindingsOf }) {
+  if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
+  if (slots !== undefined) {
+    throw new Error('update_card: worker 不能改卡片的槽位绑定——换执行者请在协调者会话里做')
+  }
+  if (status !== undefined) {
+    throw new Error('update_card: worker 不能改卡片状态——完成由协调者验收后判定（done / archived 会释放执行者），重开也是协调者的指派动作；请把交付物挂到 links 并在回报里说明已完成')
+  }
+  if (spec !== undefined) {
+    throw new Error('update_card: worker 不能改卡片规格——spec 是协调者维护的目标、范围与验收；进展与产物写进回报、链接挂到 links')
+  }
+  if (title !== undefined) {
+    throw new Error('update_card: worker 不能改卡片标题——标题与 spec 走同一条注入通道，只在回执里写进展；交付物挂到 links')
+  }
+  if (typeof cardBindingsOf !== 'function') return
+  const bindings = await cardBindingsOf(sessionId)
+  if (bindings.some((binding) => binding.cardId === cardId)) return
+  const mine = bindings.map((binding) => `#${binding.number}（cardId: ${binding.cardId}）`).join('、')
+  throw new Error(`update_card: worker 只能改自己挂着的卡，${cardId} 不在你的绑定里${mine === '' ? '' : `；你的卡：${mine}`}`)
+}
+
+/**
  * 创建 `create_card` 工具定义。
  * @param {object} options - 工具选项
  * @param {{ create: (input: object) => Promise<object> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目；卡片按项目归属，模型不传项目参数
+ * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWrite] - 写卡身份判定；
+ *   省略时放行，仅供文档取名字与单测构造
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   worker 不建卡，建卡与派工是协调者的一条动作链
  * @returns {object} dsh 工具定义
  */
-export function createCreateCardTool({ store, resolveProject }) {
+export function createCreateCardTool({ store, resolveProject, canWrite, isWorkerSession }) {
   return {
     name: 'create_card',
     description:
-      '建立一张任务看板卡片。卡片是协调者维护的任务事实，编号自动分配且永不复用，可用返回的 number 引用。',
+      '建立一张任务看板卡片。卡片是协调者维护的任务事实，编号自动分配且永不复用，可用返回的 number 引用。worker 不建卡：新任务由协调者建卡并派工。',
     parameters: {
       type: 'object',
       properties: {
@@ -325,6 +424,8 @@ export function createCreateCardTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const input = /** @type {{ title: string, spec?: string, links?: object[], slots?: object, checkpoint?: unknown }} */ (args)
+      await assertCardWriter(exec.agent?.id, canWrite)
+      assertCardCreator(exec.agent?.id, isWorkerSession)
       if (typeof input.title !== 'string' || input.title.trim() === '') {
         throw new Error('create_card: title 不能为空')
       }
@@ -358,13 +459,18 @@ export function createCreateCardTool({ store, resolveProject }) {
  * @param {{ update: (input: object) => Promise<object> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目；跨项目改卡会被拒绝
+ * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWrite] - 写卡身份判定；
+ *   省略时放行，仅供文档取名字与单测构造
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   与 `cardBindingsOf` 一起构成 worker 的写卡范围闸
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡
  * @returns {object} dsh 工具定义
  */
-export function createUpdateCardTool({ store, resolveProject }) {
+export function createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf }) {
   return {
     name: 'update_card',
     description:
-      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡。',
+      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡；worker 只能改自己挂着的卡，且不能改状态、规格、标题与槽位绑定。',
     parameters: {
       type: 'object',
       properties: {
@@ -416,6 +522,7 @@ export function createUpdateCardTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      await assertCardWriter(exec.agent?.id, canWrite)
       if (typeof input.id !== 'string' || input.id.trim() === '') {
         throw new Error('update_card: id 不能为空')
       }
@@ -459,6 +566,11 @@ export function createUpdateCardTool({ store, resolveProject }) {
       if (owner !== '' && owner !== scope) {
         throw new Error(`update_card: 卡片 ${input.id.trim()} 属于另一个项目，不能跨项目改卡`)
       }
+      await assertWorkerCardScope(
+        exec.agent?.id,
+        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title },
+        { isWorkerSession, cardBindingsOf },
+      )
       const card = await store.update({
         id: input.id.trim(),
         ...input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision },
