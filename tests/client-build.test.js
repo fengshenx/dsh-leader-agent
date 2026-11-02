@@ -49,6 +49,10 @@ test('产物保持 closure-factory 外壳，基线模块留给宿主模块表', 
     const source = readFileSync(outfile, 'utf8')
     assert.ok(source.startsWith('window.__ModuleLoader__.load({ id: "dsh-leader-kit", factory: (require) => {'))
     assert.ok(source.trimEnd().endsWith('return module.exports; } });'))
+    // 内联进产物的第三方代码，许可声明必须跟着走：发布包里没有 node_modules，
+    // 产物是用户拿到版权信息的唯一位置。
+    assert.match(source, /minidenticons/)
+    assert.match(source, /Copyright \(c\) 2021 Laurent Payot/)
     // 真实入口图里的基线模块都必须 external，不能有第二份 React / ui-primitives 实例。
     for (const name of BASELINE_MODULES) assertExternal(source, name)
     // 原子写：staging 在成功后 rename 走，产物目录里只剩正式文件。

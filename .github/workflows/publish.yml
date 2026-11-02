@@ -1,0 +1,79 @@
+name: Publish
+
+# 发版入口：改 package.json 的 version → 提交 → 打 tag `v<version>` → push tag。
+# 门禁挂在本包的 `prepublishOnly`（= npm run release:check），手动发布与 CI 走同一条链路。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  # 建 GitHub Release 用 GITHUB_TOKEN
+  contents: write
+  # npm provenance 用 OIDC 换签名，不需要额外 secret
+  id-token: write
+
+concurrency:
+  group: publish-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 最先拦这一条，也省掉一次 npm ci：tag 与 version 不一致时，npm 会把新版本
+      # 发在错误的 tag 上，之后只能靠 deprecated 收场。
+      - name: 校验 tag 与 package.json 版本一致
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "tag ${GITHUB_REF_NAME} 与 package.json 的 v${version} 不一致：先改版本再打 tag" >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      # NPM_TOKEN 是仓库 secret（Automation 或 Granular access token，需要 publish 权限）。
+      # --provenance 让 npm 用本次 workflow 的 OIDC 身份生成来源证明，包页面显示
+      # 「Built and signed on GitHub Actions」；它的前提是仓库公开，且 package.json 的
+      # repository 与这里一致。
+      #
+      # 两步都不能省：版本已存在时跳过发布（发布成功但后面建 Release 失败时，重跑
+      # 不会卡在 E403），预发布版走 next dist-tag（不带 --tag 会把 rc 顶到 latest）。
+      - name: 发布到 npm
+        run: |
+          set -euo pipefail
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "${name}@${version}" version >/dev/null 2>&1; then
+            echo "${name}@${version} 已发布，跳过 npm publish"
+            exit 0
+          fi
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          npm publish --provenance --access public --tag "$tag"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 建 GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release ${GITHUB_REF_NAME} 已存在，跳过"
+            exit 0
+          fi
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes $prerelease

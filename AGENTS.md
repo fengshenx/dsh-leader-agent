@@ -26,6 +26,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：协�
 | 项目级提示词（`COORDINATOR.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/coordinator-context.js`、`src/host/slots/` |
 | 真机 / GUI 取证 | [docs/e2e-testing.md](docs/e2e-testing.md) |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
+| 发版、发布包内容与 CI | [README 的发布一节](README.md#发布)、[2026-11-02-npm-publish-pipeline.md](.agents/notes/2026-11-02-npm-publish-pipeline.md) |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
 ## 目录与职责
@@ -38,7 +39,7 @@ src/shared/         两端共用的纯函数与消息来源约定
 .agents/skills/     协议层 skill（leader-mode 派工协议、init-project 初始化方法）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
-scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名）
+scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名、发布包内容）
 docs/               长期文档（架构、宿主能力边界、真机取证指引）
 .agents/notes/      非平凡改动的决策记忆
 COORDINATOR.md      本仓作为项目时，协调者会话自动注入的手册
@@ -55,6 +56,8 @@ npm run dev                       # 起一个挂当前工作树插件版本的 d
 npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
 npm run worktree:prune            # 清已合并的 worktree（默认只打印，--apply 才删）
+npm run verify:pack               # 打包一次（dry-run），校验发布包内容（需先 build:client）
+npm run release:check             # 发版门禁：check + build:client + verify:pack，也是 prepublishOnly
 ```
 
 ## 测试
@@ -72,7 +75,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - 注释只在 WHY 不明显时写；不解释代码做了什么，不复述控制流。
 - Fail Loud：配置错误与未知异常大声报错，不静默吞错；必须吞的地方在单行注释里写明原因。
 - `try` 只包可能抛出的那一句。
-- 未使用的代码直接删。本仓未发布，不保留兼容垫片与旧格式迁移；**例外**是已落盘的运行时用户数据可以做读取退回（如 `name ?? label`）。
+- 未使用的代码直接删。不保留兼容垫片与旧格式迁移；**例外**是已落盘的运行时用户数据可以做读取退回（如 `name ?? label`），以及已经发出去的包要守住 `engines.dsh` 声明的宿主版本范围。
 - client 侧的 CSS 写在 JS 模板字符串里时**不能出现反引号**——会截断模板。
 - 用户可见文案走 `locale/*.json`，不硬编码在组件里。
 

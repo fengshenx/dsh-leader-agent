@@ -2,6 +2,9 @@ node_modules/
 *.log
 .DS_Store
 
+# npm pack / publish 的 tarball（发布包内容由 npm run verify:pack 校验，产物不入库）
+*.tgz
+
 # client 构建产物（npm run build:client 生成，发布时由 prepublishOnly 重建）
 lib/
 

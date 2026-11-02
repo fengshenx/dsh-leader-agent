@@ -44,7 +44,7 @@ cd /path/to/deepseek-harness
 pnpm dsh web --patch ../dsh-leader-kit/cordis.patch.yml
 ```
 
-分发到 npm 后：
+从 npm 安装：
 
 ```sh
 dsh plugin --profile web add dsh-leader-kit
@@ -98,6 +98,24 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 `npm start` 起的是日常那套：数据根 `~/.dsh`，插件取日常 profile 里链接的版本，起之前先 `npm run build:client`。它会逐项检查并给出可复制的修复命令：dsh 不可用（没装或不在 PATH，`DSH_DSH` 可指定路径）、日常 profile 不存在、profile 的 bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有 `npm run dev` 的隔离——在 worktree 里跑，加载的仍是链接指向的那份代码（通常是主 checkout），脚本会提示，验证本目录改动请用 `npm run dev`。
 
 开发实例的覆盖项、worktree 清理守卫、取证流程与构建约束见[架构文档的开发一节](docs/architecture.md#开发)与 [docs/e2e-testing.md](docs/e2e-testing.md)。
+
+## 发布
+
+```sh
+npm run release:check    # 门禁与单测 → 构建 lib/client.js → 校验发布包内容
+```
+
+发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致后执行 `npm publish --provenance --access public`，再建 GitHub Release；PR 与 `main` 上的 `.github/workflows/ci.yml` 跑的是同一条 `release:check`。
+
+`prepublishOnly` 挂的就是 `release:check`，所以手动 `npm publish` 与 CI 走同一条链路：漏构建客户端产物、`files` 白名单漏了 skill、包里混进测试或决策笔记，都会在发布前失败。包内容判定不复刻 npm 的收录规则，直接用 `npm pack --dry-run --json` 的真实文件清单比对（`scripts/pack-manifest.mjs` 只决定「该有的有没有」）。
+
+**只从 `npm publish`（不带路径参数）发布**：`npm publish dsh-leader-kit-0.1.0.tgz` 不跑生命周期脚本，整段门禁被跳过。
+
+版本号带预发布段（如 `0.2.0-rc.1`）时 workflow 用 `next` dist-tag 发布，`latest` 不会被顶掉，GitHub Release 同步标为 prerelease。
+
+仓库需要配 `NPM_TOKEN` secret（Automation 或 Granular access token，带 publish 权限）。首次发布时包在 npm 上还不存在、无法配 trusted publishing，只能用 token；发过一次后可在 npm 的包设置里改成 OIDC 发布并删掉这个 secret。`--provenance` 要求仓库公开，且 `package.json` 的 `repository` 与它一致。
+
+`lib/client.js` 不入库，从 git 直装（`dsh plugin add git+…`）拿不到客户端产物，也没有 `prepare` 钩子补构建——那种装法只能验证宿主侧。要连客户端一起验证就装 npm 版本，或在本地 `npm run build:client` 后用路径装。
 
 ## 致谢
 

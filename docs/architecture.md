@@ -262,7 +262,9 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用真机取证（见 [e2e-testing.md](e2e-testing.md)）。
 
-浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。构建入口 `build/client.mjs` 是薄壳，配置与原子写在 `build/client-bundle.mjs`：esbuild 先写 `<产物>.<pid>.<随机>.staging`，成功后才 rename 到正式路径——宿主按文件 stat 轮询产物，读到半截文件会替换失败且没有回滚，这条契约由 `tests/client-build.test.js` 守住（banner/footer 外壳、基线模块 external、构建失败保留上一份）。staging 带进程标识，同树的 watch 与手动构建并存时不会共写临时文件；两个进程仍会竞争最终产物，后完成 rename 的赢，但不保证内容新旧顺序。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
+浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布前由 `npm run release:check` 重建——`prepublishOnly` 挂的就是它，手动发布与 CI 走同一条链路，漏构建时发布包门禁会报 `lib/client.js` 缺失。构建入口 `build/client.mjs` 是薄壳，配置与原子写在 `build/client-bundle.mjs`：esbuild 先写 `<产物>.<pid>.<随机>.staging`，成功后才 rename 到正式路径——宿主按文件 stat 轮询产物，读到半截文件会替换失败且没有回滚，这条契约由 `tests/client-build.test.js` 守住（banner/footer 外壳、基线模块 external、构建失败保留上一份）。staging 带进程标识，同树的 watch 与手动构建并存时不会共写临时文件；两个进程仍会竞争最终产物，后完成 rename 的赢，但不保证内容新旧顺序。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
+
+发布包内容不复刻 npm 的收录规则（`files` 白名单、dot 目录、内置排除的行为都在 npm 里）：`scripts/verify-pack.mjs` 跑一次 `npm pack --dry-run --json`，拿真实文件清单与 `scripts/pack-manifest.mjs` 的判定比对——必需集从 `package.json` 的 `main` / `exports` / `dsh.bundle.patch` 推导，skill 与 locale 由磁盘枚举补齐，另有一份开发残留黑名单（`tests/`、`.agents/notes/`、`scripts/` 等）。`tests/skills.test.js` 只守 `files` 与 `SKILLS_DIR` 的对齐，tarball 本身归这条门禁管。
 
 ## 宿主契约与架构约束
 
