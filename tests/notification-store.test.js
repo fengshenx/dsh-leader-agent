@@ -102,7 +102,7 @@ test('落盘内容是可读 JSON，便于人工排查', async () => {
 
 test('DSH_HOME 优先于默认家目录', () => {
   assert.equal(resolveDshHome({ DSH_HOME: '/custom/dsh' }, () => '/home/user'), '/custom/dsh')
-  assert.equal(resolveDshHome({}, () => '/home/user'), '/home/user/.dsh')
+  assert.equal(resolveDshHome({}, () => '/home/user'), join('/home/user', '.dsh'))
 })
 
 test('换协调者后只改未投递通知的接收者', async () => {

@@ -76,6 +76,31 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 
 `npm run check` 整条（Windows 11）：Agent Note 格式 47 篇、文档工具名 11 篇、语法检查 80 文件、单测 714 用例 / 703 通过 / 10 失败 / 1 跳过；`main` 基线 690 / 679 / 同样那 10 条，失败用例名逐条比对相同。
 
+### 平台差异只在测试侧处理
+
+产品代码不动：`path.join` 本就该按平台给分隔符，`chmod` 在 Windows 上只影响只读位，建目录符号链接要特权。测试侧的取舍：
+
+- **路径分隔符**：期望值不再写死 `/tmp/...`、`/home/...`、`/repo/...`，改用同一套 `path.join` 构造。POSIX 上 `join('/tmp/dev-home', 'profiles', 'web')` 仍是 `/tmp/dev-home/profiles/web`，断言语义不变。
+- **权限位**：`atomic-write.test.js` 两条在 win32 上跳过 `mode & 0o777` 断言，保留内容与「父目录跟着建出来」；POSIX 上原断言照旧。
+- **符号链接特权**：两条 symlink 用例先尝试建链接，`EPERM` / `EACCES` 时 `t.skip()` 并写明原因；POSIX 上链接必成，用例完整执行（不按平台无条件跳过——开了开发者模式的 Windows 仍能跑）。
+- **正则里的路径**：`coordinator-context.test.js` 的 `new RegExp(tempDir)` 在 Windows 上把 `\U` / `\A` 当转义，改成 `text.includes(dir)`，比原正则更严格。
+
+改前红 → 改后绿（Windows 11 / node 24.18.1）：
+
+| 用例 | 改前 | 改后 |
+|---|---|---|
+| `原子写替换已有文件，权限收紧到 600` | `438 !== 384`（0o666 vs 0o600） | win32 跳过 mode 断言，内容断言通过 |
+| `目标不存在时按给定权限创建，父目录跟着建出来` | 同上 | 同上 + 父目录断言通过 |
+| `协调者会话注入项目根手册正文` | 正则未匹配（路径里的 `\` 被当转义） | `includes` 通过 |
+| `DSH_HOME 与 DSH_HOME_SOURCE 都能覆盖` | `\tmp\dev-home\profiles\web` vs `/tmp/...` | `join` 构造，通过 |
+| `node_modules 逐条链到源…` | `\home\user\.dsh\...` vs `/home/user/...` | 同上 |
+| `DSH_PROFILE 覆盖源 profile 名…` | `\tmp\dev-home\profiles\sdk` vs `/tmp/...` | 同上 |
+| `DSH_HOME 优先于默认家目录` | `\home\user\.dsh` vs `/home/user/.dsh` | 同上 |
+| `分支名与目录按约定派生` | `\repo\.worktrees\dev-script` vs `/repo/...` | 同上 |
+| 两条 symlink 用例 | `EPERM: operation not permitted, symlink` | `t.skip('本机建不了目录符号链接（EPERM）…')` |
+
+改后整条 `npm run check`：**exit 0**，714 用例 / 711 通过 / **0 失败** / 3 跳过（两条 symlink + 既有的一条）。
+
 真机（Windows 11 / node 24.18.1 / dsh 0.2.1-rc.5）：
 
 - `DSH_HOME=<临时数据根> npm start -- --help`：先打印 `版本 dsh …`、数据根与插件路径，跑完 `npm run build:client`，再打印 `dsh web --help` 全文，`exit=0`——探测器、`npm` 构建、`dsh` 启动三条都在 cmd 封装里过了一遍。

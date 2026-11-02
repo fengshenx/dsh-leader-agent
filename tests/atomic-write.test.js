@@ -22,7 +22,8 @@ test('原子写替换已有文件，权限收紧到 600', () => {
     writeFileSync(target, 'old\n', { mode: 0o644 })
     writeFileAtomicSync(target, 'new\n', { mode: 0o600 })
     assert.equal(readFileSync(target, 'utf8'), 'new\n')
-    assert.equal(statSync(target).mode & 0o777, 0o600)
+    // Windows 的 chmod 只影响只读位，0o600 这类 POSIX 权限位在 win32 上不可能成立。
+    if (process.platform !== 'win32') assert.equal(statSync(target).mode & 0o777, 0o600)
   })
 })
 
@@ -31,7 +32,9 @@ test('目标不存在时按给定权限创建，父目录跟着建出来', () =>
     const target = join(root, 'nested', 'home', '.credentials.yaml')
     writeFileAtomicSync(target, 'secret\n', { mode: 0o600, dirMode: 0o700 })
     assert.equal(readFileSync(target, 'utf8'), 'secret\n')
-    assert.equal(statSync(target).mode & 0o777, 0o600)
+    assert.equal(statSync(join(root, 'nested', 'home')).isDirectory(), true)
+    // 同上：win32 上没有 POSIX 权限位可验。
+    if (process.platform !== 'win32') assert.equal(statSync(target).mode & 0o777, 0o600)
   })
 })
 
