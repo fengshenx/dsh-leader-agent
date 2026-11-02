@@ -289,11 +289,15 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **影响**：第三方自建的会话（协调者会话就是这类）在官方 UI 里没有位置——调用 `uiWorkspace.openSession(sessionId)` 后主区域仍停在欢迎页，官方工作区树里也找不到它。要让会话能被官方 UI 打开，必须把它挂进工作区；目录还不是工作区时得先注册一个（副作用：用户的工作区列表里会多出该项目目录）。
 
+**后续复核（rc.2，2026-11-02）**：「不归属就打不开」这半句不成立——`openSession` 只按会话 id retain（`packages/client/ui-workspace/src/client/navigation.ts`），主区域不检查归属；不归属的会话在「未分组」里点开，`data-phase` 正常是 `active`。本仓仍然把项目会话挂进工作区，理由换成**分组**：不归属就落「未分组」，而本仓把项目会话行藏掉了，组头会留成一棵空组。归属是数据层能解决这件事的唯一手段——会话头没有「侧栏不显示」的字段，`origin` 只允许 `subagent`（`session-format-v3-to-v4/src/validation.ts:39`），归档会把会话拦在 `agent/pre-step` 之外（`api/session-controller/src/archived-session-gate.ts:22-30`）。
+
+**用户删掉那个工作区之后**（第 33 条的延伸）：`WorkspaceRegistry.delete` 只删记录（`packages/workspace/workspace/src/index.ts:585-601`），会话与文件都不动，于是项目会话变成松散会话、落回「未分组」。本仓在下次打开项目（点项目行）时按需重建：`create` 是幂等的，重建后会放进项目记录，并把协调者、退役协调者与该项目的 worker 会话挂回去（名单来自 `sessionQuery.listSessions()` 加 worker 登记表，用户在项目目录里手动开的会话不碰）。重建在左栏看不见（工作区行被藏着），所以客户端给一条顶部提示。
+
 ### 33. 官方工作区没有「隐藏」位——第三方注册的工作区只能从渲染层藏
 
 **dsh 实测**：工作区记录是封闭 schema（`packages/workspace/workspace/src/spec.ts` 的 `workspaceRecord`：只有 `path` / `title` / `sessionIds` / `createdAt` / `updatedAt`），没有备注、标签或可见性字段；归档只作用于会话（`workspaceDomainState.archivedSessionIds`），工作区级别没有归档。工作区实体的公开接口（`packages/workspace/workspace/src/types.ts`）也只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`，没有隐藏或删除可见性的方法。
 
-**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）不得不注册工作区，那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。可行的只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
+**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）而注册了工作区——本仓后来改成为了**分组**而归属于它（不归属会落「未分组」，见第 32 条的后续复核）——那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。可行的只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
 
 ### 34. 空会话一律渲染欢迎页——没有「标记会话非空」的入口
 

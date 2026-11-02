@@ -228,11 +228,15 @@ export function isArchiveActiveRefusal(reason) {
  * 一个会话视图目标把它顶进「输入框停靠底部」的对话形态（见 `coordinator-view.js`），
  * 不需要先跑一轮模型。
  *
+ * `recreated` 表示宿主里已经没有这个项目的工作区（用户把它删了）——这次打开顺带
+ * 重建了一个。工作区被我们藏在左栏里，不提示的话用户不会知道它又回来了。
+ *
  * @param {object} options - 选项
  * @param {object} options.project - 项目
  * @param {(method: string, args: unknown[]) => Promise<unknown>} options.callRemote - 调用宿主远程方法
  * @param {(sessionId: string) => void} options.openSession - 打开会话
- * @returns {Promise<{ok: boolean, message?: string, workspaceId?: string}>} 打开结果
+ * @returns {Promise<{ok: boolean, message?: string, workspaceId?: string, recreated?: boolean,
+ *   reconnected?: number}>} 打开结果
  */
 export async function openCoordinatorSession({ project, callRemote, openSession }) {
   try {
@@ -242,7 +246,12 @@ export async function openCoordinatorSession({ project, callRemote, openSession 
     }
     openSession(project.coordinatorSessionId)
     // 宿主可能刚为这个目录注册了工作区，把归属带回去给调用方更新列表。
-    return { ok: true, workspaceId: result.workspaceId }
+    return {
+      ok: true,
+      workspaceId: result.workspaceId,
+      recreated: result.recreated === true,
+      reconnected: typeof result.reconnected === 'number' ? result.reconnected : 0,
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, message: `协调者会话挂到工作区失败：${message}` }

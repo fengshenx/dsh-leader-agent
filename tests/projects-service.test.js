@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { mkdir, realpath, symlink } from 'node:fs/promises'
+import { mkdir, realpath, rm, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createProjectStore } from '../src/host/projects/store.js'
 import {
@@ -180,6 +180,23 @@ test('建会话失败时不落盘', async () => {
   assert.equal(service.isCoordinatorSession(factory.ids[0]), false)
 })
 
+test('建会话失败时不留刚注册的工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory({ fail: true }),
+    sessionExists: async () => true,
+  })
+
+  await assert.rejects(() => service.create({ directory: workspace }), /建会话失败/)
+  // 项目没落盘，工作区也没人认领：留着会在左栏露出一行用户没加过的目录，
+  // 而插件的删除入口随项目一起消失。
+  assert.equal(registry.list().length, 0)
+})
+
 test('项目落盘失败时也撤掉占位，不留一个没有项目归属的协调者', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
@@ -198,6 +215,22 @@ test('项目落盘失败时也撤掉占位，不留一个没有项目归属的�
   assert.deepEqual(await store.list(), [])
   assert.equal(service.directoryOfCoordinator(factory.ids[0]), undefined)
   assert.equal(service.isCoordinatorSession(factory.ids[0]), false)
+})
+
+test('项目落盘失败时不留刚注册的工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const failingStore = { ...store, insert: async () => { throw new Error('落盘失败') } }
+  const service = makeService({
+    store: failingStore,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  await assert.rejects(() => service.create({ directory: workspace, name: 'alpha' }), /落盘失败/)
+  assert.equal(registry.list().length, 0)
 })
 
 test('建会话的实现没按契约用传入 id 时当场失败', async () => {
@@ -552,6 +585,26 @@ test('换新协调者会改绑，旧会话不再指向项目', async () => {
   assert.equal((await service.getByCoordinator(factory.ids[1])).id, project.id)
 })
 
+test('换新协调者前先确认项目目录还在', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  const createdBefore = registry.created.length
+  await rm(workspace, { recursive: true, force: true })
+
+  // 与打开项目同一个原因：宿主注册工作区不校验目录，技术错用户看不懂。
+  await assert.rejects(() => service.replaceCoordinator(project.id), /项目目录不存在或不可访问/)
+  assert.equal(registry.created.length, createdBefore)
+})
+
 test('删除项目一并移除插件注册的工作区，协调者会话保留', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
@@ -709,6 +762,7 @@ function createWorkspaceRegistry({ workspaces = [], createFails } = {}) {
         id: `ws-${created.length + 1}`,
         path,
         title,
+        createdAt: new Date().toISOString(),
         sessionIds: [],
         setTitle: async (next) => {
           workspace.title = next
@@ -792,6 +846,144 @@ test('attachCoordinator 对已挂载的会话是幂等的', async () => {
   assert.equal(registry.attached.length, 1)
 })
 
+test('工作区被用户删掉后重新打开项目：重建工作区并标出重建', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const factory = createSessionFactory()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await service.attachCoordinator(project.id)
+  // 用户从工作区管理面板把它删了：会话此时是松散会话，落官方树的「未分组」。
+  await registry.delete('ws-1')
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.attached, true)
+  assert.equal(result.recreated, true)
+  assert.equal(result.workspaceId, 'ws-2')
+  assert.equal(result.reconnected, 1)
+  assert.deepEqual(registry.attached.at(-1), { workspaceId: 'ws-2', sessionId: factory.ids[0] })
+})
+
+test('重建工作区时把登记过的 worker 会话一起挂回去', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const factory = createSessionFactory()
+  const sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => {
+        if (key === 'workspaceRegistry') return registry
+        if (key === 'sessionQuery') return { listSessions: async () => sessions }
+        return undefined
+      },
+    },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  const coordinatorId = project.coordinatorSessionId
+  sessions.push(
+    { header: { id: coordinatorId, cwd: workspace } },
+    { header: { id: 'worker-1', cwd: workspace } },
+  )
+  await registry.delete('ws-1')
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.recreated, true)
+  assert.equal(result.reconnected, 2)
+  assert.deepEqual(registry.attached.map((entry) => entry.sessionId), [coordinatorId, 'worker-1'])
+})
+
+test('重建工作区时不碰用户在同一目录里手动开的会话', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const factory = createSessionFactory()
+  const sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => {
+        if (key === 'workspaceRegistry') return registry
+        if (key === 'sessionQuery') return { listSessions: async () => sessions }
+        return undefined
+      },
+    },
+    createCoordinatorSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  const coordinatorId = project.coordinatorSessionId
+  sessions.push(
+    { header: { id: coordinatorId, cwd: workspace } },
+    { header: { id: 'worker-1', cwd: workspace } },
+    // 同一个目录、但不是本插件派的：挂进被隐藏的工作区等于让它从界面上消失。
+    { header: { id: 'user-opened', cwd: workspace } },
+  )
+  await registry.delete('ws-1')
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.reconnected, 2)
+  assert.deepEqual(registry.attached.map((entry) => entry.sessionId), [coordinatorId, 'worker-1'])
+})
+
+test('打开项目时项目被并发删掉：重建的工作区要撤掉，不留孤儿', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await registry.delete('ws-1')
+  // 另一个窗口在这两点之间删掉了项目：记录写入时才发现。
+  store.update = async () => {
+    throw new Error(`项目不存在：${project.id}`)
+  }
+
+  await assert.rejects(() => service.attachCoordinator(project.id), /项目不存在/)
+  // 项目没了，插件的删除入口也随项目消失——留下的工作区只能去管理面板清。
+  assert.equal(registry.list().length, 0)
+})
+
+test('换协调者时归属写入失败：撤掉刚建的工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await registry.delete('ws-1')
+  store.update = async () => {
+    throw new Error(`项目不存在：${project.id}`)
+  }
+
+  await assert.rejects(() => service.replaceCoordinator(project.id), /项目不存在/)
+  assert.equal(registry.list().length, 0)
+})
+
 test('attachCoordinator 在宿主没有工作区服务时不报错', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
@@ -816,6 +1008,7 @@ test('attachCoordinator 挂载失败时返回原因而不抛出', async () => {
     id: 'ws-1',
     path: workspace,
     title: 'alpha',
+    createdAt: new Date().toISOString(),
     sessionIds: [],
     attachSession: async () => {
       throw new Error('会话目录与工作区不一致')
@@ -941,6 +1134,37 @@ test('复用用户自己加的工作区不记进项目记录', async () => {
   await service.attachCoordinator(project.id)
   assert.equal((await service.get(project.id)).workspaceId, undefined)
   assert.equal(userWorkspace.title, '我自己的工作区')
+})
+
+test('list 与 create 之间用户加了同目录工作区：不算项目自建', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const userWorkspace = {
+    id: 'ws-user',
+    path: await realpath(workspace),
+    title: '我自己的工作区',
+    // 用户是刚加的：早于这次 create，但不在我们的 list 快照里。
+    createdAt: new Date(Date.now() - 1000).toISOString(),
+    sessionIds: [],
+    attachSession: async () => {},
+  }
+  const registry = createWorkspaceRegistry()
+  // 宿主 `create` 幂等：同路径已有工作区时直接返回既有实体（不是新建的）。这里
+  // 模拟用户恰好落在「list 没看到、create 看到了」的窗口里。
+  let listed = 0
+  registry.list = () => (listed++ === 0 ? [] : [userWorkspace])
+  registry.create = async () => userWorkspace
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  // 用户的工作区不是插件建的：不记归属（就不会被整组藏掉）。
+  assert.equal(project.workspaceId, undefined)
+  assert.equal(registry.created.length, 0)
 })
 
 test('项目列表带出对应的工作区 id', async () => {
@@ -1152,4 +1376,27 @@ test('isCoordinatorSession 在索引未重建时保守放行', async () => {
   await service.loadIndex()
   assert.equal(service.isCoordinatorSession('session-restart'), true)
   assert.equal(service.isCoordinatorSession('session-anyone'), false)
+})
+
+test('项目目录被删后再点项目：报可读原因，不去注册空工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const registry = createWorkspaceRegistry()
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? registry : undefined) },
+    createCoordinatorSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await service.attachCoordinator(project.id)
+  const createdBefore = registry.created.length
+  await rm(workspace, { recursive: true, force: true })
+
+  const result = await service.attachCoordinator(project.id)
+  assert.equal(result.attached, false)
+  assert.match(result.reason, /项目目录不存在或不可访问/)
+  // 宿主注册工作区不校验目录，不先停下就会凭空多出一个指向已删目录的工作区。
+  assert.equal(registry.created.length, createdBefore)
 })

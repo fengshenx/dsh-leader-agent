@@ -368,6 +368,24 @@ export function createProjectService({
     },
 
     /**
+     * 取协调者会话所属项目的工作区。
+     *
+     * worker 与协调者跑在同一个项目目录里，二者都该归属同一个工作区——归属决定
+     * 官方树把它们放在哪个分组（不归属就落「未分组」）。协调者由 `create` 时挂好，
+     * worker 建完要用这条把它挂进去。
+     *
+     * @param {string} sessionId - 协调者会话 id
+     * @returns {Promise<string | undefined>} 工作区 id；没有对应工作区时 undefined
+     */
+    async workspaceIdOfCoordinator(sessionId) {
+      await indexReady
+      const projectId = coordinatorIndex.get(sessionId)?.projectId
+      if (projectId === undefined) return undefined
+      const project = await store.get(projectId)
+      return project === undefined ? undefined : recordedWorkspaceId(ctx, project)
+    },
+
+    /**
      * 解析某个会话所属的项目。
      *
      * 判据两条，先命中先用：
@@ -425,28 +443,38 @@ export function createProjectService({
       // 必须在建会话之前问——建会话本身也会注册工作区，那时再问就只剩「已存在」。
       const ensured = await ensureWorkspace(ctx, normalizedDirectory, canonicalize)
       // 先建会话再建记录：会话建不出来时项目不落盘，失败路径没有半条记录。
-      const coordinatorSessionId = await openRegisteredCoordinatorSession(normalizedDirectory)
+      let coordinatorSessionId
+      try {
+        coordinatorSessionId = await openRegisteredCoordinatorSession(normalizedDirectory)
+      } catch (error) {
+        // 会话没建成、记录也没落盘，刚注册的工作区没人认领。
+        if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
+        throw error
+      }
       const draft = store.draft({
         name: displayName,
         directory: normalizedDirectory,
         coordinatorSessionId,
         ...ensured?.created === true ? { workspaceId: ensured.workspace.id } : {},
       })
+      // 只包 `insert`：它成功之后再撤会话或工作区，就成了「记录已写、东西没了」的半回滚。
       let inserted
       try {
         inserted = await store.insert(draft)
-        coordinatorIndex.set(coordinatorSessionId, {
-          projectId: inserted.id,
-          directory: normalizedDirectory,
-        })
-        const canonical = await canonicalize(normalizedDirectory)
-        if (!canonicalDirectoryIndex.has(canonical)) {
-          canonicalDirectoryIndex.set(canonical, inserted.id)
-        }
       } catch (error) {
         coordinatorIndex.delete(coordinatorSessionId)
         await abandonCoordinatorSession(coordinatorSessionId)
+        // 记录没落盘，刚注册的工作区就没人认领了。
+        if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
         throw error
+      }
+      coordinatorIndex.set(coordinatorSessionId, {
+        projectId: inserted.id,
+        directory: normalizedDirectory,
+      })
+      const canonical = await canonicalize(normalizedDirectory)
+      if (!canonicalDirectoryIndex.has(canonical)) {
+        canonicalDirectoryIndex.set(canonical, inserted.id)
       }
       return inserted
     },
@@ -476,8 +504,14 @@ export function createProjectService({
      * 会话不归属任何工作区，见 `ensureWorkspace`）。目录还不是
      * 工作区时这里顺带注册一个——注册是幂等的，宿主侧已有同名工作区就直接复用。
      *
+     * 工作区被用户删掉后再点项目行会走到这里：重建一个（`recreated`）并把协调者、
+     * 退役协调者与本项目登记过的 worker 一起挂回去——工作区不在期间它们都是松散
+     * 会话，落在官方树的「未分组」里。只恢复插件自己建的会话，用户在项目目录里
+     * 手动开的会话不碰。
+     *
      * @param {string} id - 项目 id
-     * @returns {Promise<{attached: boolean, workspaceId?: string, reason?: string}>} 挂载结果
+     * @returns {Promise<{attached: boolean, workspaceId?: string, recreated?: boolean,
+     *   reconnected?: number, reason?: string}>} 挂载结果
      */
     async attachCoordinator(id) {
       const project = await store.get(id)
@@ -485,28 +519,88 @@ export function createProjectService({
       if (ctx.get('workspaceRegistry') === undefined) {
         return { attached: false, reason: '当前宿主没有工作区服务，无法把协调者会话挂到工作区。' }
       }
+      // 目录被删或被移走时先停下：宿主注册工作区不校验目录，挂会话时才校验会话
+      // cwd 能不能解析，报出来的是一句英文技术错——用户看不懂，也不知道该干什么。
+      try {
+        await assertUsableDirectory(project.directory)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return {
+          attached: false,
+          reason: `${message}。把这个目录恢复回来，或删掉该项目后重新添加。`,
+        }
+      }
       const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
       if (ensured === undefined) {
         return { attached: false, reason: '当前宿主的工作区服务不支持注册目录。' }
       }
       const workspace = ensured.workspace
-      if (ensured.created) {
-        // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
-        // 工作区，那不是我们的，不该被隐藏。
-        await store.update(project.id, { workspaceId: workspace.id })
-      }
+      const recreated = ensured.created === true
+      // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
+      // 工作区，那不是我们的，不该被隐藏。
+      await recordWorkspaceOwnership(ctx, store, project.id, ensured, logger)
       // 归属可能刚写进记录（工作区是这次新建的），重读一遍再报给调用方。
-      const recorded = await store.get(project.id)
-      if ((workspace.sessionIds ?? []).includes(project.coordinatorSessionId)) {
-        return { attached: true, workspaceId: recordedWorkspaceId(ctx, recorded ?? project) }
+      const recorded = await store.get(project.id) ?? project
+      const targets = await this.coordinatorAttachTargets(recorded)
+      const members = new Set(workspace.sessionIds ?? [])
+      let reconnected = 0
+      for (const sessionId of targets) {
+        if (members.has(sessionId)) {
+          reconnected += 1
+          continue
+        }
+        if (!(await coordinatorExists(sessionId))) continue
+        try {
+          await workspace.attachSession(sessionId)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          // 协调者挂不上就真的打不开项目，必须回传；worker 挂不上只是它会留在
+          // 「未分组」里，不该让整次打开失败。
+          if (sessionId === recorded.coordinatorSessionId) {
+            return { attached: false, reason: `协调者会话挂到工作区失败：${message}` }
+          }
+          logger(`dsh-leader-kit: worker 会话 ${sessionId} 挂回工作区失败：${message}`)
+          continue
+        }
+        members.add(sessionId)
+        reconnected += 1
       }
-      try {
-        await workspace.attachSession(project.coordinatorSessionId)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return { attached: false, reason: `协调者会话挂到工作区失败：${message}` }
+      return {
+        attached: true,
+        workspaceId: recordedWorkspaceId(ctx, recorded),
+        recreated,
+        reconnected,
       }
-      return { attached: true, workspaceId: recordedWorkspaceId(ctx, recorded ?? project) }
+    },
+
+    /**
+     * 列出该挂进项目工作区的会话：协调者、退役协调者与登记过的 worker。
+     *
+     * 用途只有一个——工作区被删后重建时把它们挂回去。用户在同一目录里手动开的
+     * 会话不在名单里：把别人的会话塞进一个被隐藏的工作区，等于让它们从界面上
+     * 消失。
+     *
+     * @param {object} project - 项目记录
+     * @returns {Promise<string[]>} 会话 id（去重，协调者在前）
+     */
+    async coordinatorAttachTargets(project) {
+      const targets = []
+      if (typeof project.coordinatorSessionId === 'string' && project.coordinatorSessionId !== '') {
+        targets.push(project.coordinatorSessionId)
+      }
+      const retired = Array.isArray(project.retiredCoordinatorSessionIds)
+        ? project.retiredCoordinatorSessionIds
+        : []
+      for (const sessionId of retired) {
+        if (typeof sessionId === 'string' && !targets.includes(sessionId)) targets.push(sessionId)
+      }
+      for (const entry of await this.sessionsByProject()) {
+        if (entry.projectId !== project.id) continue
+        for (const sessionId of entry.sessionIds) {
+          if (!targets.includes(sessionId)) targets.push(sessionId)
+        }
+      }
+      return targets
     },
 
     /**
@@ -667,12 +761,13 @@ export function createProjectService({
     async replaceCoordinator(id) {
       const project = await store.get(id)
       if (project === undefined) throw new Error(`项目不存在：${id}`)
+      // 与打开项目同一条前置检查：目录没了先给可读的中文原因，而不是让宿主在
+      // 注册工作区时抛一句英文技术错。
+      await assertUsableDirectory(project.directory)
       // 建会话本身会注册工作区（会话要归属工作区才能被官方 UI 打开），这一步
       // 顺带把归属记进项目记录——工作区被删过再换协调者时，归属会重新落回。
       const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
-      if (ensured?.created === true) {
-        await store.update(id, { workspaceId: ensured.workspace.id })
-      }
+      await recordWorkspaceOwnership(ctx, store, id, ensured, logger)
       const coordinatorSessionId = await openRegisteredCoordinatorSession(project.directory)
       let updated
       try {
@@ -757,6 +852,11 @@ export function createProjectService({
  * 「有没有是我们建的」由 `created` 区分：复用的工作区可能是用户自己加的，
  * 那不是插件的东西，不该被隐藏、不该被记进项目记录。
  *
+ * `create` 是幂等的——同路径已有工作区时宿主直接返回既有实体，所以「list 里没有」
+ * 不等于「返回的一定是这次建的」。判据要两条：id 不在 `create` 之前的快照里，且
+ * `createdAt` 不早于这次调用。只看 id 不够——用户正好在 list 与 create 之间从管理
+ * 面板加了同目录工作区时，那个 id 同样不在快照里。
+ *
  * @param {object} ctx - Cordis 上下文
  * @param {string} directory - 项目目录绝对路径
  * @param {(directory: string) => Promise<string>} canonicalize - 路径归一器
@@ -766,12 +866,64 @@ async function ensureWorkspace(ctx, directory, canonicalize) {
   const registry = ctx.get('workspaceRegistry')
   if (registry === undefined || typeof registry.list !== 'function') return undefined
   const canonical = await canonicalize(directory)
-  const existing = registry.list().find((workspace) => workspace.path === canonical)
+  const before = registry.list()
+  const existing = before.find((workspace) => workspace.path === canonical)
   if (existing !== undefined) return { workspace: existing, canonical, created: false }
   if (typeof registry.create !== 'function') return undefined
+  // 先取 id 快照再 create：`list()` 返回的是活数组时，create 之后再看就晚了。
+  const beforeIds = new Set(before.map((workspace) => workspace.id))
+  const requestedAt = Date.now()
   const created = await registry.create(canonical, canonical.split(/[\\/]/).pop() ?? canonical)
   if (created === undefined) return undefined
-  return { workspace: created, canonical, created: true }
+  // 解析不出创建时间时按「不是我们的」处理：宁可多留一行可见的工作区，
+  // 也不把用户的工作区整组藏掉、再随项目一起删掉。
+  const createdHere = !beforeIds.has(created.id) && Date.parse(created.createdAt) >= requestedAt
+  return { workspace: created, canonical, created: createdHere }
+}
+
+/**
+ * 把本次新建的工作区记进项目记录。
+ *
+ * 记录失败（项目在注册与写入之间被删掉）时撤掉刚建的工作区：项目没了，
+ * `collectHiddenWorkspaceIds` 不再认它，它会在左栏露出一行用户没加过的目录，而
+ * 插件的删除入口随项目一起消失了。复用的工作区不撤——那不是我们的。
+ *
+ * @param {object} ctx - Cordis 上下文
+ * @param {object} store - 项目存储
+ * @param {string} projectId - 项目 id
+ * @param {{workspace: object, created: boolean} | undefined} ensured - `ensureWorkspace` 的结果
+ * @param {(message: string) => void} log - 日志输出
+ * @returns {Promise<void>}
+ */
+async function recordWorkspaceOwnership(ctx, store, projectId, ensured, log) {
+  if (ensured?.created !== true) return
+  try {
+    await store.update(projectId, { workspaceId: ensured.workspace.id })
+  } catch (error) {
+    await discardWorkspace(ctx, ensured.workspace.id, log)
+    throw error
+  }
+}
+
+/**
+ * 尽力撤销一个刚注册、还没人认领的工作区。
+ *
+ * 回滚失败只记日志：调用方要知道的是原始错误（项目已被删），回滚没成功也不该被
+ * 盖掉，况且能在官方面板里手动删。
+ *
+ * @param {object} ctx - Cordis 上下文
+ * @param {string} workspaceId - 要撤销的工作区 id
+ * @param {(message: string) => void} log - 日志输出
+ * @returns {Promise<void>}
+ */
+async function discardWorkspace(ctx, workspaceId, log) {
+  const registry = ctx.get('workspaceRegistry')
+  if (registry === undefined || typeof registry.delete !== 'function') return
+  try {
+    await registry.delete(workspaceId)
+  } catch (error) {
+    log(`dsh-leader-kit: 回滚工作区 ${workspaceId} 失败：${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
 /**

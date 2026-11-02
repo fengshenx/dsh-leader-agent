@@ -15,9 +15,11 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
  * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, createError?: Error, followupError?: Error }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError } = {}) {
   const created = []
   const resumed = []
+  /** 挂进工作区的记录：`{ workspaceId, sessionId }` */
+  const attached = []
   /** 每次冷恢复传给 `agents.resume` 的完整 options */
   const resumeOptions = []
   const titles = []
@@ -84,6 +86,20 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
           },
         }
       }
+      if (key === 'workspaceRegistry') {
+        return {
+          get: (workspaceId) => (workspaceExists
+            ? {
+                id: workspaceId,
+                sessionIds: [],
+                async attachSession(sessionId) {
+                  if (attachError !== undefined) throw attachError
+                  attached.push({ workspaceId, sessionId })
+                },
+              }
+            : undefined),
+        }
+      }
       if (key === 'agentPresets' && brokenPresets) {
         return { resolve: async () => ({ id: 'standard' }) }
       }
@@ -108,7 +124,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       return undefined
     },
   }
-  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds }
+  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, attached }
 }
 
 test('建会话时用带前缀的会话 id，并把任务简报即刻投进去', async () => {
@@ -578,4 +594,76 @@ test('宿主要求忘掉已销毁的会话时只摘记录，不再调 dispose', 
   assert.equal(fixture.created[0].disposed, false)
   assert.equal(sessions.get(sessionId), undefined)
   assert.equal(sessions.isWorkerSession(sessionId), true)
+})
+
+test('派出的 worker 挂进项目工作区：不挂就落在官方树的「未分组」里', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const sessionId = await sessions.spawn({
+    name: 'w',
+    initialMessage: 'x',
+    parentSessionId: 'c',
+    workspaceId: 'ws-1',
+    signal: new AbortController().signal,
+  })
+  // 挂载是 fire-and-forget：派工不等它，否则宿主一次慢写就拖住整次派工。
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+
+  assert.deepEqual(fixture.attached, [{ workspaceId: 'ws-1', sessionId }])
+})
+
+test('没有工作区可挂时照常派工', async () => {
+  const fixture = createFixture({ workspaceExists: false })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const sessionId = await sessions.spawn({
+    name: 'w',
+    initialMessage: 'x',
+    parentSessionId: 'c',
+    workspaceId: 'ws-gone',
+    signal: new AbortController().signal,
+  })
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+
+  assert.match(sessionId, /^worker-/)
+  assert.deepEqual(fixture.attached, [])
+})
+
+test('挂载失败不拖累派工，只在日志里说明后果', async () => {
+  const fixture = createFixture({ attachError: new Error('宿主拒绝挂载') })
+  const lines = []
+  const sessions = createWorkerSessions({ ctx: fixture.ctx, logger: (line) => lines.push(line) })
+
+  await sessions.spawn({
+    name: 'w',
+    initialMessage: 'x',
+    parentSessionId: 'c',
+    workspaceId: 'ws-1',
+    signal: new AbortController().signal,
+  })
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+
+  // 漂移排查要能看出是哪个工作区：只有会话 id 与错误，定位不到项目。
+  assert.equal(lines.some((line) => line.includes('未分组') && line.includes('ws-1')), true)
+})
+
+test('投递失败销毁会话时不把它挂进工作区', async () => {
+  const fixture = createFixture({ followupError: new Error('INBOX_CLOSED') })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  await assert.rejects(
+    () => sessions.spawn({
+      name: 'w',
+      initialMessage: 'x',
+      parentSessionId: 'c',
+      workspaceId: 'ws-1',
+      signal: new AbortController().signal,
+    }),
+    /INBOX_CLOSED/,
+  )
+  await new Promise((resolve) => { setTimeout(resolve, 0) })
+
+  assert.equal(fixture.created.at(-1).disposed, true)
+  assert.deepEqual(fixture.attached, [])
 })
