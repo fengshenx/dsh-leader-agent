@@ -25,7 +25,7 @@ DeepSeek Harness（dsh）的协调者/执行者编排 bundle：一个会话当�
 - **AGENTS.md 渐进式披露**：根文件只放每个任务都适用的规则与「按任务查阅」入口，细节进归属文档，避免一次上下文塞进整仓规则。
 - **文档防腐化**：能机械判的交给 `npm run check`，行为变更在同 PR 同步文档，临时证据不入库。
 
-本仓已按这四条落地，机制与各自的落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。
+本仓已按这四条落地，分层归属与编辑纪律见 [AGENTS.md 的编辑本文件与文档分层](AGENTS.md#编辑本文件与文档分层)。
 
 如果把本 bundle 用到自己的项目里，也建议先把这四条搬进那个项目——编排协议能不能长期跑住，取决于项目自己的文档与隔离机制，而不是取决于协调者提示词写得多细。
 
@@ -66,7 +66,7 @@ profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类
 6. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。协调者建卡后自动打开；点卡面看详情（链接可编辑），点槽位 chip 打开执行者会话。
 7. **写项目级提示词**：项目目录放 `COORDINATOR.md` 写这个项目怎么指挥；放 `SLOTS.md` 按 `## <槽位名>` 定义角色，再用卡片的 `slots` 字段绑到会话。两者都只贡献提示词，不授予工具权限，改动下一轮生效。
 
-建项目、项目树、归档、看板信号灯、槽位 frontmatter 等完整交互见[使用手册](docs/usage.md)；实现与取舍见[架构文档](docs/architecture.md)。
+建项目、项目树、归档、看板信号灯、槽位 frontmatter 等完整交互见[使用手册](docs/usage.md)；实现见[架构文档](docs/architecture.md)，取舍见[已知限制](docs/limitations.md)。
 
 ## 当前限制
 
@@ -79,7 +79,7 @@ profile 名用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类
 - **项目树与官方工作区树并存**：项目会话从官方树里的隐藏是渲染层排除，官方计数与搜索仍包含它们；项目目录本身也作为一行工作区显示在官方树里，两处都能进。
 - **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状，协调者会话形态依赖宿主的会话视图服务——宿主升级时要同步本仓。
 
-完整的限制清单与取舍（含信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[架构文档的已知限制](docs/architecture.md#已知限制与取舍)。
+完整的限制清单与取舍（含信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[已知限制与取舍](docs/limitations.md)。
 
 ## 开发
 
@@ -93,11 +93,9 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 
 其余命令（`build:client` / `worktree:prune` 等）见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
-`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。启动前会把 `~/.dsh/.credentials.yaml` 里的 `refs`（按环境变量名存的 API key）并进开发实例的凭据文件，新工作树第一次起实例不用再填一遍；只搬 refs，账号授权记录不搬。客户端产物由常驻 watch 重建，宿主 `client-hmr` 把运行中的插件换掉——改 `src/client/` 不用刷新页面（插件内的 React 状态会重置，数据层保留）；宿主侧代码重启实例即可。
+`npm run dev` 的数据根在工作树内的 `.dev/home`，与日常 `~/.dsh` 隔离；客户端代码由常驻 watch 自动重建，宿主侧重启实例即可。`npm start` 起日常那套：数据根 `~/.dsh`，插件取日常 profile 里链接的版本，起之前逐项检查 dsh、profile 与产物。
 
-`npm start` 起的是日常那套：数据根 `~/.dsh`，插件取日常 profile 里链接的版本，起之前先 `npm run build:client`。它会逐项检查并给出可复制的修复命令：dsh 不可用（没装或不在 PATH，`DSH_DSH` 可指定路径）、日常 profile 不存在、profile 的 bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有 `npm run dev` 的隔离——在 worktree 里跑，加载的仍是链接指向的那份代码（通常是主 checkout），脚本会提示，验证本目录改动请用 `npm run dev`。
-
-开发实例的覆盖项、worktree 清理守卫、取证流程与构建约束见[架构文档的开发一节](docs/architecture.md#开发)与 [docs/e2e-testing.md](docs/e2e-testing.md)。
+开发实例的覆盖项与凭据处理、worktree 清理守卫、构建契约与测试口径见[开发](docs/development.md)；浏览器侧取证流程见 [docs/e2e-testing.md](docs/e2e-testing.md)。
 
 ## 致谢
 
@@ -111,8 +109,10 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 |---|---|
 | [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
 | [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
-| [docs/architecture.md](docs/architecture.md) | 分层、模块表、运行时模型、数据流、持久化布局、完整已知限制 |
+| [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、宿主契约落点 |
+| [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
+| [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器侧取证的执行规范 |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
