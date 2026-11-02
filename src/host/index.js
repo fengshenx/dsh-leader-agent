@@ -27,6 +27,7 @@ import { createProjectStore } from './projects/store.js'
 import { createProjectService } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { createDispatcher } from './dispatch.js'
+import { createCoordinatorHandover } from './coordinator-handover.js'
 import { applyToolGate } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyCoordinatorContext } from './coordinator-context.js'
@@ -68,10 +69,15 @@ export function apply(ctx) {
   // worker 会话管理器要先建：项目服务列 worker 时要用它的同步判定（会话头没有
   // subagent 标记了，只有登记知道谁是 worker）。
   const workerSessions = createWorkerSessions({ ctx, logger })
+  // 换协调者后的接管要同时改登记表、通知队列与派工器内存态，而派工器依赖项目
+  // 服务（身份判定、worker 目录），只能晚绑定：先占位，装配完再换成真动作。
+  /** @type {(change: { projectId: string }) => Promise<void>} */
+  let handover = async () => {}
   const projectService = createProjectService({
     store: projects,
     ctx,
     isWorkerSession: workerSessions.isWorkerSession,
+    onCoordinatorReplaced: (change) => handover(change),
     logger,
   })
 
@@ -117,6 +123,9 @@ export function apply(ctx) {
     listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
     logger,
   })
+
+  // 装配收尾：接管动作依赖上面全部组件，现在才成形。
+  handover = createCoordinatorHandover({ projects, workers, notifications: store, dispatcher, logger })
 
   ctx.tools.register(createSpawnWorkerTool({ dispatcher }))
   ctx.tools.register(createMessageWorkerTool({ dispatcher }))

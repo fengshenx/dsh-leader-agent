@@ -48,6 +48,23 @@ export function isCoordinatorProject(project, sessionId) {
 }
 
 /**
+ * 这个会话是不是该项目已经换下的协调者。
+ *
+ * 退役会话仍解析得到项目（历史留在项目下），也被并进 `sessionsByProject` 和
+ * worker 同列，但它已经不是项目会话：换人之后它不再指挥这个项目，看板入口与
+ * 面板都不该给它——那张表是「项目里有哪些会话」，不是「谁是 worker」。
+ *
+ * @param {object | undefined} project - 项目摘要（含 `retiredCoordinatorSessionIds`）
+ * @param {string} sessionId - 当前面板所属会话
+ * @returns {boolean} 是否为该项目的退役协调者
+ */
+export function isRetiredCoordinatorSession(project, sessionId) {
+  if (typeof sessionId !== 'string' || sessionId === '') return false
+  const retired = project?.retiredCoordinatorSessionIds
+  return Array.isArray(retired) && retired.includes(sessionId)
+}
+
+/**
  * 看板面板该显示什么。
  *
  * 把「归属、身份、协调者存活」三件事收敛成一个判定，面板的取卡条件与
@@ -60,7 +77,7 @@ export function isCoordinatorProject(project, sessionId) {
  * - `pending`：项目在，但还没问出当前会话是不是 worker（身份未判定）；
  * - `coordinator-dead`：项目在，但绑定的协调者会话已失效（归档或被替换）；
  * - `not-viewable`：项目里能解析到，但当前会话既不是协调者也不是 worker
- *   （同目录的普通会话）；
+ *   （同目录的普通会话、已经换下的协调者）；
  * - `coordinator` / `worker`：当前会话是协调者或该项目的 worker，可展示卡片。
  *
  * `coordinatorAlive` 为 `undefined`（不知道）时按「还在」处理，不误报失效。
@@ -79,6 +96,9 @@ export function boardViewState(project, sessionId, isWorker) {
   if (isCoordinatorProject(project, sessionId)) {
     return project.coordinatorAlive === false ? 'coordinator-dead' : 'coordinator'
   }
+  // 退役身份来自项目摘要，不必等项目会话表问回来，也不看 isWorker 传了什么：
+  // 它出现在项目的会话表里只是「历史留在项目下」，不是项目会话。
+  if (isRetiredCoordinatorSession(project, sessionId)) return 'not-viewable'
   // 身份没问出来之前不下结论：每一步 await 之间都可能渲染一次。
   if (isWorker === undefined) return 'pending'
   // 协调者失效时 worker 与同目录普通会话都归「失效出口」——面板对两者都给
@@ -109,6 +129,9 @@ export function isBoardViewable(project, sessionId, isWorker) {
  * 也拿到入口，就是对不该看的会话撒谎（面板侧给它们失效引导是 #19 的有意设计，
  * 入口不该照抄那个出口）。
  *
+ * 换下的协调者按「没有」处理：它的历史还在项目下、也仍解析得到项目，但换人之
+ * 后它不再指挥这个项目，看板不该跟着它走。
+ *
  * @param {object | undefined} project - 项目摘要
  * @param {string} sessionId - 当前会话
  * @param {boolean | undefined} isWorker - 当前会话是否是该项目的 worker；`undefined` 表示未判定，不画
@@ -116,7 +139,9 @@ export function isBoardViewable(project, sessionId, isWorker) {
  */
 export function isBoardEntryVisible(project, sessionId, isWorker) {
   if (project === undefined) return false
-  return isCoordinatorProject(project, sessionId) || isWorker === true
+  if (isCoordinatorProject(project, sessionId)) return true
+  if (isRetiredCoordinatorSession(project, sessionId)) return false
+  return isWorker === true
 }
 
 /**
@@ -138,9 +163,12 @@ export async function resolveBoardAccess(callRemote, sessionId) {
   const project = await resolveProject(callRemote, sessionId)
   if (project === undefined) return { project, worker: false }
   if (isCoordinatorProject(project, sessionId)) return { project, worker: false }
+  // 退役会话与 worker 在同一个集合里（那张表列的是项目下的会话），身份要按
+  // 项目摘要再分一次。
+  if (isRetiredCoordinatorSession(project, sessionId)) return { project, worker: false }
   try {
-    const workers = await fetchProjectWorkers(callRemote)
-    return { project, worker: isProjectWorker(project.id, sessionId, workers) }
+    const sessions = await fetchProjectSessions(callRemote)
+    return { project, worker: isProjectSession(project.id, sessionId, sessions) }
   } catch {
     // worker 表读不到时按「不是 worker」处理：入口与面板都不越权展示，下一轮
     // 复核或聚焦时会重问。
@@ -149,15 +177,19 @@ export async function resolveBoardAccess(callRemote, sessionId) {
 }
 
 /**
- * 取每个项目下的 worker 会话。
+ * 取每个项目下的会话。
  *
  * worker 是普通根会话，会话头里没有身份标记；谁是 worker 只有宿主侧的登记表
- * 知道，因此走项目通道一次问全量，比按会话逐个问省往返。
+ * 知道。这张表列的是**项目下的会话**：worker，加上换下的协调者（历史留在
+ * 项目下、和 worker 同列）。两者身份不同，worker 判定要再过一道
+ * {@link isRetiredCoordinatorSession}。
+ *
+ * 走项目通道一次问全量，比按会话逐个问省往返。
  *
  * @param {(method: string, args: unknown[]) => Promise<unknown>} callRemote - 远程调用
- * @returns {Promise<Map<string, Set<string>>>} 项目 id 到 worker 会话 id
+ * @returns {Promise<Map<string, Set<string>>>} 项目 id 到会话 id
  */
-export async function fetchProjectWorkers(callRemote) {
+export async function fetchProjectSessions(callRemote) {
   const groups = await callRemote('sessionsByProject', [])
   const table = new Map()
   if (!Array.isArray(groups)) return table
@@ -171,16 +203,18 @@ export async function fetchProjectWorkers(callRemote) {
 }
 
 /**
- * 这个会话是不是某个项目的 worker。
+ * 这个会话是不是列在某个项目下的会话。
+ *
+ * 只回答「属不属于这个项目的会话表」，不代表它是 worker——退役的协调者也在表里。
  *
  * @param {string} projectId - 项目 id
  * @param {string} sessionId - 会话 id
- * @param {Map<string, Set<string>>} workers - {@link fetchProjectWorkers} 的结果
- * @returns {boolean} 是否为该项目的 worker
+ * @param {Map<string, Set<string>>} sessions - {@link fetchProjectSessions} 的结果
+ * @returns {boolean} 是否列在该项目下
  */
-export function isProjectWorker(projectId, sessionId, workers) {
+export function isProjectSession(projectId, sessionId, sessions) {
   if (typeof sessionId !== 'string' || sessionId === '') return false
-  const ids = workers?.get?.(projectId)
+  const ids = sessions?.get?.(projectId)
   return ids instanceof Set && ids.has(sessionId)
 }
 
@@ -215,6 +249,28 @@ export async function fetchBoardCards(callRemote, projectId) {
   if (typeof projectId !== 'string' || projectId === '') return []
   const cards = await callRemote('boardCards', [projectId])
   return Array.isArray(cards) ? cards : []
+}
+
+/**
+ * 取项目的槽位显示名字典。
+ *
+ * 显示名由项目 `SLOTS.md` 的 `label:` 声明，宿主解析后经远程通道下发。形状不对
+ * 的条目逐条丢弃：标签是卡面装饰信息，脏数据不该让看板报错。
+ *
+ * @param {(method: string, args: unknown[]) => Promise<unknown>} callRemote - 远程调用
+ * @param {string} projectId - 项目 id
+ * @returns {Promise<Record<string, string>>} 槽位名到显示名
+ */
+export async function fetchSlotLabels(callRemote, projectId) {
+  if (typeof projectId !== 'string' || projectId === '') return {}
+  const labels = await callRemote('projectSlots', [projectId])
+  if (labels === null || typeof labels !== 'object' || Array.isArray(labels)) return {}
+  /** @type {Record<string, string>} */
+  const clean = {}
+  for (const [name, label] of Object.entries(labels)) {
+    if (typeof label === 'string' && label !== '') clean[name] = label
+  }
+  return clean
 }
 
 /**

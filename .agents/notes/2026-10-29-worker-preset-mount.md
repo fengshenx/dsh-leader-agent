@@ -1,10 +1,10 @@
 # worker 必须自己挂 agent preset，否则没有 bash / read
 
-## 现象
+## 背景
 
 合并 #17 / #19 之后，在 dsh-leader-kit 项目里派出的 worker 打开后没有任何内建工具：没有 `bash`，没有 `read`，任务里的 `pwd` 都跑不了。协调者会话正常。
 
-## 根因
+### 根因
 
 宿主的工具面分两层：全局注册的工具 + **agent preset 组合**里的工具。内建件属于后者（`packages/bundle/web-app/presets/standard.patch.yml` 逐条挂插件行 `tool-bash` / `tool-pwsh` / `tool-fs` / `tool-fs-search`；`read` / `write` 是 `tool-fs` 提供的工具名），而挂 preset 只由 `sessionController` 的 `composeAgent()` 做——创建与 resume 两条路径都走它。
 
@@ -12,7 +12,7 @@
 
 #17 把**协调者**建会话改走 `sessionController.create`（预生成 id 先登记身份），协调者因此拿到了 preset；worker 与「没有 `sessionController` 时建协调者」的回退路径没跟着改，问题就露在 worker 上。
 
-## 修法
+## 决策
 
 新增 `src/host/agent-preset.js`，两个出口：
 
@@ -27,11 +27,19 @@
 
 **Fail Loud**：`agentPresets` 服务不存在时退化并记一行日志（headless / sdk 本就没有 preset 层）；服务在却缺 `mount()` / `resolve()` 属于宿主契约变化，直接抛错——静默退化会让 worker 再次没有 bash / read，正是这次要修的故障形态。
 
-## 顺带修的邻近缺陷
+### 顺带修的邻近缺陷
 
 `applyToolGate` 原先用 `agent.ctx.tools.get(name)` 探测那三件宿主 subagent 工具是否存在。`get(name)` 省略 scope 等于**全局视图**，而 web-app 把这三件在宿主平面 `disabled: true`、改由 preset 子树注册——全局视图里没有它们，探测把三件全判成「不存在」，限制根本没生效（协调者仍能看到 `interrupt_agent`，对 worker 返回假成功回执）。
 
 改成直接 `restrict({ deny })`，整批失败时逐件重试、跳过缺件；只吞宿主那句 `names unknown global tool`，其它错误照常抛出。
+
+## 边界
+
+- worker 现在拿到的是**整个标准组合**，不只是 bash / read：persona、`agent-instructions`（会读项目 AGENTS.md）、`time-context`、`subagent` / `workflow`、`ask_user_question`、`todo`、`web` 等都在。常驻后台会话因此也能向用户提问——这是「变成官方标准会话」的预期结果，用之前要知道。
+- 摘掉 `list_agents` / `send_message` / `interrupt_agent` 后，preset 提供的 `subagent` / `subagent_fork` 仍在，协调者「能派不能跟」。这两个是通用能力，暂留；协议层立场是协调者不拿它们当 worker 用。
+- `agentPresetOptions()` 建会话时先 `resolve()`（一次 `diagnostic()`）再 `mount()`（`retain()` 里又一次），都在缓存后；只是建 worker 的路径上多一次审计。真机读数时顺带看建会话延迟。
+- 会话投影里记的 preset 若已被删除，冷恢复会在 `mount` 抛 `agent-preset/not-found`，冒到协调者的 `message_worker` 回执上。与官方 `sessionController.composeAgent` 的行为一致，Fail Loud 合理；错误文案带宿主内部口吻，要不要包装以后再说。
+- 这类「绕开官方建会话路径就要自己补组合」的缺口与 `get()` 探测面的坑都记在 `docs/capability-gaps.md` 第 38 条。
 
 ## 验证
 
@@ -39,11 +47,3 @@
 - 夹具只给 rc.2 真实有的方法：preset 假件只有 `resolve` / `mount`，投影走 `sessionProjections.stateOf`；投影值故意取 `custom`（与默认 `standard` 不同），否则「读了投影」和「用了默认」区分不出来。上一版夹具多给了一个 `presetForSession`，让用例在下限版本上其实不成立。
 - 双向验证：撤掉对应调用点 / 把 gate 改回 `get` 探测 / 把契约错误改成静默退化，各使对应用例变红，还原后全绿。
 - 未做真机复验：需要 web profile 实例派一次工，读 worker 首轮的工具 schema。
-
-## 遗留
-
-- worker 现在拿到的是**整个标准组合**，不只是 bash / read：persona、`agent-instructions`（会读项目 AGENTS.md）、`time-context`、`subagent` / `workflow`、`ask_user_question`、`todo`、`web` 等都在。常驻后台会话因此也能向用户提问——这是「变成官方标准会话」的预期结果，用之前要知道。
-- 摘掉 `list_agents` / `send_message` / `interrupt_agent` 后，preset 提供的 `subagent` / `subagent_fork` 仍在，协调者「能派不能跟」。这两个是通用能力，暂留；协议层立场是协调者不拿它们当 worker 用。
-- `agentPresetOptions()` 建会话时先 `resolve()`（一次 `diagnostic()`）再 `mount()`（`retain()` 里又一次），都在缓存后；只是建 worker 的路径上多一次审计。真机读数时顺带看建会话延迟。
-- 会话投影里记的 preset 若已被删除，冷恢复会在 `mount` 抛 `agent-preset/not-found`，冒到协调者的 `message_worker` 回执上。与官方 `sessionController.composeAgent` 的行为一致，Fail Loud 合理；错误文案带宿主内部口吻，要不要包装以后再说。
-- 这类「绕开官方建会话路径就要自己补组合」的缺口与 `get()` 探测面的坑都记在 `docs/capability-gaps.md` 第 38 条。

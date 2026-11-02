@@ -12,6 +12,7 @@
  * @module dsh-leader-kit/host/projects/remote
  */
 
+import { loadSlotTemplates } from '../slots/slot-templates.js'
 import {
   PROJECT_REMOTE_METHODS,
   PROJECT_REMOTE_NAMESPACE,
@@ -219,6 +220,29 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
      */
     async boardCards(projectId) {
       return this.cards.list({ projectId })
+    }
+
+    /**
+     * 项目的槽位显示名字典。
+     *
+     * 看板渲染槽位 chip 时用：槽位键是机器标识，显示名由项目 `SLOTS.md` 的
+     * `label:` 决定。只返回声明了显示名的槽位，没声明的由界面回落 locale 字典
+     * 或原名——这里不替项目编名字。
+     *
+     * 项目不存在时返回空字典：标签是装饰信息，取不到不该让看板报错。
+     *
+     * @param {string} projectId - 项目 id
+     * @returns {Promise<Record<string, string>>} 槽位名到显示名
+     */
+    async projectSlots(projectId) {
+      const project = await this.projects.get(projectId)
+      if (project === undefined) return {}
+      /** @type {Record<string, string>} */
+      const labels = {}
+      for (const [name, slot] of loadSlotTemplates(project.directory)) {
+        if (slot.label !== undefined) labels[name] = slot.label
+      }
+      return labels
     }
   }
 

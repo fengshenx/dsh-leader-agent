@@ -3,7 +3,7 @@
 **日期**：2026-10-30
 **状态**：accepted
 
-## 问题（两个，同一个根因）
+## 背景
 
 左栏的官方工作区树里，一个目录可以既是项目（项目区块）又是工作区。两件事都源自「渲染层没有跟着项目侧的判断走」：
 
@@ -15,7 +15,7 @@
 - 官方按「当前会话属于哪个分组」点亮目录图标（`Rows.tsx` 的 `active = containsCurrentDescendant || (group.expanded && group.containsCurrent)`，颜色是 `.folderActive` 的 `--dsw-alias-state-business-primary`）；
 - 本仓把项目的协调者与 worker 会话从官方树里隐藏（`workspace-exclusion.js`），但点亮判定仍按数据层算。
 
-## 做法
+## 决策
 
 两件都在 `workspace-exclusion.js` 的渲染层完成，官方数据层不动：
 
@@ -23,6 +23,10 @@
 - **压掉激活态**：当前会话（`sessions.list` 快照里 `retainedBy.mainView > 0` 的那条，与宿主 `mainSessionId` 同判据）落在会话排除集里时，从 `workspaces.list` 快照的 `items` 反查它所属的工作区，给那一行加类，CSS 把行首图标槽的颜色压回 `--dsw-alias-label-tertiary`（未激活时官方也是这个色，见 `Rows.module.css` 的 `.slot`）。
 
 判定抽成纯函数（`project-panel-logic.js` 的 `collectHiddenWorkspaceIds` / `currentSessionIdOf` / `quietWorkspaceOf`）：面板只负责订阅两个快照并把结果喂给排除器（`update({ sessionIds, quietWorkspaceIds, hiddenWorkspaceIds })`）。
+
+### 与前次决策的关系
+
+本笔记**反转了 [项目与角色槽位](2026-10-23-project-scope-and-role-slots.md) 的「取消项目工作区的隐藏」一条**（2026-10-27 修订，来自 #9 / `dc43c63`）：那一次取消它，理由是「插件注册的工作区一藏，用户在项目目录里手动开的会话就两边都看不到」。本次恢复的是**收窄版**——只藏插件自己注册的那一个（按项目记录的 `workspaceId`），用户自己加的同目录工作区照常显示；代价仍然存在（手动会话不在项目树、也不在左栏分组视图里），退路是宿主搜索与「在一个列表里」视图。旧笔记的三处「现行事实」已在原地标注反转。
 
 ## 边界
 
@@ -35,10 +39,6 @@
 - **两份快照没到齐时不压灰**。`quietWorkspaceOf` 依赖会话快照（`retainedBy`）与工作区快照（`items`，`phase: 'pending'` 时是空数组）两份异步数据，任一份落后时返回 `undefined`：图标先蓝着，快照到了才变灰。这是安全方向的退回——宁可少压一次，不会压错行。
 - **`quiet` 类在右侧面板激活时也可能挂着**。宿主算「当前会话」时还看 `panelActive`（右侧面板打开时认为没有当前会话，不点亮任何分组），本仓不看——那属于宿主的视图 store，读它等于耦合内部状态。因为 `quiet` 只把颜色压回未激活色，两种判定下视觉一致，无副作用。
 - **判定随当前会话变化**。用户在官方树里点回一个正常会话，压灰在同一个 `sync` 里撤销（会话快照已就绪的前提下；见上一条）。
-
-## 与前次决策的关系
-
-本笔记**反转了 [项目与角色槽位](2026-10-23-project-scope-and-role-slots.md) 的「取消项目工作区的隐藏」一条**（2026-10-27 修订，来自 #9 / `dc43c63`）：那一次取消它，理由是「插件注册的工作区一藏，用户在项目目录里手动开的会话就两边都看不到」。本次恢复的是**收窄版**——只藏插件自己注册的那一个（按项目记录的 `workspaceId`），用户自己加的同目录工作区照常显示；代价仍然存在（手动会话不在项目树、也不在左栏分组视图里），退路是宿主搜索与「在一个列表里」视图。旧笔记的三处「现行事实」已在原地标注反转。
 
 ## 验证
 
