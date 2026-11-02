@@ -46,11 +46,13 @@
 ## 验证
 
 - `npm run check`：851 tests / 842 pass / 9 skipped / 0 fail（合入 main `b37ed4d` 后读数）。项目面板 51 例，覆盖：收起态任一会话在跑、合成判定矩阵（收起/展开 × 会话行/协调者 × 在跑/空闲共 8 组）、展开态 worker 在跑不亮而协调者在跑亮、目录行与渲染出来的会话行同源（归档会话与当前协调者不算）、协调者运行态含归档口径。
-- 双向验证（单测，逐个撤销分支）：
-  - 删掉 `if (coordinatorRunning === true) return true` → 2 例红（`合成判定`、`展开后 worker 在跑不点亮行首`），49 pass / 2 fail；还原 → 51 pass。
-  - 删掉 `if (expanded === true) return false` → 同样 2 例红，49 pass / 2 fail；还原 → 51 pass。
+- 双向验证（逐条撤销，含接线层）：
+  - 删掉 `if (coordinatorRunning === true) return true` → 失败落在「收起 + 协调者在跑：它没有会话行，行首是唯一提示」这条独立判据（另带 `展开后 worker…` 一例），49 pass / 2 fail；还原 → 51 pass。
+  - 删掉 `if (expanded === true) return false` → 失败落在「展开 + worker 在跑：会话行自带 spinner，行首不重复画」（另带 `展开后 worker…` 一例），49 pass / 2 fail；还原 → 51 pass。
+  - 接线层把 `rows: childSessions` 改成 `rows: []` → 接线用例红（1 fail），50 pass / 1 fail；还原 → 51 pass。合成判定只看协调者这一半时，渲染会当场退化成「worker 在跑不亮」。
+  - 接线层把 `expanded` 写死成 `false` → 接线用例红（1 fail），50 pass / 1 fail；还原 → 51 pass。
   - 删掉 `isCoordinatorRunning()` 里的归档过滤 → 1 例红（`协调者在运行时项目行显示运行态`），50 pass / 1 fail；还原 → 51 pass。
-  - 矩阵用例带「展开 + 只有 worker 在跑 → `false`」与「展开 + 协调者在跑 → `true`」两组对照，否则删掉任一分支也可能被单条断言漏过。
+  - 矩阵里三种「亮」的组合各是一条独立 `assert`（带中文失败信息），不靠循环 + 同一条断言：上面前两条探针的失败点因此能直接指出是哪一组。
 - 渲染路径：仓里没有 jsdom，渲染这一半落在源码接线断言与产物读数上——`ProjectRow` 的 `leadActivity` 由 `showsProjectActivity({ expanded, rows: childSessions, coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds) })` 给出，spinner 画在 `lead-folder` 内部、带 `aria-hidden`，全文件只有一个 `.dsh-leader-kit-project-spinner` 类定义，`lead-spinner` / `data-running` 已无残留。
 - 产物读数：`npm run build:client` 重建后 `lib/client.js` 里 `dsh-leader-kit-project-spinner` 2 处命中（样式选择器 + 组件类名），`lead-spinner` 与 `data-running` 0 处。
 - 计算样式读数（从 `lib/client.js` 抽取真实规则，无头 Chrome 读 `getComputedStyle`）：激活态容器 `color` 与 spinner `border-left-color` 同为 `rgb(65, 118, 230)`（与目录图标的 `stroke: currentColor` 一致），非激活 `rgb(120, 130, 150)`；`12px × 12px`、`animation: dsh-leader-kit-spin / 0.8s`、`border-top-color` 透明（旋转缺口）、`aria-hidden=true`、父元素是 `lead-folder`。

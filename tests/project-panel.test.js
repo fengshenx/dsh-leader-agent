@@ -139,23 +139,43 @@ test('项目行收起时，任一会话行在跑就显示加载器', () => {
 test('行首加载圈的合成判定：收起看并集，展开只认协调者', () => {
   const busy = [{ id: 's-worker', running: true }]
   const calm = [{ id: 's-worker', running: false }]
-  const cases = [
-    [false, busy, false, true, '收起 + worker 在跑'],
-    [false, calm, true, true, '收起 + 协调者在跑'],
-    [false, busy, true, true, '收起 + 两者都在跑'],
-    [false, calm, false, false, '收起 + 都没跑'],
-    [true, busy, false, false, '展开 + 只有 worker 在跑：会话行自带 spinner'],
-    [true, calm, true, true, '展开 + 协调者在跑：它没有会话行'],
-    [true, busy, true, true, '展开 + 两者都在跑'],
-    [true, calm, false, false, '展开 + 都没跑'],
-  ]
-  for (const [expanded, rows, coordinatorRunning, expected, why] of cases) {
-    assert.equal(
-      showsProjectActivity({ expanded, rows, coordinatorRunning }),
-      expected,
-      why,
-    )
-  }
+  // 三种「亮」的组合各自一条独占判据：下面的接线用例把三个入参逐一钉在源码上，
+  // 这里把三者的判定结果分开断言，任一路径失效都能指出是哪一组。
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: busy, coordinatorRunning: false }),
+    true,
+    '收起 + worker 在跑：行首代显（会话行被藏起来）',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: calm, coordinatorRunning: true }),
+    true,
+    '收起 + 协调者在跑：它没有会话行，行首是唯一提示',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: true, rows: calm, coordinatorRunning: true }),
+    true,
+    '展开 + 协调者在跑：仍然只有行首能表达',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: true, rows: busy, coordinatorRunning: false }),
+    false,
+    '展开 + worker 在跑：会话行自带 spinner，行首不重复画',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: busy, coordinatorRunning: true }),
+    true,
+    '收起 + 两者都在跑',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: false, rows: calm, coordinatorRunning: false }),
+    false,
+    '收起 + 都没跑',
+  )
+  assert.equal(
+    showsProjectActivity({ expanded: true, rows: calm, coordinatorRunning: false }),
+    false,
+    '展开 + 都没跑',
+  )
 })
 
 test('项目行展开后 worker 在跑不点亮行首——会话行自己带 spinner', () => {
@@ -275,11 +295,11 @@ test('协调者在运行时项目行显示运行态', () => {
 
 test('协调者运行态接线到行首加载圈', () => {
   const source = readFileSync(sectionPath, 'utf8')
-  // 判据来自会话行的 running，只认现任协调者（纯函数见上一条用例）。
-  // 合成判定：会话行那一半与协调者那一半在同一个调用里，渲染只有一个入口。
+  // 三个入参逐一钉住，不写成松散匹配：只认 coordinatorRunning 的话，把 rows
+  // 改空或把 expanded 写死都还能通过，而渲染当场就退化成「只跟协调者走」。
   assert.match(
     source,
-    /const leadActivity = showsProjectActivity\(\{[\s\S]{0,200}?coordinatorRunning: isCoordinatorRunning\(project, sessionRows, archivedSessionIds\)/,
+    /const leadActivity = showsProjectActivity\(\{\n\s*expanded,\n\s*rows: childSessions,\n\s*coordinatorRunning: isCoordinatorRunning\(project, sessionRows, archivedSessionIds\),\n\s*\}\)/,
   )
   // 加载圈画在槽位容器内部：替换掉容器的话，组内有当前会话时的激活色（挂在
   // 容器的 color 上）就没有承载对象了。
