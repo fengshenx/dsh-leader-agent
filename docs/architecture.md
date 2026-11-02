@@ -223,7 +223,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
 - 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DSH_PROFILE`（源 profile 名，默认 `web`；那个 profile 的 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。
 
-`npm start` 是 `npm run build:client && dsh web` 的快捷方式：起日常实例（数据根 `~/.dsh`，插件取日常 profile 链接的版本），起之前先重建客户端产物——`lib/client.js` 不入库，漏了构建时实例照常起来、右栏却没有看板。它不派生 profile、也不隔离：从 worktree 里跑时加载的仍是链接指向的那份代码（通常是主 checkout），验证本目录改动用 `npm run dev`。额外参数用 `--` 透传：`npm start -- --no-open --port 3210`。
+`npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-kit` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
 
 收尾时清掉已合并的 worktree：
 

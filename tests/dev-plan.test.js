@@ -4,8 +4,8 @@ import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertSeparateHome, assertWebBundle, deriveProfilePackage,
-  planNodeModules, resolveDevPaths,
+  LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertLeaderKitBundle, assertSeparateHome, assertWebBundle,
+  deriveProfilePackage, planNodeModules, resolveDevPaths,
 } from '../scripts/dev-plan.mjs'
 
 const WORKTREE = '/work/repo/.worktrees/feature-a'
@@ -182,4 +182,30 @@ test('源 profile 缺 web app bundle 时拒绝，并说清 dsh web 会静默空�
 
 test('源 profile 根本没写 bundles 时也拒绝', () => {
   assert.throws(() => assertWebBundle({ profileDir: '/x', bundles: undefined }), /dsh-web-app/)
+})
+
+test('日常 profile 已装本插件时放行', () => {
+  assert.doesNotThrow(() => assertLeaderKitBundle({
+    profileDir: '/home/user/.dsh/profiles/web',
+    bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE],
+    worktree: WORKTREE,
+  }))
+})
+
+test('日常 profile 没装本插件时拒绝，并给出可复制的安装命令', () => {
+  assert.throws(
+    () => assertLeaderKitBundle({
+      profileDir: '/home/user/.dsh/profiles/web',
+      bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE],
+      worktree: WORKTREE,
+    }),
+    /没有 dsh-leader-kit.*dsh plugin --profile web add \/work\/repo\/\.worktrees\/feature-a/s,
+  )
+})
+
+test('日常 profile 没写 bundles 时也拒绝', () => {
+  assert.throws(
+    () => assertLeaderKitBundle({ profileDir: '/x', bundles: undefined, worktree: WORKTREE }),
+    /dsh-leader-kit/,
+  )
 })

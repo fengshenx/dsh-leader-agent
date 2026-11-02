@@ -1,5 +1,5 @@
 /**
- * `npm run dev` 的路径与派生计算。
+ * `npm run dev` 的路径与派生计算，以及 `npm start` 复用的 profile 守卫。
  *
  * 开发实例要满足三件事：插件指向**当前工作树**（而不是主 checkout 或上一次
  * `dsh plugin add` 留下的路径）、数据（会话、项目、卡片）落在工作树内、以及
@@ -10,7 +10,8 @@
  * 不校验 `package.json` 的 `link:` 路径与磁盘链接是否一致，所以这样一个
  * profile 能被正常加载（`npm run dev` 的隔离实例就是这么跑起来的）。
  *
- * 这里的函数只算「该建什么」，文件系统操作在 `dev.mjs`。
+ * 这里的函数只算「该建什么」与「什么情况该拒绝」，文件系统操作在 `dev.mjs`
+ * 与 `start.mjs`。
  *
  * @module dsh-leader-kit/scripts/dev-plan
  */
@@ -106,16 +107,36 @@ export function assertSeparateHome({ home, sourceHome }) {
  * 不抄宿主的模板表（那份表会随版本变）。
  *
  * @param {object} options - 选项
- * @param {string} options.profileDir - 源 profile 目录，只用于报错定位
- * @param {string[] | undefined} options.bundles - 源 profile 的 `dsh.profile.bundles`
+ * @param {string} options.profileDir - profile 目录，只用于报错定位
+ * @param {string[] | undefined} options.bundles - 该 profile 的 `dsh.profile.bundles`
  * @returns {void} 有 web app bundle 时无返回
  */
 export function assertWebBundle({ profileDir, bundles }) {
   if (Array.isArray(bundles) && bundles.includes(WEB_APP_BUNDLE)) return
   throw new Error(
-    `源 profile 的 bundles 里没有 ${WEB_APP_BUNDLE}（${profileDir}），dsh web 起不来：`
+    `profile 的 bundles 里没有 ${WEB_APP_BUNDLE}（${profileDir}），dsh web 起不来：`
     + '实测不监听端口、不打印 URL、也不报错。'
     + `用 DSH_PROFILE 指向一个 web profile，或把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles。`,
+  )
+}
+
+/**
+ * 挡住「日常 profile 没装本插件」这个误用。
+ *
+ * `npm start` 起的是日常 `~/.dsh` 那套，插件加载与否只看该 profile 的 bundles。
+ * 没装时 dsh 照常起来，只是右栏没有看板、协调者工具也不存在——看起来像插件坏了。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.profileDir - 日常 profile 目录，只用于报错定位
+ * @param {string[] | undefined} options.bundles - 该 profile 的 `dsh.profile.bundles`
+ * @param {string} options.worktree - 当前仓库路径，用于给出可复制的安装命令
+ * @returns {void} 已装本插件时无返回
+ */
+export function assertLeaderKitBundle({ profileDir, bundles, worktree }) {
+  if (Array.isArray(bundles) && bundles.includes(LEADER_KIT_PACKAGE)) return
+  throw new Error(
+    `日常 profile 的 bundles 里没有 ${LEADER_KIT_PACKAGE}（${profileDir}），这个实例不会加载本插件。`
+    + `先装一次：dsh plugin --profile ${PROFILE_NAME} add ${worktree}`,
   )
 }
 
