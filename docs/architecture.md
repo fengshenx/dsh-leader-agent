@@ -228,7 +228,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 - 凭据文件跟着数据根独立，新工作树第一次起实例本来要在界面上重填 API key：启动前会把源 HOME `.credentials.yaml` 的 `refs` 并进开发实例那一份。只搬 `refs`（按环境变量名存的密钥），不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录。目标里已有的条目不动，界面里改过的值优先；要重新跟随源就删掉 `.dev/home/.credentials.yaml` 里那一条。块式与行内（`refs: {}`）两种 `refs` 节形态都认，写回替换该节；认不出、重复 `refs:`、锁超时都直接报错，不猜拼接位置。目标凭据文档不是 version 1 布局时不动——pre-release 扁平布局由宿主启动时自行迁移，先追加 `refs:` 会让它两种布局都不成立。写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。没走 `DEEPSEEK_API_KEY` 启动环境那条路：它在 dsh 的凭据解析顺序里排在存储文件之后本来就能用，但 key 会留在 agent 工具进程的环境里。
 - 端口默认交给系统分配，启动日志里打印带 token 的 URL；要固定就 `DEV_PORT=3210 npm run dev`。
-- 改客户端代码（`src/client/`）要重跑 `npm run dev` 或 `npm run build:client` 再刷新；宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
+- 改客户端代码（`src/client/`）由 `npm run dev` 挂的 esbuild watch 自动重建，宿主 web 组合默认挂着 `client-hmr`：它每 500ms 轮询插件产物的 `mtime/ctime/size`，变化就把运行中的插件换掉（拆旧 fiber、重新 `apply`），页面不刷新、插件内 React 状态重置、会话与连接数据保留。构建失败时正式产物保持上一份，watch 打印错误后继续监听；单独重建用 `npm run build:client`。宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
 - 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DSH_PROFILE`（源 profile 名，默认 `web`；那个 profile 的 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。
 
@@ -252,7 +252,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用真机取证（见 [e2e-testing.md](e2e-testing.md)）。
 
-浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
+浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。构建入口 `build/client.mjs` 是薄壳，配置与原子写在 `build/client-bundle.mjs`：esbuild 先写 `<产物>.<pid>.<随机>.staging`，成功后才 rename 到正式路径——宿主按文件 stat 轮询产物，读到半截文件会替换失败且没有回滚，这条契约由 `tests/client-build.test.js` 守住（banner/footer 外壳、基线模块 external、构建失败保留上一份）。staging 带进程标识，同树的 watch 与手动构建并存时不会共写临时文件；两个进程仍会竞争最终产物，后完成 rename 的赢，但不保证内容新旧顺序。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
 
 ## 宿主契约与架构约束
 
@@ -264,7 +264,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 | 不改宿主仓库、不 import 宿主内部包、不 peer 依赖 dsh 包 | 零运行时依赖的边界见[分层](#分层)；理由写在 `src/host/message.js` 头注释 |
 | 身份先于会话（[第 37 条](capability-gaps.md)） | `src/host/tools/gate.js` 在 `agent/created` 上按身份 `restrict({ deny })`；协调者身份先写进项目注册表，再建会话 |
 | 不能新增 session event 类型（[第 8 条](capability-gaps.md)） | 卡片、通知、项目状态各自独立落盘（`cards/`、`notification-store.js`、`projects/`），会话侧只做 projection |
-| client 产物不能用 `node:`、不引 React / jsdom（[第 23 条](capability-gaps.md)） | `src/client/` 只用宿主模块表与 `React.createElement`，产物由 `build/client.mjs` 打 |
+| client 产物不能用 `node:`、不引 React / jsdom（[第 23 条](capability-gaps.md)） | `src/client/` 只用宿主模块表与 `React.createElement`，产物由 `build/client.mjs`（薄入口）与 `build/client-bundle.mjs`（配置）打 |
 | 浏览器侧 → 宿主侧只有 Typert 远程通道 | `src/host/projects/remote.js`：`connection.rpc.handle` 对仓外插件不可用，`/api` 被官方 gateway 占用；代价是手写的协议形状与宿主版本耦合（标记属性名、`version:1` 描述符、`typertRemote` 绑定字段），宿主改契约时要同步 |
 
 ## 协作与文档机制

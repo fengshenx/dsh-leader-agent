@@ -93,7 +93,7 @@ npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 
 
 其余命令（`build:client` / `worktree:prune` 等）见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
 
-`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。启动前会把 `~/.dsh/.credentials.yaml` 里的 `refs`（按环境变量名存的 API key）并进开发实例的凭据文件，新工作树第一次起实例不用再填一遍；只搬 refs，账号授权记录不搬。改客户端代码要重建再刷新，宿主侧代码重启实例即可。
+`npm run dev` 的数据根在工作树内的 `.dev/home`，删掉即重置，不碰日常 `~/.dsh`；几个工作树可以同时跑，插件版本与数据互不干扰。启动前会把 `~/.dsh/.credentials.yaml` 里的 `refs`（按环境变量名存的 API key）并进开发实例的凭据文件，新工作树第一次起实例不用再填一遍；只搬 refs，账号授权记录不搬。客户端产物由常驻 watch 重建，宿主 `client-hmr` 把运行中的插件换掉——改 `src/client/` 不用刷新页面（插件内的 React 状态会重置，数据层保留）；宿主侧代码重启实例即可。
 
 `npm start` 起的是日常那套：数据根 `~/.dsh`，插件取日常 profile 里链接的版本，起之前先 `npm run build:client`。它会逐项检查并给出可复制的修复命令：dsh 不可用（没装或不在 PATH，`DSH_DSH` 可指定路径）、日常 profile 不存在、profile 的 bundles 缺 web-app 或缺本插件、`node_modules/dsh-leader-kit` 链接缺失。它没有 `npm run dev` 的隔离——在 worktree 里跑，加载的仍是链接指向的那份代码（通常是主 checkout），脚本会提示，验证本目录改动请用 `npm run dev`。
 

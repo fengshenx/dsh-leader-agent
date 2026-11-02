@@ -37,7 +37,7 @@ src/client/         浏览器侧：项目树、看板、会话行（React.create
 src/shared/         两端共用的纯函数与消息来源约定
 .agents/skills/     协议层 skill（leader-mode 派工协议、init-project 初始化方法）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
-build/client.mjs    esbuild 客户端构建（closure-factory 封装）
+build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
 scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名）
 docs/               长期文档（架构、宿主能力边界、真机取证指引）
 .agents/notes/      非平凡改动的决策记忆
@@ -50,7 +50,7 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / de
 ```bash
 npm run check                     # Agent Note 格式门禁 + 文档工具名门禁 + 语法检查（index/src/scripts/build）+ 全部单测
 npm run test                      # 只跑单测
-npm run build:client              # 重建客户端产物 lib/client.js
+npm run build:client              # 重建客户端产物 lib/client.js（加 `-- --watch` 常驻，改 src/client/ 自动替换运行中的插件）
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
@@ -83,7 +83,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 - 建会话的实现接受调用方传入的 `sessionId`（`sessionController.create({ sessionId })` 与 `agents.create({ sessionId })`），预生成 id 是唯一不需要事后纠正的手段。
 - 仓外插件不能新增 session event 类型（capability-gaps 第 8 条），卡片与项目状态只能走独立存储域 + session projection。
 - client 产物不能用 `node:` 内置模块（第 23 条）。
-- 客户端依赖解析走宿主冻结模块表（`PLATFORM_MODULES`）：基线模块由构建期 `build/client.mjs` 的 `BASELINE_EXTERNALS` 留在产物外、运行时同一实例，基线里的宿主包（如 `ui-primitives`）可直接复用；基线外的宿主 UI 包不保证可用。`dsh.client.external` 只用于宿主规则允许的其他插件行（需要 supplier），基线模块不要写进去（重复声明判违规）。Markdown 渲染复用基线的 `MarkdownText`，理由与例外见 [architecture 的客户端与宿主耦合](docs/architecture.md#客户端与宿主耦合)。
+- 客户端依赖解析走宿主冻结模块表（`PLATFORM_MODULES`）：基线模块由构建期 `build/client-bundle.mjs` 的 `BASELINE_EXTERNALS` 留在产物外、运行时同一实例，基线里的宿主包（如 `ui-primitives`）可直接复用；基线外的宿主 UI 包不保证可用。`dsh.client.external` 只用于宿主规则允许的其他插件行（需要 supplier），基线模块不要写进去（重复声明判违规）。Markdown 渲染复用基线的 `MarkdownText`，理由与例外见 [architecture 的客户端与宿主耦合](docs/architecture.md#客户端与宿主耦合)。
 - `ctx.sessions.list()` 只返回 live session，从会话推导的列表会随重启漂移（第 21 条）。
 - profile 名要落在 `PROFILE_TEMPLATES`（`web` / `acp` / `headless` / `sdk` / `sdk-minimal`）里：自定义名会被 `dsh plugin` 按只含 `@deepseek-ai/dsh-base` 的默认模板建出来，缺 web-app bundle，插件客户端半边不加载。文档与脚本一律用 `web`。
 - **agent-team（experimental）并存时 worker 会被当成隐式 Lead**：团队工具注册在 Agent scope，`restrict({ deny })` 只认全局名、挡不住，本 bundle 只做告警与运行时上下文禁令（`src/host/team-guard.js`）。机制与取舍见 [architecture 的 agent-team 并存时](docs/architecture.md#agent-team-并存时)。

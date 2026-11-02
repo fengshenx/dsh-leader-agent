@@ -19,7 +19,10 @@
  *   实例各持一份会互相踢掉登录）；目标实例里已有的条目不动，界面上改过的 key 优先，
  *   要重新跟随源就删掉那一条。写入与运行中的实例共用一把写者锁，临时文件 + rename
  *   提交、权限 600；目标凭据文档不是 version 1 布局时不动（宿主会先自行迁移）；
- * - 端口默认交给系统分配（`--port 0`），设 `DEV_PORT` 可固定。
+ * - 端口默认交给系统分配（`--port 0`），设 `DEV_PORT` 可固定；
+ * - 客户端产物先同步构建一次（失败当场可见），再起常驻 watch：宿主 web 组合挂着
+ *   `client-hmr`，产物一变就把运行中的插件换掉，改 `src/client/` 不用刷新页面；
+ *   正常退出与 SIGTERM/Ctrl-C 都会清掉 watch 子进程。
  *
  * 环境变量：
  * - `DSH_HOME`        自定义开发实例的数据根（默认 `<工作树>/.dev/home`）；**不能等于
@@ -31,7 +34,7 @@
  * - `DEV_DSH`         dsh 可执行文件名，默认 `dsh`
  */
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync,
   writeFileSync,
@@ -196,8 +199,73 @@ console.log('')
 
 run('npm', ['run', 'build:client'], { cwd: worktree })
 
+let watcher
+let dsh
+let stopping = false
+
+/**
+ * 收到终止信号后清场：watcher 与 dsh 都杀掉，再按信号退出。
+ *
+ * 只发给本进程的 SIGTERM/SIGINT 不会经过正常返回路径，`finally` 跑不到；
+ * Ctrl-C 则是整个前台进程组一起收到 SIGINT，两个子进程本来就会自己退出，
+ * 这里再 kill 一次是幂等的兜底。
+ *
+ * @param {'SIGINT' | 'SIGTERM'} signal - 收到的信号
+ * @returns {void} 无返回
+ */
+function stop(signal) {
+  if (stopping) return
+  stopping = true
+  watcher?.kill()
+  dsh?.kill()
+  process.exit(signal === 'SIGINT' ? 130 : 143)
+}
+
+process.on('SIGINT', () => stop('SIGINT'))
+process.on('SIGTERM', () => stop('SIGTERM'))
+
+// 常驻 watch 用独立子进程：前台留给 dsh web。首建已经同步跑过，这里只接手后续
+// 改动，构建失败时 esbuild 打印错误并保留上一份产物。
+watcher = spawn(process.execPath, [join(worktree, 'build', 'client.mjs'), '--watch'], {
+  cwd: worktree,
+  stdio: 'inherit',
+})
+watcher.on('exit', (code, signal) => {
+  if (signal !== null || code === 0) return
+  console.error(`客户端 watch 已退出（code ${code}）：后续改动不会再自动重建`)
+})
+
 // 空字符串要落到默认值：`DEV_PORT=` 这种写法传下去会让 dsh 收到空的 --port
 const port = process.env.DEV_PORT || '0'
 const args = ['web', '--port', port]
 if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
-run(process.env.DEV_DSH || 'dsh', args, { cwd: worktree, env: { ...process.env, DSH_HOME: paths.home } })
+
+// dsh 用 spawn 而不是 spawnSync：同步等待会卡住事件循环，上面的信号处理器
+// 根本跑不到（父进程会一直挂到 dsh 自己退出），watcher 就成了孤儿。
+dsh = spawn(process.env.DEV_DSH || 'dsh', args, {
+  cwd: worktree,
+  env: { ...process.env, DSH_HOME: paths.home },
+  stdio: 'inherit',
+})
+
+let outcome
+try {
+  outcome = await new Promise((resolve) => {
+    dsh.once('error', (error) => resolve({ error }))
+    dsh.once('exit', (code, signal) => resolve({ code, signal }))
+  })
+} finally {
+  watcher.kill()
+}
+
+if (outcome.error !== undefined) {
+  console.error(`无法启动 dsh: ${outcome.error.message}`)
+  process.exit(1)
+}
+if (outcome.signal !== null) {
+  console.error(`dsh web 被信号 ${outcome.signal} 终止`)
+  process.exitCode = 1
+} else if (outcome.code !== 0) {
+  console.error(`dsh web 退出码 ${outcome.code}`)
+  process.exitCode = outcome.code ?? 1
+}
