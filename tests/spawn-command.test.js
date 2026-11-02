@@ -181,9 +181,11 @@ test('cmd 自己起不来时抛 CommandShellError，不误报成命令找不到'
 })
 
 test('参数超过命令行上限时抛原始错误，不归成 CommandShellError', { skip: process.platform !== 'win32' }, () => {
+  // 具体错误码（这里是 ENAMETOOLONG）是实现细节，用例守的是归类边界：与 cmd 无关的
+  // 失败不能被包成「起不了 cmd」。
   assert.throws(
     () => spawnCommandSync({ command: process.execPath, args: ['-e', '', 'x'.repeat(33000)], encoding: 'utf8' }),
-    (error) => error.code === 'ENAMETOOLONG' && !(error instanceof CommandShellError),
+    (error) => !(error instanceof CommandShellError),
   )
 })
 

@@ -26,7 +26,7 @@ import {
   LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, corruptProfilePackageMessage,
   startWebBundleHint,
 } from './dev-plan.mjs'
-import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
+import { CommandNotFoundError, CommandShellError, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -99,6 +99,12 @@ function main() {
   try {
     probe = spawnCommandSync({ command: dshCommand, args: ['--version'], encoding: 'utf8' })
   } catch (error) {
+    // 与 dev.mjs 同构：这一句不拦就落进顶层 catch，提示里看不出是 cmd 起不来。
+    if (error instanceof CommandShellError) {
+      console.error(`错误: ${error.message}`)
+      console.error('这是 Windows 的 cmd.exe 起不来，不是 dsh 没装：检查 ComSpec 或 %SystemRoot%\\System32\\cmd.exe。')
+      process.exit(1)
+    }
     if (!(error instanceof CommandNotFoundError)) throw error
     console.error(`找不到 ${dshCommand}：dsh 没装，或不在 PATH 上。`)
     console.error('用 nvm / nvm-windows 等版本管理器时，换了 shell 或 node 版本后 PATH 会重置，'
