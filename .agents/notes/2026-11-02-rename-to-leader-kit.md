@@ -27,7 +27,7 @@
 
 ### 数据目录
 
-运行时数据目录随之变为 `$DSH_HOME/dsh-leader-kit/`。旧的 `$DSH_HOME/dsh-coordinator/` 未做迁移（确认只是测试数据）。若将来有真实部署要升级，需要 `mv` 旧目录或加读取退回。
+运行时数据目录随之变为 `$DSH_HOME/dsh-leader-kit/`。包未发布、没有外部用户，旧的 `$DSH_HOME/dsh-coordinator/` 只可能是本地 `npm run dev` 的调试数据（README 写明删掉即重置），不做迁移，也不加读取退回。本机可见的旧目录就是主 checkout `.dev/home` 下的开发实例数据。
 
 ## 边界
 
@@ -37,4 +37,4 @@
 
 ## 验证
 
-`npm run check`：511 通过、0 失败。`lib/client.js` 重建后无旧名残留。
+`npm run check` 全绿（改名当次 511）。`npm run build:client` 重建后 `lib/client.js` 只有新 kind 一处。

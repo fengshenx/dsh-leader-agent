@@ -38,6 +38,23 @@ export function validateProjectName(name) {
 }
 
 /**
+ * 行内重命名的提交判定。
+ *
+ * 校验失败时输入框要留在原地、原因就地显示：提示条五秒后就消失，用户再点
+ * 「重命名」时既看不到失败原因，也丢了刚输入的名字。
+ *
+ * @param {string} currentName - 项目当前的名字
+ * @param {string} nextName - 输入框里的名字
+ * @returns {{ action: 'close' | 'keep' | 'commit', name?: string, error?: string }} 判定
+ */
+export function planProjectRename(currentName, nextName) {
+  if (nextName === currentName) return { action: 'close' }
+  const check = validateProjectName(nextName)
+  if (!check.ok) return { action: 'keep', error: check.error }
+  return { action: 'commit', name: nextName }
+}
+
+/**
  * 把目录末段当默认项目名，并判定它能不能直接用。
  *
  * 能用就直接建项目（用户挑完目录就看到建好的项目）；不能用就得让用户改名——
@@ -270,28 +287,25 @@ export function describeProjectRemoval(project) {
 }
 
 /**
- * 删除成功后的提示。
+ * 删除成功后给哪一句提示。
  *
- * 三支按工作区结果分：真移除了、真摘失败（`reason`）、没有工作区可摘。第三支
- * 覆盖宿主没有工作区服务、项目没有插件注册的工作区、工作区已不在宿主里三种
- * （宿主都报 `skipped`），不能并进失败支——那会把正常删除说成「工作区未移除」，
- * 与确认弹窗「只删项目、不提工作区」自相矛盾。
+ * 成功固定一句回执，走 4 秒就消失的提示条——常驻才算噪音，一次性回执不是。
+ * `notFound` 走幂等成功，回执一样：它的 `reason` 是「项目不存在」，不能拿来当
+ * 工作区告警。
  *
- * 摘失败必须报出来：项目记录已经没了，用户再也看不到这个工作区属于谁，只能去
- * 官方面板手动删。
+ * 工作区真摘除失败要在回执后面带上原因：项目记录已经没了，用户再也看不到这个
+ * 工作区属于谁，只能去官方面板手动删。
  *
  * @param {object} project - 被删的项目
- * @param {{workspaceRemoved?: boolean, skipped?: boolean, reason?: string}} result - 宿主返回的删除结果
+ * @param {{notFound?: boolean, reason?: string}} result - 宿主返回的删除结果
  * @returns {string} 提示文字
  */
 export function describeDeletionNotice(project, result) {
-  if (result?.workspaceRemoved === true) {
-    return `已删除项目「${project.name}」。文件夹与会话记录保留，其会话显示在“未分组”下。`
+  const reason = result?.reason
+  if (result?.notFound !== true && typeof reason === 'string' && reason !== '') {
+    return `已删除项目「${project.name}」。工作区未移除：${reason}`
   }
-  if (typeof result?.reason === 'string' && result.reason !== '') {
-    return `已删除项目「${project.name}」。工作区未移除：${result.reason}`
-  }
-  return `已删除项目「${project.name}」。文件夹与会话记录保留。`
+  return `已删除项目「${project.name}」。`
 }
 
 /**
@@ -308,4 +322,27 @@ export function classifyDeletionResult(result) {
   if (result?.removed === true) return 'removed'
   if (result?.notFound === true) return 'alreadyGone'
   return 'failed'
+}
+
+/**
+ * 项目区块要渲染哪几块。
+ *
+ * 「项目通道未就绪」是持续状态，不跟列表折叠走：收起只是把项目行藏起来，通道
+ * 坏着这件事仍然成立。列表内容（空态或项目行）与状态行互斥——通道没就绪时
+ * 「还没有项目」会误导成「真的一个都没有」。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.remoteStatus - 通道状态文案；就绪时为空串
+ * @param {boolean} options.listExpanded - 项目列表是否展开
+ * @param {number} options.projectCount - 项目数
+ * @returns {{ status: string, showList: boolean, showEmpty: boolean }} 渲染判定
+ */
+export function projectSectionLayout({ remoteStatus, listExpanded, projectCount }) {
+  const status = typeof remoteStatus === 'string' ? remoteStatus : ''
+  const list = listExpanded === true && status === ''
+  return {
+    status,
+    showList: list && projectCount > 0,
+    showEmpty: list && projectCount === 0,
+  }
 }
