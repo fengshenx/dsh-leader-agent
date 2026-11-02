@@ -61,7 +61,9 @@
 
 ### 文档落位
 
-说明按 #77 的分层各归各位：亮点进 `README.md` / `README_ZH.md` 的 Highlights，交互与参数进 `docs/usage.md` 的「回看 worker 的会话」，限制与取舍进 `docs/limitations.md` 的「worker 的控制面」，架构事实只留 `docs/architecture.md` 的编排动作表一行与工具数。README 不写细节层，限制细节不重复到 usage——两处超预算时先按分层搬，再压缩，本 PR 没有抬天花板。
+说明按 #77 的分层各归各位：亮点进 `README.md` / `README_ZH.md` 的 Highlights，交互与参数进 `docs/usage.md` 的「回看 worker 的会话」，限制与取舍进 `docs/limitations.md` 的「worker 的控制面」，架构事实只留 `docs/architecture.md` 的编排动作表一行与工具数。README 不写细节层，限制细节不重复到 usage。
+
+按 #77 的余量规则（天花板 ≥ 当前值 ×1.05，`AGENTS.md` 与 `capability-gaps.md` ≥ ×1.10）重算了五个天花板：`docs/usage.md` 5,020→5,350、`docs/limitations.md` 5,600→6,000、`README.md` 3,090→3,250、`README_ZH.md` 4,660→4,850、`docs/architecture.md` 5,300→5,350，`docs/capability-gaps.md` 15,150→15,500。理由是这一版把 `read_worker_session` 的说明加进这 6 份文档，搬层后仍在声明的余量之外：压内容凑预算会把余量压到 0.2%，下一次任何改动都要先删事实，门禁就从防腐变成逼人删内容。抬完各项余量：README 6.35%、README_ZH 5.55%、architecture 5.84%、limitations 5.15%、usage 5.96%、capability-gaps 11.14%。`COORDINATOR.md`（2.43%）本 PR 未改，保持原样并在 PR 里说明。
 
 ## 边界
 
