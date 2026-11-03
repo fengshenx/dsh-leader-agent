@@ -440,13 +440,18 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ---
 
-### 45. 「未分组」的组头与会话行分属两个 `groupSection`，DOM 上从组头找不到自己的行
+### 45. 「未分组」的组头与会话行在同一个 `groupSection` 里，但组里只剩渲染层排除的行时 DOM 判空会误藏
 
 **目标形态**：渲染层判断「未分组里还剩不剩可见会话」，据此决定要不要藏掉那个组头。
 
-**dsh 实测**（`0.2.1-rc.2`，`dsh-client-ui-workspace/lib/client.js` 的 `groupByWorkspace` 与 `ProjectRowItem`）：组头 `div.projectRow[data-row-key="workspace:"]` 的直接父容器 `div.<hash>_groupSection` 只有它一个子元素；松散会话行落在**另一个** `groupSection` 里，那个 section 的子元素全是会话行与展开按钮，没有任何 `workspace:` 行。也就是说 `header.closest(section).querySelectorAll('[data-row-key^="session:"]')` 恒为空。
+**dsh 实测**（`0.2.1-rc.2`，`dsh-client-ui-workspace/lib/client.js:3196-3240` 的 `groupSection` 渲染 + 默认视图 DOM 抽查）：
 
-**影响**：按 DOM 判空必然得出「组里没内容」，于是无条件给组头加隐藏类——用户看到的是「未分组整组消失，卸载插件就回来」。可见性只能在**会话快照**上按宿主 `sessionVisible` 的口径自己算（不在任何工作区、非子代理、未归档、不是「非当前的空会话」），代价是这份口径跟着宿主漂。`tests/e2e/ungrouped-header.e2e.js` 用「界面里删工作区」造松散会话守住这条；手改 `workspace.json` 的 `sessionIds` 不行，宿主不会据此把会话渲染成松散行。
+- 组头 `div[data-row-key="workspace:"]` 与会话行是同一个 `div.<hash>_groupSection` 的**兄弟节点**，顺序是组头 → 会话行 →（可选）展开按钮；1 条会话与 6 条（折叠水位 5）两种状态都是 1 个 `groupSection`，组头的 `parentElement` 里就能查到会话行。
+- 子工作区嵌套时段内行渲染在父 section 内一个 `div[role="group"]` 里，仍然不是独立的 `groupSection`。
+
+**影响**：既然同 section，按「组头所在 section 里有没有可见会话行」判空**并不恒假**——组里还有用户自己的会话时判得准。它会出错的情形是组内的行**全被插件自己的排除集隐藏**（`dsh-leader-kit-excluded-session`）：判据只能看到一排带隐藏类的行，得出「组里没内容」，于是连组头一起藏掉。项目目录失效后仍排除它的会话，正好落进这个形态，用户看到的就是「未分组整组消失，卸载插件就回来」——那条修复在客户端侧（目录失效不再排除），不在 DOM 结构上。
+
+**仍然建议在会话快照上算可见性**（口径照宿主 `sessionVisible`：不在任何工作区、非子代理、未归档、不是「非当前的空会话」）：DOM 判据只在行已渲染时才准，快照滞后时会误藏；但这是防御性加固，**不是复现出来的原诊断**，别把「两个 section」写回文档。`tests/e2e/ungrouped-header.e2e.js` 的第二条用例（删项目目录）才是这条修复的回归用例；第一条（删工作区）守的是「删工作区别把会话一起带走」，旧实现也绿。
 
 ---
 

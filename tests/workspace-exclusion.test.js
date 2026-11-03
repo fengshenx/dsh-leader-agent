@@ -6,6 +6,7 @@ import {
   excludedSessionCountsByWorkspace,
   markRows,
   markSessionRow,
+  createWorkspaceExclusion,
   markUngroupedHeader,
   restoreExpandButton,
   ungroupedExcludedCount,
@@ -402,6 +403,32 @@ test('未分组里的项目会话全被排除时，组头也藏起来', () => {
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
 })
 
+test('快照说 0 条但 DOM 里有可见行：按 DOM 兜底，不藏', () => {
+  // 会话快照滞后一拍时，visibleCount 还是 0；这时若照快照藏，用户会话会整组看不见。
+  const group = fakeUngrouped({ rendered: ['w1', 'mine'] })
+
+  markUngroupedHeader(group.root, { visibleCount: 0 })
+
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
+test('调用方漏传快照计数时按 DOM 判，不当成「无条件藏」', () => {
+  const group = fakeUngrouped({ rendered: ['w1', 'mine'] })
+
+  markRows(group.root, { excluded: new Set(['w1']) })
+
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
+test('快照说还有会话但 DOM 还没画出来：留一个空组头，不藏', () => {
+  // 行还没渲染时 DOM 判据看到的是空组；只有数据层判据能挡住这次误藏。
+  const group = fakeUngrouped({ rendered: [] })
+
+  markUngroupedHeader(group.root, { visibleCount: 1 })
+
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
 test('未分组里还有可见会话时组头保留', () => {
   const group = fakeUngrouped({ rendered: ['w1', 'mine'] })
 
@@ -552,4 +579,72 @@ test('未分组只剩被排除的会话时可见数为 0', () => {
   })
 
   assert.equal(count, 0)
+})
+
+test('排除器：update 立即标记，dispose 断开观察并摘掉标记', () => {
+  const group = fakeUngrouped({ rendered: ['w1', 'mine'], withOverflow: true })
+  // 有展开按钮时组头不藏（下一批行可能不属于排除集），这条用例只测标记与清理
+  const rows = [group.header, ...group.sessions.values(), group.button]
+  const root = fakeRoot(rows)
+  const appended = []
+  const saved = {
+    document: globalThis.document,
+    MutationObserver: globalThis.MutationObserver,
+    requestAnimationFrame: globalThis.requestAnimationFrame,
+    cancelAnimationFrame: globalThis.cancelAnimationFrame,
+  }
+  const observers = []
+  globalThis.document = {
+    querySelector: root.querySelector,
+    querySelectorAll: root.querySelectorAll,
+    body: {},
+    head: { append: (node) => appended.push(node) },
+    getElementById: () => null,
+    createElement: () => ({ id: '', textContent: '' }),
+  }
+  globalThis.MutationObserver = class {
+    constructor(callback) {
+      this.callback = callback
+      this.observing = false
+      observers.push(this)
+    }
+
+    observe() {
+      this.observing = true
+    }
+
+    disconnect() {
+      this.observing = false
+    }
+  }
+  globalThis.requestAnimationFrame = (callback) => {
+    callback()
+    return 1
+  }
+  globalThis.cancelAnimationFrame = () => {}
+  try {
+    const exclusion = createWorkspaceExclusion()
+    assert.equal(appended.length, 1, '样式表只注入一次')
+    assert.equal(observers.length, 1)
+    assert.equal(observers[0].observing, true)
+
+    exclusion.update({ sessionIds: ['w1'], ungroupedVisibleCount: 1 })
+    assert.equal(group.sessions.get('w1').classes.has('dsh-leader-kit-excluded-session'), true)
+    assert.equal(group.sessions.get('mine').classes.has('dsh-leader-kit-excluded-session'), false)
+    assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+
+    exclusion.update({ sessionIds: ['w1', 'mine'], ungroupedVisibleCount: 0 })
+    assert.equal(group.sessions.get('mine').classes.has('dsh-leader-kit-excluded-session'), true)
+    observers[0].callback()
+
+    exclusion.dispose()
+    assert.equal(observers[0].observing, false)
+    assert.equal(group.sessions.get('w1').classes.has('dsh-leader-kit-excluded-session'), false)
+    assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete globalThis[key]
+      else globalThis[key] = value
+    }
+  }
 })
