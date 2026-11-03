@@ -75,7 +75,7 @@
 
 ## 边界
 
-- **`NPM_TOKEN` 必须手工配**：仓库 secret，Automation 或 Granular access token，需要 publish 权限。首次发布时包在 npm 上还不存在、无法配 trusted publishing，只能用 token；发过一次后可以改成 OIDC 发布并删掉 secret。
+- **`NPM_TOKEN` 路线已废弃**：npm 已宣布 bypass-2FA token 从 2027-01 起不能直接发布；本仓改为首发本机交互式发布、之后走 OIDC，见 [2026-11-03-npm-oidc-publishing.md](2026-11-03-npm-oidc-publishing.md)。
 - **provenance 只在 CI 里生成，且要求仓库公开**：本地 `npm publish` 没有 OIDC 身份，不会带来源证明。发布走 tag 才有；仓库已验证是 public（`gh repo view --json visibility` → `PUBLIC`）。
 - **只从 `npm publish`（不带路径参数）发布**：`prepublishOnly` 只在无参发布时执行，`npm publish xxx.tgz` 不跑生命周期脚本，`release:check` 整段被跳过。这一条写在[发布与打包](../development.md#发布与打包)。
 - **不自动改版本号**：版本仍在 `package.json` 里手工改，tag 由人打。自动 bump 需要与 release notes 生成策略一起定，这次不引入。

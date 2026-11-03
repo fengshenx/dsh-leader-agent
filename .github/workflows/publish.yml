@@ -2,6 +2,7 @@ name: Publish
 
 # 发版入口：改 package.json 的 version → 提交 → 打 tag `v<version>` → push tag。
 # 门禁挂在本包的 `prepublishOnly`（= npm run release:check），手动发布与 CI 走同一条链路。
+# 认证走 npm trusted publishing（OIDC）：仓库不存发布 token，身份由本次 workflow 换取短期凭证。
 on:
   push:
     tags: ['v*']
@@ -9,7 +10,7 @@ on:
 permissions:
   # 建 GitHub Release 用 GITHUB_TOKEN
   contents: write
-  # npm provenance 用 OIDC 换签名，不需要额外 secret
+  # 向 npm 换 OIDC 短期发布凭证，并生成 provenance
   id-token: write
 
 concurrency:
@@ -20,8 +21,8 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      # pin 到完整 commit SHA：浮动 tag 被上游 retag 后，新代码在 `npm publish`
-      # 之前就能读到 NODE_AUTH_TOKEN，而 npm 版本不可回收。注释里的版本号供人读。
+      # pin 到完整 commit SHA：浮动 tag 被上游 retag 后，新代码在发布前就能拿到发布权限
+      #（OIDC 身份 + contents: write），而 npm 版本不可回收。注释里的版本号供人读。
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -48,21 +49,23 @@ jobs:
             exit 1
           fi
 
+      # 不写 registry-url：它会往 .npmrc 写 _authToken=${NODE_AUTH_TOKEN}，
+      # 空值会先于 OIDC 身份被 npm 读到。
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: 24
           cache: npm
-          registry-url: https://registry.npmjs.org
+
+      # OIDC 发布要求 npm CLI ≥ 11.5.1；OIDC 下切 dist-tag 要求 ≥ 11.21 / 12.2。
+      # 不依赖 setup-node 附带的那一版。
+      - run: npm install -g npm@latest --no-fund --no-audit
 
       - run: npm ci
 
-      # NPM_TOKEN 是仓库 secret（Automation 或 Granular access token，需要 publish 权限）。
-      # --provenance 让 npm 用本次 workflow 的 OIDC 身份生成来源证明，包页面显示
-      # 「Built and signed on GitHub Actions」；它的前提是仓库公开，且 package.json 的
-      # repository 与这里一致。
-      #
-      # 两步都不能省：版本已存在时跳过发布（发布成功但后面建 Release 失败时，重跑
-      # 不会卡在 E403），预发布版走 next dist-tag（不带 --tag 会把 rc 顶到 latest）。
+      # 认证来自 trusted publishing：npmjs.com 上该包已登记本仓库与 workflow 文件名
+      #（publish.yml），并勾选允许 npm publish；仓库里没有 NPM_TOKEN。
+      # 版本已存在时跳过发布，保证「发布成功但建 Release 失败」后能直接重跑；
+      # 预发布版走 next dist-tag（不带 --tag 会把 rc 顶到 latest）。
       - name: 发布到 npm
         run: |
           set -euo pipefail
@@ -75,8 +78,6 @@ jobs:
           tag=latest
           case "$version" in *-*) tag=next ;; esac
           npm publish --provenance --access public --tag "$tag"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 建 GitHub Release
         env:

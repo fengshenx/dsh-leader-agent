@@ -27,7 +27,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：lead
 | 项目级提示词（`LEADER.md` / `SLOTS.md`；旧名 `COORDINATOR.md` 只是兼容入口） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
 | 写浏览器 e2e 场景、跑 `npm run e2e`、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、场景模板、mock 标记约定、截图落点、断言纪律；脚本化不了的才走人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
-| 发版、发布包内容与 CI | [development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-02-npm-publish-pipeline.md](.agents/notes/2026-11-02-npm-publish-pipeline.md) |
+| 发版、发布包内容与 CI | [.telov/skills/release](.telov/skills/release/SKILL.md)（发版手册）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/2026-11-03-npm-oidc-publishing.md) |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
 ## 目录与职责
@@ -38,6 +38,7 @@ src/host/           宿主侧：工具、派工器、存储、项目服务、wor
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
 .agents/skills/     协议层 skill（leader-mode 派工协议、init-project 初始化方法）
+.telov/skills/      工作区运维 skill（release 发版手册，不进发布包）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
