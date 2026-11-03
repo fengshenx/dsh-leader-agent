@@ -44,6 +44,8 @@ PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID
 
 `tests/home-paths.test.js` 的「用 `os.homedir()`」用例显式 `delete process.env.HOME` 再断言。不删的话 Linux CI 上 `HOME` 与 `os.homedir()` 相同，「回退到 `process.env.HOME`」也能通过，守不住 #97 修的 Windows 桌面端回归。
 
+这条守卫带着 #97 的原名（`进程环境没有 HOME 时回落到 os.homedir()`）从 `tests/notification-store.test.js` 搬到 `tests/home-paths.test.js`：解析实现换了位置，回归守卫要跟着实现走，不能跟着旧文件走。
+
 ## 边界
 
 - 不 import 宿主包：`engines.dsh` 只承诺版本范围，内部包会随宿主发版漂移（理由见 `src/host/message.js` 头注释）。
