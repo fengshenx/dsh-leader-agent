@@ -38,6 +38,20 @@ export const LEADER_CONTEXT_NAME = 'dsh-leader-kit:leader'
 export const LEADER_CONTEXT_ORDER = 104
 
 /**
+ * 已经报过「仍在用旧名」的项目目录。
+ *
+ * 手册每轮 turn 重新读取（运行时上下文每轮求值），提示如果不去重，一个项目
+ * 每轮都往日志里刷同一条，真正的问题被淹没。按进程内目录去重：同一目录只报
+ * 一次，换项目或重启进程再报。
+ */
+const warnedLegacyFallback = new Set()
+
+/**
+ * 已经报过「旧文件与新版内容不一致」的项目目录。去重理由同上。
+ */
+const warnedShadowedLegacy = new Set()
+
+/**
  * 读一个手册文件。
  *
  * @param {string} file - 文件路径
@@ -61,7 +75,8 @@ function readManual(file) {
  *
  * 文件名按 `LEADER.md` → `COORDINATOR.md` 的顺序找：旧名是升级前初始化过的项目
  * 唯一有的那个文件，退回时记一条日志提醒改名——否则用户既看不到手册换名了，
- * 也不知道为什么新加的 `COORDINATOR.md` 还在生效。
+ * 也不知道为什么新加的 `COORDINATOR.md` 还在生效。两版并存时以 `LEADER.md` 为准；
+ * 内容不一致说明有人改了旧文件却没同步，同样报一条（旧文件已不参与注入）。
  *
  * @param {string | undefined} directory - 项目目录绝对路径
  * @param {(message: string) => void} [logger] - 日志输出
@@ -71,15 +86,28 @@ export function loadLeaderManual(directory, logger = () => {}) {
   if (typeof directory !== 'string' || directory === '') return ''
   const primary = join(directory, LEADER_CONTEXT_FILE)
   const first = readManual(primary)
-  if (first.body !== undefined) return first.body.trim()
   if (first.error !== undefined) {
     logger(`dsh-leader-kit: 读取 leader 手册失败（${primary}）：${first.error instanceof Error ? first.error.message : String(first.error)}`)
     return ''
   }
   const legacy = join(directory, LEGACY_LEADER_CONTEXT_FILE)
+  // 新版存在时也要看一眼旧名：两版并存且内容不同，说明有人改错了文件。旧文件的
+  // 读失败不算故障——它已经不参与注入，静默即可。
   const second = readManual(legacy)
+  if (first.body !== undefined) {
+    if (second.body !== undefined
+      && first.body.trim() !== second.body.trim()
+      && !warnedShadowedLegacy.has(directory)) {
+      warnedShadowedLegacy.add(directory)
+      logger(`dsh-leader-kit: ${directory} 的 ${LEGACY_LEADER_CONTEXT_FILE} 与 ${LEADER_CONTEXT_FILE} 内容不一致；以 ${LEADER_CONTEXT_FILE} 为准，旧文件已不参与注入`)
+    }
+    return first.body.trim()
+  }
   if (second.body !== undefined) {
-    logger(`dsh-leader-kit: ${directory} 仍在使用旧名 ${LEGACY_LEADER_CONTEXT_FILE}；请改名为 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
+    if (!warnedLegacyFallback.has(directory)) {
+      warnedLegacyFallback.add(directory)
+      logger(`dsh-leader-kit: ${directory} 仍在使用旧名 ${LEGACY_LEADER_CONTEXT_FILE}；请改名为 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
+    }
     return second.body.trim()
   }
   if (second.error !== undefined) {

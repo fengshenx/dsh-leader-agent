@@ -137,6 +137,52 @@ test('两版手册都在时以 LEADER.md 为准', async () => {
   }
 })
 
+test('两版手册都在且内容一致时不提示', async () => {
+  const project = await createProject('同一份正文。')
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '同一份正文。', 'utf8')
+    const logged = []
+    assert.equal(loadLeaderManual(project.directory, (message) => logged.push(message)), '同一份正文。')
+    assert.deepEqual(logged, [])
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('两版内容不一致时提示以 LEADER.md 为准，且每个目录只报一次', async () => {
+  const project = await createProject('新版正文。')
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '旧版正文。', 'utf8')
+    const logged = []
+    const logger = (message) => logged.push(message)
+    // 手册每轮重新求值：三轮只应出一条，不能刷屏。
+    for (let turn = 0; turn < 3; turn += 1) {
+      assert.equal(loadLeaderManual(project.directory, logger), '新版正文。')
+    }
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], /内容不一致/)
+    assert.match(logged[0], /LEADER\.md/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('旧名退回提示每个目录只报一次', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-once-'))
+  try {
+    await writeFile(join(directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。', 'utf8')
+    const logged = []
+    const logger = (message) => logged.push(message)
+    for (let turn = 0; turn < 3; turn += 1) {
+      assert.equal(loadLeaderManual(directory, logger), '旧名时代的手册。')
+    }
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], /COORDINATOR\.md/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('只有旧名 COORDINATOR.md 时退回读取，并提示改名', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-'))
   try {

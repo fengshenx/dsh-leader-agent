@@ -30,6 +30,8 @@
 
 插件只写/读 `LEADER.md`，但 `LEADER.md` 缺失时退回读 `COORDINATOR.md` 并记一条改名提示。选读退回而不是 fail loud：手册是增量信息、不是必需品（既有约定是缺失就静默），fail loud 会让只有旧文件的正常项目在每轮 turn 报错；而不退回则是升级后静默失去手册注入——两者之间，读退回保住了内容又留下了可发现的迁移提示。
 
+两类提示都按「进程内目录」去重：手册每轮 turn 重新求值，不去重的话同一个项目每轮刷一条，真正的问题会被淹没；提示本就是一次性的迁移告警，换项目或重启进程会再报。另一类提示是两版并存且内容不一致——说明有人改了 `COORDINATOR.md` 却没同步，仍照样报一条，说明以 `LEADER.md` 为准、旧文件已不参与注入。
+
 ## 边界
 
 - **历史 Agent Note 保留原文**：`.agents/notes/` 是当时的决策记录，改词会歪曲记录；指向这些笔记的链接文件名（含 `coordinator`）同样保持原样。
@@ -47,5 +49,5 @@
 - 兼容性用例（新增）：
   - `tests/projects-store.test.js`「旧字段名的注册表仍能读出 leader 与退役列表，写回只留新字段」：老格式 `projects.json` → `getByLeader` 命中、列表字段归一化、`update()` 后落盘无旧键；「新旧字段同时存在时以新字段为准」。
   - `tests/projects-service.test.js`「旧字段名的注册表仍能恢复 leader 身份与工具面」：真实 store + `loadIndex()` → `isLeaderSession=true`、`directoryOfLeader` 有值、`deniedToolsFor` 返回 leader 的禁用集（不含 `spawn_worker`）。
-  - `tests/leader-context.test.js`「手册文件名写死为 LEADER.md」「两版都在时以 LEADER.md 为准」「只有旧名 COORDINATOR.md 时退回读取，并提示改名」。
-- 双向验证：撤掉 `readStore()` 的旧键归一化 → store 与 service 两条用例变红（2 fail）；撤掉手册退回分支 → 旧名用例变红（1 fail）；把 `LEADER_CONTEXT_FILE` 常量改回 `COORDINATOR.md` → 3 条用例变红（改名前这一操作是 8/8 全绿）。还原后 96 例全绿（三个测试文件）。
+  - `tests/leader-context.test.js`「手册文件名写死为 LEADER.md」「两版都在时以 LEADER.md 为准」「只有旧名 COORDINATOR.md 时退回读取，并提示改名」「两版手册都在且内容一致时不提示」「两版内容不一致时提示以 LEADER.md 为准，且每个目录只报一次」「旧名退回提示每个目录只报一次」。
+- 双向验证：撤掉 `readStore()` 的旧键归一化 → store 与 service 两条用例变红（2 fail）；撤掉手册退回分支 → 旧名用例变红（1 fail）；把 `LEADER_CONTEXT_FILE` 常量改回 `COORDINATOR.md` → 3 条用例变红（改名前这一操作是 8/8 全绿）；撤掉旧名提示的目录去重 → 「每个目录只报一次」变红（1 fail）；撤掉内容不一致提示 → 对应用例变红（1 fail）。还原后 96 例全绿（三个测试文件），手册测试文件 14 例全绿。
