@@ -18,7 +18,7 @@
 
 `npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-kit` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
 
-桌面版：`npm run desktop` 把当前工作树挂进 `$DSH_HOME/profiles/desktop`（该 profile 归 Electron 独占，CLI 起不了它），改 manifest、建链接、重建产物后拉起应用：macOS 用 `open --env` 传数据根，Windows 直接起 exe 并把 `DSH_HOME` 放进子进程环境，其余平台只挂载。`--remove` 摘除，应用运行中或 profile 有锁时拒绝写入（锁与顺序见对应 Agent Note）。多工作树并行仍用 `npm run dev`。
+桌面版：`npm run desktop` 把当前目录挂进 desktop profile（Electron 独占，CLI 起不了），改 manifest、建链接、重建产物再拉起应用，三平台各自把数据根交给应用。**worktree 里跑时数据根换成本目录的 `.dev/desktop-home`**，profile 从日常根派生（依赖与 bundle 照抄、只换插件链接），日常 profile 不动：桌面 profile 只一份，派生是分支内验证又不覆盖别人的唯一办法，代价是数据与日常分两套。主 checkout 里跑仍写日常根，显式 `DSH_HOME` 时两条都不走。`--remove` 在哪个目录跑就摘哪个根；应用运行中或 profile 有锁时拒绝写入（见对应 Agent Note）。
 
 ## 收尾清理
 

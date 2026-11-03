@@ -1,0 +1,46 @@
+# 桌面版在 worktree 里改用派生数据根，不动别人的 desktop profile
+
+**日期**：2026-11-03
+**状态**：accepted
+
+## 背景
+
+桌面应用的 profile 固定是 `$DSH_HOME/profiles/desktop`（`apps/desktop/src/paths.ts`），只有一份。主 checkout 装过一次之后，在 worktree 里跑 `npm run desktop` 会被 `planDesktopEnable` 拒绝——`dependencies['dsh-leader-kit']` 指着 `link:<主 checkout>`，不是当前目录。想在这个分支上验证改动，唯一出路是先把主 checkout 那份卸掉，验证完再装回来。
+
+实际使用里这条路走不通：几个 worktree 并行开发时谁跑一次就把别人的挂载顶掉；主 checkout 的桌面版也会在下次启动时变成某个分支的代码。而「不覆盖别人的安装」本来就是这个脚本的既有语义（`planDesktopEnable` / `planDesktopDisable` / `planLinkAction` 三个守卫），不能为了跑通把它拆掉。
+
+`npm run dev` 早就解决过同一个问题：数据根落工作树内、profile 从日常根派生、依赖链回源。桌面的差别只是 profile 名叫 `desktop`、启动走 Electron 而不是 `dsh web`。
+
+## 决策
+
+**按当前目录的身份选数据根，`planDesktopHome` 是唯一判定点**：
+
+- worktree 内（`.git` 是文件）→ 派生 `<工作树>/.dev/desktop-home`：profile 从 `~/.dsh/profiles/desktop` 派生（`deriveProfilePackage` 照抄依赖与 bundle，只把本插件换成工作树链接），`node_modules` 逐条链回源 profile，日常 profile 一个字节都不动；
+- 主 checkout 内（`.git` 是目录）→ 照旧写 `~/.dsh/profiles/desktop`；
+- 显式 `DSH_HOME` → 两条都不走，就写那一份根。
+
+派生与依赖链接直接调 `dev-instance.mjs` 的 `prepareProfileDir`，与 `npm run dev`、e2e 共用同一份实现：三处的组合一旦漂移，e2e 测到的就不是用户拿到的实例。
+
+派生数据根是 `.dev/desktop-home` 而不是 `.dev/home`：`npm run dev` 与桌面实例同时开着时，共用一份数据根会让两边往同一批会话、项目、卡片里写。
+
+顺序上，**探活放在派生之前**：应用在跑时连派生根都不碰，免得改到正在被读的 profile。`--remove` 跟随同一套判定，在哪个目录跑就摘哪个根。
+
+## 边界
+
+- **数据是两套**。派生根的会话、项目、卡片与日常实例不通；这是隔离的代价，不是缺陷。要日常那套就在主 checkout 跑。
+- **同一时刻只能有一个桌面实例**。Electron 的 `requestSingleInstanceLock` 按 userData（共享的 `%APPDATA%\@deepseek-ai\dsh-desktop`）判定，日常实例在跑时派生根起的进程会自己退出。脚本在探到运行态时直接拒绝，不为隔离实例绕单实例锁（`--user-data-dir` 会把账号与更新状态一起隔离，代价更大）。
+- **源 profile 必须存在**。派生根从日常 profile 抄依赖；日常 profile 不存在时报的是原来那条「先打开一次桌面应用」，不新建一个空 profile 去「派生出没有依赖的实例」。
+- **worktree 判定用 `.git` 是文件还是目录**，不起 git 子进程。把仓库 clone 到别处（`.git` 是目录）仍算主 checkout 语义——那台机器上它就是日常那份。
+- 派生根在 `.dev/` 下，已被 gitignore，删掉即重置；`worktree:prune` 会随 `.dev` 一起挪走。
+
+## 验证
+
+- 单测（`tests/desktop-plan.test.js`，Windows 上 35 pass / 0 fail）：`planDesktopHome` 覆盖 worktree 与主 checkout 两态、`installedSpec` 只作为提示；`derivedDesktopHome` 断言与 `.dev/home` 不同目录；接线断言锁住「`DSH_HOME` 未显式指定」「源固定成 `dailyPaths.home`」「派生在 `withProfileLock` 之前」「worktree 标记读 `.git` 的文件态」。
+- 真机（Windows，桌面版 0.2.1-rc.5，worktree 内 `node scripts/desktop.mjs`，日常 `~/.dsh/profiles/desktop` 只读）：
+  - 输出走「分支隔离」分支，数据根 `…\.worktrees\windows-desktop-launch\.dev\desktop-home`，插件链接指向当前工作树；
+  - 宿主进程命令行第 4 个参数是 `<派生根>\profiles\desktop`，派生根生成 `sessions`、`storages`、`.credentials.yaml`；
+  - 插件确实激活：桌面版监听的端口上 `POST /api/projects/list`、`/api/cards/list` 返回 **401**（路由存在、要鉴权）；同机另一个监听端口返回 404——404 正是宿主半边未激活时的形态，两者能区分开；
+  - 日常 profile 的 `package.json` sha256 前后一致，`node_modules/dsh-leader-kit` 始终不存在；
+  - 应用运行中重跑：报「正在运行」、退出 1、派生根 manifest 哈希不变（探活在派生之前）；
+  - `--remove`：摘掉派生根的依赖与链接，日常 profile 哈希仍不变。
+- 未验证：macOS 上的派生分支（本机无 macOS；两端共用同一段路径计算与 `open --env`，平台差异只在校验过的启动那一段）。

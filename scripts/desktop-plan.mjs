@@ -247,6 +247,18 @@ export function resolveDesktopPaths({ homeDir, cwd, env = {} }) {
   const trimmed = String(env.DSH_HOME ?? '').trim()
   const configured = trimmed === '' ? null : trimmed
   const home = configured === null ? join(homeDir, '.dsh') : expandHomePath(configured, homeDir, cwd)
+  return desktopPathsOf(home)
+}
+
+/**
+ * 按数据根算出 desktop profile 的各条路径。
+ *
+ * 派生根与日常根只差 `home`，其余同名同构，调用方不必区分布局。
+ *
+ * @param {string} home - 数据根绝对路径
+ * @returns {object} 数据根与 profile 内的文件路径
+ */
+export function desktopPathsOf(home) {
   const profileDir = join(home, 'profiles', DESKTOP_PROFILE)
   const nodeModulesDir = join(profileDir, 'node_modules')
   return {
@@ -270,6 +282,41 @@ export function resolveDesktopPaths({ homeDir, cwd, env = {} }) {
  */
 export function desktopLinkSpec(worktree) {
   return `link:${worktree}`
+}
+
+/**
+ * 派生数据根：工作树内的 `.dev/desktop-home`。
+ *
+ * 与 `npm run dev` 的 `.dev/home` 同级但不同目录：两个开发实例共用一份数据根时，
+ * 会话、项目与卡片会互相写，问题出在数据里而不是代码里。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.worktree - 工作树绝对路径
+ * @returns {string} 派生数据根的绝对路径
+ */
+export function derivedDesktopHome({ worktree }) {
+  return join(worktree, '.dev', 'desktop-home')
+}
+
+/**
+ * 日常工作根与派生数据根之间怎么选。
+ *
+ * 桌面 profile 只有一份，同一数据根下挂不了两个版本。在 worktree 里跑就是「这个
+ * 分支要临时验证一下」，不该把日常那份换成自己的代码——并行开发的几个 worktree
+ * 会互相覆盖，主 checkout 的桌面版也会在下次启动时变成某个分支的版本。所以 worktree
+ * 内一律用派生根，日常 profile 一个字节都不动；主 checkout（`npm run desktop` 原本
+ * 的位置）照旧写日常根。
+ *
+ * `owner` 只用于输出提示「日常那份现在挂的是谁」，不参与判定。
+ *
+ * @param {object} options - 选项
+ * @param {boolean} options.inWorktree - 当前目录是不是 git worktree（主 checkout 为 false）
+ * @param {string | null} [options.installedSpec] - 日常 profile 里的依赖说明符
+ * @returns {{ mode: 'daily' | 'derived', owner: string | null }} 用哪个根，以及日常那份挂的是谁
+ */
+export function planDesktopHome({ inWorktree, installedSpec = null }) {
+  if (inWorktree !== true) return { mode: 'daily', owner: null }
+  return { mode: 'derived', owner: installedSpec === '' ? null : installedSpec }
 }
 
 /**

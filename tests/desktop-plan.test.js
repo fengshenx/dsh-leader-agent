@@ -4,9 +4,10 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { dirname, join, resolve } from 'node:path'
 import {
-  DESKTOP_PROFILE, desktopLinkSpec, expandHomePath, looksLikeAppPath, parseBundleExecutable,
-  parseTasklistImages, planDesktopDisable, planDesktopEnable, planDshHomeEnv, planLinkAction,
-  planProfileLockAction, resolveDesktopPaths, resolveHomePathsOrThrow, windowsExeCandidates,
+  DESKTOP_PROFILE, desktopLinkSpec, desktopPathsOf, derivedDesktopHome, expandHomePath, installedSpecOf,
+  looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable, planDesktopEnable,
+  planDesktopHome, planDshHomeEnv, planLinkAction, planProfileLockAction, resolveDesktopPaths,
+  resolveHomePathsOrThrow, windowsExeCandidates,
 } from '../scripts/desktop-plan.mjs'
 import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
@@ -337,7 +338,7 @@ test('Windows 探活：tasklist 走绝对路径 + CSV，不按表格输出比对
 test('启动 fail closed：探不到运行态不启动，open 有 stderr 不当成功', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
   // 校验必须真接在 main 的第一行，不能在 if 里被短路掉。
-  assert.match(source, /const paths = resolveHomePathsOrThrow\(\{/)
+  assert.match(source, /const dailyPaths = resolveHomePathsOrThrow\(\{/)
   // 已运行实例收不到 --env（rc 仍 0），Windows 的单实例冲突同样静默，探不到就不能赌。
   assert.match(source, /target\.kind !== 'unsupported' && running === null/)
   assert.ok(source.indexOf("running === null") < source.indexOf('await launchDesktopApp(target'))
@@ -376,4 +377,72 @@ test('DSH_HOME 的两种非法写法在解析入口就抛（行为级，走真�
   assert.equal(resolveHomePathsOrThrow({ rawHome: ' /tmp/x ', homeDir: HOME }).home, resolve('/tmp/x'))
   assert.equal(resolveHomePathsOrThrow({ rawHome: '', homeDir: HOME }).home, join(HOME, '.dsh'))
   assert.equal(resolveHomePathsOrThrow({ rawHome: '~/dsh', homeDir: HOME }).home, resolve(HOME, 'dsh'))
+})
+
+test('派生根落在工作树内的 .dev/desktop-home，形状与日常根一致', () => {
+  const home = derivedDesktopHome({ worktree: WORKTREE })
+  assert.equal(home, join(WORKTREE, '.dev', 'desktop-home'))
+  const paths = desktopPathsOf(home)
+  assert.equal(paths.home, home)
+  assert.equal(paths.profileDir, join(home, 'profiles', DESKTOP_PROFILE))
+  assert.equal(paths.linkPath, join(home, 'profiles', DESKTOP_PROFILE, 'node_modules', LEADER_KIT_PACKAGE))
+  // 与 npm run dev 的 .dev/home 不同目录：共用数据根会让两个实例互相写会话与卡片。
+  assert.notEqual(home, join(WORKTREE, '.dev', 'home'))
+})
+
+test('主 checkout 用日常根，worktree 一律派生', () => {
+  assert.deepEqual(planDesktopHome({ inWorktree: false }), { mode: 'daily', owner: null })
+  // 主 checkout 里日常 profile 挂着别处时不在这里放行：由 planDesktopEnable 拒绝。
+  assert.deepEqual(
+    planDesktopHome({ inWorktree: false, installedSpec: 'link:/work/repo' }),
+    { mode: 'daily', owner: null },
+  )
+  assert.deepEqual(planDesktopHome({ inWorktree: true }), { mode: 'derived', owner: null })
+  // 派生分支把日常那份挂的是谁带出去，只用于提示，不参与判定。
+  assert.deepEqual(
+    planDesktopHome({ inWorktree: true, installedSpec: 'link:/work/repo' }),
+    { mode: 'derived', owner: 'link:/work/repo' },
+  )
+  assert.deepEqual(
+    planDesktopHome({ inWorktree: true, installedSpec: '' }),
+    { mode: 'derived', owner: null },
+  )
+})
+
+test('派生分支接线：worktree 内才派生，源固定成日常根', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  assert.match(source, /planDshHomeEnv\(rawHome\) === 'unset'/)
+  assert.match(source, /planDesktopHome\(\{ inWorktree: inGitWorktree\(worktree\), installedSpec \}\)/)
+  assert.match(source, /prepareDerivedPaths\(\{ worktree, homeDir, dailyPaths, dailyManifest \}\)/)
+  assert.match(source, /env: \{ DSH_HOME: home, DSH_PROFILE: DESKTOP_PROFILE, DSH_HOME_SOURCE: dailyPaths\.home \}/)
+  assert.match(source, /assertSeparateHome\(\{ home: derived\.home, sourceHome: dailyPaths\.home \}\)/)
+  // worktree 标记是文件、主 checkout 是目录——用它区分身份不起 git 子进程。
+  assert.match(source, /function inGitWorktree\(worktree\) \{\s*\n\s*const marker = lstatSync\(join\(worktree, '\.git'\)/)
+  // 派生根要先建好 profile 再进锁：进锁时才 mkdir 会晚一步看到别的来源。
+  assert.ok(
+    source.indexOf('prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })')
+    < source.indexOf('withProfileLock(paths, () => {'),
+  )
+  // 显式 DSH_HOME 时不派生：那条根是用户指定的，另找地方会让「我指定的目录没生效」。
+  assert.match(source, /: \{ mode: 'daily', owner: null \}/)
+})
+
+test('派生只影响数据根：日常 profile 的说明符与链接一个都不写', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  const derivedBody = source.slice(
+    source.indexOf('function prepareDerivedPaths('),
+    source.indexOf('async function main()'),
+  )
+  // 派生只读日常根（dailyPaths / dailyManifest），不出现对 dailyPaths 的写操作。
+  assert.match(derivedBody, /prepareProfileDir\(/)
+  assert.doesNotMatch(derivedBody, /writeFileSync|rmSync|symlinkSync\(/)
+  assert.doesNotMatch(derivedBody, /dailyPaths\.linkPath/)
+})
+
+test('已装来源的说明符按链接原样取出，供派生判定用', () => {
+  assert.equal(installedSpecOf(desktopPackage()), null)
+  assert.equal(
+    installedSpecOf(desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: 'link:/work/repo' } })),
+    'link:/work/repo',
+  )
 })

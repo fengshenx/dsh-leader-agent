@@ -1,20 +1,28 @@
 /**
- * `npm run desktop` —— 把当前工作树挂进桌面版的 desktop profile，再启动桌面应用。
+ * `npm run desktop` —— 把当前目录挂进桌面版的 desktop profile，再启动桌面应用。
  *
  * 为什么需要这条命令：DeepSeek Harness Desktop 是 Electron 壳 + 完整 Web 应用，
  * profile 固定为 `$DSH_HOME/profiles/desktop`（`apps/desktop/src/paths.ts`），与
  * `npm start` / `npm run dev` 用的 `profiles/web` 各管各的包与激活状态。装进 web
  * profile 的插件，桌面版看不到。
  *
- * 脚本做的事：
+ * **两套数据根，按当前目录的身份选**：
+ * - 主 checkout 里跑 → 写日常 `~/.dsh/profiles/desktop`，桌面版以后启动都带着本次改动；
+ * - worktree 里跑 → 派生 `./.dev/desktop-home`（profile 从日常根照抄依赖与 bundle，
+ *   只把本插件换成当前工作树的链接），日常 profile 一个字节都不动。桌面 profile 只有
+ *   一份，两个分支挂不进去，派生是「分支内验证而不碰别人那份」的唯一办法。
+ *   代价：派生数据根的会话、项目、卡片与日常实例是两套，删掉目录即重置。
+ *   `DSH_HOME` 显式指定时两条都不走，就写那一份根。
+ *
+ * 脚本做的事（两套根都一样）：
  * - 往 desktop profile 的 `package.json` 里写 `dsh-leader-kit: link:<当前目录>` 并把
- *   包名追加进 `dsh.profile.bundles`（已装别的来源时拒绝，不覆盖人的安装）；
+ *   包名追加进 `dsh.profile.bundles`（主 checkout 里已装别的来源时拒绝，不覆盖人的安装）；
  * - `node_modules/dsh-leader-kit` 链到当前目录（junction，Windows 上不需要管理员）；
  * - 重建客户端产物 `lib/client.js`（不入库，漏构建时实例照常起来、右栏却没有看板）；
  * - 启动桌面应用（macOS 用 `open --env -a`，Windows 直接起 exe 并把 `DSH_HOME` 放进
  *   子进程环境；`DSH_DESKTOP_APP` 可换应用名、`.app`／exe 路径或安装目录）。
  *
- * 撤销：`npm run desktop -- --remove`。
+ * 撤销：`npm run desktop -- --remove`（在哪个目录跑就摘哪个根的，另一份不动）。
  *
  * 走这条路径不碰 pnpm：宿主启动时只按 `bundles` 顺序解析包，不校验 `link:` 与磁盘
  * 链接是否一致（`npm run dev` 的派生 profile 就是同样跑通的）。`pnpm-lock.yaml` 因此
@@ -22,7 +30,7 @@
  * 补齐——link 依赖不需要网络。
  *
  * 环境变量：
- * - `DSH_HOME`       桌面数据根，默认 `~/.dsh`；桌面应用也读这个变量
+ * - `DSH_HOME`       桌面数据根，默认 `~/.dsh`（worktree 内派生时忽略）；桌面应用也读它
  * - `DSH_DESKTOP_APP` 应用名、`.app` ／ exe 路径或安装目录，默认 `DeepSeek Harness`
  */
 
@@ -35,11 +43,13 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
-import { LEADER_KIT_PACKAGE, assertWebBundle } from './dev-plan.mjs'
+import { prepareProfileDir } from './dev-instance.mjs'
+import { LEADER_KIT_PACKAGE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
 import {
-  DESKTOP_APP_NAME, expandHomePath, looksLikeAppPath, parseBundleExecutable, parseTasklistImages,
-  planDesktopDisable, planDesktopEnable, planLinkAction, planProfileLockAction, resolveHomePathsOrThrow,
-  windowsExeCandidates,
+  DESKTOP_APP_NAME, DESKTOP_PROFILE, desktopPathsOf, derivedDesktopHome, expandHomePath,
+  installedSpecOf, looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable,
+  planDesktopEnable, planDesktopHome, planDshHomeEnv, planLinkAction, planProfileLockAction,
+  resolveHomePathsOrThrow, windowsExeCandidates,
 } from './desktop-plan.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 import { detachNodeModulesLink } from './worktree-common.mjs'
@@ -516,43 +526,91 @@ function detachLink(linkPath) {
 }
 
 /**
+ * 在工作树内派生一份只挂当前工作树的 desktop profile。
+ *
+ * 桌面 profile 只有一份，同一数据根下挂不了两个版本。日常那份被别的来源占着时
+ * （主 checkout、另一个工作树、插件管理装的实体目录）不能覆盖——那是别人的安装
+ * ——所以另起一个数据根：profile 从日常根派生（依赖与 bundle 列表照抄，只把
+ * 本插件换成工作树链接），依赖逐条链回日常 profile，数据（会话、项目、卡片）
+ * 落在工作树内，删掉即重置。派生与链接的实现在 `dev-instance.mjs`，与
+ * `npm run dev`、e2e 共用同一份，三处组合不会漂移。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.worktree - 工作树绝对路径
+ * @param {string} options.homeDir - 用户主目录
+ * @param {object} options.dailyPaths - 日常工作根的路径
+ * @param {object} options.dailyManifest - 日常 profile 的 `package.json` 解析结果
+ * @returns {object} 派生数据根的路径
+ */
+function prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest }) {
+  const home = derivedDesktopHome({ worktree })
+  // 源固定成日常根：`DSH_HOME_SOURCE` 是 `npm run dev` 的旋钮，桌面这边只认实际
+  // 那份日常 profile，否则派生出来的组合与用户日常看到的不一致。
+  const derived = resolveDevPaths({
+    worktree,
+    homeDir,
+    env: { DSH_HOME: home, DSH_PROFILE: DESKTOP_PROFILE, DSH_HOME_SOURCE: dailyPaths.home },
+  })
+  assertSeparateHome({ home: derived.home, sourceHome: dailyPaths.home })
+  prepareProfileDir({ worktree, paths: derived, sourcePackage: dailyManifest })
+  return desktopPathsOf(home)
+}
+
+/**
+ * 当前目录是不是 git worktree（而不是主 checkout）。
+ *
+ * worktree 的 `.git` 是文件（`gitdir: …`），主 checkout 是目录。用它区分两种身份
+ * 不需要起 git 子进程：`npm run desktop` 每次会话都要跑，能省的就省。
+ *
+ * @param {string} worktree - 当前仓库目录
+ * @returns {boolean} 是 worktree 时 true
+ */
+function inGitWorktree(worktree) {
+  const marker = lstatSync(join(worktree, '.git'), { throwIfNoEntry: false })
+  return marker?.isFile() === true
+}
+
+/**
  * 校验环境并执行。
  *
  * @returns {Promise<void>} 无返回
  */
 async function main() {
   const homeDir = homedir()
-  const paths = resolveHomePathsOrThrow({
-    rawHome: process.env.DSH_HOME ?? '',
-    homeDir,
-    cwd: process.cwd(),
-  })
+  const rawHome = process.env.DSH_HOME ?? ''
+  const dailyPaths = resolveHomePathsOrThrow({ rawHome, homeDir, cwd: process.cwd() })
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
   const target = desktopTarget(appName, { homeDir, env: process.env })
   const remove = process.argv.slice(2).includes('--remove')
 
-  if (!existsSync(paths.packagePath)) {
-    console.error(`找不到桌面 profile: ${paths.packagePath}`)
+  const dailyManifest = existsSync(dailyPaths.packagePath) ? readManifest(dailyPaths.packagePath) : null
+  if (dailyManifest === null) {
+    if (remove) {
+      console.log(`没有可摘的挂载：${dailyPaths.packagePath} 不存在。`)
+      return
+    }
+    console.error(`找不到桌面 profile: ${dailyPaths.packagePath}`)
     console.error('桌面版第一次启动时会自己建出它：先打开一次 DeepSeek Harness，退出后再跑本命令。')
     console.error('数据根不在默认位置时用 DSH_HOME 指定（桌面应用也读它）。')
     process.exit(1)
   }
 
-  if (!remove) {
-    try {
-      assertWebBundle({
-        profileDir: paths.profileDir,
-        bundles: readManifest(paths.packagePath)?.dsh?.profile?.bundles,
-        hint: '桌面应用自己会写这个列表；缺它说明该 profile 被改坏了，'
-          + '先退出应用、删掉该 profile 目录，再打开应用让它重建。',
-      })
-    } catch (error) {
-      console.error(`错误: ${error.message}`)
-      process.exit(1)
-    }
-  }
+  // 显式给了 DSH_HOME 就是指定了数据根，脚本不另找地方：那条根被别人占着时照旧
+  // 拒绝（由人决定要不要卸），免得「我指定的目录怎么没生效」。
+  const installedSpec = installedSpecOf(dailyManifest)
+  const homePlan = planDshHomeEnv(rawHome) === 'unset'
+    ? planDesktopHome({ inWorktree: inGitWorktree(worktree), installedSpec })
+    : { mode: 'daily', owner: null }
+  const useDerived = homePlan.mode === 'derived'
 
   if (remove) {
+    const paths = useDerived
+      ? prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })
+      : dailyPaths
+    if (!existsSync(paths.packagePath)) {
+      console.log(`没有可摘的挂载：${paths.packagePath} 不存在。`)
+      return
+    }
     // 摘除不看应用在不在：改名、卸载之后照样要能摘。只看谁占着 profile。
     const { changed, linkState } = withProfileLock(paths, () => {
       const state = linkStateOf({ linkPath: paths.linkPath, worktree })
@@ -599,6 +657,23 @@ async function main() {
     process.exit(1)
   }
 
+  // 探活放在派生之前：应用在跑时派生根也一个字节都不动，免得改到正在被读的 profile。
+  const paths = useDerived
+    ? prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })
+    : dailyPaths
+
+  try {
+    assertWebBundle({
+      profileDir: paths.profileDir,
+      bundles: readManifest(paths.packagePath)?.dsh?.profile?.bundles,
+      hint: '桌面应用自己会写这个列表；缺它说明该 profile 被改坏了，'
+        + '先退出应用、删掉该 profile 目录，再打开应用让它重建。',
+    })
+  } catch (error) {
+    console.error(`错误: ${error.message}`)
+    process.exit(1)
+  }
+
   // 先构建、再建链接、最后写 manifest：构建失败时 profile 一点没动；链接被别人的
   // 安装挡住时 manifest 也保持原样，不会留下「声明了依赖、磁盘上没有对应链接」的
   // 坏状态。反过来链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑
@@ -619,8 +694,14 @@ async function main() {
   })
 
   console.log('')
-  console.log('== dsh-leader-kit 挂进桌面版 ==')
-  console.log(`  数据根    ${paths.home}`)
+  console.log(homePlan.mode === 'derived'
+    ? '== dsh-leader-kit 挂进桌面版（分支隔离）=='
+    : '== dsh-leader-kit 挂进桌面版 ==')
+  if (homePlan.mode === 'derived') {
+    console.log(`  日常 profile  ${dailyPaths.profileDir}`)
+    console.log(`                挂着 ${homePlan.owner ?? '另一份安装'}，本次不动它`)
+  }
+  console.log(`  数据根    ${paths.home}${homePlan.mode === 'derived' ? '（会话、项目、卡片独立；删掉即重置）' : ''}`)
   console.log(`  profile   ${paths.profileDir}`)
   console.log(`  插件      ${paths.linkPath} -> ${worktree}`)
   console.log(`  manifest  ${changed ? '已更新' : '已是最新'}`)
@@ -641,7 +722,9 @@ async function main() {
   } else {
     console.log('profile 已挂好，启动应用后生效：右栏出现「看板」Tab、左栏出现「项目」区块。')
   }
-  console.log('摘除：npm run desktop -- --remove')
+  console.log(homePlan.mode === 'derived'
+    ? '摘除：npm run desktop -- --remove（摘的是派生这份，日常 profile 未被改动）'
+    : '摘除：npm run desktop -- --remove')
 }
 
 try {
