@@ -26,7 +26,8 @@
  */
 
 import {
-  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, symlinkSync,
+  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync,
+  symlinkSync, writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -197,35 +198,56 @@ function processAlive(pid) {
 }
 
 /**
- * 桌面应用的 profile 锁是否被占着。
+ * 持着桌面应用的 `<profile>/lock` 跑完读改写。
  *
- * 宿主 `DesktopProjectManager.withLock` 在 `<profile>/lock` 上 `openSync('wx')` 并写入
- * 自己的 PID，`applyRelease` 与 `disableAllPlugins` 都走它——写 profile 期间撞上会
- * 相互覆盖。进程已退出的锁是陈旧的（宿主自己会接管），只提示不拦。
+ * 与宿主 `DesktopProjectManager.withLock` 同协议：`openSync(..., 'wx')` 建锁、写入自己
+ * 的 PID、结束时删掉。只检查一下再写是不够的——检查与写入之间进来了第二个写者（桌面
+ * 应用自己的 `applyRelease`、另一个终端里的本脚本）照样会相互覆盖。进程已退出的锁是
+ * 陈旧的，接管后重开（宿主也这么做）。
  *
  * @param {object} paths - `resolveDesktopPaths` 的结果
- * @returns {void} 无返回
- * @throws 锁被活跃进程持有时
+ * @param {() => *} operation - 持锁期间执行的读改写
+ * @returns {*} operation 的返回值
  */
-function assertProfileLockFree(paths) {
-  const exists = existsSync(paths.profileLockPath)
-  const content = exists ? readFileSync(paths.profileLockPath, 'utf8') : ''
-  const pid = Number.parseInt(String(content).trim(), 10)
-  const action = planProfileLockAction({
-    exists,
-    content,
-    ownerAlive: Number.isSafeInteger(pid) && pid > 0 ? processAlive(pid) : false,
-  })
-  if (action === 'proceed') return
-  if (action === 'stale') {
-    console.log(`${paths.profileLockPath} 是上次操作留下的陈旧锁（PID ${pid} 已退出），继续。`)
-    return
+function withProfileLock(paths, operation) {
+  mkdirSync(paths.profileDir, { recursive: true })
+  const lockPath = paths.profileLockPath
+  let acquired = false
+  for (let attempt = 0; attempt < 2 && !acquired; attempt += 1) {
+    try {
+      writeFileSync(lockPath, `${process.pid}\n`, { flag: 'wx', mode: 0o600 })
+      acquired = true
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error
+      const content = readFileSync(lockPath, 'utf8')
+      const pid = Number.parseInt(content.trim(), 10)
+      const action = planProfileLockAction({
+        exists: true,
+        content,
+        ownerAlive: Number.isSafeInteger(pid) && pid > 0 ? processAlive(pid) : false,
+      })
+      if (action === 'refuse') {
+        throw new Error(
+          `${lockPath} 存在且持有者（PID ${Number.isSafeInteger(pid) && pid > 0 ? pid : '未知'}）还在：`
+          + '桌面应用正在改这个 profile（宿主用 <profile>/lock 串行化插件操作），或另一个终端在跑本脚本。'
+          + '\n等它结束再重跑；确认没有任何桌面应用操作时可以删掉这个锁文件。',
+        )
+      }
+      console.log(`${lockPath} 是上次操作留下的陈旧锁（PID ${pid} 已退出），接管。`)
+      rmSync(lockPath, { force: true })
+    }
   }
-  throw new Error(
-    `${paths.profileLockPath} 存在且持有者（PID ${Number.isSafeInteger(pid) && pid > 0 ? pid : '未知'}）还在：`
-    + '桌面应用正在改这个 profile（宿主用 <profile>/lock 串行化插件操作）。'
-    + '\n等它结束再重跑；确认没有任何桌面应用操作时可以删掉这个锁文件。',
-  )
+  if (!acquired) throw new Error(`拿不到 ${lockPath}，可能是并发清理与获取撞在一起，重跑一次。`)
+  try {
+    return operation()
+  } finally {
+    // 只删自己那把：锁可能已被别人接管，删别人的会放出第二个写者。
+    try {
+      if (readFileSync(lockPath, 'utf8') === `${process.pid}\n`) rmSync(lockPath, { force: true })
+    } catch {
+      // 锁已被接管或删除，没有可回收的东西。
+    }
+  }
 }
 
 /**
@@ -250,9 +272,13 @@ function launchDesktopApp(bundle, { dshHome }) {
     args: ['--env', `DSH_HOME=${dshHome}`, '-a', bundle],
     encoding: 'utf8',
   })
-  if (result.status !== 0) {
+  // open 成功时是静默的；有 stderr 说明环境变量没送到（典型是应用已在运行，
+  // rc 仍是 0，--env 被丢掉），不能当成「已启动」。
+  const complaint = (result.stderr ?? '').trim()
+  if (result.status !== 0 || complaint !== '') {
     throw new Error(
-      `open -a "${bundle}" 失败（退出码 ${result.status}）：${(result.stderr || result.stdout || '').trim()}`,
+      `open -a "${bundle}" 没成功（退出码 ${result.status}）：${complaint || (result.stdout ?? '').trim()}`
+      + `\n先把桌面应用完全退出（⌘Q）再重跑；已运行实例收不到 --env DSH_HOME=${dshHome}。`,
     )
   }
   return true
@@ -327,7 +353,14 @@ function detachLink(linkPath) {
 function main() {
   const homeDir = homedir()
   const rawHome = process.env.DSH_HOME?.trim() ?? ''
-  if (planDshHomeEnv(rawHome) === 'relative') {
+  const homeEnv = planDshHomeEnv(rawHome)
+  if (homeEnv === 'unsupported-tilde-user') {
+    throw new Error(
+      `DSH_HOME=${rawHome} 用了 ~user 写法：宿主只展开单独的 ~ 与 ~/、~\\ 前缀，`
+      + '照字面拼下去会变成 <当前目录>/~user/…。改成 ~/…，或写绝对路径。',
+    )
+  }
+  if (homeEnv === 'relative') {
     throw new Error(
       `DSH_HOME=${rawHome} 是相对路径：它的基准是发起命令的目录，而桌面应用由 open 启动、`
       + '不继承这个 shell 的环境，两边会算成不同的数据根。改成绝对路径，或用 ~/ 开头的写法。',
@@ -361,30 +394,32 @@ function main() {
 
   if (remove) {
     // 摘除不看应用在不在：改名、卸载之后照样要能摘。只看谁占着 profile。
-    assertProfileLockFree(paths)
-    const linkState = linkStateOf({ linkPath: paths.linkPath, worktree })
-    if (linkState === 'other') {
-      throw new Error(
-        `${paths.linkPath} 指向别处（${readlinkSync(paths.linkPath)}），不是当前目录 ${worktree}，`
-        + '\n不摘别人的安装：到那份来源的目录里跑 --remove，或在插件管理里卸载。',
-      )
-    }
-    const changed = withFileLockSync(paths.packagePath, () => {
-      const { manifest: next, changed: planned } = planDesktopDisable({
-        manifest: readManifest(paths.packagePath),
-        worktree,
-      })
-      if (linkState === 'foreign' && planned) {
+    const { changed, linkState } = withProfileLock(paths, () => {
+      const state = linkStateOf({ linkPath: paths.linkPath, worktree })
+      if (state === 'other') {
         throw new Error(
-          `${paths.linkPath} 是实体目录（像是插件管理装的一份），本脚本不摘。`
-          + '\n要么在 DeepSeek Harness 的插件管理里卸载，要么先手工删掉这个目录再重跑 --remove；'
-          + 'manifest 里的声明这次一并保留，不留下「没有依赖、只在 bundles 里」的半摘状态。',
+          `${paths.linkPath} 指向别处（${readlinkSync(paths.linkPath)}），不是当前目录 ${worktree}，`
+          + '\n不摘别人的安装：到那份来源的目录里跑 --remove，或在插件管理里卸载。',
         )
       }
-      if (planned) writeManifest(paths.packagePath, next)
-      return planned
+      const written = withFileLockSync(paths.packagePath, () => {
+        const { manifest: next, changed: planned } = planDesktopDisable({
+          manifest: readManifest(paths.packagePath),
+          worktree,
+        })
+        if (state === 'foreign' && planned) {
+          throw new Error(
+            `${paths.linkPath} 是实体目录（像是插件管理装的一份），本脚本不摘。`
+            + '\n要么在 DeepSeek Harness 的插件管理里卸载，要么先手工删掉这个目录再重跑 --remove；'
+            + 'manifest 里的声明这次一并保留，不留下「没有依赖、只在 bundles 里」的半摘状态。',
+          )
+        }
+        if (planned) writeManifest(paths.packagePath, next)
+        return planned
+      })
+      if (state === 'ours') detachLink(paths.linkPath)
+      return { changed: written, linkState: state }
     })
-    if (linkState === 'ours') detachLink(paths.linkPath)
     console.log('')
     console.log('== 已从 desktop profile 摘除 dsh-leader-kit ==')
     console.log(`  manifest  ${changed ? '已更新' : '本来就没有'}`)
@@ -407,16 +442,18 @@ function main() {
   // 坏状态。反过来链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑
   // 会当成「已指向当前目录」。
   run('npm', ['run', 'build:client'], { cwd: worktree })
-  assertProfileLockFree(paths)
-  const action = ensureLink({ linkPath: paths.linkPath, worktree })
-  // 重读 manifest 在锁内做：读-判-写之间不能有第二个写者插进来。
-  const changed = withFileLockSync(paths.packagePath, () => {
-    const { manifest: next, changed: planned } = planDesktopEnable({
-      manifest: readManifest(paths.packagePath),
-      worktree,
+  const { action, changed } = withProfileLock(paths, () => {
+    const linkAction = ensureLink({ linkPath: paths.linkPath, worktree })
+    // 重读 manifest 在锁内做：读-判-写之间不能有第二个写者插进来。
+    const written = withFileLockSync(paths.packagePath, () => {
+      const { manifest: next, changed: planned } = planDesktopEnable({
+        manifest: readManifest(paths.packagePath),
+        worktree,
+      })
+      if (planned) writeManifest(paths.packagePath, next)
+      return planned
     })
-    if (planned) writeManifest(paths.packagePath, next)
-    return planned
+    return { action: linkAction, changed: written }
   })
 
   console.log('')
@@ -428,6 +465,12 @@ function main() {
   console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
   console.log('')
 
+  if (process.platform === 'darwin' && running === null) {
+    // open --env 对已运行实例不生效（rc 仍是 0，环境被丢掉），探不到就不能赌。
+    console.log('探不到桌面应用是否在运行（pgrep 不可用），不自动启动。')
+    console.log(`自己启动：DSH_HOME="${paths.home}" open -a "${appBundle ?? appName}"`)
+    return
+  }
   const launched = launchDesktopApp(appBundle, { dshHome: paths.home })
   console.log('')
   if (launched) {

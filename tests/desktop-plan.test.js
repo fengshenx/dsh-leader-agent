@@ -162,7 +162,7 @@ test('先建链接再写 manifest：链接被别人的安装挡住时不留坏�
   // IO 层不硬测，只钉顺序：ensureLink 抛错时 writeManifest 还没执行，manifest
   // 保持原样；反过来会留下「bundles 声明了本插件、node_modules 却是别人的目录」。
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  const linkAt = source.indexOf('const action = ensureLink(')
+  const linkAt = source.indexOf('const linkAction = ensureLink(')
   assert.notEqual(linkAt, -1, '找不到 ensureLink 调用')
   const writeAt = source.indexOf('writeManifest(paths.packagePath, next)', linkAt)
   assert.notEqual(writeAt, -1, '挂载分支里找不到 writeManifest 调用')
@@ -185,6 +185,16 @@ test('相对 DSH_HOME 拒绝：open 启动的应用拿不到这个 shell 的 cwd
   assert.equal(planDshHomeEnv('~/dsh'), 'absolute')
   assert.equal(planDshHomeEnv('data'), 'relative')
   assert.equal(planDshHomeEnv('./data'), 'relative')
+  // 宿主只认单独的 ~ 与 ~/、~\ 前缀，~user 照字面拼会变成 <cwd>/~user/x。
+  assert.equal(planDshHomeEnv('~user/x'), 'unsupported-tilde-user')
+  assert.equal(planDshHomeEnv('~user'), 'unsupported-tilde-user')
+  // 首尾空白先 trim 再判：带空白的值拼出来是另一条路径。
+  assert.equal(planDshHomeEnv('  /data/dsh  '), 'absolute')
+  assert.equal(planDshHomeEnv('   '), 'unset')
+  assert.equal(
+    resolveDesktopPaths({ homeDir: HOME, env: { DSH_HOME: '  /data/dsh  ' } }).home,
+    '/data/dsh',
+  )
 })
 
 test('DSH_DESKTOP_APP：裸 .app 名是名字，不是相对路径', () => {
@@ -213,8 +223,8 @@ test('摘除不依赖桌面应用是否存在，且实体目录占位时整单�
   // 探活在挂载分支里；--remove 分支要先返回。
   assert.ok(source.indexOf("if (remove) {") < source.indexOf('desktopAppRunning(appBundle)'))
   // 实体目录 + manifest 有本插件记录：拒绝，不写 manifest。
-  assert.match(source, /linkState === 'foreign' && planned/)
-  assert.ok(source.indexOf("linkState === 'foreign' && planned") < source.indexOf('writeManifest(paths.packagePath, next)'))
+  assert.match(source, /state === 'foreign' && planned/)
+  assert.ok(source.indexOf("state === 'foreign' && planned") < source.indexOf('writeManifest(paths.packagePath, next)'))
 })
 
 test('写 manifest 的重读与写入在同一把锁里（消掉 TOCTOU）', () => {
@@ -231,4 +241,27 @@ test('启动接线：open 收 .app 绝对路径，数据根用 --env 显式传',
   assert.match(source, /'--env', `DSH_HOME=\$\{dshHome\}`, '-a', bundle/)
   assert.doesNotMatch(source, /args: \['-a', appName\]/)
   assert.match(source, /launchDesktopApp\(appBundle, \{ dshHome: paths\.home \}\)/)
+})
+
+test('启动 fail closed：探不到运行态不启动，open 有 stderr 不当成功', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // ~user 的判定必须真接到 main 上，否则只是纯函数自娱自乐。
+  assert.match(source, /homeEnv === 'unsupported-tilde-user'/)
+  // 已运行实例收不到 --env（rc 仍 0），所以探活拿不到结论时不能自动启动。
+  assert.match(source, /process\.platform === 'darwin' && running === null/)
+  assert.ok(source.indexOf("running === null") < source.indexOf('launchDesktopApp(appBundle'))
+  // open 成功是静默的：stderr 非空说明环境没送到。
+  assert.match(source, /const complaint = \(result\.stderr \?\? ''\)\.trim\(\)/)
+  assert.match(source, /result\.status !== 0 \|\| complaint !== ''/)
+})
+
+test('锁覆盖整个读改写：自己建 <profile>/lock，只删自己那把', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // 与宿主同协议：'wx' 独占创建 + 写自己 PID。
+  assert.match(source, /writeFileSync\(lockPath, `\$\{process\.pid\}\\n`, \{ flag: 'wx'/)
+  assert.match(source, /readFileSync\(lockPath, 'utf8'\) === `\$\{process\.pid\}\\n`/)
+  // 挂载与摘除各一处，都在持锁期间完成。
+  assert.equal((source.match(/withProfileLock\(paths, \(\) => \{/g) ?? []).length, 2)
+  // 一次性检查已被替换：检查与写入之间有窗口。
+  assert.doesNotMatch(source, /assertProfileLockFree/)
 })

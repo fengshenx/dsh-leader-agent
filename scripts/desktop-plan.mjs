@@ -70,16 +70,20 @@ export function looksLikeAppPath(input) {
 /**
  * `DSH_HOME` 能不能交给桌面应用。
  *
- * 相对路径的基准是发起命令的目录，而桌面应用由 `open` 启动、不继承这个 shell 的
- * 环境，两边会算成不同的数据根。所以只接受绝对路径与 `~/` 写法。
+ * 相对路径的基准是发起命令的目录，而桌面应用由 `open` 启动、cwd 也不是这里，两边会
+ * 算成不同的数据根。`~user` 同样不支持：宿主只展开单独的 `~` 与 `~/`、`~\` 前缀，
+ * 照字面拼下去会变成 `<cwd>/~user/x`。判定前统一 `trim`——带首尾空白的值拼出来是
+ * 另一条路径。
  *
  * @param {string} rawHome - 原始 `DSH_HOME`，未设时传空串
- * @returns {'unset' | 'absolute' | 'relative'} 判定
+ * @returns {'unset' | 'absolute' | 'relative' | 'unsupported-tilde-user'} 判定
  */
 export function planDshHomeEnv(rawHome) {
   const raw = String(rawHome ?? '').trim()
   if (raw === '') return 'unset'
-  return raw.startsWith('~') || isAbsolute(raw) ? 'absolute' : 'relative'
+  if (raw === '~' || raw.startsWith('~/') || raw.startsWith('~\\')) return 'absolute'
+  if (raw.startsWith('~')) return 'unsupported-tilde-user'
+  return isAbsolute(raw) ? 'absolute' : 'relative'
 }
 
 /**
@@ -130,7 +134,8 @@ export function planLinkAction({ exists, isSymbolicLink, sameTarget }) {
  * @returns {object} 数据根与 profile 内的文件路径
  */
 export function resolveDesktopPaths({ homeDir, cwd, env = {} }) {
-  const configured = env.DSH_HOME === undefined || env.DSH_HOME.trim() === '' ? null : env.DSH_HOME
+  const trimmed = String(env.DSH_HOME ?? '').trim()
+  const configured = trimmed === '' ? null : trimmed
   const home = configured === null ? join(homeDir, '.dsh') : expandHomePath(configured, homeDir, cwd)
   const profileDir = join(home, 'profiles', DESKTOP_PROFILE)
   const nodeModulesDir = join(profileDir, 'node_modules')
