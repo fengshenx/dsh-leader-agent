@@ -93,7 +93,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 官方树排除 | 渲染层按 `data-row-key="session:<id>"` 给 leader 与 worker 行加隐藏类；数据层不动，因此官方计数与搜索仍包含它们 |
 | 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
-| leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手步骤（与输入框同宽同圆角）；关闭标记存 localStorage |
+| leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手说明（与输入框同宽同圆角）；「让它介绍一下自己」经宿主 `inputActions` 发一条消息，关闭标记存 localStorage |
 | worker 回报气泡 | 独立 Chat node kind + exclusive claim，左侧气泡、头像、名字可下钻；只渲染最后一次回报 |
 | 看板 tab 与入口 | 右栏 tab 类型静态注册；「开始」页入口接管自己那枚胶囊的渲染，只在项目会话里画出来 |
 | 浮层与提示条 | 弹窗外壳（`modal-shell.js`）与菜单复刻官方源码改写；一次性消息走宿主的 `shell.overlay` 槽位，4 秒淡出 |

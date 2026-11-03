@@ -14,8 +14,7 @@
 /** 关闭标记的 localStorage 键前缀，后面接 leader 会话 id。 */
 export const GUIDE_DISMISS_PREFIX = 'dsh-leader-kit.guide.dismissed.'
 
-/** 「看上手文档」指向的文档路径。 */
-export const GUIDE_DOC_PATH = 'docs/getting-started.md'
+
 
 /**
  * 关闭标记的存储键。
@@ -56,27 +55,23 @@ export function readLocalStorage(scope) {
 }
 
 /**
- * 复制上手文档路径，并告诉用户结果。
+ * 让 Leader 自我介绍的点击动作。
  *
- * 第三方 bundle 没有打开本地文件的通道，发布包也不带 `docs/`，所以「看上手
- * 文档」只能把路径交给用户，而不是假装能跳转。
+ * 走宿主的输入机（会话作用域标准 props 里的 `inputActions`，rc.2 起就在）：
+ * `setDraft` 把话填进输入框、`submit` 当场提交。这是用户点击触发的一次发送，
+ * 卡片自己渲染时仍然不写转录、不请求模型。
  *
- * @param {string} path - 文档路径
- * @param {(key: string) => string} t - 翻译函数
- * @param {{ clipboard?: { writeText?: (text: string) => Promise<void> }, notify: (text: string) => void }} io - 剪贴板与提示通道
- * @returns {Promise<boolean>} 是否复制成功
+ * 输入机缺失时（宿主把它从标准 props 里拿掉）不渲染这个按钮——比点了没反应好。
+ *
+ * @param {{ setDraft?: (text: string) => void, submit?: () => void } | undefined} inputActions - 宿主的输入动作
+ * @param {string} prompt - 要发出去的那句话
+ * @returns {boolean} 是否真的发出去了
  */
-export async function copyGuidePath(path, t, { clipboard, notify }) {
-  try {
-    if (typeof clipboard?.writeText !== 'function') throw new TypeError('没有剪贴板能力')
-    await clipboard.writeText(path)
-    notify(t('guide.toast.docs-copied'))
-    return true
-  } catch {
-    // 剪贴板权限被拒或不在安全上下文：仍然把路径告诉用户，不让按钮点了没反应。
-    notify(t('guide.toast.docs-failed'))
-    return false
-  }
+export function sendIntroPrompt(inputActions, prompt) {
+  if (typeof inputActions?.setDraft !== 'function' || typeof inputActions?.submit !== 'function') return false
+  inputActions.setDraft(prompt)
+  inputActions.submit()
+  return true
 }
 
 /**

@@ -2,11 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   GUIDE_DISMISS_PREFIX,
-  GUIDE_DOC_PATH,
-  copyGuidePath,
   createGuideDismissal,
   guideDismissKey,
   readLocalStorage,
+  sendIntroPrompt,
   shouldShowGuide,
 } from '../src/client/guide-card-logic.js'
 
@@ -94,10 +93,6 @@ test('隐私模式下写会抛，点击处理不抛异常', () => {
   assert.doesNotThrow(() => { dismissal.dismiss('session-1') })
 })
 
-test('上手文档路径指向仓库内的上手文档', () => {
-  assert.equal(GUIDE_DOC_PATH, 'docs/getting-started.md')
-})
-
 test('取 localStorage：属性访问抛错时当作没有存储', () => {
   assert.equal(readLocalStorage(undefined), undefined)
   const hostile = Object.defineProperty({}, 'localStorage', {
@@ -108,29 +103,19 @@ test('取 localStorage：属性访问抛错时当作没有存储', () => {
   assert.equal(readLocalStorage({ localStorage: storage }), storage)
 })
 
-test('复制成功时提示已复制，并把路径原样交出', async () => {
-  const copied = []
-  const notices = []
-  const t = (key) => key
-  const ok = await copyGuidePath('docs/getting-started.md', t, {
-    clipboard: { writeText: async (text) => { copied.push(text) } },
-    notify: (text) => notices.push(text),
-  })
-  assert.equal(ok, true)
-  assert.deepEqual(copied, ['docs/getting-started.md'])
-  assert.deepEqual(notices, ['guide.toast.docs-copied'])
+test('让它自我介绍：填进输入框并当场提交', () => {
+  const calls = []
+  const actions = {
+    setDraft: (text) => calls.push(['setDraft', text]),
+    submit: () => calls.push(['submit']),
+  }
+  assert.equal(sendIntroPrompt(actions, '介绍一下你自己'), true)
+  assert.deepEqual(calls, [['setDraft', '介绍一下你自己'], ['submit']])
 })
 
-test('剪贴板缺失或被拒时改提示文档位置，按钮不静默', async () => {
-  const notices = []
-  const t = (key) => key
-  assert.equal(await copyGuidePath('docs/getting-started.md', t, {
-    clipboard: undefined,
-    notify: (text) => notices.push(text),
-  }), false)
-  assert.equal(await copyGuidePath('docs/getting-started.md', t, {
-    clipboard: { writeText: async () => { throw new Error('NotAllowedError') } },
-    notify: (text) => notices.push(text),
-  }), false)
-  assert.deepEqual(notices, ['guide.toast.docs-failed', 'guide.toast.docs-failed'])
+test('输入机缺失或残缺时不发，也不抛', () => {
+  assert.equal(sendIntroPrompt(undefined, '介绍一下你自己'), false)
+  assert.equal(sendIntroPrompt({}, '介绍一下你自己'), false)
+  assert.equal(sendIntroPrompt({ setDraft: () => {} }, '介绍一下你自己'), false)
+  assert.equal(sendIntroPrompt({ submit: () => {} }, '介绍一下你自己'), false)
 })

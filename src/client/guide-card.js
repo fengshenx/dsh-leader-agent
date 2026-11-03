@@ -21,15 +21,13 @@ import { createElement, useEffect, useState } from 'react'
 import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import {
-  GUIDE_DOC_PATH,
-  copyGuidePath,
   createGuideDismissal,
   readLocalStorage,
+  sendIntroPrompt,
   shouldShowGuide,
 } from './guide-card-logic.js'
 import { leaderSessionIndex } from './leader-session-index.js'
 import { SLOT_LOCALE_NAMESPACE } from './locales.js'
-import { showToast } from './toast.js'
 
 /**
  * 关闭标记的读写口。
@@ -49,11 +47,12 @@ function dismissal() {
  * @param {object} props - 槽位属性
  * @param {string} props.sessionId - 当前会话 id
  * @param {{ blank: boolean }} props.session - 当前会话快照（`InputZone.session`）
+ * @param {{ setDraft?: Function, submit?: Function } | undefined} props.inputActions - 宿主输入机（会话作用域标准 props）
  * @param {(key: string) => string} props.t - 当前语言的翻译函数
  * @returns {object | null} React 元素；不该出现时为 null
  */
 export function GuideCardEntry(props) {
-  const { sessionId, session, t } = props
+  const { sessionId, session, inputActions, t } = props
   const [isLeader, setIsLeader] = useState(() => leaderSessionIndex.getSnapshot().has(sessionId))
   const [dismissed, setDismissed] = useState(() => dismissal().isDismissed(sessionId))
 
@@ -78,16 +77,12 @@ export function GuideCardEntry(props) {
     createElement(
       'div',
       { className: 'dsh-leader-kit-guide-actions' },
-      createElement(Button, {
+      // 输入机拿不到时不画这个按钮：点了没反应比没有按钮更糟。
+      typeof inputActions?.submit !== 'function' ? null : createElement(Button, {
         size: 'sm',
         variant: 'outline',
-        onClick: () => {
-          void copyGuidePath(GUIDE_DOC_PATH, t, {
-            clipboard: navigator.clipboard,
-            notify: showToast,
-          })
-        },
-      }, t('guide.action.docs')),
+        onClick: () => { sendIntroPrompt(inputActions, t('guide.intro.prompt')) },
+      }, t('guide.action.intro')),
       createElement(Button, {
         size: 'sm',
         variant: 'ghost',

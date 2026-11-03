@@ -23,9 +23,15 @@
 
 issue 要求「文案进 `locale/zh.json` / `locale/en.json`」，但宿主的 `package-meta.ts` 只从 `locale/*.json` 读 `title` 与 `description`（插件显示名，出现在插件管理器里），界面字符串走 `ctx.locale.register(namespace, { zh, en })`。本仓已有的界面文案就在 `src/client/locales.js` 这份字典里，引导卡的 8 个键追加进同一个命名空间，`locale/*.json` 保持只放显示名。
 
-### 「看上手文档」复制路径，不做站外链接
+### 唯一动作是「替用户发一条消息」，走宿主的输入机
 
-第三方 bundle 没有打开本地文件的通道，发布白名单也不带 `docs/`（`scripts/pack-manifest.mjs` 里 `docs/` 整目录被拦）。于是按钮把 `docs/getting-started.md` 写进剪贴板并提示位置：从仓库或用源码安装时路径直接可用，从 npm 装的用户至少知道文档叫什么、在哪一层。剪贴板缺失或被拒时改提示文档位置，按钮不会点了没反应。
+按钮的定位是**替用户发出那条自我介绍请求**，与用户手敲回车等价：点下去之后会话里多一条 user 消息、走一轮标准模型回合，卡片随后因为 `blank` 翻假而消失。不是预填、不是复制、不是 toast。
+
+通道在宿主 rc.2 就有：会话作用域槽位的标准 props 里合并了 `inputActions: InputActions`（`packages/client/ui-conversation/src/client/contract/input.ts:247`），`submit()` 的注释写着「Enter submission（adjudication / claim transaction / default sink inside）」——就是回车那条路径。实现是 `setDraft(prompt)` + `submit()`（`sendIntroPrompt`）。输入机缺失时**不渲染这个按钮**，而不是画一个点了没反应的按钮。
+
+文案也跟着改成祈使句（读出「发消息」）：中文「让它介绍一下自己」，英文「Ask it to introduce itself」；发出去的正文是 `guide.intro.prompt`。候选：`让它先做个自我介绍`、`对它说：介绍一下你自己`——都更短或更像对话，但按钮上塞对话句式读起来拐，选了最短的祈使句。
+
+首版这条动作是「看上手文档 = 复制路径 + toast」，用户判定没意义后改过一版外链 GitHub 文档页，随后定稿为**只保留自我介绍**——文档入口整条去掉，`docs/limitations.md` 里那条「只能复制路径」的限制也一并删掉（行为已不存在，留一条描述已删行为的限制只会误导）。
 
 ### 形态取单行提示条，几何与输入框同源
 
@@ -62,4 +68,5 @@ issue 要求「文案进 `locale/zh.json` / `locale/en.json`」，但宿主的 `
   - 卡片 `w=774.4 / x=469.3 / right=1243.7`，输入框外壳 `w=774.4 / x=469.3 / right=1243.7`——宽、左、右三处差值均为 0；1280 宽下两侧同为 712，差值同样为 0（同一个 `--dsh-composer-card-max-width` token，窗口收窄时一起收）。
   - 卡片高 64px（首版 134px），圆角 28px 与输入框一致；标题 14/22/500、步骤 13/20；按钮 28px 高、8px 圆角（宿主 `Button` 的 `sm` 规格）。
   - 深色主题：卡片底色 `rgba(255,255,255,0.08)`、标题 `rgb(249,250,251)`、输入框 `rgb(44,44,46)`——全部由 token 得出，宽度与边界与浅色一致。
+- 点击验收：e2e 断言 ① 引导条 locator 变 detached；② 宿主 user 气泡容器 `[data-chat-flow-kind="user"]` 里存在一个叶子元素、其文本恰为 `guide.intro.prompt`（气泡容器还含时间戳，所以不用整块 innerText 相等，也不用「文本包含」——引导条自己的文案里有同一句话，会被自己命中）；③ 会话日志出现这条消息；④ 模型请求 +1。双向验证：把 `sendIntroPrompt` 改成空实现后，气泡断言当场超时变红；还原后全绿。
   - 这三条几何/字号指标已写进 e2e 断言（`width/left/right ≤ 1px`、圆角与输入框相等、标题 ≥14px、步骤 ≥13px、高度 ≤80px），双向验证：删掉 `max-width: var(--dsh-composer-card-max-width)` 后断言立即变红（宽度差 378.6px、左右各偏 189.3px），还原后变绿。

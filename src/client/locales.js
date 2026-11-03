@@ -38,10 +38,9 @@ export const zh = Object.freeze({
   'slot.review': '审核',
   'guide.title': '这个目录有一个 Leader 了',
   'guide.steps': '你可以让它建任务卡、给 Agent 派活，在右栏看板跟进',
-  'guide.action.docs': '看上手文档',
+  'guide.action.intro': '让它介绍一下自己',
   'guide.action.dismiss': '知道了',
-  'guide.toast.docs-copied': '已复制 docs/getting-started.md：文档在插件目录下',
-  'guide.toast.docs-failed': '没复制成功：文档在插件目录 docs/getting-started.md',
+  'guide.intro.prompt': '介绍一下你自己：你能帮我做什么，我该怎么用你？',
 })
 
 /** 英文字典，键与中文字典一致。 */
@@ -51,10 +50,9 @@ export const en = Object.freeze({
   'slot.review': 'Review',
   'guide.title': 'This directory has a Leader',
   'guide.steps': 'Open task cards, hand work to Agents, track progress in the board',
-  'guide.action.docs': 'Read the guide',
+  'guide.action.intro': 'Ask it to introduce itself',
   'guide.action.dismiss': 'Got it',
-  'guide.toast.docs-copied': 'Copied docs/getting-started.md: the guide lives in the plugin directory',
-  'guide.toast.docs-failed': 'Copy failed: the guide is at docs/getting-started.md in the plugin directory',
+  'guide.intro.prompt': 'Introduce yourself: what can you do for me, and how should I use you?',
 })
 
 /**

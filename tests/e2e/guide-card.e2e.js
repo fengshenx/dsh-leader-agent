@@ -18,11 +18,12 @@ import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
+import { waitFor } from './harness.mjs'
+import { zh } from '../../src/client/locales.js'
 import { startMockProvider } from './mock-llm.mjs'
 
-/** 场景标记：mock 用它选脚本。 */
-const MARKER = 'MOCK-GUIDE'
-const REPLY = '收到，先干活'
+/** 引导按钮发出去的那句话：直接取产品文案，不在测试里另抄一份。 */
+const INTRO_PROMPT = zh['guide.intro.prompt']
 
 /**
  * 从数据根里取第一个会话的 id 与 cwd。
@@ -76,7 +77,9 @@ function seedProject(home, session) {
 
 test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就消失', { timeout: 300_000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-guide-'))
-  const mock = await startMockProvider({ scripts: { [MARKER]: [{ text: REPLY }] } })
+  // 引导发出的那句话不带场景标记，mock 会按「没有标记」回 400：这里要证明的是
+  // 「消息发出去并走了一轮模型」，不是模型答得对不对。
+  const mock = await startMockProvider({})
   const problems = []
   let browser = null
   let instance = null
@@ -172,17 +175,41 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   await card(page).waitFor({ state: 'detached', timeout: 5_000 })
   assert.equal(await card(page).count(), 0, '关过的会话重载后不该再出现引导卡')
 
-  // 三、没关过的新浏览器里，发出第一句话后卡片自然消失。
+  // 三、没关过的新浏览器里点「让它介绍一下自己」：消息真的发出去（用户消息上屏、
+  // 走一轮模型），卡片随即因为转录不再为空而消失。
   const fresh = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const freshPage = await fresh.newPage()
   await openLeader(freshPage)
   await card(freshPage).waitFor({ state: 'visible', timeout: 30_000 })
-  const composer = freshPage.locator('div[role="textbox"][contenteditable="true"]').first()
-  await composer.click()
-  await composer.fill(`${MARKER} 你好`)
-  await composer.press('Enter')
-  await freshPage.getByText(REPLY).first().waitFor({ state: 'visible', timeout: 90_000 })
-  await card(freshPage).waitFor({ state: 'detached', timeout: 10_000 })
+  const beforeRequests = mock.requests.length
+  await freshPage.screenshot({ path: join(artifacts, 'before-click.png') })
+  await freshPage.getByRole('button', { name: zh['guide.action.intro'] }).click()
+  // 用户消息的容器是宿主 chat 节点的 data-chat-flow-kind="user"；不用「文本包含
+  // 某句话」定位——引导卡自己的文案里也有同一句话，那样断言会被卡片命中。
+  const bubble = freshPage.locator('[data-chat-flow-kind="user"]')
+  await bubble.first().waitFor({ state: 'visible', timeout: 30_000 })
+  await card(freshPage).waitFor({ state: 'detached', timeout: 15_000 })
+  // 气泡容器里还有时间戳，所以断言落在「存在一个叶子元素，其文本恰好是那句话」。
+  const bubbleText = await bubble.first().evaluate(
+    (node, text) => [...node.querySelectorAll('*')]
+      .some((el) => el.children.length === 0 && (el.textContent ?? '').trim() === text),
+    INTRO_PROMPT,
+  )
+  assert.equal(bubbleText, true, '气泡里应是按钮发出去的那句话')
+  await freshPage.screenshot({ path: join(artifacts, 'after-click.png') })
+  console.log(`[e2e] 截图 ${join(artifacts, 'before-click.png')} / ${join(artifacts, 'after-click.png')}`)
+  await waitFor({
+    description: '会话日志里出现引导发出的那条消息',
+    check: () => readSessionLogs(second.home).some((text) => text.includes(INTRO_PROMPT)),
+    timeoutMs: 30_000,
+  })
+  // 模型请求在日志写入之后才发出：等它到 mock，别紧接着断言时序。
+  await waitFor({
+    description: `点击后应走一轮模型请求（此前 ${beforeRequests} 次）`,
+    check: () => mock.requests.length > beforeRequests,
+    timeoutMs: 30_000,
+  })
+  assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
 })
