@@ -1,6 +1,5 @@
-# e2e 失败预算与页面读数
+# Agent Note: e2e 失败预算与页面读数
 
-**状态**：implemented（2026-11-04）
 **范围**：`tests/e2e/{harness,plugin,session,guide-card,project-workspace}`、`docs/e2e-testing.md`
 
 ## 背景
@@ -53,7 +52,7 @@
 - 读数上限不随 `E2E_BUDGET_SCALE` 放大：它防的是页面卡死，放大只会把卡死重新变成慢失败。
 - 不把页面读数做成通用快照或 golden：它只是失败时的附加证据，不承诺结构稳定。
 - 不改 `t.after` 的清理顺序与 `problems` 断言；`instance.stop()` 已有 SIGTERM → 5 秒 → SIGKILL 链，本 PR 不碰。
-- 笔记暂留 `.agents/notes/` 根层：#102 的 `{lifecycle}/{class}/` 门禁合入后 rebase 到 `implemented/testing/`。
+- 归 `implemented/testing/`：改的是测试基建与断言策略，不是运行时行为（口径见 [README](../../README.md)）。
 
 ## 验证
 
