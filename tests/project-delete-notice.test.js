@@ -12,41 +12,27 @@ after(cleanupTempDirs)
 /**
  * 装配真实的「数据层 → 远程通道 → 提示文案」链路。
  *
- * 三段各自单测时形状可能对不上：service 报 `skipped`、remote 原样透传、客户端
- * 按 `reason` 判失败。这个文件把它们串起来跑，防的就是「远端返回的每种形状在
+ * 三段各自单测时形状可能对不上：service 报 `notFound`、remote 原样透传、客户端
+ * 按 `notFound` 收尾。这个文件把它们串起来跑，防的就是「远端返回的每种形状在
  * 文案里落成哪一支」这类跨段错误。
  *
- * @param {object} [options] - 选项
- * @param {boolean} [options.withRegistry] - 宿主是否有工作区服务
- * @param {boolean} [options.deletable] - 工作区服务是否支持删除
  * @returns {Promise<object>} 链路、临时目录与假件
  */
-async function makeChain({ withRegistry = true, deletable = true } = {}) {
+async function makeChain() {
   const home = await makeTempDir('dsh-leader-kit-delete-notice-')
   const directory = await makeTempDir('dsh-leader-kit-delete-notice-work-')
-  const workspaces = []
+  const workspaces = [{
+    id: 'ws-user',
+    path: await realpath(directory),
+    title: '我自己的工作区',
+    sessionIds: [],
+    detachSession: async () => {},
+  }]
   const registry = {
     list: () => workspaces,
-    create: async (path, title) => {
-      const created = {
-        id: `ws-${workspaces.length + 1}`,
-        path,
-        title,
-        createdAt: new Date().toISOString(),
-        sessionIds: [],
-        attachSession: async () => {},
-      }
-      workspaces.push(created)
-      return created
+    delete: async () => {
+      throw new Error('删除项目不该碰工作区')
     },
-  }
-  if (deletable) {
-    registry.delete = async (id) => {
-      const index = workspaces.findIndex((item) => item.id === id)
-      if (index === -1) return false
-      workspaces.splice(index, 1)
-      return true
-    }
   }
   const provided = new Map()
   const ctx = {
@@ -54,7 +40,7 @@ async function makeChain({ withRegistry = true, deletable = true } = {}) {
       provided.set(key, value)
       return () => provided.delete(key)
     },
-    get: (key) => (key === 'workspaceRegistry' && withRegistry ? registry : undefined),
+    get: (key) => (key === 'workspaceRegistry' ? registry : undefined),
   }
   const store = createProjectStore({ home })
   const service = createProjectService({
@@ -73,86 +59,41 @@ async function makeChain({ withRegistry = true, deletable = true } = {}) {
   return { remote, store, registry, workspaces, directory }
 }
 
-test('插件注册了工作区：删除成功给一句回执', async () => {
-  const { remote, directory } = await makeChain()
-  const project = await remote.create(directory, 'alpha')
-
-  const result = await remote.deleteProject(project.id)
-
-  assert.deepEqual(result, { removed: true, workspaceRemoved: true })
-  assert.equal(describeDeletionNotice(project, result), '已删除项目「alpha」。')
-})
-
-test('复用的用户工作区不碰：回执不提工作区', async () => {
+test('删除项目只删记录：不碰 dsh 工作区', async () => {
   const { remote, registry, workspaces, directory } = await makeChain()
-  const userWorkspace = {
-    id: 'ws-user',
-    path: await realpath(directory),
-    title: '我自己的工作区',
-    sessionIds: [],
-    attachSession: async () => {},
-  }
-  workspaces.push(userWorkspace)
   const project = await remote.create(directory, 'alpha')
 
   const result = await remote.deleteProject(project.id)
 
-  assert.deepEqual(result, { removed: true, workspaceRemoved: false, skipped: true })
+  assert.deepEqual(result, { removed: true })
+  // 工作区原样留着；删除项目根本没有调用工作区服务。
   assert.equal(registry.list().length, 1)
-  // 正常删除被说成「工作区未移除：该项目没有由插件注册的工作区」就是这条链路的旧 bug。
+  assert.equal(workspaces[0].id, 'ws-user')
   assert.equal(describeDeletionNotice(project, result), '已删除项目「alpha」。')
 })
 
-test('记录里的工作区已悬空：按「没有可移的」给回执', async () => {
-  const { remote, store, directory } = await makeChain()
-  const project = await remote.create(directory, 'alpha')
-  // 模拟宿主里工作区被别的途径删掉、项目记录没跟上。
-  await store.update(project.id, { workspaceId: 'ws-gone' })
+test('旧记录里带着 workspaceId 也不影响删除：工作区仍然不动', async () => {
+  const { remote, store, registry, directory } = await makeChain()
+  // 旧版本把「插件自建的工作区」记在项目记录里；升级后这个字段只作为存量数据
+  // 保留，删除项目不再读它。
+  const draft = store.draft({ name: 'alpha', directory })
+  await store.insert({ ...draft, workspaceId: 'ws-legacy' })
 
-  const result = await remote.deleteProject(project.id)
+  const result = await remote.deleteProject(draft.id)
 
-  assert.deepEqual(result, { removed: true, workspaceRemoved: false, skipped: true })
-  assert.equal(describeDeletionNotice(project, result), '已删除项目「alpha」。')
-})
-
-test('宿主没有工作区服务：按「没有可移的」给回执', async () => {
-  const { remote, directory } = await makeChain({ withRegistry: false })
-  const project = await remote.create(directory, 'alpha')
-
-  const result = await remote.deleteProject(project.id)
-
-  assert.deepEqual(result, { removed: true, workspaceRemoved: false, skipped: true })
-  assert.equal(describeDeletionNotice(project, result), '已删除项目「alpha」。')
-})
-
-test('宿主工作区服务不支持删除：真失败要报出来，项目照样删', async () => {
-  const { remote, registry, directory } = await makeChain({ deletable: false })
-  const project = await remote.create(directory, 'alpha')
-
-  const result = await remote.deleteProject(project.id)
-
-  assert.deepEqual(result, {
-    removed: true,
-    workspaceRemoved: false,
-    reason: '当前宿主的工作区服务不支持删除。',
-  })
-  // 工作区留在宿主里，用户只能去官方面板手动删——提示必须说清。
+  assert.deepEqual(result, { removed: true })
   assert.equal(registry.list().length, 1)
-  const notice = describeDeletionNotice(project, result)
-  assert.match(notice, /工作区未移除：当前宿主的工作区服务不支持删除。/)
 })
 
-test('删不存在的项目：不算删掉，也不该报成工作区问题', async () => {
+test('删不存在的项目：明确返回未删除，客户端按幂等成功收尾', async () => {
   const { remote } = await makeChain()
 
   const result = await remote.deleteProject('missing')
 
   assert.deepEqual(result, {
     removed: false,
-    workspaceRemoved: false,
     notFound: true,
     reason: '项目不存在。',
   })
-  // `reason` 在这里是「项目不存在」而不是工作区摘除失败，不能落成工作区告警。
   assert.equal(describeDeletionNotice({ name: 'alpha' }, result), '已删除项目「alpha」。')
 })

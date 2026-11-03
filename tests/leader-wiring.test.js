@@ -68,6 +68,12 @@ function createFakeHost(sessionCwds, extraServices = {}) {
     provide(key, value) {
       holder.provided.set(key, value)
     },
+    // 宿主的 `ctx.inject(deps, callback)` 在依赖就绪后以子上下文执行回调；依赖缺失时
+    // 回调永不执行，与真实 cordis 一致。
+    inject(deps, callback) {
+      if (deps.every((name) => ctx.get(name) !== undefined)) callback(ctx)
+      return { dispose() {} }
+    },
     logger: { warn() {} },
   }
   return { ctx, holder }
@@ -156,6 +162,43 @@ async function writeProjectIndex(home, projects) {
     'utf8',
   )
 }
+
+test('装配层：工作区服务就绪后把项目 leader 从工作区里摘掉', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const previousHome = process.env.DSH_HOME
+  const detached = []
+  const workspace = {
+    id: 'workspace-1',
+    async detachSession(sessionId) {
+      detached.push(sessionId)
+    },
+  }
+  const { ctx, holder } = createFakeHost(new Map(), {
+    workspaceRegistry: { list: () => [workspace], get: () => workspace },
+  })
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      leaderSessionId: 'session-leader',
+    }])
+    apply(ctx)
+    // 迁移排在 worker 登记表读盘之后，等它跑到。
+    for (let attempt = 0; attempt < 100 && detached.length === 0; attempt += 1) {
+      await new Promise((resolve) => { setTimeout(resolve, 20) })
+    }
+    assert.deepEqual(detached, ['session-leader'])
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
 
 test('装配层：普通会话写卡被拒，leader 放行', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))

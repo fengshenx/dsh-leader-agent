@@ -19,9 +19,13 @@
  * 点击步长仍是官方的口径（一次 5 条），所以「还剩几条可看」准确，但一次点击新增
  * 的可见行可能少于文案的变化量。
  *
- * 同一套渲染层还负责工作区行的**激活态**（{@link QUIET_CLASS}）。工作区行本身
- * 照常显示：项目目录在工作区树里是有用的入口（用户可以在里面手动开会话），藏掉
- * 会让那些会话无处可寻。
+ * 项目会话不归属任何 dsh 工作区，宿主因此把它们归进「未分组」，和用户自己的松散
+ * 会话混在一起。组里的项目会话全被排除后，那一组只剩一个组头——同一套渲染层把它
+ * 也藏掉（{@link EMPTY_UNGROUPED_CLASS}），判据只看当前 DOM：组内没有可见会话行，
+ * 也没有还开着的「展开其余 N 个会话」。这不复刻宿主的可见性规则，只是读渲染结果。
+ *
+ * 工作区行本身照常显示：目录是用户在官方树里看得见、能用的入口，藏掉会让用户
+ * 手动开的会话无处可寻。
  *
  * @module dsh-leader-kit/client/workspace-exclusion
  */
@@ -44,14 +48,13 @@ const ORIGIN_ATTR = 'expandOrigin'
 const WRITTEN_ATTR = 'expandWritten'
 
 /**
- * 被压掉激活态的工作区行所用的类名。
+ * 组内没有可见会话时，「未分组」组头所用的类名。
  *
- * 官方给「当前会话所在的工作区分组」的目录图标上业务主色（`folderActive`，
- * 蓝），并且只要分组里有当前会话就点亮。leader 与 worker 会话被本模块从官方树里
- * 藏掉后，被点亮的分组里看不到是谁在点亮它——分组看起来是开着的，却找不到对应
- * 的会话行。命中时把图标颜色压回三级标签色，视觉上与未打开时一致。
+ * 项目会话不归属任何工作区，宿主把它们放进「未分组」；组里的行全被排除后组头
+ * 还留着，看起来像一个空分组。判据只看 DOM（组内已渲染的会话行与展开按钮），
+ * 不推断宿主的数据层规则。
  */
-const QUIET_CLASS = 'dsh-leader-kit-quiet-workspace'
+const EMPTY_UNGROUPED_CLASS = 'dsh-leader-kit-empty-ungrouped'
 
 /** 隐藏规则的样式表 id。 */
 const STYLE_ID = 'dsh-leader-kit-workspace-exclusion'
@@ -63,10 +66,8 @@ const STYLE_TEXT = `
 .dsh-leader-kit-excluded-expand {
   display: none !important;
 }
-/* 工作区行的第一个 span 是目录图标槽（宿主 Rows.tsx 的 slot folder 顺序），
-   图标颜色取自它；未激活时官方也是三级标签色（Rows.module.css 的 .slot）。 */
-.dsh-leader-kit-quiet-workspace > span:first-child {
-  color: var(--dsw-alias-label-tertiary);
+.dsh-leader-kit-empty-ungrouped {
+  display: none !important;
 }
 `
 
@@ -111,42 +112,24 @@ export function markSessionRow(row, excluded) {
 }
 
 /**
- * 按压灰集标记一个工作区行。
- *
- * @param {object} row - 工作区行元素
- * @param {object} state - 标记状态
- * @param {Set<string>} state.quieted - 要压掉激活态的工作区 id
- * @returns {boolean} 该行是否被压掉激活态
- */
-export function markWorkspaceRow(row, { quieted }) {
-  const id = idOf(row.getAttribute('data-row-key'), 'workspace:')
-  const quiet = id !== undefined && quieted.has(id)
-  row.classList.toggle(QUIET_CLASS, quiet)
-  return quiet
-}
-
-/**
- * 按当前集合标记一棵树里的会话行、工作区行与展开按钮。
+ * 按当前集合标记一棵树里的会话行、展开按钮与空的「未分组」组头。
  *
  * 抽成独立函数是为了能脱离 DOM 单测：root 只需提供 `querySelectorAll`，行的形状
- * 见 `markSessionRow` / `markWorkspaceRow`，按钮的形状见 {@link adjustExpandButton}。
- * 真实调用传 `document`。
+ * 见 `markSessionRow`，按钮的形状见 {@link adjustExpandButton}。真实调用传
+ * `document`。
  *
  * @param {object} root - 查询根
  * @param {object} state - 标记状态
  * @param {Set<string>} state.excluded - 要排除的会话 id
- * @param {Set<string>} state.quieted - 要压掉激活态的工作区 id
  * @param {Map<string, number>} [state.excludedByGroup] - 工作区 id 到该组排除集大小；缺省不修折叠计数
  * @returns {void}
  */
-export function markRows(root, { excluded, quieted, excludedByGroup }) {
+export function markRows(root, { excluded, excludedByGroup }) {
   for (const row of root.querySelectorAll('[data-row-key^="session:"]')) {
     markSessionRow(row, excluded)
   }
-  for (const row of root.querySelectorAll('[data-row-key^="workspace:"]')) {
-    markWorkspaceRow(row, { quieted })
-  }
   if (excludedByGroup !== undefined) adjustGroupOverflow(root, excludedByGroup)
+  markUngroupedHeader(root)
 }
 
 /**
@@ -182,6 +165,70 @@ export function excludedSessionCountsByWorkspace({
     if (count > 0) counts.set(workspaceId, count)
   }
   return counts
+}
+
+/**
+ * 算「未分组」里属于排除集的会话数。
+ *
+ * 未分组 = 不属于任何工作区的会话。宿主自己的口径还要再滤掉两类：已归档的，以及
+ * 不在当前会话里的空白会话（`sessionVisible`：空会话只在它是当前会话时渲染）。
+ * 折叠计数的修正必须用同一口径，否则会把宿主口径算多，把真实可看的行压到看不见。
+ *
+ * `sessionRows` 是宿主会话快照（`sessions.list`），`workspaceItems` 是工作区快照。
+ *
+ * @param {object} options - 输入
+ * @param {Record<string, object>} options.sessionRows - 会话 id 到会话行（含 `origin` / `blank`）
+ * @param {object[]} options.workspaceItems - 宿主工作区快照（`{workspaceId, sessionIds}`）
+ * @param {Set<string>} options.excluded - 要排除的会话 id
+ * @param {Set<string>} [options.archivedSessionIds] - 已归档的会话 id
+ * @param {string} [options.currentSessionId] - 主区域当前会话 id
+ * @returns {number} 未分组里属于排除集、且宿主会渲染的会话数
+ */
+export function ungroupedExcludedCount({
+  sessionRows,
+  workspaceItems,
+  excluded,
+  archivedSessionIds,
+  currentSessionId,
+}) {
+  const accounted = new Set()
+  for (const item of workspaceItems ?? []) {
+    for (const sessionId of item?.sessionIds ?? []) accounted.add(sessionId)
+  }
+  let count = 0
+  for (const [sessionId, row] of Object.entries(sessionRows ?? {})) {
+    if (accounted.has(sessionId)) continue
+    if (row?.origin === 'subagent') continue
+    if (row?.blank === true && sessionId !== currentSessionId) continue
+    if (archivedSessionIds?.has(sessionId) === true) continue
+    if (excluded?.has(sessionId) !== true) continue
+    count += 1
+  }
+  return count
+}
+
+/**
+ * 按当前 DOM 判定「未分组」组头要不要藏。
+ *
+ * 判据只看渲染结果：组内没有可见的会话行、也没有还开着的「展开其余 N 个会话」。
+ * 有展开按钮说明数据层还有没渲染的行，此时不藏——宁可留一个空组头，也不误伤
+ * 用户自己的会话。
+ *
+ * @param {object} root - 查询根
+ * @returns {boolean} 组头是否被藏起来
+ */
+export function markUngroupedHeader(root) {
+  const header = root.querySelector?.('[data-row-key="workspace:"]')
+  if (header === undefined || header === null) return false
+  const section = groupSectionOf(header) ?? header.parentElement
+  if (section === undefined || section === null) return false
+  const anyVisibleRow = Array.from(section.querySelectorAll('[data-row-key^="session:"]'))
+    .some((row) => row.classList?.contains?.(HIDDEN_CLASS) !== true)
+  const anyVisibleOverflow = Array.from(section.querySelectorAll('[data-row-key^="overflow:"]'))
+    .some((button) => button.classList?.contains?.(HIDDEN_BUTTON_CLASS) !== true)
+  const hide = !anyVisibleRow && !anyVisibleOverflow
+  header.classList.toggle(EMPTY_UNGROUPED_CLASS, hide)
+  return hide
 }
 
 /**
@@ -396,8 +443,6 @@ export function createFrameScheduler({ schedule, cancel }) {
 export function createWorkspaceExclusion() {
   /** @type {Set<string>} 要从官方树里排除的会话 id */
   let excluded = new Set()
-  /** @type {Set<string>} 要压掉激活态的工作区 id */
-  let quieted = new Set()
   /** @type {Map<string, number>} 工作区 id 到该组排除集大小 */
   let excludedByGroup = new Map()
   /** @type {MutationObserver | undefined} 观察器 */
@@ -409,7 +454,7 @@ export function createWorkspaceExclusion() {
    */
   const markAll = () => {
     if (typeof document === 'undefined') return
-    markRows(document, { excluded, quieted, excludedByGroup })
+    markRows(document, { excluded, excludedByGroup })
   }
 
   const scheduler = createFrameScheduler({
@@ -431,19 +476,17 @@ export function createWorkspaceExclusion() {
 
   return {
     /**
-     * 更新三个集合。
+     * 更新排除集与分组计数。
      *
      * 变化都是低频事件，立即生效；观察回调才是高频路径，由调度器去抖。
      *
      * @param {object} state - 集合
      * @param {Iterable<string>} state.sessionIds - 要排除的会话 id
-     * @param {Iterable<string>} [state.quietWorkspaceIds] - 要压掉激活态的工作区 id
-     * @param {Map<string, number>} [state.excludedByGroup] - 工作区 id 到该组排除集大小
+     * @param {Map<string, number>} [state.excludedByGroup] - 工作区 id（未分组为空串）到该组排除集大小
      * @returns {void}
      */
-    update({ sessionIds, quietWorkspaceIds = [], excludedByGroup: counts }) {
+    update({ sessionIds, excludedByGroup: counts }) {
       excluded = new Set(sessionIds)
-      quieted = new Set(quietWorkspaceIds)
       excludedByGroup = counts ?? new Map()
       markAll()
     },
@@ -458,9 +501,9 @@ export function createWorkspaceExclusion() {
       // 必须先取消待执行的扫描：否则它会在清理之后把刚摘掉的标记又加回去。
       scheduler.cancel()
       if (typeof document === 'undefined') return
-      const all = `.${HIDDEN_CLASS}, .${QUIET_CLASS}`
+      const all = `.${HIDDEN_CLASS}, .${EMPTY_UNGROUPED_CLASS}`
       for (const row of document.querySelectorAll(all)) {
-        row.classList.remove(HIDDEN_CLASS, QUIET_CLASS)
+        row.classList.remove(HIDDEN_CLASS, EMPTY_UNGROUPED_CLASS)
       }
       // 改正过的剩余数要还原成宿主口径：插件重载而页面不刷新时，留下来的是少掉的数字。
       for (const button of document.querySelectorAll('[data-row-key^="overflow:"]')) {

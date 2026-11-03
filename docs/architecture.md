@@ -66,10 +66,10 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 服务层语义：
 
-- **建项目 = 建实体 + 建工作区 + 建 leader 会话 + 绑定**，四步一体；任一步失败整体回滚，不留半条记录与孤儿工作区。
+- **建项目 = 建实体 + 建 leader 会话 + 绑定**，两步一体；任一步失败整体回滚，不留半条记录。
 - **目录不可改**：目录是项目身份的一部分，改目录等于换项目。
 - **会话归属按 realpath**：会话头没有项目字段，`session-index.js` 按 cwd 与项目目录的 realpath 精确相等归到项目；两个项目指向同一目录时先注册的归属。项目树的名单在它之上再并两类：worker 看登记表，退役 leader 看 `retiredLeaderSessionIds`。
-- **加项目就把它注册成 dsh 工作区**（幂等，已有则复用）：项目自建的工作区记下 `workspaceId`，删项目时一并摘掉；复用来的用户工作区不动。工作区被用户删掉后点项目行按需重建并归位会话。
+- **项目不碰 dsh 工作区**：既不注册工作区，也不把 leader / worker 挂进去，删项目不动任何工作区。项目会话因此落在官方树的「未分组」里，由渲染层排除（见[限制](limitations.md#项目树与工作区)）；旧版本挂进去的历史会话在启动时一次性摘掉（`detachFromWorkspaces`，`detachSession` 幂等）。
 - **leader 换人**：原班 worker 的派工归属与未投递的完成回报一并改投新 leader（派工记录留 `reassignedFrom`），退役会话降级为项目里的普通会话，`spawn_worker` / `message_worker` / 跨项目 `list_cards` / `create_card` / `update_card` 在调用时按当前身份判定并拒绝。
 
 项目注册表**只经左栏项目区块操作**（模型侧的工具缺口与目录校验的后果见[限制](limitations.md#项目树与工作区)）；打开与换 leader 前先过 `assertUsableDirectory`。

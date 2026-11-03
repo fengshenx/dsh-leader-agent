@@ -6,6 +6,8 @@
  * - **建项目 = 建实体 + 建 leader 会话 + 绑定**，三步一体。leader 会话在项目目录里
  *   运行（`SessionHeader.cwd` 创建时定死），项目与会话之间是显式指针，不是「目录里
  *   最新的那个会话」这类软约定。
+ * - **项目不碰 dsh 工作区**：工作区管代码语境，项目管编排语境，两者互不挂接。项目
+ *   会话建出来就只带 `cwd`，不建工作区、不归属工作区、也不在删项目时动用户的工作区。
  * - **失败整体回滚**：leader 会话建不出来时项目不落盘；项目落盘失败时尽力撤销刚建
  *   的会话，不留半条记录。
  * - **目录不可改**：项目目录是身份的一部分，改目录等于换项目。
@@ -368,24 +370,6 @@ export function createProjectService({
     },
 
     /**
-     * 取 leader 会话所属项目的工作区。
-     *
-     * worker 与 leader 跑在同一个项目目录里，二者都该归属同一个工作区——归属决定
-     * 官方树把它们放在哪个分组（不归属就落「未分组」）。leader 由 `create` 时挂好，
-     * worker 建完要用这条把它挂进去。
-     *
-     * @param {string} sessionId - leader 会话 id
-     * @returns {Promise<string | undefined>} 工作区 id；没有对应工作区时 undefined
-     */
-    async workspaceIdOfLeader(sessionId) {
-      await indexReady
-      const projectId = leaderIndex.get(sessionId)?.projectId
-      if (projectId === undefined) return undefined
-      const project = await store.get(projectId)
-      return project === undefined ? undefined : recordedWorkspaceId(ctx, project)
-    },
-
-    /**
      * 解析某个会话所属的项目。
      *
      * 判据两条，先命中先用：
@@ -439,33 +423,20 @@ export function createProjectService({
       const fallbackName = normalizedDirectory.split(/[\\/]/).pop() ?? normalizedDirectory
       const displayName = assertUsableName(name ?? fallbackName)
 
-      // 只有插件自己注册的工作区才算项目的：复用来的可能是用户自己加的。
-      // 必须在建会话之前问——建会话本身也会注册工作区，那时再问就只剩「已存在」。
-      const ensured = await ensureWorkspace(ctx, normalizedDirectory, canonicalize)
       // 先建会话再建记录：会话建不出来时项目不落盘，失败路径没有半条记录。
-      let leaderSessionId
-      try {
-        leaderSessionId = await openRegisteredLeaderSession(normalizedDirectory)
-      } catch (error) {
-        // 会话没建成、记录也没落盘，刚注册的工作区没人认领。
-        if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
-        throw error
-      }
+      const leaderSessionId = await openRegisteredLeaderSession(normalizedDirectory)
       const draft = store.draft({
         name: displayName,
         directory: normalizedDirectory,
         leaderSessionId,
-        ...ensured?.created === true ? { workspaceId: ensured.workspace.id } : {},
       })
-      // 只包 `insert`：它成功之后再撤会话或工作区，就成了「记录已写、东西没了」的半回滚。
+      // 只包 `insert`：它成功之后再撤会话，就成了「记录已写、东西没了」的半回滚。
       let inserted
       try {
         inserted = await store.insert(draft)
       } catch (error) {
         leaderIndex.delete(leaderSessionId)
         await abandonLeaderSession(leaderSessionId)
-        // 记录没落盘，刚注册的工作区就没人认领了。
-        if (ensured?.created === true) await discardWorkspace(ctx, ensured.workspace.id, logger)
         throw error
       }
       leaderIndex.set(leaderSessionId, {
@@ -480,12 +451,7 @@ export function createProjectService({
     },
 
     /**
-     * 列项目，并标注 leader 会话是否仍在、是否已挂到工作区。
-     *
-     * `leaderAttached` 是 leader 会话**此刻**是否挂在项目工作区上。归属只决定
-     * 官方左栏把它归进哪个分组：不归属就落「未分组」，而本仓渲染层把项目会话行
-     * 藏了，那里只剩一棵空组头（见 `ensureWorkspace`）。工作区被用户删掉后它为
-     * false，下次点项目行由 `attachLeader` 重建并归位。
+     * 列项目，并标注 leader 会话是否仍在。
      *
      * @returns {Promise<object[]>} 项目列表
      */
@@ -494,156 +460,63 @@ export function createProjectService({
       return Promise.all(projects.map(async (project) => ({
         ...project,
         leaderAlive: await leaderAliveOf(project.leaderSessionId),
-        leaderAttached: isSessionAttachedToWorkspace(ctx, project.leaderSessionId),
-        workspaceId: recordedWorkspaceId(ctx, project),
       })))
     },
 
     /**
-     * 确保 leader 会话挂在项目目录对应的工作区上。
+     * 把项目会话从宿主的 dsh 工作区里摘掉。
      *
-     * 归属是为了分组：官方左栏按工作区归组会话，不归属就落「未分组」，而本仓把
-     * 项目会话行藏了，那里只剩一棵空组头（见
-     * `.agents/notes/2026-11-02-project-owns-workspace.md`）。目录还不是工作区时
-     * 这里顺带注册一个——注册是幂等的，宿主侧已有同名工作区就直接复用。
+     * 旧版本把 leader 与 worker 挂进项目目录对应的工作区，图的是官方树里的分组；
+     * 代价是宿主把「工作区里第一个空白会话」当作可复用的新建草稿
+     * （`ui-workspace` 的 `createInWorkspace`），而 leader 恰好一直空着——用户在
+     * 工作区里新建会话会打开 leader 本身。项目与会话不再使用工作区之后，这里把
+     * 历史挂载一次性摘掉：`detachSession` 幂等，重跑是空操作。
      *
-     * 工作区被用户删掉后再点项目行会走到这里：重建一个（`recreated`）并把 leader、
-     * 退役 leader 与本项目登记过的 worker 一起挂回去——工作区不在期间它们都是松散
-     * 会话，落在官方树的「未分组」里。只恢复插件自己建的会话，用户在项目目录里
+     * 不遍历工作区的 `sessionIds`：那个 getter 只列已进会话 cwd 索引的会话，刚重启
+     * 时可能还没索引到——偏偏要摘的就是这类历史记录。直接对每个已知的项目会话调
+     * `detachSession`，包含与否由宿主在工作区写入链里判。
+     *
+     * 只摘项目自己的会话（现任/退役 leader 与登记过的 worker），用户在项目目录里
      * 手动开的会话不碰。
      *
-     * @param {string} id - 项目 id
-     * @returns {Promise<{attached: boolean, workspaceId?: string, recreated?: boolean,
-     *   reconnected?: number, reason?: string}>} 挂载结果
+     * @param {object} [options] - 选项
+     * @param {Iterable<string>} [options.workerIds] - 登记的 worker 会话 id
+     * @param {object} [options.registry] - 工作区注册表；插件装配早期还取不到服务，由调用方传入
+     * @returns {Promise<number>} 摘掉的会话数
      */
-    async attachLeader(id) {
-      const project = await store.get(id)
-      if (project === undefined) throw new Error('项目不存在')
-      if (ctx.get('workspaceRegistry') === undefined) {
-        return { attached: false, reason: '当前宿主没有工作区服务，无法把 leader 会话挂到工作区。' }
-      }
-      // 目录被删或被移走时先停下：宿主注册工作区不校验目录，挂会话时才校验会话
-      // cwd 能不能解析，报出来的是一句英文技术错——用户看不懂，也不知道该干什么。
-      try {
-        await assertUsableDirectory(project.directory)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        return {
-          attached: false,
-          reason: `${message}。把这个目录恢复回来，或删掉该项目后重新添加。`,
+    async detachFromWorkspaces({
+      workerIds = [],
+      registry = ctx.get('workspaceRegistry'),
+    } = {}) {
+      if (registry === undefined || typeof registry.list !== 'function') return 0
+      const projects = await store.list()
+      const targets = new Set(workerIds)
+      for (const project of projects) {
+        if (typeof project.leaderSessionId === 'string' && project.leaderSessionId !== '') {
+          targets.add(project.leaderSessionId)
+        }
+        for (const sessionId of Array.isArray(project.retiredLeaderSessionIds)
+          ? project.retiredLeaderSessionIds
+          : []) {
+          if (typeof sessionId === 'string' && sessionId !== '') targets.add(sessionId)
         }
       }
-      const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
-      if (ensured === undefined) {
-        return { attached: false, reason: '当前宿主的工作区服务不支持注册目录。' }
-      }
-      const workspace = ensured.workspace
-      const recreated = ensured.created === true
-      // 只有插件自己注册的工作区才记进项目记录：复用的可能是用户自己加的
-      // 工作区，那不是我们的，删项目时不该连带摘掉。
-      await recordWorkspaceOwnership(ctx, store, project.id, ensured, logger)
-      // 归属可能刚写进记录（工作区是这次新建的），重读一遍再报给调用方。
-      const recorded = await store.get(project.id) ?? project
-      const targets = await this.leaderAttachTargets(recorded)
-      const members = new Set(workspace.sessionIds ?? [])
-      let reconnected = 0
-      for (const sessionId of targets) {
-        if (members.has(sessionId)) {
-          reconnected += 1
-          continue
-        }
-        if (!(await leaderExists(sessionId))) continue
-        try {
-          await workspace.attachSession(sessionId)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          // leader 挂不上就真的打不开项目，必须回传；worker 挂不上只是它会留在
-          // 「未分组」里，不该让整次打开失败。
-          if (sessionId === recorded.leaderSessionId) {
-            return { attached: false, reason: `leader 会话挂到工作区失败：${message}` }
+      const workspaces = registry.list()
+        .map((info) => (typeof registry.get === 'function' ? registry.get(info.id) : undefined) ?? info)
+        .filter((workspace) => typeof workspace.detachSession === 'function')
+      let removed = 0
+      for (const workspace of workspaces) {
+        for (const sessionId of targets) {
+          try {
+            await workspace.detachSession(sessionId)
+            removed += 1
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error)
+            logger(`dsh-leader-kit: 会话 ${sessionId} 从工作区摘除失败：${message}`)
           }
-          logger(`dsh-leader-kit: worker 会话 ${sessionId} 挂回工作区失败：${message}`)
-          continue
-        }
-        members.add(sessionId)
-        reconnected += 1
-      }
-      return {
-        attached: true,
-        workspaceId: recordedWorkspaceId(ctx, recorded),
-        recreated,
-        reconnected,
-      }
-    },
-
-    /**
-     * 列出该挂进项目工作区的会话：leader、退役 leader 与登记过的 worker。
-     *
-     * 用途只有一个——工作区被删后重建时把它们挂回去。用户在同一目录里手动开的
-     * 会话不在名单里：那不是项目派生的东西，挂进来后删项目会把工作区一起摘掉，
-     * 它们会落回「未分组」。
-     *
-     * @param {object} project - 项目记录
-     * @returns {Promise<string[]>} 会话 id（去重，leader 在前）
-     */
-    async leaderAttachTargets(project) {
-      const targets = []
-      if (typeof project.leaderSessionId === 'string' && project.leaderSessionId !== '') {
-        targets.push(project.leaderSessionId)
-      }
-      const retired = Array.isArray(project.retiredLeaderSessionIds)
-        ? project.retiredLeaderSessionIds
-        : []
-      for (const sessionId of retired) {
-        if (typeof sessionId === 'string' && !targets.includes(sessionId)) targets.push(sessionId)
-      }
-      for (const entry of await this.sessionsByProject()) {
-        if (entry.projectId !== project.id) continue
-        for (const sessionId of entry.sessionIds) {
-          if (!targets.includes(sessionId)) targets.push(sessionId)
         }
       }
-      return targets
-    },
-
-    /**
-     * 移除项目在宿主里注册的工作区。
-     *
-     * 它是 `remove()` 的内部步骤：工作区是随项目建的，项目没了就没人认领它，
-     * 删项目时顺手摘掉，免得左栏留一行来历不明的目录。宿主的 `delete` 只删注册，目录
-     * 与全部会话日志都留着（`packages/workspace/workspace/src/index.ts:302-312`），
-     * leader 会话仍然在，只是不再归属工作区。
-     *
-     * 「没有东西可摘」与「摘失败」必须分开：宿主没有工作区服务、记录里没有归属
-     * （复用的用户工作区）、归属指向的工作区已不在宿主里，这三种都是 `skipped`，
-     * 不是故障——调用方不该把它们报成「工作区未移除」。
-     *
-     * @param {string} id - 项目 id
-     * @returns {Promise<{removed: boolean, skipped?: boolean, reason?: string}>} 移除结果；`skipped` 表示没有需要移除的工作区，`reason` 只出现在真失败上
-     */
-    async removeWorkspace(id) {
-      const project = await store.get(id)
-      if (project === undefined) throw new Error('项目不存在')
-      const registry = ctx.get('workspaceRegistry')
-      if (registry === undefined || typeof registry.list !== 'function') {
-        return { removed: false, skipped: true }
-      }
-      const workspaceId = project.workspaceId
-      if (typeof workspaceId !== 'string' || workspaceId === '') {
-        return { removed: false, skipped: true }
-      }
-      if (!registry.list().some((workspace) => workspace.id === workspaceId)) {
-        await store.update(project.id, { workspaceId: undefined })
-        return { removed: false, skipped: true }
-      }
-      if (typeof registry.delete !== 'function') {
-        return { removed: false, reason: '当前宿主的工作区服务不支持删除。' }
-      }
-      // `delete` 报 false 说明工作区已经不在了（并发删同一个项目时另一个调用先
-      // 摘掉了它），结果与成功等价，不该按失败回传。
-      const deleted = (await registry.delete(workspaceId)) !== false
-      await store.update(project.id, { workspaceId: undefined })
-      return deleted ? { removed: true } : { removed: false, skipped: true }
+      return removed
     },
 
     /**
@@ -713,8 +586,6 @@ export function createProjectService({
       return {
         ...project,
         leaderAlive: await leaderAliveOf(project.leaderSessionId),
-        leaderAttached: isSessionAttachedToWorkspace(ctx, project.leaderSessionId),
-        workspaceId: recordedWorkspaceId(ctx, project),
       }
     },
 
@@ -733,8 +604,6 @@ export function createProjectService({
       return {
         ...project,
         leaderAlive: await leaderAliveOf(project.leaderSessionId),
-        leaderAttached: isSessionAttachedToWorkspace(ctx, project.leaderSessionId),
-        workspaceId: recordedWorkspaceId(ctx, project),
       }
     },
 
@@ -777,13 +646,8 @@ export function createProjectService({
     async replaceLeader(id) {
       const project = await store.get(id)
       if (project === undefined) throw new Error(`项目不存在：${id}`)
-      // 与打开项目同一条前置检查：目录没了先给可读的中文原因，而不是让宿主在
-      // 注册工作区时抛一句英文技术错。
+      // 目录没了先给可读的中文原因：宿主建会话时会 mkdir 目录，但这里先停下更清楚。
       await assertUsableDirectory(project.directory)
-      // 建会话本身会注册工作区（有归属才有分组可落），这一步顺带把归属记进项目
-      // 记录——工作区被删过再换 leader 时，归属会重新落回。
-      const ensured = await ensureWorkspace(ctx, project.directory, canonicalize)
-      await recordWorkspaceOwnership(ctx, store, id, ensured, logger)
       const leaderSessionId = await openRegisteredLeaderSession(project.directory)
       let updated
       try {
@@ -819,23 +683,15 @@ export function createProjectService({
     },
 
     /**
-     * 删项目，连同插件为它注册的工作区一起。
+     * 删项目。
      *
-     * 顺序是先移除工作区、再删记录：反过来时中途失败会留下一个谁都不记得的孤儿
-     * 工作区——项目没了，菜单里的删除入口也没了。工作区删除只删注册，目录与全部
-     * 会话日志保留，会话因此落到宿主工作区树的「未分组」下。
-     *
-     * 复用的用户工作区不记在项目记录里，不会被碰到；宿主工作区服务不支持删除时
-     * 如实把原因带回给调用方，项目照删（与「项目仍在、工作区留在宿主里」的旧行为
-     * 一致，用户仍可在官方面板里删掉它）。leader 会话本身也保留：它是用户的会话
-     * 历史，删掉等于丢上下文。
+     * 只删项目记录：项目不拥有工作区、也不拥有会话，用户的目录、会话日志与工作区
+     * 都原样保留。leader 会话同样是用户的会话历史，删掉等于丢上下文。
      *
      * @param {string} id - 项目 id
-     * @returns {Promise<{project: object, workspace: {removed: boolean, skipped?: boolean, reason?: string}} | undefined>} 删除结果，项目不存在时 undefined
+     * @returns {Promise<{project: object} | undefined>} 删除结果，项目不存在时 undefined
      */
     async remove(id) {
-      if (await store.get(id) === undefined) return undefined
-      const workspace = await this.removeWorkspace(id)
       const removed = await store.remove(id)
       if (removed === undefined) return undefined
       if (typeof removed.leaderSessionId === 'string') {
@@ -851,143 +707,9 @@ export function createProjectService({
           canonicalDirectoryIndex.set(canonical, project.id)
         }
       }
-      return { project: removed, workspace }
+      return { project: removed }
     },
   }
-}
-
-/**
- * 拿到项目目录对应的工作区，没有就注册一个。
- *
- * 归属决定官方左栏把会话归进哪个分组：不归属就落「未分组」，而本仓把项目会话行
- * 藏了，那里只剩一棵空组头。宿主 `session.create` 传 `cwd` 建出来的会话不属于任何
- * 工作区（`packages/api/session-controller/src/commands.ts` 的 create 只在传
- * `workspaceId` 时 attach），因此建 leader 会话前先确保目录已注册为工作区；注册是
- * 幂等的，目录已是工作区时直接复用。
- *
- * 官方 UI 打开会话**不**要求归属（`ui-workspace/src/client/navigation.ts:523-553`
- * 能打开只带 `cwd` 的会话）。曾经按「不归属就打不开」实现过一版，那是被推翻的
- * 旧方案：要归属的是分组，不是可打开性。
- *
- * 「有没有是我们建的」由 `created` 区分：复用的工作区可能是用户自己加的，
- * 那不是插件的东西，不该被记进项目记录、删项目时也不该动它。
- *
- * `create` 是幂等的——同路径已有工作区时宿主直接返回既有实体，所以「list 里没有」
- * 不等于「返回的一定是这次建的」。判据要两条：id 不在 `create` 之前的快照里，且
- * `createdAt` 不早于这次调用。只看 id 不够——用户正好在 list 与 create 之间从管理
- * 面板加了同目录工作区时，那个 id 同样不在快照里。
- *
- * @param {object} ctx - Cordis 上下文
- * @param {string} directory - 项目目录绝对路径
- * @param {(directory: string) => Promise<string>} canonicalize - 路径归一器
- * @returns {Promise<{workspace: object, canonical: string, created: boolean} | undefined>} 工作区
- */
-async function ensureWorkspace(ctx, directory, canonicalize) {
-  const registry = ctx.get('workspaceRegistry')
-  if (registry === undefined || typeof registry.list !== 'function') return undefined
-  const canonical = await canonicalize(directory)
-  const before = registry.list()
-  const existing = before.find((workspace) => workspace.path === canonical)
-  if (existing !== undefined) return { workspace: existing, canonical, created: false }
-  if (typeof registry.create !== 'function') return undefined
-  // 先取 id 快照再 create：`list()` 返回的是活数组时，create 之后再看就晚了。
-  const beforeIds = new Set(before.map((workspace) => workspace.id))
-  const requestedAt = Date.now()
-  const created = await registry.create(canonical, canonical.split(/[\\/]/).pop() ?? canonical)
-  if (created === undefined) return undefined
-  // 解析不出创建时间时按「不是我们的」处理：宁可少记一次归属，也不把用户
-  // 的工作区当成项目的一起删掉。
-  const createdHere = !beforeIds.has(created.id) && Date.parse(created.createdAt) >= requestedAt
-  return { workspace: created, canonical, created: createdHere }
-}
-
-/**
- * 把本次新建的工作区记进项目记录。
- *
- * 记录失败（项目在注册与写入之间被删掉）时撤掉刚建的工作区：项目没了，
- * `recordedWorkspaceId` 不再认它，插件的删除入口也随项目一起消失，那行目录只能
- * 去官方面板手动清。复用的工作区不撤——那不是我们的。
- *
- * @param {object} ctx - Cordis 上下文
- * @param {object} store - 项目存储
- * @param {string} projectId - 项目 id
- * @param {{workspace: object, created: boolean} | undefined} ensured - `ensureWorkspace` 的结果
- * @param {(message: string) => void} log - 日志输出
- * @returns {Promise<void>}
- */
-async function recordWorkspaceOwnership(ctx, store, projectId, ensured, log) {
-  if (ensured?.created !== true) return
-  try {
-    await store.update(projectId, { workspaceId: ensured.workspace.id })
-  } catch (error) {
-    await discardWorkspace(ctx, ensured.workspace.id, log)
-    throw error
-  }
-}
-
-/**
- * 尽力撤销一个刚注册、还没人认领的工作区。
- *
- * 回滚失败只记日志：调用方要知道的是原始错误（项目已被删），回滚没成功也不该被
- * 盖掉，况且能在官方面板里手动删。
- *
- * @param {object} ctx - Cordis 上下文
- * @param {string} workspaceId - 要撤销的工作区 id
- * @param {(message: string) => void} log - 日志输出
- * @returns {Promise<void>}
- */
-async function discardWorkspace(ctx, workspaceId, log) {
-  const registry = ctx.get('workspaceRegistry')
-  if (registry === undefined || typeof registry.delete !== 'function') return
-  try {
-    await registry.delete(workspaceId)
-  } catch (error) {
-    log(`dsh-leader-kit: 回滚工作区 ${workspaceId} 失败：${error instanceof Error ? error.message : String(error)}`)
-  }
-}
-
-/**
- * 读项目记录里的工作区 id，只认仍然活着的。
- *
- * 返回的是「项目自己的」工作区，不是当前目录对应的那个：复用的用户工作区不在
- * 记录里，返回 undefined，删除项目时据此判断要不要动宿主的工作区。
- *
- * @param {object} ctx - Cordis 上下文
- * @param {object} project - 项目记录
- * @returns {string | undefined} 工作区 id；没有或已不在宿主里时 undefined
- */
-export function recordedWorkspaceId(ctx, project) {
-  return isWorkspaceAlive(ctx, project.workspaceId) ? project.workspaceId : undefined
-}
-
-/**
- * 判断工作区是否还在宿主里。
- *
- * 项目记录里的工作区 id 可能悬空——用户在工作区管理面板里删掉了它。悬空的 id
- * 不该再被当成「项目工作区」，否则删项目时会去摘一个不存在的注册。
- *
- * @param {object} ctx - Cordis 上下文
- * @param {string} workspaceId - 记录里的工作区 id
- * @returns {boolean} 工作区仍在时 true
- */
-export function isWorkspaceAlive(ctx, workspaceId) {
-  if (typeof workspaceId !== 'string' || workspaceId === '') return false
-  const registry = ctx.get('workspaceRegistry')
-  if (registry === undefined || typeof registry.list !== 'function') return false
-  return registry.list().some((workspace) => workspace.id === workspaceId)
-}
-
-/**
- * 判断会话是否已挂到某个工作区。
- *
- * @param {object} ctx - Cordis 上下文
- * @param {string} sessionId - 会话 id
- * @returns {boolean} 已挂到工作区时 true
- */
-export function isSessionAttachedToWorkspace(ctx, sessionId) {
-  const registry = ctx.get('workspaceRegistry')
-  if (registry === undefined || typeof registry.list !== 'function') return false
-  return registry.list().some((workspace) => (workspace.sessionIds ?? []).includes(sessionId))
 }
 
 /**
@@ -998,8 +720,8 @@ export function isSessionAttachedToWorkspace(ctx, sessionId) {
  * bundle 提供，所有 profile 都有。两个服务都走惰性获取：它们不在本插件的
  * `inject` 列表里，声明成必需依赖会让不含该服务的 profile 整个插件挂起。
  *
- * 走 `sessionController` 时优先按工作区建（见 `ensureWorkspace`）：以
- * `workspaceId` 建出的会话当场就有分组，省掉建完再挂的一步。
+ * 走 `sessionController` 时只带 `cwd`：项目不创建也不挂接 dsh 工作区，会话因此不
+ * 归属任何分组。
  *
  * `sessionId` 由调用方给定，两条路径都原样用它建会话——leader 身份在建会话之前
  * 就登记好了，换成别的 id 会让工具面裁成普通会话（见
@@ -1013,11 +735,7 @@ export function isSessionAttachedToWorkspace(ctx, sessionId) {
 export async function createLeaderSessionWithCtx(ctx, directory, sessionId) {
   const controller = ctx.get('sessionController')
   if (controller !== undefined && typeof controller.create === 'function') {
-    const ensured = await ensureWorkspace(ctx, directory, canonicalize)
-    const workspaceId = ensured?.workspace.id
-    const created = await controller.create(workspaceId === undefined
-      ? { cwd: directory, sessionId }
-      : { workspaceId, sessionId })
+    const created = await controller.create({ cwd: directory, sessionId })
     return created.sessionId
   }
   const agents = ctx.get('agents')

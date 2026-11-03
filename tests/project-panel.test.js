@@ -23,7 +23,6 @@ import {
   projectDropAnchor,
   projectDropPlan,
   projectSectionLayout,
-  quietWorkspaceOf,
   selectProjectSessionRows,
   showsProjectActivity,
   isArchiveActiveRefusal,
@@ -373,27 +372,6 @@ test('当前会话属于别的项目或主区域为空时项目行不亮', () =>
   assert.equal(isProjectCurrent(project, undefined, 'session-worker'), false)
 })
 
-test('当前会话被排除时压掉它所属工作区的激活态', () => {
-  const workspaces = [
-    { workspaceId: 'w1', sessionIds: ['s1'] },
-    { workspaceId: 'w2', sessionIds: ['s2', 's3'] },
-  ]
-  assert.equal(quietWorkspaceOf('s2', new Set(['s2', 's3']), workspaces), 'w2')
-})
-
-test('当前会话没被排除时不动任何工作区', () => {
-  const workspaces = [{ workspaceId: 'w1', sessionIds: ['s1'] }]
-  // 用户在项目目录里手动开的会话留在官方树里，点亮它所属的工作区是对的。
-  assert.equal(quietWorkspaceOf('s1', new Set(['s2']), workspaces), undefined)
-  // 主区域没有会话时也不该压灰。
-  assert.equal(quietWorkspaceOf(undefined, new Set(['s1']), workspaces), undefined)
-})
-
-test('排除集里的会话不在任何工作区视图里时不压灰', () => {
-  assert.equal(quietWorkspaceOf('s9', new Set(['s9']), [{ workspaceId: 'w1', sessionIds: ['s1'] }]), undefined)
-  assert.equal(quietWorkspaceOf('s9', new Set(['s9']), undefined), undefined)
-})
-
 test('归档失败只在「会话还在跑」时要求确认', () => {
   const active = Object.assign(new Error('会话正在执行'), {
     name: 'WorkspaceArchiveError',
@@ -410,54 +388,24 @@ test('归档失败只在「会话还在跑」时要求确认', () => {
   assert.equal(isArchiveActiveRefusal(undefined), false)
 })
 
-test('打开 leader 会先挂工作区再打开会话', async () => {
-  const calls = []
+test('打开 leader 直接导航到会话，不碰工作区', () => {
   const opened = []
-  const result = await openLeaderSession({
+  const result = openLeaderSession({
     project: { id: 'p-1', leaderSessionId: 'session-1' },
-    callRemote: async (method, args) => {
-      calls.push([method, args])
-      return { attached: true, workspaceId: 'ws-1' }
-    },
     openSession: (sessionId) => opened.push(sessionId),
   })
-  assert.deepEqual(result, { ok: true, workspaceId: 'ws-1', recreated: false, reconnected: 0 })
-  assert.deepEqual(calls, [['attachLeader', ['p-1']]])
+  assert.deepEqual(result, { ok: true })
   assert.deepEqual(opened, ['session-1'])
 })
 
-test('工作区被删后重建：结果里带重建标记与归位数量', async () => {
-  const result = await openLeaderSession({
-    project: { id: 'p-1', leaderSessionId: 'session-1' },
-    callRemote: async () => ({ attached: true, workspaceId: 'ws-2', recreated: true, reconnected: 3 }),
-    openSession: () => {},
-  })
-  assert.deepEqual(result, { ok: true, workspaceId: 'ws-2', recreated: true, reconnected: 3 })
-})
-
-test('挂不上工作区时不打开会话并报出原因', async () => {
+test('没有 leader 会话时不导航并报出原因', () => {
   const opened = []
-  const result = await openLeaderSession({
-    project: { id: 'p-1', leaderSessionId: 'session-1' },
-    callRemote: async () => ({ attached: false, reason: '当前宿主没有工作区服务' }),
+  const result = openLeaderSession({
+    project: { id: 'p-1', name: 'demo', leaderSessionId: '' },
     openSession: (sessionId) => opened.push(sessionId),
   })
   assert.equal(result.ok, false)
-  assert.equal(result.message, '当前宿主没有工作区服务')
-  assert.deepEqual(opened, [])
-})
-
-test('远程调用抛错时不打开会话并报出原因', async () => {
-  const opened = []
-  const result = await openLeaderSession({
-    project: { id: 'p-1', leaderSessionId: 'session-1' },
-    callRemote: async () => {
-      throw new Error('通道断开')
-    },
-    openSession: (sessionId) => opened.push(sessionId),
-  })
-  assert.equal(result.ok, false)
-  assert.match(result.message, /通道断开/)
+  assert.match(result.message, /demo/)
   assert.deepEqual(opened, [])
 })
 
@@ -478,37 +426,22 @@ test('项目菜单不再重复「打开 leader 会话」——点项目行就是
   assert.deepEqual(items.map((item) => item.id), ['rename', 'replace', 'remove'])
 })
 
-test('有插件工作区时删除说明讲清工作区移除与会话落未分组', () => {
+test('删除说明讲清目录、会话与工作区都保留', () => {
   const text = describeProjectRemoval({ name: 'demo', workspaceId: 'ws-1' })
   assert.match(text, /demo/)
-  assert.match(text, /从 dsh 工作区列表移除/)
-  assert.match(text, /文件夹与会话记录都会保留/)
-  assert.match(text, /未分组/)
+  assert.match(text, /文件夹、会话记录与 dsh 工作区都会保留/)
 })
 
-test('没有插件工作区时删除说明不提工作区', () => {
-  const text = describeProjectRemoval({ name: 'demo' })
-  assert.match(text, /删除/)
-  assert.match(text, /文件夹与会话记录都会保留/)
-  assert.doesNotMatch(text, /工作区/)
-})
-
-test('删除成功的提示固定一句回执，工作区摘除失败才带原因', () => {
-  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: true }), '已删除项目「demo」。')
-  // 没有工作区可摘（宿主报 skipped）是正常删除，回执不提工作区。
-  assert.equal(describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, skipped: true }), '已删除项目「demo」。')
-  // 项目已不存在（幂等成功）：它的 reason 是「项目不存在」，不能当工作区告警。
+test('删除成功的提示固定一句回执', () => {
+  assert.equal(describeDeletionNotice({ name: 'demo' }, { removed: true }), '已删除项目「demo」。')
   assert.equal(
     describeDeletionNotice({ name: 'demo' }, { notFound: true, reason: '项目不存在。' }),
     '已删除项目「demo」。',
   )
-  const failed = describeDeletionNotice({ name: 'demo' }, { workspaceRemoved: false, reason: '宿主不支持删除工作区。' })
-  assert.match(failed, /工作区未移除/)
-  assert.match(failed, /宿主不支持删除工作区/)
 })
 
 test('重复删除按幂等成功收尾，不报成失败', () => {
-  assert.equal(classifyDeletionResult({ removed: true, workspaceRemoved: true }), 'removed')
+  assert.equal(classifyDeletionResult({ removed: true }), 'removed')
   // 项目已经不在了：目标达成，弹窗要能关掉、列表要刷新。
   assert.equal(classifyDeletionResult({ removed: false, notFound: true, reason: '项目不存在。' }), 'alreadyGone')
   assert.equal(classifyDeletionResult({ removed: false, reason: '出错了。' }), 'failed')

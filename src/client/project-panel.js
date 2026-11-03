@@ -46,13 +46,16 @@ import {
   isProjectOpenable,
   moveProjectBefore,
   openLeaderSession,
-  quietWorkspaceOf,
   validateProjectName,
 } from './project-panel-logic.js'
 import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteError } from './project-remote.js'
 import { notifyProjectsChanged } from './project-changes.js'
 import { showToast } from './toast.js'
-import { createWorkspaceExclusion, excludedSessionCountsByWorkspace } from './workspace-exclusion.js'
+import {
+  createWorkspaceExclusion,
+  excludedSessionCountsByWorkspace,
+  ungroupedExcludedCount,
+} from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
 
 /**
@@ -94,7 +97,7 @@ export function ProjectPanel(props) {
   const [archivedSessionIds, setArchivedSessionIds] = useState(() => new Set())
   /** 主区域的当前会话 id；宿主按它点亮会话行与工作区分组。 */
   const [currentSessionId, setCurrentSessionId] = useState(undefined)
-  /** 工作区视图（`{ workspaceId, sessionIds }`）；用来从当前会话反查所属工作区。 */
+  /** 工作区视图（`{ workspaceId, sessionIds }`）；用来算官方树里各组的排除数。 */
   const [workspaceItems, setWorkspaceItems] = useState([])
   /**
    * 等待用户改名的待建项目；null 表示没有。
@@ -180,6 +183,7 @@ export function ProjectPanel(props) {
           displayTitle: row.displayTitle,
           running: row.running,
           origin: row.origin,
+          blank: row.blank,
         }
       }
       setSessionRows(rows)
@@ -247,32 +251,36 @@ export function ProjectPanel(props) {
 
   // 官方树的「展开其余 N 个会话」按数据层算 N，被藏掉的项目会话也算在里面。
   // 按分组统计排除集大小交给渲染层改正文案，见 workspace-exclusion.js。
-  const excludedCountsByWorkspace = useMemo(
-    () => excludedSessionCountsByWorkspace({
+  // 项目会话不归属工作区，因此还要算「未分组」那一组（组 key 是空串）。
+  const excludedCountsByGroup = useMemo(() => {
+    const counts = excludedSessionCountsByWorkspace({
       workspaceItems,
       excluded: excludedSessionIds,
       archivedSessionIds,
-    }),
-    [workspaceItems, excludedSessionIds, archivedSessionIds],
-  )
+    })
+    const ungrouped = ungroupedExcludedCount({
+      sessionRows,
+      workspaceItems,
+      excluded: excludedSessionIds,
+      archivedSessionIds,
+      currentSessionId,
+    })
+    if (ungrouped > 0) counts.set('', ungrouped)
+    return counts
+  }, [workspaceItems, excludedSessionIds, archivedSessionIds, sessionRows, currentSessionId])
 
   // 项目的 leader 与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
   // worker 是普通根会话（不是 subagent），官方树不会自己滤掉，只能按会话 id 排除。
-  // 用户在项目目录里手动开的会话不属于项目，留在官方树里。
-  //
-  // 当前会话若就是被排除的那条，它所属的工作区在官方树里会点亮成「开着」的样子，
-  // 而里面没有可见的会话行——这个点亮一并压掉。
-  const quietWorkspaceId = quietWorkspaceOf(currentSessionId, excludedSessionIds, workspaceItems)
-  // 项目工作区行照常显示：项目目录本身也是用户在官方树里看得见、能用的入口。
+  // 用户在项目目录里手动开的会话不属于项目，留在官方树里；组里全被排除时，
+  // 空出来的「未分组」组头也一起藏掉。
   useEffect(() => {
     const exclusion = createWorkspaceExclusion()
     exclusion.update({
       sessionIds: excludedSessionIds,
-      quietWorkspaceIds: quietWorkspaceId === undefined ? [] : [quietWorkspaceId],
-      excludedByGroup: excludedCountsByWorkspace,
+      excludedByGroup: excludedCountsByGroup,
     })
     return () => exclusion.dispose()
-  }, [excludedSessionIds, quietWorkspaceId, excludedCountsByWorkspace])
+  }, [excludedSessionIds, excludedCountsByGroup])
 
   const startAdd = useCallback(async () => {
     if (busy) return
@@ -350,32 +358,13 @@ export function ProjectPanel(props) {
       showToast('导航服务不可用：无法打开会话。')
       return
     }
-    // 归属是为了分组：不归属就落「未分组」，而项目会话行被藏了，那里只剩空组头。
-    // 打开前先确保它挂上（工作区被删过时这一步会重建并归位）。
-    const result = await openLeaderSession({
+    // 项目不碰 dsh 工作区：点项目行只是打开那条会话，不给它分组、也不改用户的工作区。
+    const result = openLeaderSession({
       project,
-      callRemote,
       openSession: (sessionId) => uiWorkspace.openSession(sessionId),
     })
-    if (result.ok !== true) {
-      showToast(result.message)
-      return
-    }
-    if (result.recreated === true) {
-      // 工作区被用户删过：这次打开重建了一个，并把会话挂回去。用户点的是项目行，
-      // 不会注意左栏工作区树里多回一行，不提示的话会以为删除仍然生效。
-      showToast(result.reconnected > 0
-        ? `项目「${project.name}」的工作区已重建，${result.reconnected} 个会话已归位。`
-        : `项目「${project.name}」的工作区已重建。`)
-    }
-    // 宿主可能刚注册了工作区：归属要同步回列表，否则删除时不知道它是插件注册
-    // 的，工作区会被漏在宿主里。
-    if (result.workspaceId !== project.workspaceId) {
-      setProjects((current) => current.map((item) => (
-        item.id === project.id ? { ...item, workspaceId: result.workspaceId } : item
-      )))
-    }
-  }, [callRemote, getUiWorkspace])
+    if (result.ok !== true) showToast(result.message)
+  }, [getUiWorkspace])
 
   const renameProject = useCallback(async (project, name) => {
     if (busy) return
