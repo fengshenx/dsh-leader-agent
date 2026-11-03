@@ -968,70 +968,60 @@ const STYLE_TEXT = `
   text-overflow: ellipsis;
 }
 
-/* leader 会话的一次性引导卡：停在输入框正上方，材质与看板卡同源（bg-layer-2
-   底 + 0.5px 发丝描边，不叠 elevation——中性边框与投影不同时出现在一条规则里），
-   文字档与看板空态一致：标题 14/20 secondary，正文 12/18 tertiary。 */
+/* leader 会话的一次性引导条：与输入框同一套几何——宽度共用宿主给输入框外壳的
+   --dsh-composer-card-max-width（同一个 token，窗口变窄时一起收），圆角同取
+   --dsw-radius-panel。材质刻意比输入框轻一档：输入框是白面 + elevation-soft，
+   引导条取交互悬停档的浅底、不叠投影，两块叠在一起才不会被读成两个输入框。
+   文字档对齐宿主正文：标题 14/22 500，步骤 13/20（宿主里 11/12 只用于元信息，
+   提示正文不该比它更小）。 */
 .dsh-leader-kit-guide-card {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
   box-sizing: border-box;
   width: 100%;
-  margin: 0 0 8px;
-  padding: 12px 14px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-lg);
-  background: var(--dsw-alias-bg-layer-2);
-  text-align: left;
+  max-width: var(--dsh-composer-card-max-width, 952px);
+  margin: 0 auto 8px;
+  padding: 10px 14px;
+  border-radius: var(--dsw-radius-panel);
+  background: var(--dsw-alias-interactive-bg-hover);
 }
 
-.dsh-leader-kit-guide-card-title {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
-}
-
-.dsh-leader-kit-guide-card-steps {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 12px;
-  line-height: 18px;
+/* 图标与标题首行对齐：标题行高 22、图标 16，下沉 3px 才落在同一基线上 */
+.dsh-leader-kit-guide-icon {
+  margin-top: 3px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-guide-card-actions {
+/* flex:1 + min-width:0：文本块吃掉动作左侧的全部宽度，右侧不留空；
+   min-width 是为了窄窗口下让文字换行而不是把动作挤出去 */
+.dsh-leader-kit-guide-body {
   display: flex;
-  gap: 12px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 
-.dsh-leader-kit-guide-card-action {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 500;
+.dsh-leader-kit-guide-title {
+  font-size: var(--dsw-font-s-strong-14-font-size);
+  line-height: var(--dsw-font-s-strong-14-line-height);
+  font-weight: var(--dsw-font-s-strong-14-font-weight);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-kit-guide-steps {
+  font-size: var(--dsw-font-xs-13-font-size);
+  line-height: var(--dsw-font-xs-13-line-height);
   color: var(--dsw-alias-label-tertiary);
-  cursor: pointer;
 }
 
-.dsh-leader-kit-guide-card-action-primary {
-  color: var(--dsw-alias-link);
-}
-
-.dsh-leader-kit-guide-card-action:focus-visible {
-  border-radius: var(--dsw-radius-xs);
-  outline: var(--dsw-focus-ring-width, 2px) solid
-    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
-  outline-offset: 2px;
-}
-
-@media (hover: hover) {
-  .dsh-leader-kit-guide-card-action:hover {
-    text-decoration: underline dotted;
-    text-underline-offset: 2px;
-  }
+.dsh-leader-kit-guide-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  margin-left: auto;
 }
 `
 

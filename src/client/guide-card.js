@@ -16,8 +16,10 @@
  * @module dsh-leader-kit/client/guide-card
  */
 
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createElement, useEffect, useState } from 'react'
 import { ensureBoardStyles } from './board-styles.js'
+import { productIcon } from './icons.js'
 import {
   GUIDE_DOC_PATH,
   copyGuidePath,
@@ -63,22 +65,22 @@ export function GuideCardEntry(props) {
 
   if (!shouldShowGuide({ isLeader, blank: session?.blank === true, dismissed })) return null
 
-  const steps = ['guide.step.files', 'guide.step.mode', 'guide.step.tell']
   return createElement(
     'div',
     { className: 'dsh-leader-kit-guide-card' },
-    createElement('div', { className: 'dsh-leader-kit-guide-card-title' }, t('guide.title')),
+    createElement('span', { className: 'dsh-leader-kit-guide-icon' }, productIcon('checklist-outline', { size: 16 })),
     createElement(
-      'ol',
-      { className: 'dsh-leader-kit-guide-card-steps' },
-      steps.map((key) => createElement('li', { key }, t(key))),
+      'div',
+      { className: 'dsh-leader-kit-guide-body' },
+      createElement('div', { className: 'dsh-leader-kit-guide-title' }, t('guide.title')),
+      createElement('div', { className: 'dsh-leader-kit-guide-steps' }, t('guide.steps')),
     ),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-guide-card-actions' },
-      createElement('button', {
-        type: 'button',
-        className: 'dsh-leader-kit-guide-card-action dsh-leader-kit-guide-card-action-primary',
+      { className: 'dsh-leader-kit-guide-actions' },
+      createElement(Button, {
+        size: 'sm',
+        variant: 'outline',
         onClick: () => {
           void copyGuidePath(GUIDE_DOC_PATH, t, {
             clipboard: navigator.clipboard,
@@ -86,9 +88,9 @@ export function GuideCardEntry(props) {
           })
         },
       }, t('guide.action.docs')),
-      createElement('button', {
-        type: 'button',
-        className: 'dsh-leader-kit-guide-card-action',
+      createElement(Button, {
+        size: 'sm',
+        variant: 'ghost',
         onClick: () => {
           dismissal().dismiss(sessionId)
           setDismissed(true)

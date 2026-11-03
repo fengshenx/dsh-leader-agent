@@ -27,6 +27,17 @@ issue 要求「文案进 `locale/zh.json` / `locale/en.json`」，但宿主的 `
 
 第三方 bundle 没有打开本地文件的通道，发布白名单也不带 `docs/`（`scripts/pack-manifest.mjs` 里 `docs/` 整目录被拦）。于是按钮把 `docs/getting-started.md` 写进剪贴板并提示位置：从仓库或用源码安装时路径直接可用，从 npm 装的用户至少知道文档叫什么、在哪一层。剪贴板缺失或被拒时改提示文档位置，按钮不会点了没反应。
 
+### 形态取单行提示条，几何与输入框同源
+
+首版做成了大卡片（全宽、134px 高、12px 正文），被用户否掉四条：太笨重、字太小、比输入框宽、右侧大片空白。重做时先量了宿主的基准：
+
+- 输入框外壳 `uV2eYG_card` 的规则是 `width:100%; max-width:var(--dsh-composer-card-max-width); border-radius:var(--dsw-radius-panel); background:var(--dsw-specific-input-major); box-shadow:var(--dsw-elevation-soft); font-size:var(--dsh-content-font-size,14px)`。引导条直接取**同一个宽度 token**（`--dsh-composer-card-max-width`）+ `margin-inline:auto`，宽度与左右边界就和输入框逐像素一致（实测 1440 宽下 774.4 / 774.4，1280 宽下 712 / 712，差值 0）。
+- 圆角同取 `--dsw-radius-panel`（28px）。材质刻意比输入框**轻一档**：输入框是白面 + `elevation-soft`，引导条取 `--dsw-alias-interactive-bg-hover`（浅色 rgba(38,49,72,.06)、深色 rgba(255,255,255,.08)）且不叠投影——两块叠在一起才不会被读成两个输入框。
+- 字号回到宿主正文档：标题 `--dsw-font-s-strong-14-*`（14/22/500），步骤 `--dsw-font-xs-13-*`（13/20）。首版的 12px 落在宿主「元信息」档位上，做提示正文偏小。
+- 布局改成 `图标 + (标题/步骤) + 右侧动作` 的三段 flex：正文列 `flex:1 + min-width:0` 吃掉动作左侧全部宽度，右侧不再有空白；窄窗口下正文先换行，动作不被挤出。
+- 动作换成宿主的 `Button`（`size: 'sm'`、`variant: 'outline' | 'ghost'`），不再自绘文字按钮。图标用 `productIcon('checklist-outline')`：rc.2 的 primitives 只导出几个状态图标，没有通用的 `Icon*OutlineRegular`，本仓内联的宿主 artwork 路径是下限版本唯一稳妥的来源。
+- 文案从三行折成一行 `·` 分隔，并删掉「先读 `playbooks/program.md`」——那是给 leader 的执行细节，对新用户是噪音，文档里有。
+
 ### 独立 dock 条目，不动视图目标与官方空会话形态
 
 新增注册项 `dsh-leader-kit-guide`（`order: 90`），与 leader 视图入口（`order: 100`）共用 `conversation.input.dock`。条目渲染不满足条件时返回 null，不占空间；官方空会话形态、第三方视图目标的行为都没有改。
@@ -46,4 +57,9 @@ issue 要求「文案进 `locale/zh.json` / `locale/en.json`」，但宿主的 `
 - `npm run check` 全绿：989 个用例通过（16 条 Windows 相关在非 Windows 上 skip），70 个源文件、54 个被单测加载（46 个行覆盖 100%）、16 个登记为单测不可加载（新增的 `src/client/guide-card.js` 在册，理由写明组件归 e2e）；13 篇 standing docs 都在天花板内。
 - `npm run e2e` 3 条全绿，新增场景 `tests/e2e/guide-card.e2e.js`（约 8 秒）：起实例拿宿主自建的空会话 → 停 → 写 `projects.json` → 同一数据根再起一次 → 点项目行后卡片出现（标题文案、模型请求数 0、日志无 `user/message`）→ 点「知道了」后重载不再出现 → 新浏览器上下文里发首条消息后卡片消失。
 - 双向验证：把 `dismiss` 的 `setItem` 改成空操作后重跑 e2e，「重载后不该再出现」当场变红（locator 14 次仍解析到可见的卡片）；还原后变绿。
-- 真机读数（探针，`/tmp` 临时脚本，已删）：卡片全文为「这个目录有一个 Leader 了 / 在项目目录写 LEADER.md… 和 SLOTS.md… / 让它加载 leader-mode，先读 playbooks/program.md / 直接说你要做什么——它建卡、派工，右栏「看板」跟进 / 看上手文档 / 知道了」；关闭后 `localStorage` 只有一条 `dsh-leader-kit.guide.dismissed.session-<id>`；首条消息后模型请求 2 次（场景 + 标题），与「引导期间 0 次」对照。
+- 真机读数（探针，`/tmp` 临时脚本，已删）：关闭后 `localStorage` 只有一条 `dsh-leader-kit.guide.dismissed.session-<id>`；首条消息后模型请求 2 次（场景 + 标题），与「引导期间 0 次」对照。
+- 视觉读数（e2e 断言 + 探针，1440×900 与 1280×900 两种窗口、浅色与深色两套主题）：
+  - 卡片 `w=774.4 / x=469.3 / right=1243.7`，输入框外壳 `w=774.4 / x=469.3 / right=1243.7`——宽、左、右三处差值均为 0；1280 宽下两侧同为 712，差值同样为 0（同一个 `--dsh-composer-card-max-width` token，窗口收窄时一起收）。
+  - 卡片高 64px（首版 134px），圆角 28px 与输入框一致；标题 14/22/500、步骤 13/20；按钮 28px 高、8px 圆角（宿主 `Button` 的 `sm` 规格）。
+  - 深色主题：卡片底色 `rgba(255,255,255,0.08)`、标题 `rgb(249,250,251)`、输入框 `rgb(44,44,46)`——全部由 token 得出，宽度与边界与浅色一致。
+  - 这三条几何/字号指标已写进 e2e 断言（`width/left/right ≤ 1px`、圆角与输入框相等、标题 ≥14px、步骤 ≥13px、高度 ≤80px），双向验证：删掉 `max-width: var(--dsh-composer-card-max-width)` 后断言立即变红（宽度差 378.6px、左右各偏 189.3px），还原后变绿。

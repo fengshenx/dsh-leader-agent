@@ -126,6 +126,32 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   await openLeader(page)
   await card(page).waitFor({ state: 'visible', timeout: 30_000 })
   assert.match(await card(page).innerText(), /这个目录有一个 Leader 了/, '卡片标题应来自 locale 字典')
+  // 视觉硬指标：与输入框外壳同宽同边界。输入框外壳是编辑器往上第一个带
+  // max-width 的祖先（宿主自己就是靠它把输入框收在内容列宽内的）。
+  const box = await page.evaluate(() => {
+    const card = document.querySelector('.dsh-leader-kit-guide-card')
+    const editor = document.querySelector('div[role="textbox"][contenteditable="true"]')
+    let shell = editor
+    while (shell && getComputedStyle(shell).maxWidth === 'none') shell = shell.parentElement
+    const a = card.getBoundingClientRect()
+    const b = shell.getBoundingClientRect()
+    const title = card.querySelector('.dsh-leader-kit-guide-title')
+    const steps = card.querySelector('.dsh-leader-kit-guide-steps')
+    return {
+      width: Math.abs(a.width - b.width),
+      left: Math.abs(a.left - b.left),
+      right: Math.abs(a.right - b.right),
+      height: a.height,
+      titleSize: parseFloat(getComputedStyle(title).fontSize),
+      stepsSize: parseFloat(getComputedStyle(steps).fontSize),
+      round: getComputedStyle(card).borderRadius,
+      shellRound: getComputedStyle(shell).borderRadius,
+    }
+  })
+  assert.ok(box.width <= 1 && box.left <= 1 && box.right <= 1, `引导条与输入框没有对齐：${JSON.stringify(box)}`)
+  assert.equal(box.round, box.shellRound, '引导条圆角应与输入框取同一个 token')
+  assert.ok(box.titleSize >= 14 && box.stepsSize >= 13, `字号小于宿主正文档：${JSON.stringify(box)}`)
+  assert.ok(box.height <= 80, `引导条不够紧凑：${box.height}px`)
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', `guide-card-${process.pid}`)
   mkdirSync(artifacts, { recursive: true })
   await page.screenshot({ path: join(artifacts, 'card.png') })
