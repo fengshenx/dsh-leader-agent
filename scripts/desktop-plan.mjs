@@ -23,6 +23,7 @@ export const DESKTOP_APP_NAME = 'DeepSeek Harness'
  *
  * 宿主对 `DSH_HOME` 先展开 `~` 再 `resolve`（相对路径按当前目录），脚本照抄同一套
  * 口径：直接拿环境变量的字面量拼 `profiles/desktop`，`~/x` 会变成 `<cwd>/~/x`。
+ * 宿主的 `home-paths` 同时认 `~/` 与 `~\`（Windows 上两种写法都有人用）。
  *
  * @param {string} input - 原始路径
  * @param {string} homeDir - 用户主目录
@@ -33,7 +34,7 @@ export function expandHomePath(input, homeDir, cwd = process.cwd()) {
   const raw = String(input ?? '')
   const expanded = raw === '~'
     ? homeDir
-    : raw.startsWith('~/') ? join(homeDir, raw.slice(2)) : raw
+    : raw.startsWith('~/') || raw.startsWith('~\\') ? join(homeDir, raw.slice(2)) : raw
   return isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded)
 }
 
@@ -50,6 +51,55 @@ export function parseBundleExecutable(xml) {
   const match = /<key>\s*CFBundleExecutable\s*<\/key>\s*<string>([^<]+)<\/string>/.exec(String(xml ?? ''))
   const name = match?.[1]?.trim()
   return name === undefined || name === '' ? null : name
+}
+
+/**
+ * `DSH_DESKTOP_APP` 的写法是不是路径形态。
+ *
+ * 只有含分隔符或以 `~` 开头才算路径：`DeepSeek Harness.app` 是**名字**（去常见安装
+ * 位置找同名包），按路径解析会找成 `<cwd>/DeepSeek Harness.app`。
+ *
+ * @param {string} input - 原始写法
+ * @returns {boolean} 是否按路径处理
+ */
+export function looksLikeAppPath(input) {
+  const raw = String(input ?? '').trim()
+  return raw.includes('/') || raw.includes('\\') || raw.startsWith('~')
+}
+
+/**
+ * `DSH_HOME` 能不能交给桌面应用。
+ *
+ * 相对路径的基准是发起命令的目录，而桌面应用由 `open` 启动、不继承这个 shell 的
+ * 环境，两边会算成不同的数据根。所以只接受绝对路径与 `~/` 写法。
+ *
+ * @param {string} rawHome - 原始 `DSH_HOME`，未设时传空串
+ * @returns {'unset' | 'absolute' | 'relative'} 判定
+ */
+export function planDshHomeEnv(rawHome) {
+  const raw = String(rawHome ?? '').trim()
+  if (raw === '') return 'unset'
+  return raw.startsWith('~') || isAbsolute(raw) ? 'absolute' : 'relative'
+}
+
+/**
+ * 桌面应用那把锁该不该拦。
+ *
+ * 宿主 `DesktopProjectManager.withLock` 用 `openSync(lock, 'wx')` 建 `<profile>/lock`、
+ * 写入自己的 PID，操作完删掉。撞上还要看持有者是否活着：进程已退出的锁是陈旧的，
+ * 宿主自己会 `unlink` 后重开。读不出 PID、或 PID 非法时按宿主口径当成「活跃」拒绝。
+ *
+ * @param {object} options - 选项
+ * @param {boolean} options.exists - 锁文件在不在
+ * @param {string} [options.content] - 锁文件内容
+ * @param {boolean} [options.ownerAlive] - 持有进程是否存活，调用方用 `kill(pid, 0)` 判定
+ * @returns {'proceed' | 'stale' | 'refuse'} 动作
+ */
+export function planProfileLockAction({ exists, content = '', ownerAlive = false }) {
+  if (exists !== true) return 'proceed'
+  const pid = Number.parseInt(String(content).trim(), 10)
+  if (!Number.isSafeInteger(pid) || pid <= 0) return 'refuse'
+  return ownerAlive === true ? 'refuse' : 'stale'
 }
 
 /**
@@ -90,6 +140,8 @@ export function resolveDesktopPaths({ homeDir, cwd, env = {} }) {
     packagePath: join(profileDir, 'package.json'),
     /** 宿主写 manifest 时用的锁（`dsh-atomic-write` 的 `<file>.lock` 兄弟文件）。 */
     packageLockPath: join(profileDir, 'package.json.lock'),
+    /** 桌面应用自己那把锁：`apps/desktop/src/paths.ts` 的 `lock`，内容是持有者 PID。 */
+    profileLockPath: join(profileDir, 'lock'),
     nodeModulesDir,
     linkPath: join(nodeModulesDir, LEADER_KIT_PACKAGE),
   }

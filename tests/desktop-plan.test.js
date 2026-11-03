@@ -4,8 +4,9 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { dirname, join } from 'node:path'
 import {
-  DESKTOP_PROFILE, desktopLinkSpec, expandHomePath, parseBundleExecutable, planDesktopDisable,
-  planDesktopEnable, planLinkAction, resolveDesktopPaths,
+  DESKTOP_PROFILE, desktopLinkSpec, expandHomePath, looksLikeAppPath, parseBundleExecutable,
+  planDesktopDisable, planDesktopEnable, planDshHomeEnv, planLinkAction, planProfileLockAction,
+  resolveDesktopPaths,
 } from '../scripts/desktop-plan.mjs'
 import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
@@ -134,6 +135,8 @@ test('DSH_HOME 按宿主口径展开 ~ 与相对路径', () => {
   assert.equal(expandHomePath('~', HOME, '/work'), HOME)
   assert.equal(expandHomePath('rel/home', HOME, '/work'), '/work/rel/home')
   assert.equal(expandHomePath('/abs/home', HOME, '/work'), '/abs/home')
+  // Windows 上的 ~\ 与 ~/ 等价。
+  assert.equal(expandHomePath('~\\data', HOME, '/work'), join(HOME, 'data'))
   // 只认开头的 ~：路径中间的 ~ 是普通字符。
   assert.equal(expandHomePath('/work/~x', HOME, '/work'), '/work/~x')
   assert.equal(
@@ -169,8 +172,55 @@ test('先建链接再写 manifest：链接被别人的安装挡住时不留坏�
 test('探活接线：进程名来自 Info.plist，不拿包名或路径去 pgrep', () => {
   // 包文件名不等于进程名（Lark.app → Feishu），DSH_DESKTOP_APP 还可能带路径。
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  assert.match(source, /const processName = executableNameOf\(appName, homeDir\)/)
+  assert.match(source, /const processName = executableNameOf\(bundle\)/)
   assert.match(source, /args: \['-x', processName\]/)
   assert.doesNotMatch(source, /args: \['-x', appName\]/)
   assert.doesNotMatch(source, /pgrepNameOf/)
+})
+
+test('相对 DSH_HOME 拒绝：open 启动的应用拿不到这个 shell 的 cwd', () => {
+  assert.equal(planDshHomeEnv(''), 'unset')
+  assert.equal(planDshHomeEnv(undefined), 'unset')
+  assert.equal(planDshHomeEnv('/data/dsh'), 'absolute')
+  assert.equal(planDshHomeEnv('~/dsh'), 'absolute')
+  assert.equal(planDshHomeEnv('data'), 'relative')
+  assert.equal(planDshHomeEnv('./data'), 'relative')
+})
+
+test('DSH_DESKTOP_APP：裸 .app 名是名字，不是相对路径', () => {
+  assert.equal(looksLikeAppPath('DeepSeek Harness'), false)
+  assert.equal(looksLikeAppPath('DeepSeek Harness.app'), false)
+  assert.equal(looksLikeAppPath('/Applications/DeepSeek Harness.app'), true)
+  assert.equal(looksLikeAppPath('~/Applications/Probe.app'), true)
+  assert.equal(looksLikeAppPath('C:\\Apps\\Probe.app'), true)
+})
+
+test('宿主 <profile>/lock 按持有者进程判活：活跃拒绝、已退出放行', () => {
+  // 没有锁：照常写。
+  assert.equal(planProfileLockAction({ exists: false }), 'proceed')
+  // 持有者在跑：宿主 applyRelease / disableAllPlugins 正在改 profile。
+  assert.equal(planProfileLockAction({ exists: true, content: '4242\n', ownerAlive: true }), 'refuse')
+  // 进程已退出是陈旧锁，宿主自己会接管。
+  assert.equal(planProfileLockAction({ exists: true, content: '4242\n', ownerAlive: false }), 'stale')
+  // 读不出 PID：宿主按「活跃」处理，脚本照抄，不赌。
+  assert.equal(planProfileLockAction({ exists: true, content: '', ownerAlive: false }), 'refuse')
+  assert.equal(planProfileLockAction({ exists: true, content: 'abc', ownerAlive: false }), 'refuse')
+  assert.equal(planProfileLockAction({ exists: true, content: '0\n', ownerAlive: false }), 'refuse')
+})
+
+test('摘除不依赖桌面应用是否存在，且实体目录占位时整单拒绝', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // 探活在挂载分支里；--remove 分支要先返回。
+  assert.ok(source.indexOf("if (remove) {") < source.indexOf('desktopAppRunning(appBundle)'))
+  // 实体目录 + manifest 有本插件记录：拒绝，不写 manifest。
+  assert.match(source, /linkState === 'foreign' && planned/)
+  assert.ok(source.indexOf("linkState === 'foreign' && planned") < source.indexOf('writeManifest(paths.packagePath, next)'))
+})
+
+test('写 manifest 的重读与写入在同一把锁里（消掉 TOCTOU）', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // 挂载与摘除各一处，都在锁内重读。
+  assert.equal((source.match(/withFileLockSync\(paths\.packagePath/g) ?? []).length, 2)
+  const locked = source.slice(source.indexOf('withFileLockSync(paths.packagePath, () => {'))
+  assert.match(locked, /readManifest\(paths\.packagePath\)/)
 })

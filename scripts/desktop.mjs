@@ -31,11 +31,11 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
-import { writeFileAtomicSync } from './atomic-write.mjs'
+import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
 import { LEADER_KIT_PACKAGE, assertWebBundle } from './dev-plan.mjs'
 import {
-  DESKTOP_APP_NAME, expandHomePath, parseBundleExecutable, planDesktopDisable, planDesktopEnable,
-  planLinkAction, resolveDesktopPaths,
+  DESKTOP_APP_NAME, expandHomePath, looksLikeAppPath, parseBundleExecutable, planDesktopDisable,
+  planDesktopEnable, planDshHomeEnv, planLinkAction, planProfileLockAction, resolveDesktopPaths,
 } from './desktop-plan.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 import { detachNodeModulesLink } from './worktree-common.mjs'
@@ -106,8 +106,10 @@ function writeManifest(path, manifest) {
 /**
  * 找到 `DSH_DESKTOP_APP` 指向的 `.app`。
  *
- * 名字形态按常见安装位置探测；路径形态直接取。找不到返回 null，由调用方决定
- * 怎么说——脚本不猜一个包名去启动。
+ * 只有带分隔符或以 `~` 开头才算路径：`DeepSeek Harness.app` 这种裸包名是名字
+ * （在常见安装位置找 `/Applications/DeepSeek Harness.app`），按路径解析会找成
+ * `<cwd>/DeepSeek Harness.app`。探测与启动都用这里返回的绝对路径——`open` 不做
+ * shell 展开，`~/Foo.app` 原样传过去必然失败。
  *
  * @param {string} appName - 应用名或 `.app` 路径
  * @param {string} homeDir - 用户主目录
@@ -116,13 +118,14 @@ function writeManifest(path, manifest) {
 function appBundlePath(appName, homeDir) {
   const trimmed = appName.trim()
   if (trimmed === '') return null
-  if (trimmed.endsWith('.app') || trimmed.includes('/')) {
+  if (looksLikeAppPath(trimmed)) {
     const resolved = expandHomePath(trimmed, homeDir)
-    return existsSync(resolved) ? resolved : null
+    if (existsSync(resolved)) return resolved
   }
   const dirs = ['/Applications', join(homeDir, 'Applications'), '/System/Applications', '/Applications/Utilities']
+  const bundleName = trimmed.endsWith('.app') ? trimmed : `${trimmed}.app`
   for (const dir of dirs) {
-    const candidate = join(dir, `${trimmed}.app`)
+    const candidate = join(dir, bundleName)
     if (existsSync(candidate)) return candidate
   }
   return null
@@ -134,15 +137,13 @@ function appBundlePath(appName, homeDir) {
  * 包文件名不等于进程名（`Lark.app` 的进程是 `Feishu`），按文件名推进程名会漏判。
  * 取不到就报错——猜一个名字比拒绝更糟：漏判运行态会写坏 profile。
  *
- * @param {string} appName - 应用名或 `.app` 路径
- * @param {string} homeDir - 用户主目录
+ * @param {string | null} bundle - `appBundlePath` 解析出的 `.app` 绝对路径
  * @returns {string} `CFBundleExecutable`
  */
-function executableNameOf(appName, homeDir) {
-  const bundle = appBundlePath(appName, homeDir)
+function executableNameOf(bundle) {
   if (bundle === null) {
     throw new Error(
-      `找不到应用 ${appName}。用 DSH_DESKTOP_APP 指定 .app 的完整路径，`
+      '找不到桌面应用。用 DSH_DESKTOP_APP 指定名字或 .app 的完整路径，'
       + '例如 DSH_DESKTOP_APP="/Applications/DeepSeek Harness.app" npm run desktop。',
     )
   }
@@ -154,7 +155,7 @@ function executableNameOf(appName, homeDir) {
   const executable = converted.status === 0 ? parseBundleExecutable(converted.stdout) : null
   if (executable === null) {
     throw new Error(
-      `读不到 ${plistPath} 的 CFBundleExecutable，无法判断 ${appName} 是否在运行。`
+      `读不到 ${plistPath} 的 CFBundleExecutable，无法判断 ${bundle} 是否在运行。`
       + '\n先确认应用已完全退出（macOS 用 ⌘Q，关窗口只是隐藏）再重跑。',
     )
   }
@@ -165,16 +166,16 @@ function executableNameOf(appName, homeDir) {
  * 桌面应用是否正在运行。
  *
  * 运行中写 profile 不会生效（宿主只在启动时读），而且可能和应用自己的插件管理撞上，
- * 所以先探再写。Windows 上不探：脚本会在启动那一步明确提示手动打开。
+ * 所以先探再写。探活依赖 `plutil` + `pgrep -x`，只在 macOS 上做；其他平台返回 null，
+ * 由启动那一步提示手动打开。
  *
- * @param {string} appName - 应用名或 `.app` 路径
- * @param {string} homeDir - 用户主目录
+ * @param {string | null} bundle - `.app` 绝对路径
  * @returns {boolean | null} 运行中为 true，未运行为 false，探不了为 null
- * @throws 找不到应用或读不到 CFBundleExecutable 时
+ * @throws 读不到 `Info.plist` 的 `CFBundleExecutable` 时
  */
-function desktopAppRunning(appName, homeDir) {
-  if (process.platform === 'win32') return null
-  const processName = executableNameOf(appName, homeDir)
+function desktopAppRunning(bundle) {
+  if (process.platform !== 'darwin') return null
+  const processName = executableNameOf(bundle)
   try {
     const probe = spawnCommandSync({ command: 'pgrep', args: ['-x', processName], encoding: 'utf8' })
     return probe.status === 0
@@ -185,40 +186,66 @@ function desktopAppRunning(appName, homeDir) {
   }
 }
 
+/** 进程是否还活着；没有权限探查时按活着算，不能把「不确定」当「已退出」。 */
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch (error) {
+    return error.code !== 'ESRCH'
+  }
+}
+
 /**
- * profile 是否正被桌面应用写入。
+ * 桌面应用的 profile 锁是否被占着。
  *
- * 宿主的 `dsh-atomic-write` 用 `<file>.lock` 兄弟文件表达独占写：插件管理改
- * manifest 时 `package.json.lock` 在场。撞上它会写出相互覆盖的结果。
+ * 宿主 `DesktopProjectManager.withLock` 在 `<profile>/lock` 上 `openSync('wx')` 并写入
+ * 自己的 PID，`applyRelease` 与 `disableAllPlugins` 都走它——写 profile 期间撞上会
+ * 相互覆盖。进程已退出的锁是陈旧的（宿主自己会接管），只提示不拦。
  *
- * @param {string} lockPath - 锁文件路径
+ * @param {object} paths - `resolveDesktopPaths` 的结果
  * @returns {void} 无返回
- * @throws 锁在场时
+ * @throws 锁被活跃进程持有时
  */
-function assertProfileUnlocked(lockPath) {
-  if (!existsSync(lockPath)) return
+function assertProfileLockFree(paths) {
+  const exists = existsSync(paths.profileLockPath)
+  const content = exists ? readFileSync(paths.profileLockPath, 'utf8') : ''
+  const pid = Number.parseInt(String(content).trim(), 10)
+  const action = planProfileLockAction({
+    exists,
+    content,
+    ownerAlive: Number.isSafeInteger(pid) && pid > 0 ? processAlive(pid) : false,
+  })
+  if (action === 'proceed') return
+  if (action === 'stale') {
+    console.log(`${paths.profileLockPath} 是上次操作留下的陈旧锁（PID ${pid} 已退出），继续。`)
+    return
+  }
   throw new Error(
-    `${lockPath} 存在：桌面 App 的插件管理正在改这个 profile（宿主用 <file>.lock 表示写入中）。`
-    + '\n等它结束再重跑；确认没有任何操作时可以删掉这个锁文件。',
+    `${paths.profileLockPath} 存在且持有者（PID ${Number.isSafeInteger(pid) && pid > 0 ? pid : '未知'}）还在：`
+    + '桌面应用正在改这个 profile（宿主用 <profile>/lock 串行化插件操作）。'
+    + '\n等它结束再重跑；确认没有任何桌面应用操作时可以删掉这个锁文件。',
   )
 }
 
 /**
  * 拉起桌面应用。
  *
- * @param {string} appName - 应用名或 `.app` 路径
+ * 用解析出来的 `.app` 绝对路径而不是 `DSH_DESKTOP_APP` 原值：`open` 不做 shell 展开，
+ * `~/Foo.app` 原样传过去必然失败。
+ *
+ * @param {string | null} bundle - `.app` 绝对路径
  * @returns {boolean} 是否由本脚本启动
  */
-function launchDesktopApp(appName) {
-  if (process.platform !== 'darwin') {
-    console.log(`请手动启动 ${appName}。`)
+function launchDesktopApp(bundle) {
+  if (process.platform !== 'darwin' || bundle === null) {
+    console.log(`请手动启动桌面应用${bundle === null ? '' : `（${bundle}）`}。`)
     return false
   }
-  const result = spawnCommandSync({ command: 'open', args: ['-a', appName], encoding: 'utf8' })
+  const result = spawnCommandSync({ command: 'open', args: ['-a', bundle], encoding: 'utf8' })
   if (result.status !== 0) {
     throw new Error(
-      `open -a "${appName}" 失败（退出码 ${result.status}）：${(result.stderr || result.stdout || '').trim()}`
-      + '\n应用名不同时用 DSH_DESKTOP_APP 指定，例如 DSH_DESKTOP_APP="/Applications/DeepSeek Harness.app" npm run desktop。',
+      `open -a "${bundle}" 失败（退出码 ${result.status}）：${(result.stderr || result.stdout || '').trim()}`,
     )
   }
   return true
@@ -292,9 +319,18 @@ function detachLink(linkPath) {
  */
 function main() {
   const homeDir = homedir()
+  const rawHome = process.env.DSH_HOME?.trim() ?? ''
+  if (planDshHomeEnv(rawHome) === 'relative') {
+    throw new Error(
+      `DSH_HOME=${rawHome} 是相对路径：它的基准是发起命令的目录，而桌面应用由 open 启动、`
+      + '不继承这个 shell 的环境，两边会算成不同的数据根。改成绝对路径，或用 ~/ 开头的写法。',
+    )
+  }
   const paths = resolveDesktopPaths({ homeDir, cwd: process.cwd(), env: process.env })
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
+  const appBundle = appBundlePath(appName, homeDir)
   const remove = process.argv.slice(2).includes('--remove')
+  const defaultHome = join(homeDir, '.dsh')
 
   if (!existsSync(paths.packagePath)) {
     console.error(`找不到桌面 profile: ${paths.packagePath}`)
@@ -303,13 +339,11 @@ function main() {
     process.exit(1)
   }
 
-  const manifest = readManifest(paths.packagePath)
-
   if (!remove) {
     try {
       assertWebBundle({
         profileDir: paths.profileDir,
-        bundles: manifest?.dsh?.profile?.bundles,
+        bundles: readManifest(paths.packagePath)?.dsh?.profile?.bundles,
         hint: '桌面应用自己会写这个列表；缺它说明该 profile 被改坏了，'
           + '先退出应用、删掉该 profile 目录，再打开应用让它重建。',
       })
@@ -319,16 +353,9 @@ function main() {
     }
   }
 
-  const running = desktopAppRunning(appName, homeDir)
-  if (running === true) {
-    console.error(`${appName} 正在运行，profile 只在启动时读入。`)
-    console.error('先完全退出桌面应用（macOS 用 ⌘Q，关窗口只是隐藏），再重跑本命令。')
-    process.exit(1)
-  }
-
   if (remove) {
-    // 先判归属再动盘：manifest 与链接都只摘「确实是当前工作树挂的」那一份。
-    const { manifest: next, changed } = planDesktopDisable({ manifest, worktree })
+    // 摘除不看应用在不在：改名、卸载之后照样要能摘。只看谁占着 profile。
+    assertProfileLockFree(paths)
     const linkState = linkStateOf({ linkPath: paths.linkPath, worktree })
     if (linkState === 'other') {
       throw new Error(
@@ -336,8 +363,21 @@ function main() {
         + '\n不摘别人的安装：到那份来源的目录里跑 --remove，或在插件管理里卸载。',
       )
     }
-    assertProfileUnlocked(paths.packageLockPath)
-    if (changed) writeManifest(paths.packagePath, next)
+    const changed = withFileLockSync(paths.packagePath, () => {
+      const { manifest: next, changed: planned } = planDesktopDisable({
+        manifest: readManifest(paths.packagePath),
+        worktree,
+      })
+      if (linkState === 'foreign' && planned) {
+        throw new Error(
+          `${paths.linkPath} 是实体目录（像是插件管理装的一份），本脚本不摘。`
+          + '\n要么在 DeepSeek Harness 的插件管理里卸载，要么先手工删掉这个目录再重跑 --remove；'
+          + 'manifest 里的声明这次一并保留，不留下「没有依赖、只在 bundles 里」的半摘状态。',
+        )
+      }
+      if (planned) writeManifest(paths.packagePath, next)
+      return planned
+    })
     if (linkState === 'ours') detachLink(paths.linkPath)
     console.log('')
     console.log('== 已从 desktop profile 摘除 dsh-leader-kit ==')
@@ -349,15 +389,29 @@ function main() {
     return
   }
 
-  const { manifest: next, changed } = planDesktopEnable({ manifest, worktree })
+  const running = desktopAppRunning(appBundle)
+  if (running === true) {
+    console.error(`${appBundle} 正在运行，profile 只在启动时读入。`)
+    console.error('先完全退出桌面应用（macOS 用 ⌘Q，关窗口只是隐藏），再重跑本命令。')
+    process.exit(1)
+  }
+
   // 先构建、再建链接、最后写 manifest：构建失败时 profile 一点没动；链接被别人的
   // 安装挡住时 manifest 也保持原样，不会留下「声明了依赖、磁盘上没有对应链接」的
   // 坏状态。反过来链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑
   // 会当成「已指向当前目录」。
   run('npm', ['run', 'build:client'], { cwd: worktree })
-  assertProfileUnlocked(paths.packageLockPath)
+  assertProfileLockFree(paths)
   const action = ensureLink({ linkPath: paths.linkPath, worktree })
-  if (changed) writeManifest(paths.packagePath, next)
+  // 重读 manifest 在锁内做：读-判-写之间不能有第二个写者插进来。
+  const changed = withFileLockSync(paths.packagePath, () => {
+    const { manifest: next, changed: planned } = planDesktopEnable({
+      manifest: readManifest(paths.packagePath),
+      worktree,
+    })
+    if (planned) writeManifest(paths.packagePath, next)
+    return planned
+  })
 
   console.log('')
   console.log('== dsh-leader-kit 挂进桌面版 ==')
@@ -368,7 +422,13 @@ function main() {
   console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
   console.log('')
 
-  const launched = launchDesktopApp(appName)
+  if (paths.home !== defaultHome) {
+    // open 走 LaunchServices，不继承这个 shell 的环境变量：应用会去读默认的 ~/.dsh。
+    console.log(`数据根不是默认的 ${defaultHome}，open -a 不传环境变量，桌面应用会读默认位置。`)
+    console.log(`手动启动：DSH_HOME="${paths.home}" open -a "${appBundle ?? appName}"`)
+    return
+  }
+  const launched = launchDesktopApp(appBundle)
   console.log('')
   if (launched) {
     console.log('桌面应用已启动。右栏出现「看板」Tab、左栏出现「项目」区块即生效。')

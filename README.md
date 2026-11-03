@@ -107,7 +107,7 @@ npm run desktop              # write the desktop profile, rebuild the client bun
 npm run desktop -- --remove  # unmount
 ```
 
-The script writes `dsh-leader-kit: link:<current directory>`, so code changes take effect on the next launch. Desktop reads the profile only at startup: quit the app completely first (closing the window just hides it), and only one worktree version can be mounted at a time; `--remove` only unmounts what this worktree mounted, and refuses another worktree's or the plugin manager's install. Without the script, add the repository's absolute path through the app's plugin manager. Both sides share sessions, projects, and cards under `~/.dsh`, but keep their own plugin packages and activation.
+The script writes `dsh-leader-kit: link:<current directory>`, so code changes take effect on the next launch. Desktop reads the profile only at startup: quit the app completely first (closing the window just hides it), and only one worktree version can be mounted at a time; `--remove` only unmounts what this worktree mounted, and refuses another worktree's or the plugin manager's install. Without the script, add the repository's absolute path through the app's plugin manager. Both sides share sessions, projects, and cards under `~/.dsh`, but keep their own plugin packages and activation. `DSH_HOME` must be absolute or start with `~/`: the app is launched by `open` and cannot resolve this shell's relative path. When the data root is not the default `~/.dsh`, the script only mounts the profile and prints a manual launch command carrying `DSH_HOME`.
 
 ### Five steps
 
