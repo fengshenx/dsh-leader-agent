@@ -33,6 +33,7 @@ import {
 // 会话行的选中态没有渲染测试可跑：仓里不引 jsdom，React 组件不硬测。断言只能落在
 // 源码接线与元素属性上——这一层断了，界面上的表现就是「点开 worker 却没有任何标记」。
 const sectionPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'src/client/project-section.js')
+const panelPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'src/client/project-panel.js')
 const iconsPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'src/client/icons.js')
 
 /**
@@ -350,8 +351,12 @@ test('leader 运行态接线到行首加载圈', () => {
   assert.doesNotMatch(source, /dsh-leader-agent-project-spinner/)
   assert.doesNotMatch(source, /dsh-leader-agent-session-spinner/)
   assert.doesNotMatch(source, /@keyframes dsh-leader-agent-spin/)
-  // 会话行与官方会话行同一个组件、同一个默认尺寸（ongoing 时 14px）。
-  assert.match(source, /row\.running \? createElement\(StateDot, \{ state: 'ongoing' \}\) : null,/)
+  // 会话行两档都与官方会话行同一个组件、同一个默认尺寸（ongoing 14px / done
+  // 10px）：运行中加载圈在前，完成未读绿点在后，档位降序照官方 sessionStatuses。
+  assert.match(
+    source,
+    /row\.running\s*\n\s*\? createElement\(StateDot, \{ state: 'ongoing' \}\)\s*\n\s*: row\.completed === true\s*\n\s*\? createElement\(StateDot, \{ state: 'done' \}\)\s*\n\s*: null,/,
+  )
   // 组件来自宿主基线模块（`PLATFORM_MODULES` 的 `ui-primitives`），不新引依赖。
   assert.match(
     source,
@@ -366,6 +371,26 @@ test('leader 运行态接线到行首加载圈', () => {
   const folderRule = source.slice(folderAt, source.indexOf('}', folderAt))
   assert.match(folderRule, /display: inline-flex/)
   assert.match(folderRule, /align-items: center/)
+})
+
+test('完成未读投影接线到会话行', () => {
+  // 按行匹配源码：Windows 检出会把换行转成 CRLF，先归一化。
+  const source = readFileSync(panelPath, 'utf8').replace(/\r\n/g, '\n')
+  // 投影随订阅同生命周期：实例化必须在订阅 effect 里。订阅又必须只挂一次——
+  // getSessions / refreshSessionIndex 是 slot inject 的内联函数，宿主每次重渲染
+  // occupant 都换新引用，依赖它们会让订阅重挂、投影清零（跑完的绿点凭空消失）。
+  // 钉住三件事：ref 解引用存在、tracker 在 effect 内、依赖数组为空。
+  assert.match(
+    source,
+    /const sessionsRef = useRef\(getSessions\)\s*\n\s*sessionsRef\.current = getSessions/,
+  )
+  assert.match(
+    source,
+    /const completion = createSessionCompletionTracker\(\)\s*\n\s*const sync = \(\) => \{\s*\n\s*const sessions = sessionsRef\.current\?\.\(\)\s*\n\s*if \(sessions\?\.list\?\.getSnapshot === undefined\) return\s*\n\s*const snapshot = sessions\.list\.getSnapshot\(\)\s*\n\s*const completed = completion\.update\(snapshot\)/,
+  )
+  assert.match(source, /\}, \[\]\)\s*\n\s*\/\/ 订阅已归档集合/)
+  // 结果填进行数据：会话行渲染只认 row.completed，不另开第二条状态通道。
+  assert.match(source, /completed: completed\.has\(id\),/)
 })
 
 test('当前会话是 leader 或项目下的 worker 时项目行有激活态', () => {

@@ -51,6 +51,7 @@ import {
 } from './project-panel-logic.js'
 import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteError } from './project-remote.js'
 import { notifyProjectsChanged } from './project-changes.js'
+import { createSessionCompletionTracker } from './session-completion.js'
 import { showToast } from './toast.js'
 import {
   createWorkspaceExclusion,
@@ -182,6 +183,15 @@ export function ProjectPanel(props) {
     void refreshSessionIndex()
   }), [refresh, refreshSessionIndex])
 
+  // `getSessions` 与 `refreshSessionIndex` 都是 slot inject 的内联函数：宿主任何
+  // 一次重渲染 occupant 都会换新引用，把它们放进订阅 effect 的依赖等于让订阅
+  // 周期性重挂——完成未读投影随之清零（跑完的绿点凭空消失），归属防抖计时器也
+  // 被反复重置。经 ref 解引用：订阅只在挂载时建立一次，取值永远走最新一份。
+  const sessionsRef = useRef(getSessions)
+  sessionsRef.current = getSessions
+  const refreshIndexRef = useRef(refreshSessionIndex)
+  refreshIndexRef.current = refreshSessionIndex
+
   // 定期重读项目列表：目录可能在别处被删掉（文件管理器、终端），而这件事既不产生
   // 会话事件也不产生焦点事件。目录失效后要停止把该项目的会话从官方树里排除，否则
   // 那些会话在项目行与官方树里同时打不开。页面不可见时不问，切回可见立刻补一次。
@@ -199,14 +209,19 @@ export function ProjectPanel(props) {
 
   // 订阅会话列表：标题与运行状态随会话变化，归属也会因新会话而变。
   useEffect(() => {
-    const sessions = getSessions?.()
-    if (sessions?.list?.subscribe === undefined) return undefined
     let pending = null
+    let unsubscribe = null
     /** 上一次同步时的当前会话；切换它要跳过防抖，见下。 */
     let lastCurrent
     let primed = false
+    // 完成未读是进程本地投影，与订阅同生命周期：订阅重挂（组件卸载）即重新
+    // 开始跟踪，不把上一轮里看到的运行态当成这一轮的跳变。
+    const completion = createSessionCompletionTracker()
     const sync = () => {
+      const sessions = sessionsRef.current?.()
+      if (sessions?.list?.getSnapshot === undefined) return
       const snapshot = sessions.list.getSnapshot()
+      const completed = completion.update(snapshot)
       const rows = {}
       for (const [id, row] of Object.entries(snapshot.byId ?? {})) {
         rows[id] = {
@@ -216,6 +231,7 @@ export function ProjectPanel(props) {
           running: row.running,
           origin: row.origin,
           blank: row.blank,
+          completed: completed.has(id),
         }
       }
       setSessionRows(rows)
@@ -231,20 +247,43 @@ export function ProjectPanel(props) {
           clearTimeout(pending)
           pending = null
         }
-        void refreshSessionIndex()
+        void refreshIndexRef.current()
         return
       }
       // 归属重算要过宿主，合并到一次延迟刷新里，避免每条事件都打一次远程调用。
       if (pending !== null) clearTimeout(pending)
-      pending = setTimeout(() => { pending = null; void refreshSessionIndex() }, 1000)
+      pending = setTimeout(() => { pending = null; void refreshIndexRef.current() }, 1000)
     }
     sync()
-    const unsubscribe = sessions.list.subscribe(sync)
+    // 挂载早于会话服务就绪时订阅不上；没有针对它的就绪信号（项目通道的
+    // onProjectRemoteReady 是另一条线），轮询到挂上为止，10 秒仍拿不到就大声报错。
+    let retryTimer = null
+    const attach = () => {
+      const sessions = sessionsRef.current?.()
+      if (sessions?.list?.subscribe === undefined) return false
+      sync()
+      unsubscribe = sessions.list.subscribe(sync)
+      return true
+    }
+    if (!attach()) {
+      const deadline = Date.now() + 10_000
+      retryTimer = setInterval(() => {
+        if (!attach() && Date.now() < deadline) return
+        clearInterval(retryTimer)
+        retryTimer = null
+        if (unsubscribe === null) {
+          console.error('dsh-leader-agent: 10 秒内没有等到会话列表服务，项目区块将没有运行态与会话行')
+        }
+      }, 500)
+    }
     return () => {
-      unsubscribe()
+      unsubscribe?.()
+      if (retryTimer !== null) clearInterval(retryTimer)
       if (pending !== null) clearTimeout(pending)
     }
-  }, [getSessions, refreshSessionIndex])
+    // 依赖恒空：getSessions / refreshSessionIndex 经上方 ref 解引用，订阅只在
+    // 挂载时建立一次——宿主重渲染 occupant 换新引用不再重挂本 effect。
+  }, [])
 
   // 订阅已归档集合：宿主的工作区快照是真源。归档是宿主的既有能力，别处（官方
   // 工作区树）归档的会话在这里也要一起消失，所以不靠本地记账。
