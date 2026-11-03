@@ -18,7 +18,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { waitFor, waitForLocator } from './harness.mjs'
+import { closeBrowser, waitFor, waitForLocator } from './harness.mjs'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -74,7 +74,7 @@ function attachmentOf(home, workspaceId, sessionId) {
   return (store.tables.workspaces[workspaceId]?.sessionIds ?? []).includes(sessionId)
 }
 
-test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeout: 300_000 }, async (t) => {
+test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeout: 90_000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-decouple-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -82,7 +82,7 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
   let instance = null
 
   t.after(async () => {
-    await browser?.close().catch(() => {})
+    await closeBrowser(browser)
     await instance?.stop().catch(() => {})
     await mock.stop().catch(() => {})
     rmSync(root, { recursive: true, force: true })
@@ -98,8 +98,12 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
     description: '第一段实例的输入框可编辑',
     timeoutMs: 20_000,
   })
-  const session = firstSession(first.home)
-  assert.notEqual(session, null, '宿主启动后应有一个落盘的空会话')
+  // 建会话是宿主的异步动作：输入框可编辑不代表日志已经落盘，等到出现再取 id。
+  const session = await waitFor({
+    description: '宿主启动后落盘一个空会话',
+    check: () => firstSession(first.home),
+    timeoutMs: 5_000,
+  })
   await bootstrap.close()
   await first.stop({ keepRoot: true })
 

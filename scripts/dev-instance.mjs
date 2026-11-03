@@ -150,15 +150,40 @@ export function spawnDshWeb({
     else resolveReady(value)
   }
 
+  /**
+   * 等一次退出，超时返回 false。
+   *
+   * 必须先查 `exitCode` / `signalCode`：`exit` 只发一次，监听器挂上去时事件可能已经发过，
+   * 只靠 `once('exit')` 会永久等下去。上一版在 KILL 之后再挂一次无上限的等待，子进程若
+   * 已在那之前退出，清理阶段就再也不会结束——e2e 偶发卡几分钟正是这个形态。
+   *
+   * @param {number} timeoutMs - 上限
+   * @returns {Promise<boolean>} 是否已退出
+   */
+  const waitForExit = (timeoutMs) => new Promise((resolveExit) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolveExit(true)
+      return
+    }
+    const onExit = () => {
+      clearTimeout(timer)
+      resolveExit(true)
+    }
+    const timer = setTimeout(() => {
+      child.off('exit', onExit)
+      resolveExit(false)
+    }, timeoutMs)
+    child.once('exit', onExit)
+  })
+
   /** 先 TERM 等退出，超时再 KILL：直接 KILL 会留下半写的数据文件。 */
   const stop = async () => {
     if (child.exitCode !== null || child.signalCode !== null) return
     child.kill('SIGTERM')
-    const exited = await new Promise((resolveExit) => {
-      const killTimer = setTimeout(() => { child.kill('SIGKILL'); resolveExit(false) }, 5_000)
-      child.once('exit', () => { clearTimeout(killTimer); resolveExit(true) })
-    })
-    if (!exited) await new Promise((resolveExit) => child.once('exit', resolveExit))
+    if (await waitForExit(5_000)) return
+    child.kill('SIGKILL')
+    if (await waitForExit(5_000)) return
+    throw new Error(`dsh web 进程 ${child.pid} 在 SIGKILL 后仍未退出`)
   }
 
   /** 子进程的 stdout/stderr 都攒进 logs：启动失败时这些是唯一的线索。 */

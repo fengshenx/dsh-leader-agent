@@ -108,7 +108,11 @@ export async function startMockProvider({ scripts }) {
     remaining: cursor.remaining,
     async stop() {
       if (!server.listening) return
-      await new Promise((resolve) => server.close(resolve))
+      // SSE 是 keep-alive：实例没断开的连接会让 `close()` 一直等下去，清理阶段于是挂住。
+      // 先发起关闭再掐掉连接，回调才有机会落地。
+      const closed = new Promise((resolve) => server.close(resolve))
+      server.closeAllConnections()
+      await closed
     },
   }
 }

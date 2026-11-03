@@ -19,6 +19,9 @@ import { startMockProvider } from './mock-llm.mjs'
 /** 失败读数的上限：页面主线程卡死时，读数不能把 20 秒的失败放大成 `node:test` 的 180 秒。 */
 const READ_BUDGET_MS = 2_000
 
+/** 关闭浏览器的上限：正常关闭不到 1 秒，等满说明浏览器进程没干净退出。 */
+const CLOSE_BUDGET_MS = 10_000
+
 let warnedScale = false
 
 /**
@@ -66,6 +69,33 @@ async function withDeadline(reading, timeoutMs, fallback) {
 }
 
 /**
+ * 关浏览器，最多等 `timeoutMs`。
+ *
+ * Playwright 的 `close()` 在浏览器进程没干净退出时既不 resolve 也不 reject，
+ * `await browser.close().catch(...)` 只处理拒绝——未 settle 的 promise 会让清理阶段
+ * 永久挂住。实测症状是全量偶发卡几分钟、测试进程 0% CPU、没有任何报错输出。
+ *
+ * @param {import('playwright').Browser | null} browser - 浏览器句柄
+ * @param {number} [timeoutMs] - 上限，默认 10 秒
+ * @returns {Promise<boolean>} 是否在预算内关闭
+ */
+export async function closeBrowser(browser, timeoutMs = CLOSE_BUDGET_MS) {
+  if (browser === null || browser === undefined) return true
+  let timer
+  const closed = browser.close().then(() => true, () => true)
+  const inBudget = await Promise.race([
+    closed,
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs)
+    }),
+  ])
+  clearTimeout(timer)
+  // 超时不抛：清理阶段抛错会盖住真正的失败原因，但这仍然是需要看见的异常。
+  if (!inBudget) console.warn(`[e2e] 关闭浏览器超过 ${timeoutMs}ms，继续清理`)
+  return inBudget
+}
+
+/**
  * 起一个可直接断言的场景。
  *
  * @param {object} [options] - 选项
@@ -89,7 +119,7 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
   } catch (error) {
     // 起不来时把已拿到的资源收掉，否则端口与临时根会留给下一个用例背锅。
     // 清理自身的错误不能盖住真正的失败原因，这里逐条吞掉。
-    await browser?.close().catch(() => {})
+    await closeBrowser(browser)
     await instance?.stop().catch(() => {})
     await mock.stop().catch(() => {})
     throw error
@@ -147,7 +177,7 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
       // 关浏览器前先留最后一帧：断言失败时这张图往往就是唯一能看的东西。
       await attempt('保存结尾截图', () => screenshot('final'))
       // 顺序固定：先关浏览器（它连着实例），再停实例，最后停 mock 与删数据根。
-      await attempt('关闭浏览器', () => browser.close())
+      await attempt('关闭浏览器', () => closeBrowser(browser))
       await attempt('停止实例', () => instance.stop())
       await attempt('停止 mock', () => mock.stop())
       if (failures.length > 0) throw new Error(`e2e 清理失败：\n${failures.join('\n')}`)
