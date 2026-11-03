@@ -21,7 +21,8 @@
 
 import { randomUUID } from 'node:crypto'
 import { agentPresetOptions, agentPresetResumeSetup } from './agent-preset.js'
-import { createUserMessage } from './message.js'
+import { inheritPermission } from './permission-inherit.js'
+import { createUserMessage, WORKER_TASK_SOURCE_KIND } from './message.js'
 
 /**
  * 创建 worker 会话管理器。
@@ -41,6 +42,13 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
    * 异步的，所以另存一份内存集合；启动时由调用方用登记表灌入（`adopt`）。
    */
   const workerIds = new Set()
+  /**
+   * @type {Map<string, Promise<object>>} 正在冷恢复的会话。
+   *
+   * 同一会话的并发 `send()` 共用一次 `agents.resume()`：两次恢复会建出两个作用域，
+   * 后一个经 `live.set` 覆盖前一个，被覆盖的那个再没人 dispose。
+   */
+  const resuming = new Map()
 
   /**
    * 把会话标题改成 worker 显示名。
@@ -73,7 +81,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   function taskMessage(text, name, parentSessionId) {
     return createUserMessage(
       [{ type: 'text', text }],
-      { kind: 'dsh-leader-kit/worker-task', name, parentSessionId },
+      { kind: WORKER_TASK_SOURCE_KIND, name, parentSessionId },
     )
   }
 
@@ -157,6 +165,51 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     return true
   }
 
+  /**
+   * 冷恢复一次会话；同一会话的并发调用共用这一次 `agents.resume()`。
+   *
+   * 两次恢复会建出两个作用域，后一个经 `live.set` 覆盖前一个，被覆盖的那个再没人
+   * dispose——同一会话被并发唤醒时泄漏一个 agent。共用同一次恢复后两条消息各自
+   * 投到同一个 handle。
+   *
+   * @param {string} sessionId - 会话 id
+   * @param {AbortSignal} signal - 取消信号
+   * @returns {Promise<object>} AgentHandle
+   */
+  function resumeOnce(sessionId, signal) {
+    const pending = resuming.get(sessionId)
+    if (pending !== undefined) return pending
+    const task = (async () => {
+      const agents = ctx.get('agents')
+      if (agents === undefined) {
+        throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法唤醒 worker 会话')
+      }
+      // 冷恢复建的是新的作用域，preset 组合不会自己回来；按会话投影里记的
+      // preset 重新挂（宿主 resume 路径同样走 composeAgent）。
+      //
+      // 先登记再恢复：`agent/created` 在 resume 内部就发出来了，晚一步这个会话
+      // 会被裁成普通会话——worker 于是丢掉卡片写入，再也汇报不了自己的卡。
+      const known = workerIds.has(sessionId)
+      workerIds.add(sessionId)
+      let handle
+      try {
+        handle = await agents.resume({ resumeSessionId: sessionId, signal, ...agentPresetResumeSetup(ctx, logger) })
+      } catch (error) {
+        // 只回滚这次新登记的身份：已收编的 worker id 不能被抹掉，会话 id 不复用、
+        // 留着不会误判（见 `forget`），抹掉反而让它下次被判成普通会话。
+        if (!known) workerIds.delete(sessionId)
+        throw error
+      }
+      live.set(sessionId, handle)
+      return handle
+    })()
+    resuming.set(sessionId, task)
+    // 清理挂在 `task` 的派生链上、不改它的结果：每条调用方各拿原错误。挂在
+    // `set` 之后，同步失败的分支才不会删掉一个还没登记的条目。
+    void task.catch(() => {}).finally(() => { resuming.delete(sessionId) })
+    return task
+  }
+
   return {
     /**
      * 判定某会话是否本 bundle 派出的 worker（同步，供工具面裁剪用）。
@@ -218,10 +271,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
      * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
      * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
+     * @param {object} [options.permissionFrom] - 权限来源会话（协调者）；沙箱模式与审批策略从它继承
      * @param {AbortSignal} options.signal - 取消信号
-     * @returns {Promise<string>} 新会话 id
+     * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与 worker 实际生效的权限
      */
-    async spawn({ cwd, name, workspaceId, signal, deferPresentation = false }) {
+    async spawn({ cwd, name, workspaceId, signal, permissionFrom, deferPresentation = false }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -251,8 +305,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
+      // 权限要在首轮之前落定：宿主的 permissionPresets 已在 `session/created` 上给
+      // 这条新会话 pin 了**用户默认** preset，这里用协调者的有效值覆盖它。
+      const permission = inheritPermission({ ctx, fromSession: permissionFrom, toSession: handle.agent.session, logger })
       if (!deferPresentation) presentOne(handle, sessionId, name, workspaceId)
-      return sessionId
+      return { sessionId, permission }
     },
 
     /**
@@ -286,19 +343,9 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @returns {Promise<'live' | 'resumed'>} 投递形态
      */
     async send({ sessionId, text, name, parentSessionId, signal }) {
-      let handle = live.get(sessionId)
-      const resumed = handle === undefined
-      if (handle === undefined) {
-        const agents = ctx.get('agents')
-        if (agents === undefined) {
-          throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法唤醒 worker 会话')
-        }
-        // 冷恢复建的是新的作用域，preset 组合不会自己回来；按会话投影里记的
-        // preset 重新挂（宿主 resume 路径同样走 composeAgent）。
-        handle = await agents.resume({ resumeSessionId: sessionId, signal, ...agentPresetResumeSetup(ctx, logger) })
-        live.set(sessionId, handle)
-        workerIds.add(sessionId)
-      }
+      const current = live.get(sessionId)
+      const resumed = current === undefined
+      const handle = current ?? await resumeOnce(sessionId, signal)
       const displayName = name ?? handle.agent.session?.header?.title ?? sessionId
       if (name !== undefined) renameTitle(handle, name)
       handle.agent.followup(taskMessage(text, displayName, parentSessionId))

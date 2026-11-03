@@ -19,6 +19,7 @@ test('改入口即改门禁：manifest 里的路径直接决定必需文件', ()
   const files = requiredPackFiles({
     manifest: {
       ...manifest,
+      files: ['dist/index.js', 'cordis.patch.yml'],
       main: 'dist/index.js',
       exports: { ...manifest.exports, '.': './dist/index.js' },
       dsh: { bundle: { patch: './other.patch.yml' } },
@@ -29,6 +30,16 @@ test('改入口即改门禁：manifest 里的路径直接决定必需文件', ()
   assert.ok(files.includes('dist/index.js'))
   assert.ok(files.includes('other.patch.yml'))
   assert.ok(!files.includes('index.js'), '旧的 main 不该继续留着')
+})
+
+test('files 里的固定路径并进必需集，通配不展开', () => {
+  const files = requiredPackFiles({
+    manifest: { ...manifest, files: ['index.js', 'lib/client.js', 'README_ZH.md', 'src/**', '.agents/skills/**'] },
+    skillFiles: [],
+    localeFiles: [],
+  })
+  assert.ok(files.includes('README_ZH.md'), 'files 写了它就该验它在包里：文件改名时 npm 不报错，只是不带')
+  assert.ok(!files.some((path) => path.includes('*')), `通配不该展开：${files.join(', ')}`)
 })
 
 test('exports 的通配子路径不作为必需文件，覆盖面交给磁盘枚举', () => {

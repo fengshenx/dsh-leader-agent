@@ -2,8 +2,11 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
-  assertTaskName, branchFor, classifyWorktree, worktreeDirFor,
+  assertTaskName, branchFor, classifyNodeModulesLink, classifyWorktree, teardownWorktree, worktreeDirFor,
 } from '../scripts/worktree-common.mjs'
+
+/** lstat 结果的最小假件：只回答是不是链接。 */
+const linkStats = (isLink) => ({ isSymbolicLink: () => isLink })
 
 test('合法任务名通过校验', () => {
   for (const name of ['dev-script', 'p14-fix', 'a', 'task_1', 'v1.2']) {
@@ -68,4 +71,75 @@ test('既有未提交改动又是当前所在的，理由先说未提交改动',
   })
   assert.equal(verdict.removable, false)
   assert.equal(verdict.reason, '有未提交的改动')
+})
+
+test('node_modules 不存在时不拆链接', () => {
+  const action = classifyNodeModulesLink({ stats: null, platform: 'win32' })
+  assert.equal(action.detach, false)
+  assert.equal(action.method, null)
+})
+
+test('node_modules 是真实目录时不拆，绝不删别人的依赖', () => {
+  const action = classifyNodeModulesLink({ stats: linkStats(false), platform: 'win32' })
+  assert.equal(action.detach, false)
+  assert.equal(action.method, null)
+  assert.match(action.reason, /真实目录/)
+})
+
+test('win32 的 junction 用 rmdir 拆', () => {
+  const action = classifyNodeModulesLink({ stats: linkStats(true), platform: 'win32' })
+  assert.equal(action.detach, true)
+  assert.equal(action.method, 'rmdir')
+})
+
+test('POSIX 的符号链接用 unlink 拆', () => {
+  const action = classifyNodeModulesLink({ stats: linkStats(true), platform: 'linux' })
+  assert.equal(action.detach, true)
+  assert.equal(action.method, 'unlink')
+})
+
+test('先拆 node_modules 链接再执行删除', () => {
+  const calls = []
+  const dir = join('/repo', '.worktrees', 'task-a')
+  const result = teardownWorktree({
+    dir,
+    platform: 'win32',
+    stat: () => linkStats(true),
+    detach: (path, method) => calls.push({ step: 'detach', path, method }),
+    remove: () => {
+      calls.push({ step: 'remove' })
+      return { status: 0 }
+    },
+  })
+  assert.deepEqual(calls, [
+    { step: 'detach', path: join(dir, 'node_modules'), method: 'rmdir' },
+    { step: 'remove' },
+  ])
+  assert.deepEqual(result, { status: 0 })
+})
+
+test('真实 node_modules 直接删除，不调拆链接', () => {
+  let detached = false
+  let removed = false
+  teardownWorktree({
+    dir: join('/repo', '.worktrees', 'task-b'),
+    platform: 'win32',
+    stat: () => linkStats(false),
+    detach: () => { detached = true },
+    remove: () => { removed = true },
+  })
+  assert.equal(detached, false)
+  assert.equal(removed, true)
+})
+
+test('拆链接失败时不再执行删除，避免 git 跟穿链接', () => {
+  let removed = false
+  assert.throws(() => teardownWorktree({
+    dir: join('/repo', '.worktrees', 'task-c'),
+    platform: 'win32',
+    stat: () => linkStats(true),
+    detach: () => { throw new Error('EPERM: operation not permitted') },
+    remove: () => { removed = true },
+  }), /EPERM/)
+  assert.equal(removed, false)
 })

@@ -14,8 +14,9 @@
 
 import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows } from './project-panel-logic.js'
+import { buildProjectMenuItems, isCoordinatorCurrent, isCoordinatorRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -107,6 +108,12 @@ const STYLE_TEXT = `
 .dsh-leader-kit-project-row[data-selected='true'] {
   background: var(--dsw-alias-interactive-bg-hover);
 }
+/* 组里有当前会话（被打开的 worker）：点亮行首文件夹，与宿主工作区树的
+   folderActive 同色。整行底色留给协调者会话的选中态——两层同时铺色会看成
+   选了两个。 */
+.dsh-leader-kit-project-row[data-active='true'] .dsh-leader-kit-project-lead-folder {
+  color: var(--dsw-alias-state-business-primary);
+}
 .dsh-leader-kit-project-row[data-dead='true'] {
   color: var(--dsw-alias-label-secondary);
 }
@@ -146,7 +153,14 @@ const STYLE_TEXT = `
   font-size: 14px;
   line-height: 20px;
 }
-/* 行首槽位：默认目录图标，悬停整行时换成展开箭头（与官方工作区行同款）。 */
+/* 行首槽位：默认目录图标，悬停整行时换成展开箭头（与官方工作区行同款）。
+   里面的图标与加载圈都是 SVG：不把这层撑成 flex 的话，SVG 按行盒基线排，圈会
+   比行中心高 1.5px（34px 行实测）。 */
+.dsh-leader-kit-project-lead-folder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .dsh-leader-kit-project-lead {
   flex: none;
   width: 16px;
@@ -160,6 +174,11 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
+/* 行首加载圈：本组有活动时替换目录图标（尺寸与位置仍占行首槽位）。收起时
+   任一会话行在跑、或协调者自己在跑；展开后只剩协调者——其它会话行自己带
+   spinner，不重复画同一个状态。悬停规则对槽位容器生效，箭头照常盖住它。
+   圈本身是宿主的 StateDot（state: 'ongoing'）：轨道、呼吸弧、1.5s 周期与页面
+   上多个圈的同步相位都由基线 ui-primitives 自带，不再自己写圆环。 */
 .dsh-leader-kit-project-lead-arrow {
   display: none;
   color: var(--dsw-alias-label-caption, var(--dsw-alias-label-tertiary));
@@ -341,8 +360,14 @@ const STYLE_TEXT = `
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
+/* 选中态与官方会话行同款（宿主 Rows.module.css 的 sessionRow.selected）：主区域
+   正在看的那一条常驻 hover 底色，其余行只有指针停在上面时才亮。 */
+.dsh-leader-kit-session-row[data-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
 /* 状态位：尺寸照官方会话行的 slot（16×20）。官方在这里放运行状态圆点或加载器，
-   我们只区分「运行中」，所以只放加载器。 */
+   我们只区分「运行中」，所以只放加载器——直接渲染宿主的 StateDot，与官方会话
+   行同一个组件、同一个默认尺寸。 */
 .dsh-leader-kit-session-status {
   flex: none;
   width: 16px;
@@ -363,16 +388,6 @@ const STYLE_TEXT = `
   font-size: 14px;
   line-height: 20px;
   margin: 0 6px 0 var(--dsh-sidebar-label-gap, 4px);
-}
-.dsh-leader-kit-session-spinner {
-  flex: none;
-  width: 10px;
-  height: 10px;
-  box-sizing: border-box;
-  border: 1.5px solid var(--dsw-alias-label-tertiary);
-  border-top-color: transparent;
-  border-radius: 50%;
-  animation: dsh-leader-kit-spin 0.8s linear infinite;
 }
 /* 归档按钮：外观照官方会话行的 hover 动作（三级标签色、悬停提亮）。
    尺寸取宿主 0.2.2 的形态：24×24 目标 + -4px 负边距，净占位 16×16；rc.2 那版
@@ -436,9 +451,6 @@ const STYLE_TEXT = `
   .dsh-leader-kit-session-overflow:hover {
     color: var(--dsw-alias-label-secondary);
   }
-}
-@keyframes dsh-leader-kit-spin {
-  to { transform: rotate(360deg); }
 }
 `
 
@@ -719,8 +731,19 @@ function ProjectRow(props) {
     coordinatorSessionId: project.coordinatorSessionId,
     archivedSessionIds,
   })
-  // 当前会话是协调者或本项目下的 worker 时，这一行就是用户正在看的那一组。
-  const selected = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
+  // 整行底色只给协调者会话：那一行就是它的入口。worker 会话被打开时选中的是
+  // 下面列表里的那一行，项目行只点亮行首文件夹——分层与宿主工作区树一致
+  // （工作区分组亮文件夹图标，会话行铺整行底色）。
+  const selected = isCoordinatorCurrent(project, currentSessionId, archivedSessionIds)
+  const active = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
+  // 行首加载圈 = 本组有活动，两个来源（会话行、协调者自身）在判定函数里合成，
+  // 渲染上只有一个入口。协调者在项目树下不单独出行，它跑起来时任何展开状态都
+  // 只能靠行首提示；其它会话在跑则只在收起时算——展开后会话行自己带 spinner。
+  const leadActivity = showsProjectActivity({
+    expanded,
+    rows: childSessions,
+    coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds),
+  })
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
@@ -768,6 +791,7 @@ function ProjectRow(props) {
         onDragEnd: onDragFinish,
         'data-dead': openable ? undefined : 'true',
         'data-selected': selected ? 'true' : undefined,
+        'data-active': active ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
         'aria-current': selected ? 'true' : undefined,
         title: `${project.name} · ${project.directory}`,
@@ -789,7 +813,9 @@ function ProjectRow(props) {
         createElement(
           'span',
           { className: 'dsh-leader-kit-project-lead-folder' },
-          productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
+          leadActivity
+            ? createElement(StateDot, { state: 'ongoing' })
+            : productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
         ),
         createElement(
           'span',
@@ -892,6 +918,7 @@ function ProjectRow(props) {
                 ...folded.rows.map((row) => createElement(SessionRow, {
                   key: row.id,
                   row,
+                  selected: row.id === currentSessionId,
                   onOpenSession,
                   onArchiveSession,
                   busy,
@@ -1004,19 +1031,21 @@ function ProjectMenu(props) {
  * @returns {object} React 元素
  */
 function SessionRow(props) {
-  const { row, onOpenSession, onArchiveSession, busy } = props
+  const { row, selected, onOpenSession, onArchiveSession, busy } = props
   return createElement(
     'div',
     {
       className: 'dsh-leader-kit-session-row',
       'data-session-id': row.id,
+      'data-selected': selected ? 'true' : undefined,
+      'aria-current': selected ? 'page' : undefined,
       onClick: () => onOpenSession(row.id),
       title: row.displayTitle ?? row.title ?? row.id,
     },
     createElement(
       'span',
       { className: 'dsh-leader-kit-session-status' },
-      row.running ? createElement('span', { className: 'dsh-leader-kit-session-spinner' }) : null,
+      row.running ? createElement(StateDot, { state: 'ongoing' }) : null,
     ),
     createElement(
       'span',

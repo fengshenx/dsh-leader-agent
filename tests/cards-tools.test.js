@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createCardStore } from '../src/host/cards/store.js'
+import { createBundleTools } from '../src/host/index.js'
 import {
   createCreateCardTool,
   createUpdateCardTool,
@@ -14,9 +15,10 @@ import {
  * 建一组卡片工具与它们共用的存储。
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [resolveProject] -
  *   解析调用方会话所属项目；不传则卡片没有归属
+ * @param {(sessionId: string | undefined) => boolean} [canWrite] - 写卡身份判定；不传则放行
  * @returns {Promise<{ home: string, tools: Record<string, object> }>} 工具集与 home 目录
  */
-async function createTools(resolveProject) {
+async function createTools(resolveProject, canWrite) {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   // 可控时钟：卡片排序按更新时间戳，两次写入落在同一毫秒会退回插入序，
   // 断言「最近更新的排前面」就成了碰运气的 flaky 用例。
@@ -25,8 +27,8 @@ async function createTools(resolveProject) {
   return {
     home,
     tools: {
-      create_card: createCreateCardTool({ store, resolveProject }),
-      update_card: createUpdateCardTool({ store, resolveProject }),
+      create_card: createCreateCardTool({ store, resolveProject, canWrite }),
+      update_card: createUpdateCardTool({ store, resolveProject, canWrite }),
       list_cards: createListCardsTool({ store, resolveProject }),
     },
   }
@@ -796,6 +798,216 @@ test('项目外的会话改不了有归属的卡', async () => {
       () => tools.update_card.execute({ id: owned.id, title: '改它' }, exec),
       /属于另一个项目/,
     )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('普通会话不能写卡：建卡与改卡都被身份闸拒绝，且不落盘', async () => {
+  // 工具面在 agent/created 裁，换协调者不重建旧会话——退役者手里仍有写入工具，
+  // 所以执行时再判一次身份。
+  const { home, tools } = await createTools(async () => undefined, () => false)
+  try {
+    const store = createCardStore({ home })
+    const existing = await store.create({ title: '协调者建的卡' })
+
+    await assert.rejects(
+      () => tools.create_card.execute({ title: '普通会话的卡' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    await assert.rejects(
+      () => tools.update_card.execute({ id: existing.id, title: '改协调者的卡' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    // 被拒的写入不能落盘：卡库里仍只有那一张，标题没变
+    const cards = await store.list()
+    assert.deepEqual(cards.map((card) => card.title), ['协调者建的卡'])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('协调者与 worker 都过写卡身份闸', async () => {
+  const { home, tools } = await createTools(async () => undefined, (sessionId) => sessionId !== 'plain-1')
+  try {
+    const created = await tools.create_card.execute({ title: '任务' }, exec)
+    assert.equal(created.card.title, '任务')
+
+    // worker 挂产物链接：这是协议层给它的写卡动作（`implementation.md` 的交付一节）
+    const worker = { agent: { id: 'worker-1' }, signal: undefined }
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/1' }] },
+      worker,
+    )
+    assert.equal(updated.card.links.length, 1)
+    assert.equal(updated.card.status, 'active')
+
+    const plain = { agent: { id: 'plain-1' }, signal: undefined }
+    await assert.rejects(
+      () => tools.create_card.execute({ title: '普通会话的卡' }, plain),
+      /只有协调者与 worker 能写卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('身份闸先于入参校验：普通会话传空标题也报身份错误', async () => {
+  const { home, tools } = await createTools(async () => undefined, () => false)
+  try {
+    await assert.rejects(
+      () => tools.create_card.execute({ title: '  ' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    await assert.rejects(
+      () => tools.update_card.execute({ id: '' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('createBundleTools 把写卡身份判定透传给卡片工具', async () => {
+  // 漏传就是闸静默失效：装配出来的工具看起来正常，写卡不校验身份。
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const tools = createBundleTools({
+      cards: store,
+      resolveProject: async () => undefined,
+      canWriteCards: (sessionId) => sessionId === 'coordinator-1',
+      isWorkerSession: () => false,
+      cardBindingsOf: async () => [],
+    })
+    const createCard = tools.find((tool) => tool.name === 'create_card')
+    const updateCard = tools.find((tool) => tool.name === 'update_card')
+
+    await assert.rejects(
+      () => createCard.execute({ title: '普通会话的卡' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+    const created = await createCard.execute(
+      { title: '协调者的卡' },
+      { agent: { id: 'coordinator-1' }, signal: undefined },
+    )
+    await assert.rejects(
+      () => updateCard.execute({ id: created.card.id, status: 'done' }, exec),
+      /只有协调者与 worker 能写卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('createBundleTools 传了 cards 却不传写卡判定时直接报错，不留静默放行的装配', () => {
+  // 装配漏传时工具面照裁、执行时却对所有会话开放——全量用例都不会红，只有调用
+  // 契约本身能拦住。文档门禁走无参调用（没有 cards），不受这条约束。
+  assert.throws(
+    () => createBundleTools({ cards: {} }),
+    /传了 cards 就必须传 canWriteCards/,
+  )
+})
+
+test('createBundleTools 缺 worker 写卡范围依赖时同样直接报错', () => {
+  // 漏传只影响 worker 的写卡范围：身份闸还在，能写卡的 worker 仍能改任意卡。
+  assert.throws(
+    () => createBundleTools({ cards: {}, canWriteCards: () => true }),
+    /必须传 isWorkerSession 与 cardBindingsOf/,
+  )
+})
+
+test('worker 只能改自己挂着的卡，且不能改槽位、状态、规格与标题', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const mine = await store.create({ title: '我的卡', slots: { dev: { sessionId: 'worker-1' } } })
+    const other = await store.create({ title: '别人的卡', slots: { dev: { sessionId: 'worker-2' } } })
+    const updateCard = createUpdateCardTool({
+      store,
+      canWrite: () => true,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+      cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+    })
+    const worker = { agent: { id: 'worker-1' }, signal: undefined }
+
+    // 自己的卡：挂产物链接是 worker 的写卡动作
+    const linked = await updateCard.execute(
+      { id: mine.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/1' }] },
+      worker,
+    )
+    assert.equal(linked.card.links.length, 1)
+
+    // 标题与 spec 走同一条注入通道：只收 spec 的话，规格语义能从标题塞回来
+    await assert.rejects(
+      () => updateCard.execute({ id: mine.id, title: '范围：只改文档；验收：不新增依赖' }, worker),
+      /worker 不能改卡片标题/,
+    )
+
+    // 槽位绑定会换执行者、也能制造「一个会话挂多张 active 卡」的坏状态
+    await assert.rejects(
+      () => updateCard.execute({ id: mine.id, slots: { dev: { sessionId: 'worker-2' } } }, worker),
+      /worker 不能改卡片的槽位绑定/,
+    )
+
+    // 同项目里别的 worker 的卡：不在自己的绑定里（用它有权写的字段试探）
+    await assert.rejects(
+      () => updateCard.execute(
+        { id: other.id, addLinks: [{ label: 'PR', url: 'https://example.test/pr/2' }] },
+        worker,
+      ),
+      /只能改自己挂着的卡/,
+    )
+
+    // 协调者不受范围限制
+    const coordinator = { agent: { id: 'coordinator-1' }, signal: undefined }
+    const byCoordinator = await updateCard.execute({ id: other.id, title: '协调者改的' }, coordinator)
+    assert.equal(byCoordinator.card.title, '协调者改的')
+
+    // 状态归协调者：关闭会释放执行者、抽走卡片上下文，协议层要求它验收后再关
+    for (const status of ['done', 'archived', 'active']) {
+      await assert.rejects(
+        () => updateCard.execute({ id: mine.id, status }, worker),
+        /worker 不能改卡片状态/,
+      )
+    }
+    // 规格归协调者：spec 是验收锚点，worker 往回报与 links 里写
+    await assert.rejects(
+      () => updateCard.execute({ id: mine.id, spec: 'worker 自己改的验收标准' }, worker),
+      /worker 不能改卡片规格/,
+    )
+    // 协调者能关自己的卡、能改规格
+    const done = await updateCard.execute(
+      { id: mine.id, status: 'done', spec: '协调者写的验收标准' },
+      coordinator,
+    )
+    assert.equal(done.card.status, 'done')
+    assert.equal(done.card.spec, '协调者写的验收标准')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('worker 不能建卡：建卡与派工是协调者的一条动作链', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const createCard = createCreateCardTool({
+      store,
+      canWrite: () => true,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    })
+    const worker = { agent: { id: 'worker-1' }, signal: undefined }
+    await assert.rejects(
+      () => createCard.execute({ title: 'worker 攒的待办' }, worker),
+      /worker 不建卡/,
+    )
+    // 被拒时不落盘：卡库里没有无主卡
+    assert.deepEqual(await store.list(), [])
+
+    const coordinator = { agent: { id: 'coordinator-1' }, signal: undefined }
+    const created = await createCard.execute({ title: '协调者的卡' }, coordinator)
+    assert.equal(created.card.title, '协调者的卡')
   } finally {
     await rm(home, { recursive: true, force: true })
   }

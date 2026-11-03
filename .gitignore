@@ -11,5 +11,6 @@ lib/
 # 并行开发用的 worktree（git worktree add 建在本仓内）
 .worktrees/
 
-# 开发实例的数据根（npm run dev 建的会话、项目、卡片与派生 profile）
+# 开发实例的数据根（npm run dev 建的会话、项目、卡片与派生 profile），
+# 以及 e2e 的截图（.dev/e2e-artifacts/，给人看的临时证据，不入库）
 .dev/

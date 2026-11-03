@@ -19,7 +19,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { spawnSync } from 'node:child_process'
+import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 import { checkPackEntries, requiredPackFiles } from './pack-manifest.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -98,6 +98,22 @@ if (problems.length > 0) {
 `
 
 /**
+ * 去掉继承来的 npm 配置环境变量。
+ *
+ * npm 把自己的解析结果导出成 `npm_config_*` 给 lifecycle 脚本，`prepublishOnly` 起的
+ * 这一层因此会带上外层命令的开关：`npm publish --dry-run` 下内层 `npm pack` 也进
+ * dry-run，不落 tarball，装机 smoke 随即 ENOENT。门禁要按自己的参数打包与安装，
+ * 不继承调用方的开关。
+ *
+ * @returns {object} 供子进程使用的环境变量
+ */
+function npmEnv() {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !name.toLowerCase().startsWith('npm_config_')),
+  )
+}
+
+/**
  * 跑一条 npm 命令，失败时打印输出并结束进程。
  * @param {string[]} args - npm 参数
  * @param {string} cwd - 工作目录
@@ -105,13 +121,15 @@ if (problems.length > 0) {
  * @returns {string} stdout
  */
 function runNpm(args, cwd, label) {
-  const result = spawnSync('npm', args, {
-    cwd,
-    encoding: 'utf8',
-    // Windows 上 npm 是 npm.cmd，不经 shell 解析时 spawnSync 报 ENOENT。
-    shell: process.platform === 'win32',
-  })
-  if (result.error !== undefined) throw result.error
+  let result
+  try {
+    // Windows 上 npm 是 shim（npm.cmd），直接 spawnSync('npm') 报 ENOENT。
+    result = spawnCommandSync({ command: 'npm', args, cwd, encoding: 'utf8', env: npmEnv() })
+  } catch (error) {
+    if (!(error instanceof CommandNotFoundError)) throw error
+    console.error(`verify-pack: ${label}失败：${error.message}`)
+    process.exit(1)
+  }
   if (result.status !== 0) {
     console.error(`verify-pack: ${label}失败`)
     console.error((result.stderr || result.stdout || '').trim())
@@ -170,8 +188,7 @@ function installSmoke(tarball, name, dir) {
 
   const scriptPath = join(installDir, '__pack-smoke__.mjs')
   writeFileSync(scriptPath, SMOKE_SCRIPT.replace('__PACKAGE_NAME__', JSON.stringify(name)))
-  const result = spawnSync(process.execPath, [scriptPath], { cwd: installDir, encoding: 'utf8' })
-  if (result.error !== undefined) throw result.error
+  const result = spawnCommandSync({ command: process.execPath, args: [scriptPath], cwd: installDir, encoding: 'utf8' })
   if (result.status !== 0) {
     console.error('verify-pack: 装机 smoke 未通过（装好的包里缺可用性）：')
     console.error((result.stderr || result.stdout || '').trim())
