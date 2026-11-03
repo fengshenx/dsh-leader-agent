@@ -31,7 +31,7 @@ npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文�
 
 **`npm run e2e -- <文件>` 不会缩小要跑的集合**：npm 把 `--` 后面的参数追加到 script 末尾，实际执行的是 `node --test "tests/e2e/*.e2e.js" <文件>`，脚本里的 glob 照旧展开，两个文件都会跑（实测 `tests 2`）。要单跑一个文件就绕过 npm script 直接调 `node --test`；改过 `src/client/` 时先自己 `npm run build:client`。
 
-前提：`dsh` 装好，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件——与 `npm run dev` 相同，缺任何一个都会当场报错并给出可照做的修法。Node 需要 22.15+：`session-logs.mjs` 用 `node:zlib` 的 zstd 解压（v22.15.0 加入），`node --test "tests/e2e/*.e2e.js"` 依赖 test runner 自带的 glob。旧版本上不是「跑不过」，而是 import 期就崩。
+前提：`dsh` 装好，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件——与 `npm run dev` 相同，缺任何一个都会当场报错并给出可照做的修法。`playwright` 要在 `devDependencies` 里，新 checkout 先 `npm ci`：没装依赖时 import 期就报 `Cannot find package 'playwright'`，`npm run e2e:install` 只下载浏览器、不装包。Node 需要 22.15+：`session-logs.mjs` 用 `node:zlib` 的 zstd 解压（v22.15.0 加入），`node --test "tests/e2e/*.e2e.js"` 依赖 test runner 自带的 glob。旧版本上不是「跑不过」，而是 import 期就崩。
 
 ### 文件职责
 

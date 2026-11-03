@@ -42,6 +42,8 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。构建入口 `build/client.mjs` 是薄壳，配置与原子写在 `build/client-bundle.mjs`：esbuild 先写 `<产物>.<pid>.<随机>.staging`，成功后才 rename 到正式路径——宿主按文件 stat 轮询产物，读到半截文件会替换失败且没有回滚，这条契约由 `tests/client-build.test.js` 守住（banner/footer 外壳、基线模块 external、构建失败保留上一份）。staging 带进程标识，同树的 watch 与手动构建并存时不会共写临时文件；两个进程仍会竞争最终产物，后完成 rename 的赢，但不保证内容新旧顺序。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
 
+文档体量门禁 `verify-doc-budgets`（也在 `npm run check` 里）判两件事：超天花板（`OVER`）与余量不足（`TIGHT`）。余量按实际值算 `ceiling / units - 1`：普通文档 ≥5%，`AGENTS.md` 与 `docs/capability-gaps.md` ≥10%。违例会直接给出「抬到多少」或「压到多少」，抬天花板的理由与重算口径见 [AGENTS.md 的分层节](../AGENTS.md#编辑本文件与文档分层)。
+
 ## 发布与打包
 
 `release:check = check + build:client + verify:pack`，`prepublishOnly` 挂的就是它：手动 `npm publish` 与 CI 走同一条链路，漏构建产物、漏 skill、混进测试都在上传前失败。顺序不能倒——`verify:pack` 要求 `lib/client.js` 已存在；只从无参发布的理由见[已知限制](limitations.md#发布)。

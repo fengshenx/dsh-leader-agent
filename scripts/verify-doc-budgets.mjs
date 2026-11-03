@@ -12,7 +12,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { checkBudgets, countDocUnits, findUnregisteredDocs, formatBudgetRow } from './doc-budget.mjs'
+import { checkBudgets, countDocUnits, findUnregisteredDocs, formatBudgetRow, headroomOf, maxUnitsFor } from './doc-budget.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
 const manifestPath = resolve(root, 'scripts/doc-budgets.json')
@@ -54,7 +54,7 @@ if (listOnly) process.exit(0)
 
 const failures = results.filter((result) => result.status !== 'ok')
 if (failures.length === 0 && unregistered.length === 0) {
-  console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在天花板内`)
+  console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在天花板内，余量达标`)
   process.exit(0)
 }
 
@@ -64,7 +64,18 @@ for (const path of unregistered) {
 }
 for (const failure of failures) {
   if (failure.status === 'over') {
-    console.error(`  ${failure.path}: ${failure.units} 个单位超过天花板 ${failure.ceiling}——按 AGENTS.md 先搬到对的层，再压缩；抬天花板要在 PR 里写明理由`)
+    const percent = Math.round(failure.headroom * 100)
+    console.error(
+      `  ${failure.path}: ${failure.units} 个单位超过天花板 ${failure.ceiling}——先搬到对的层，再压缩；` +
+        `抬到 ${failure.recommended}（余量 ${percent}%）要在 PR 里写明理由`,
+    )
+  } else if (failure.status === 'tight') {
+    const percent = Math.round(failure.headroom * 100)
+    const current = (headroomOf(failure) * 100).toFixed(2)
+    console.error(
+      `  ${failure.path}: ${failure.units} / ${failure.ceiling}，余量 ${current}%，要求 ≥${percent}%——` +
+        `抬到 ${failure.recommended}，或压到 ${maxUnitsFor(failure.ceiling, failure.headroom)} 个单位以内`,
+    )
   } else if (failure.status === 'missing') {
     console.error(`  ${failure.path}: 清单里的文件不存在（改名或删除了？同一次改动里更新 scripts/doc-budgets.json）`)
   } else {
