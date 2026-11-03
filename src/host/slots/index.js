@@ -56,7 +56,7 @@ export function applyRoleContext({ ctx, slotIndex, resolveDirectory, logger = ()
         return renderRoleContext({
           sessionId,
           slotIndex,
-          // 目录优先取项目目录——手册属于项目，不属于会话。协调者会话的项目目录
+          // 目录优先取项目目录——手册属于项目，不属于会话。leader 会话的项目目录
           // 由项目注册表反查得到；worker 的会话头 cwd 就是项目目录（派工时强制）。
           // 都不命中时回落会话自己的目录。
           resolveDirectory: (id) => resolveDirectory(id)

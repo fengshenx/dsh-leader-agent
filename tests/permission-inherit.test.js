@@ -1,8 +1,8 @@
 /**
- * worker 会话继承协调者权限：沙箱模式、审批策略与 `auto` 的 preset 身份。
+ * worker 会话继承 leader 权限：沙箱模式、审批策略与 `auto` 的 preset 身份。
  *
  * 宿主的 `permissionPresets` 给每个新会话 pin 的是**用户默认** preset，而 worker
- * 是 `agents.create` 建的独立会话——不继承的话，协调者切过的 `danger-full-access`
+ * 是 `agents.create` 建的独立会话——不继承的话，leader 切过的 `danger-full-access`
  * / `never` 不会跟过来，后台 worker 的工具调用会被沙箱拒绝或卡在无人应答的审批上。
  * `auto` 还要额外补 preset 名：它的身份不在 knob 值里，只写 knobs 会让 `derive()`
  * 落到 custom，审查门随之关闭而沙箱已经放开。
@@ -93,8 +93,8 @@ function makeCtx({
   // 因此返回部署默认值而不是 undefined——这是宿主上的真实读数。
   const sandboxPolicy = {
     resolve({ session }) {
-      // resolveError 只作用在协调者身上：它模拟「读协调者失败」，回读 worker 必须还有值。
-      if (resolveError !== undefined && session.id === 'coordinator') throw resolveError
+      // resolveError 只作用在 leader 身上：它模拟「读 leader 失败」，回读 worker 必须还有值。
+      if (resolveError !== undefined && session.id === 'leader') throw resolveError
       return { mode: runtime[session.id]?.sandbox ?? sandboxOverrides[session.id] ?? sandboxDefault }
     },
     overrideOf: (session) => runtime[session.id]?.sandbox ?? sandboxOverrides[session.id] ?? (unpinned ? undefined : sandboxDefault),
@@ -126,19 +126,19 @@ function makeCtx({
   }
 }
 
-test('协调者切到 danger-full-access + never 时，worker 继承这两个覆盖', () => {
+test('leader 切到 danger-full-access + never 时，worker 继承这两个覆盖', () => {
   const appends = []
   const runtime = {}
   const ctx = makeCtx({
-    sandboxOverrides: { coordinator: 'danger-full-access' },
-    approvalOverrides: { coordinator: 'never' },
-    presets: { coordinator: 'danger-full-access' },
+    sandboxOverrides: { leader: 'danger-full-access' },
+    approvalOverrides: { leader: 'never' },
+    presets: { leader: 'danger-full-access' },
     runtime,
   })
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
   })
 
@@ -155,18 +155,18 @@ test('协调者切到 danger-full-access + never 时，worker 继承这两个覆
   ])
 })
 
-test('协调者是 auto 时补写 permission/preset，否则审查门会丢', () => {
+test('leader 是 auto 时补写 permission/preset，否则审查门会丢', () => {
   const appends = []
   const runtime = {}
   const ctx = makeCtx({
-    sandboxOverrides: { coordinator: 'danger-full-access' },
-    presets: { coordinator: 'auto' },
+    sandboxOverrides: { leader: 'danger-full-access' },
+    presets: { leader: 'auto' },
     runtime,
   })
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
   })
 
@@ -184,45 +184,45 @@ test('协调者是 auto 时补写 permission/preset，否则审查门会丢', ()
   })
 })
 
-test('协调者是 auto 但沙箱模式没落定时不写 preset 身份，回执报实际值', () => {
+test('leader 是 auto 但沙箱模式没落定时不写 preset 身份，回执报实际值', () => {
   const appends = []
   const logs = []
   const runtime = {}
   const ctx = makeCtx({
-    presets: { coordinator: 'auto' },
+    presets: { leader: 'auto' },
     resolveError: new Error('workspace root is not absolute'),
     runtime,
   })
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
     logger: (message) => logs.push(message),
   })
 
   // 身份与 knobs 不一致时 derive() 反推不出 auto；沙箱没写下去就更不该写身份。
   assert.deepEqual(appends, [])
-  // 回执必须是 worker 的实际值（部署默认），不是协调者的 auto bundle。
+  // 回执必须是 worker 的实际值（部署默认），不是 leader 的 auto bundle。
   assert.equal(permission.sandbox, 'workspace-write')
   assert.equal(permission.approval, 'ask')
   assert.equal(permission.preset, 'workspace-write')
   assert.deepEqual(permission.skipped.map((item) => item.knob), ['sandbox', 'preset'])
 })
 
-test('读不到协调者的 preset 身份时整体放弃继承，回执仍给实际值且不带 undefined', () => {
+test('读不到 leader 的 preset 身份时整体放弃继承，回执仍给实际值且不带 undefined', () => {
   const appends = []
   const logs = []
   const runtime = {}
   const ctx = makeCtx({
-    sandboxOverrides: { coordinator: 'danger-full-access' },
+    sandboxOverrides: { leader: 'danger-full-access' },
     presetError: new Error('permissions session projection is not registered'),
     runtime,
   })
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
     logger: (message) => logs.push(message),
   })
@@ -234,7 +234,7 @@ test('读不到协调者的 preset 身份时整体放弃继承，回执仍给实
   assert.equal('preset' in permission, false)
   assertNoUndefinedKeys(permission)
   assert.deepEqual(permission.skipped, [
-    { knob: 'preset', reason: '读不到协调者的 preset 身份，无法排除 auto，已放弃继承' },
+    { knob: 'preset', reason: '读不到 leader 的 preset 身份，无法排除 auto，已放弃继承' },
   ])
   assert.match(logs[0], /not registered/)
 })
@@ -246,7 +246,7 @@ test('两边权限一致时不写事件——默认值相同就不该在 worker 
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
   })
 
@@ -262,11 +262,11 @@ test('两边权限一致时不写事件——默认值相同就不该在 worker 
 test('只有审批策略被切过时只继承那一个 knob', () => {
   const appends = []
   const runtime = {}
-  const ctx = makeCtx({ approvalOverrides: { coordinator: 'never' }, runtime })
+  const ctx = makeCtx({ approvalOverrides: { leader: 'never' }, runtime })
 
   inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
   })
 
@@ -286,7 +286,7 @@ test('组合里没有 permissionPresets 时仍按部署默认显式落权限，�
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
   })
 
@@ -306,7 +306,7 @@ test('组合里没有权限旋钮时返回 undefined，不影响派工', () => {
   const appends = []
   const permission = inheritPermission({
     ctx: makeCtx({ missingSandbox: true, missingApproval: true }),
-    fromSession: makeSession('coordinator', appends),
+    fromSession: makeSession('leader', appends),
     toSession: makeSession('worker', appends),
   })
 
@@ -319,8 +319,8 @@ test('只露出一半权限服务时记日志、把缺口交给 skipped，仍继
   const logs = []
   const runtime = {}
   const permission = inheritPermission({
-    ctx: makeCtx({ missingApproval: true, sandboxOverrides: { coordinator: 'danger-full-access' }, runtime }),
-    fromSession: makeSession('coordinator', appends, runtime),
+    ctx: makeCtx({ missingApproval: true, sandboxOverrides: { leader: 'danger-full-access' }, runtime }),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
     logger: (message) => logs.push(message),
   })
@@ -333,7 +333,7 @@ test('只露出一半权限服务时记日志、把缺口交给 skipped，仍继
   assert.match(logs[0], /权限服务只露出一半/)
 })
 
-test('读协调者审批策略抛错时降级为日志与 skipped，沙箱模式照旧继承', () => {
+test('读 leader 审批策略抛错时降级为日志与 skipped，沙箱模式照旧继承', () => {
   const appends = []
   const logs = []
   const ctx = {
@@ -358,7 +358,7 @@ test('读协调者审批策略抛错时降级为日志与 skipped，沙箱模式
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends),
+    fromSession: makeSession('leader', appends),
     toSession: makeSession('worker', appends),
     logger: (message) => logs.push(message),
   })
@@ -366,7 +366,7 @@ test('读协调者审批策略抛错时降级为日志与 skipped，沙箱模式
   assert.deepEqual(appends.map((item) => item.type), ['sandbox/mode'])
   assert.equal(permission.sandbox, 'danger-full-access')
   assertNoUndefinedKeys(permission)
-  assert.deepEqual(permission.skipped, [{ knob: 'approval', reason: '读协调者的审批策略失败，worker 保持默认' }])
+  assert.deepEqual(permission.skipped, [{ knob: 'approval', reason: '读 leader 的审批策略失败，worker 保持默认' }])
   assert.match(logs[0], /permissions are not ready/)
 })
 
@@ -377,7 +377,7 @@ test('读 worker 当前覆盖抛错时仍写入目标值', () => {
     get(key) {
       if (key !== 'sandboxPolicy') return undefined
       return {
-        resolve: ({ session }) => ({ mode: session.id === 'coordinator' ? 'danger-full-access' : workerMode }),
+        resolve: ({ session }) => ({ mode: session.id === 'leader' ? 'danger-full-access' : workerMode }),
         overrideOf: () => {
           throw new Error('projection not registered')
         },
@@ -394,7 +394,7 @@ test('读 worker 当前覆盖抛错时仍写入目标值', () => {
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', appends),
+    fromSession: makeSession('leader', appends),
     toSession: worker,
   })
 
@@ -408,9 +408,9 @@ test('写覆盖事件失败时回执报 worker 的实际值，不是继承目标
   const logs = []
   const runtime = {}
   const ctx = makeCtx({
-    sandboxOverrides: { coordinator: 'danger-full-access' },
-    approvalOverrides: { coordinator: 'never' },
-    presets: { coordinator: 'danger-full-access' },
+    sandboxOverrides: { leader: 'danger-full-access' },
+    approvalOverrides: { leader: 'never' },
+    presets: { leader: 'danger-full-access' },
     runtime,
   })
   const worker = {
@@ -422,7 +422,7 @@ test('写覆盖事件失败时回执报 worker 的实际值，不是继承目标
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', [], runtime),
+    fromSession: makeSession('leader', [], runtime),
     toSession: worker,
     logger: (message) => logs.push(message),
   })
@@ -439,8 +439,8 @@ test('auto 身份写失败时回执不谎称「先经审查」', () => {
   const logs = []
   const runtime = {}
   const ctx = makeCtx({
-    sandboxOverrides: { coordinator: 'danger-full-access' },
-    presets: { coordinator: 'auto' },
+    sandboxOverrides: { leader: 'danger-full-access' },
+    presets: { leader: 'auto' },
     runtime,
   })
   const worker = {
@@ -452,7 +452,7 @@ test('auto 身份写失败时回执不谎称「先经审查」', () => {
 
   const permission = inheritPermission({
     ctx,
-    fromSession: makeSession('coordinator', [], runtime),
+    fromSession: makeSession('leader', [], runtime),
     toSession: worker,
     logger: (message) => logs.push(message),
   })
@@ -463,17 +463,17 @@ test('auto 身份写失败时回执不谎称「先经审查」', () => {
   assert.deepEqual(permission.skipped.map((item) => item.knob), ['sandbox', 'preset'])
 })
 
-test('读协调者沙箱模式抛错时降级为日志与 skipped，审批策略照旧继承', () => {
+test('读 leader 沙箱模式抛错时降级为日志与 skipped，审批策略照旧继承', () => {
   const appends = []
   const logs = []
   const runtime = {}
   const permission = inheritPermission({
     ctx: makeCtx({
       resolveError: new Error('workspace root is not absolute'),
-      approvalOverrides: { coordinator: 'never' },
+      approvalOverrides: { leader: 'never' },
       runtime,
     }),
-    fromSession: makeSession('coordinator', appends, runtime),
+    fromSession: makeSession('leader', appends, runtime),
     toSession: makeSession('worker', appends, runtime),
     logger: (message) => logs.push(message),
   })
@@ -481,6 +481,6 @@ test('读协调者沙箱模式抛错时降级为日志与 skipped，审批策略
   assert.deepEqual(appends.map((item) => item.type), ['approval/policy'])
   assert.equal(permission.sandbox, 'workspace-write')
   assert.equal(permission.approval, 'never')
-  assert.deepEqual(permission.skipped, [{ knob: 'sandbox', reason: '读协调者的沙箱模式失败，worker 保持默认' }])
+  assert.deepEqual(permission.skipped, [{ knob: 'sandbox', reason: '读 leader 的沙箱模式失败，worker 保持默认' }])
   assert.match(logs[0], /workspace root is not absolute/)
 })

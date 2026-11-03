@@ -5,9 +5,9 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { apply } from '../src/host/index.js'
 import {
-  COORDINATOR_CONTEXT_FILE,
-  COORDINATOR_CONTEXT_NAME,
-} from '../src/host/coordinator-context.js'
+  LEADER_CONTEXT_FILE,
+  LEADER_CONTEXT_NAME,
+} from '../src/host/leader-context.js'
 import { PROJECT_REMOTE_SERVICE_KEY } from '../src/shared/projects.js'
 
 /**
@@ -73,7 +73,7 @@ function createFakeHost(sessionCwds, extraServices = {}) {
   return { ctx, holder }
 }
 
-test('装配层：手册目录只认协调者会话的项目目录，不认会话 cwd', async () => {
+test('装配层：手册目录只认 leader 会话的项目目录，不认会话 cwd', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
   const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
   const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-session-'))
@@ -81,12 +81,12 @@ test('装配层：手册目录只认协调者会话的项目目录，不认会�
   // cwd 故意都指向会话目录：按 cwd 取目录的错判据会读到那里。
   const { ctx, holder } = createFakeHost(new Map([
     ['session-plain', sessionDirectory],
-    ['session-coordinator', sessionDirectory],
+    ['session-leader', sessionDirectory],
   ]))
   process.env.DSH_HOME = home
   try {
-    await writeFile(join(projectDirectory, COORDINATOR_CONTEXT_FILE), '项目手册正文。', 'utf8')
-    await writeFile(join(sessionDirectory, COORDINATOR_CONTEXT_FILE), '会话目录的手册不该被注入。', 'utf8')
+    await writeFile(join(projectDirectory, LEADER_CONTEXT_FILE), '项目手册正文。', 'utf8')
+    await writeFile(join(sessionDirectory, LEADER_CONTEXT_FILE), '会话目录的手册不该被注入。', 'utf8')
     await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
     await writeFile(join(home, 'dsh-leader-kit', 'projects.json'), JSON.stringify({
       version: 1,
@@ -94,15 +94,15 @@ test('装配层：手册目录只认协调者会话的项目目录，不认会�
         id: 'project-1',
         name: 'p1',
         directory: projectDirectory,
-        coordinatorSessionId: 'session-coordinator',
+        leaderSessionId: 'session-leader',
       }],
     }), 'utf8')
 
-    // 两个会话的 cwd 都落在会话目录里：错判据（按 isCoordinatorSession 放行、
+    // 两个会话的 cwd 都落在会话目录里：错判据（按 isLeaderSession 放行、
     // 按 cwd 取目录）会读到会话目录的手册，正确判据只认项目注册表里的指针。
     apply(ctx)
-    const definition = holder.contexts.get(COORDINATOR_CONTEXT_NAME)
-    assert.ok(definition, '协调者手册上下文没有注册')
+    const definition = holder.contexts.get(LEADER_CONTEXT_NAME)
+    assert.ok(definition, 'leader 手册上下文没有注册')
     // 索引还没重建完的那一轮：任何会话都不注入，而不是把「宽松放行」当目录判据。
     assert.equal(definition.text({ agent: { id: 'session-plain' } }), '')
 
@@ -110,7 +110,7 @@ test('装配层：手册目录只认协调者会话的项目目录，不认会�
     await holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects.awaitIndex()
 
     assert.equal(definition.text({ agent: { id: 'session-plain' } }), '')
-    const text = definition.text({ agent: { id: 'session-coordinator' } })
+    const text = definition.text({ agent: { id: 'session-leader' } })
     assert.match(text, /项目手册正文。/)
     assert.doesNotMatch(text, /会话目录的手册不该被注入。/)
   } finally {
@@ -157,7 +157,7 @@ async function writeProjectIndex(home, projects) {
   )
 }
 
-test('装配层：普通会话写卡被拒，协调者放行', async () => {
+test('装配层：普通会话写卡被拒，leader 放行', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
   const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
   const previousHome = process.env.DSH_HOME
@@ -169,7 +169,7 @@ test('装配层：普通会话写卡被拒，协调者放行', async () => {
       id: 'project-1',
       name: 'p1',
       directory: projectDirectory,
-      coordinatorSessionId: 'session-coordinator',
+      leaderSessionId: 'session-leader',
     }])
     apply(ctx)
     const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
@@ -183,11 +183,11 @@ test('装配层：普通会话写卡被拒，协调者放行', async () => {
         { title: '普通会话的卡' },
         { agent: { id: 'session-plain' }, signal: undefined },
       ),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
     const created = await createCard.execute(
-      { title: '协调者的卡' },
-      { agent: { id: 'session-coordinator' }, signal: undefined },
+      { title: 'leader 的卡' },
+      { agent: { id: 'session-leader' }, signal: undefined },
     )
     assert.equal(created.card.projectId, 'project-1')
   } finally {
@@ -199,12 +199,12 @@ test('装配层：普通会话写卡被拒，协调者放行', async () => {
   }
 })
 
-test('装配层：真实换协调者之后，退役会话写卡被拒、新会话放行', async () => {
+test('装配层：真实换 leader 之后，退役会话写卡被拒、新会话放行', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
   const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
   const previousHome = process.env.DSH_HOME
   const { ctx, holder } = createFakeHost(new Map([['session-old', projectDirectory]]), {
-    // 换协调者要建一条新会话；建会话的实现必须使用调用方传入的 id。
+    // 换 leader 要建一条新会话；建会话的实现必须使用调用方传入的 id。
     agents: {
       async create(options) {
         return { agent: { id: options.sessionId } }
@@ -217,7 +217,7 @@ test('装配层：真实换协调者之后，退役会话写卡被拒、新会�
       id: 'project-1',
       name: 'p1',
       directory: projectDirectory,
-      coordinatorSessionId: 'session-old',
+      leaderSessionId: 'session-old',
     }])
     apply(ctx)
     const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
@@ -230,10 +230,10 @@ test('装配层：真实换协调者之后，退役会话写卡被拒、新会�
       { agent: { id: 'session-old' }, signal: undefined },
     )
 
-    const updated = await service.replaceCoordinator('project-1')
-    const next = updated.coordinatorSessionId
+    const updated = await service.replaceLeader('project-1')
+    const next = updated.leaderSessionId
     assert.notEqual(next, 'session-old')
-    assert.equal(service.isCoordinatorSession('session-old'), false)
+    assert.equal(service.isLeaderSession('session-old'), false)
 
     // 退役者手里的写入工具要到下次会话重建才收走：执行时闸必须兜住。
     await assert.rejects(
@@ -241,20 +241,20 @@ test('装配层：真实换协调者之后，退役会话写卡被拒、新会�
         { title: '退役者建的卡' },
         { agent: { id: 'session-old' }, signal: undefined },
       ),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
     await assert.rejects(
       () => updateCard.execute(
         { id: created.card.id, title: '退役者改的标题' },
         { agent: { id: 'session-old' }, signal: undefined },
       ),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
     const after = await updateCard.execute(
-      { id: created.card.id, title: '新协调者改的标题' },
+      { id: created.card.id, title: '新 leader 改的标题' },
       { agent: { id: next }, signal: undefined },
     )
-    assert.equal(after.card.title, '新协调者改的标题')
+    assert.equal(after.card.title, '新 leader 改的标题')
   } finally {
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME

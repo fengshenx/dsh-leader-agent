@@ -4,7 +4,7 @@
  * 输入是宿主 `sessionQuery.readSession()` 给出的完整 `SessionEvent[]`，输出是
  * 「一回合一段」的视图——用户投进去的任务、worker 说过的正文、调过哪些工具、
  * 终态。工具参数与结果正文只保留能解释失败的片段：完整日志往往是几万 token,
- * 读完塞进协调者的上下文既没必要也会挤掉它自己的工作记忆。
+ * 读完塞进 leader 的上下文既没必要也会挤掉它自己的工作记忆。
  *
  * @module dsh-leader-kit/host/worker-transcript
  */
@@ -19,7 +19,7 @@ const REASON_LIMIT = 200
  * 整段正文的总上限。
  *
  * 回合数与单条上限都挡不住体积：20 个回合 × 每轮两条消息 × 2000 字符仍有八万。
- * 这是给协调者读的视图，不是导出，超过这个量就该改用别的手段。
+ * 这是给 leader 读的视图，不是导出，超过这个量就该改用别的手段。
  */
 const TOTAL_LIMIT = 12000
 
@@ -81,7 +81,7 @@ export function foldTurns(events) {
         if (text === '') break
         // 三种生产者共用 `user/message`，只有 `source.kind` 区分：靠它把宿主注入的
         // 上下文（换目录、plan 模式、hooks）与真正的投递正文分开，否则注入会占掉
-        // 任务正文的预算，协调者看到的是「用户」说过一段自己没说过的话。
+        // 任务正文的预算，leader 看到的是「用户」说过一段自己没说过的话。
         const kind = typeof data.source?.kind === 'string' ? data.source.kind : undefined
         if (kind === WORKER_TASK_SOURCE_KIND) item.task.push(text)
         else if (kind === 'user') item.user.push(text)
@@ -162,11 +162,11 @@ function clip(text, limit) {
 }
 
 /**
- * 把回合列表渲染成给协调者读的正文。
+ * 把回合列表渲染成给 leader 读的正文。
  *
  * 只渲染最近 `limit` 个回合，且整段正文再受 {@link TOTAL_LIMIT} 约束：按「最新
  * 优先」累加，放不下的更早回合直接丢弃并标注条数。回合数上限挡不住体积——20 个
- * 回合 × 每轮两条消息 × 单条上限，仍能拼出十万字符，塞进协调者上下文会挤掉它
+ * 回合 × 每轮两条消息 × 单条上限，仍能拼出十万字符，塞进 leader 上下文会挤掉它
  * 自己的工作记忆。最新那一段单独超限时按 {@link TOTAL_LIMIT} 硬截断。
  *
  * @param {object} options - 渲染参数

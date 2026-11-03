@@ -8,7 +8,7 @@
  */
 
 import { MAX_PROJECT_NAME_LENGTH } from '../shared/projects.js'
-import { isRetiredCoordinatorSession } from './project-board-data.js'
+import { isRetiredLeaderSession } from './project-board-data.js'
 
 export { MAX_PROJECT_NAME_LENGTH }
 
@@ -73,23 +73,23 @@ export function defaultProjectName(directory) {
 /**
  * 判定一个项目能否直接打开。
  *
- * 协调者会话被删除后项目仍在注册表里，但点开没有去处——那种项目要提示换新
- * 协调者，而不是安静地不响应。
+ * leader 会话被删除后项目仍在注册表里，但点开没有去处——那种项目要提示换新
+ * leader，而不是安静地不响应。
  *
  * @param {object} project - 项目记录
- * @returns {boolean} 协调者会话是否可用
+ * @returns {boolean} leader 会话是否可用
  */
 export function isProjectOpenable(project) {
-  if (typeof project?.coordinatorSessionId !== 'string' || project.coordinatorSessionId === '') {
+  if (typeof project?.leaderSessionId !== 'string' || project.leaderSessionId === '') {
     return false
   }
-  return project.coordinatorAlive !== false
+  return project.leaderAlive !== false
 }
 
 /**
  * 挑出项目下要列出的会话行。
  *
- * 协调者不在其中——项目名就是它的入口，重复列出会让「点项目名打开协调者」这条
+ * leader 不在其中——项目名就是它的入口，重复列出会让「点项目名打开 leader」这条
  * 路径变得含糊。已归档的会话也不列：归档是「从列表移除」这个动作的结果，宿主
  * 的会话索引按磁盘目录扫，归档后那条记录仍在索引里，不在这里滤掉就会原地复活。
  * 宿主侧暂时取不到的会话行（会话刚建、列表还没同步）直接略过。
@@ -97,19 +97,19 @@ export function isProjectOpenable(project) {
  * @param {object} options - 选项
  * @param {string[]} options.sessionIds - 该项目的会话 id 列表
  * @param {Record<string, object>} options.sessionRows - 会话 id 到会话行
- * @param {string | undefined} options.coordinatorSessionId - 协调者会话 id
+ * @param {string | undefined} options.leaderSessionId - leader 会话 id
  * @param {Set<string>} [options.archivedSessionIds] - 已归档的会话 id
  * @returns {object[]} 要渲染的会话行
  */
 export function selectProjectSessionRows({
   sessionIds,
   sessionRows,
-  coordinatorSessionId,
+  leaderSessionId,
   archivedSessionIds,
 }) {
   const rows = []
   for (const sessionId of sessionIds ?? []) {
-    if (sessionId === coordinatorSessionId) continue
+    if (sessionId === leaderSessionId) continue
     if (archivedSessionIds?.has(sessionId) === true) continue
     const row = sessionRows?.[sessionId]
     if (row === undefined) continue
@@ -121,24 +121,24 @@ export function selectProjectSessionRows({
 /**
  * 项目行行首要不要显示加载圈。
  *
- * 两个来源合成一个判定：本组任一会话行在跑（只在收起时算），以及协调者自己在跑
+ * 两个来源合成一个判定：本组任一会话行在跑（只在收起时算），以及 leader 自己在跑
  * （任何展开状态都算）。收起后会话行不可见，行首是唯一的活动提示；展开后每条
- * 会话行自己带 spinner，其它会话在跑就不再画第二遍——但它没有自己的行，协调者
+ * 会话行自己带 spinner，其它会话在跑就不再画第二遍——但它没有自己的行，leader
  * 跑起来只能靠行首。
  *
  * 会话行那一半读**要渲染的会话行**（{@link selectProjectSessionRows} 的结果），
  * 不另行判一遍身份与归属。这样「目录行有加载器」与「至少一条会话行有 spinner」
- * 严格同源：归档会话、快照里还没有的会话、以及不在会话列表里的当前协调者都不
- * 参与，也不会因为换协调者留下的退役会话而误判。
+ * 严格同源：归档会话、快照里还没有的会话、以及不在会话列表里的当前 leader 都不
+ * 参与，也不会因为换 leader 留下的退役会话而误判。
  *
  * @param {object} options - 选项
  * @param {boolean} options.expanded - 项目的会话列表是否展开
  * @param {object[]} options.rows - 要渲染的会话行
- * @param {boolean} [options.coordinatorRunning] - 协调者是否在运行
+ * @param {boolean} [options.leaderRunning] - leader 是否在运行
  * @returns {boolean} 是否显示加载圈
  */
-export function showsProjectActivity({ expanded, rows, coordinatorRunning }) {
-  if (coordinatorRunning === true) return true
+export function showsProjectActivity({ expanded, rows, leaderRunning }) {
+  if (leaderRunning === true) return true
   if (expanded === true) return false
   return (Array.isArray(rows) ? rows : []).some((row) => row?.running === true)
 }
@@ -146,7 +146,7 @@ export function showsProjectActivity({ expanded, rows, coordinatorRunning }) {
 /**
  * 挑出要从官方工作区树里排除的会话 id。
  *
- * 项目的协调者与 worker 都由项目区块呈现，官方树里再来一份就是重复。worker 是
+ * 项目的 leader 与 worker 都由项目区块呈现，官方树里再来一份就是重复。worker 是
  * 普通根会话（不是 subagent），官方树不会自己滤掉，所以按 id 显式排除。
  *
  * @param {object[]} projects - 项目记录
@@ -156,8 +156,8 @@ export function showsProjectActivity({ expanded, rows, coordinatorRunning }) {
 export function collectExcludedSessionIds(projects, sessionsByProject) {
   const excluded = new Set()
   for (const project of projects ?? []) {
-    if (typeof project?.coordinatorSessionId === 'string' && project.coordinatorSessionId !== '') {
-      excluded.add(project.coordinatorSessionId)
+    if (typeof project?.leaderSessionId === 'string' && project.leaderSessionId !== '') {
+      excluded.add(project.leaderSessionId)
     }
   }
   for (const sessionIds of sessionsByProject?.values() ?? []) {
@@ -184,67 +184,67 @@ export function currentSessionIdOf(byId) {
 }
 
 /**
- * 判定项目行是否代表主区域里正在看的协调者会话。
+ * 判定项目行是否代表主区域里正在看的 leader 会话。
  *
- * 协调者会话不在项目树下单独出行，项目行就是它的入口：点项目行打开协调者之后
+ * leader 会话不在项目树下单独出行，项目行就是它的入口：点项目行打开 leader 之后
  * 主区域里放着那条会话，这一行必须跟着亮起来，否则「我现在在哪个项目里」只能
  * 靠会话标题猜。
  *
- * 只有协调者算数：被打开的 worker 会话在列表里有自己的一行，选中态归它；项目
+ * 只有 leader 算数：被打开的 worker 会话在列表里有自己的一行，选中态归它；项目
  * 行这时只点亮行首文件夹（`isProjectCurrent`）。两行同时铺整行底色会看成选了
  * 两个，而它们层级不同。
  *
- * 归档协调者在项目树里没有可点的行，不算。
+ * 归档 leader 在项目树里没有可点的行，不算。
  *
  * @param {object} project - 项目记录
  * @param {string | undefined} currentSessionId - 主区域当前会话 id
  * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
  * @returns {boolean} 是否选中
  */
-export function isCoordinatorCurrent(project, currentSessionId, archivedSessionIds) {
+export function isLeaderCurrent(project, currentSessionId, archivedSessionIds) {
   if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
-  if (project?.coordinatorSessionId !== currentSessionId) return false
+  if (project?.leaderSessionId !== currentSessionId) return false
   return archivedSessionIds?.has(currentSessionId) !== true
 }
 
 /**
- * 判定项目的协调者会话是否在运行。
+ * 判定项目的 leader 会话是否在运行。
  *
- * 会话行有自己的运行状态位，项目行没有——协调者在项目树下不单独出行，它跑起来
+ * 会话行有自己的运行状态位，项目行没有——leader 在项目树下不单独出行，它跑起来
  * 时唯一能看出「还在干活」的位置就是项目行的行首图标。行首加载圈的另一半是
  * 会话行的运行态（{@link showsProjectActivity}），两者在 `ProjectRow` 里合成。
  *
- * 只认现任协调者：worker 在跑各自的行上有自己的加载圈。归档的协调者不算——与
- * {@link isCoordinatorCurrent} / {@link isProjectCurrent} 同一条口径，宿主会话
+ * 只认现任 leader：worker 在跑各自的行上有自己的加载圈。归档的 leader 不算——与
+ * {@link isLeaderCurrent} / {@link isProjectCurrent} 同一条口径，宿主会话
  * 索引里还留着它的记录。
  *
  * @param {object} project - 项目记录
  * @param {Record<string, {running?: boolean}>} [sessionRows] - 会话 id 到会话行
  * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
- * @returns {boolean} 协调者是否在运行
+ * @returns {boolean} leader 是否在运行
  */
-export function isCoordinatorRunning(project, sessionRows, archivedSessionIds) {
-  const id = project?.coordinatorSessionId
+export function isLeaderRunning(project, sessionRows, archivedSessionIds) {
+  const id = project?.leaderSessionId
   if (typeof id !== 'string' || id === '') return false
   if (archivedSessionIds?.has(id) === true) return false
   return sessionRows?.[id]?.running === true
 }
 
 /**
- * 判定主区域里的当前会话是否属于这个项目（协调者或 worker）。
+ * 判定主区域里的当前会话是否属于这个项目（leader 或 worker）。
  *
- * 这一层不画整行底色——那是协调者会话的选中态（`isCoordinatorCurrent`），只
+ * 这一层不画整行底色——那是 leader 会话的选中态（`isLeaderCurrent`），只
  * 点亮行首文件夹：整行底色的语义是「你现在看的就是这一行」，而被打开的 worker
  * 是列表里的另一行。
  *
- * 口径与看板的「项目会话」判定一致（`boardViewState` 的 `coordinator` / `worker`）：
- * 退役协调者仍解析得到项目、也仍列在 `sessionsByProject` 里，归档会话的行还留在
+ * 口径与看板的「项目会话」判定一致（`boardViewState` 的 `leader` / `worker`）：
+ * 退役 leader 仍解析得到项目、也仍列在 `sessionsByProject` 里，归档会话的行还留在
  * 会话索引里——但它们都不是项目会话。算进来的话，点开退役会话或归档会话时项目
- * 行也会亮，而点这一行去的是现任协调者：这个点亮承诺的「你正在看的就是这一组」
+ * 行也会亮，而点这一行去的是现任 leader：这个点亮承诺的「你正在看的就是这一组」
  * 就成了谎。
  *
  * @param {object} project - 项目记录
- * @param {string[]} sessionIds - 宿主判定的该项目会话 id（含退役协调者）
+ * @param {string[]} sessionIds - 宿主判定的该项目会话 id（含退役 leader）
  * @param {string | undefined} currentSessionId - 主区域当前会话 id
  * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
  * @returns {boolean} 是否选中
@@ -252,8 +252,8 @@ export function isCoordinatorRunning(project, sessionRows, archivedSessionIds) {
 export function isProjectCurrent(project, sessionIds, currentSessionId, archivedSessionIds) {
   if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
   if (archivedSessionIds?.has(currentSessionId) === true) return false
-  if (project?.coordinatorSessionId === currentSessionId) return true
-  if (isRetiredCoordinatorSession(project, currentSessionId)) return false
+  if (project?.leaderSessionId === currentSessionId) return true
+  if (isRetiredLeaderSession(project, currentSessionId)) return false
   return (sessionIds ?? []).includes(currentSessionId)
 }
 
@@ -261,7 +261,7 @@ export function isProjectCurrent(project, sessionIds, currentSessionId, archived
  * 找出要压掉激活态的工作区。
  *
  * 官方把「当前会话所在分组」的目录图标点亮。当前会话若是被排除的会话（项目的
- * 协调者或 worker），点亮的分组里看不到它——分组像是开着的，却找不到对应的
+ * leader 或 worker），点亮的分组里看不到它——分组像是开着的，却找不到对应的
  * 会话行。这时把承载它的工作区压回普通色；当前会话不是排除集里的，就不动。
  *
  * @param {string | undefined} currentSessionId - 主区域当前会话 id
@@ -295,14 +295,14 @@ export function isArchiveActiveRefusal(reason) {
 }
 
 /**
- * 打开项目的协调者会话。
+ * 打开项目的 leader 会话。
  *
  * 官方 UI 只能打开归属工作区的会话（宿主建会话时传 `cwd` 的话不归属任何工作
- * 区），因此先让宿主把协调者会话挂到项目目录对应的工作区，挂不上就把原因报给
+ * 区），因此先让宿主把 leader 会话挂到项目目录对应的工作区，挂不上就把原因报给
  * 用户，不静默失败。
  *
- * 挂上之后直接打开会话：协调者会话是空的，官方界面按空会话渲染，但插件会用
- * 一个会话视图目标把它顶进「输入框停靠底部」的对话形态（见 `coordinator-view.js`），
+ * 挂上之后直接打开会话：leader 会话是空的，官方界面按空会话渲染，但插件会用
+ * 一个会话视图目标把它顶进「输入框停靠底部」的对话形态（见 `leader-view.js`），
  * 不需要先跑一轮模型。
  *
  * `recreated` 表示宿主里已经没有这个项目的工作区（用户把它删了）——这次打开顺带
@@ -315,13 +315,13 @@ export function isArchiveActiveRefusal(reason) {
  * @returns {Promise<{ok: boolean, message?: string, workspaceId?: string, recreated?: boolean,
  *   reconnected?: number}>} 打开结果
  */
-export async function openCoordinatorSession({ project, callRemote, openSession }) {
+export async function openLeaderSession({ project, callRemote, openSession }) {
   try {
-    const result = await callRemote('attachCoordinator', [project.id])
+    const result = await callRemote('attachLeader', [project.id])
     if (result?.attached !== true) {
-      return { ok: false, message: result?.reason ?? '协调者会话挂到工作区失败。' }
+      return { ok: false, message: result?.reason ?? 'leader 会话挂到工作区失败。' }
     }
-    openSession(project.coordinatorSessionId)
+    openSession(project.leaderSessionId)
     // 宿主可能刚为这个目录注册了工作区，把归属带回去给调用方更新列表。
     return {
       ok: true,
@@ -331,14 +331,14 @@ export async function openCoordinatorSession({ project, callRemote, openSession 
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    return { ok: false, message: `协调者会话挂到工作区失败：${message}` }
+    return { ok: false, message: `leader 会话挂到工作区失败：${message}` }
   }
 }
 
 /**
  * 构造项目行「更多」菜单的条目。
  *
- * 纯函数：菜单里只放行点击之外的动作——打开协调者会话就是点项目行本身，不再
+ * 纯函数：菜单里只放行点击之外的动作——打开 leader 会话就是点项目行本身，不再
  * 重复一个入口。删除是唯一一个破坏性入口，永远出现——项目不管有没有插件注册
  * 的工作区都能删；工作区只在它是插件注册的（记在项目记录的 `workspaceId` 上）
  * 时才会被一并移除，复用的用户工作区不碰。
@@ -350,7 +350,7 @@ export async function openCoordinatorSession({ project, callRemote, openSession 
 export function buildProjectMenuItems(project, handlers) {
   const items = []
   items.push({ id: 'rename', label: '重命名', icon: 'edit-outline', onSelect: () => handlers.onRename(project) })
-  items.push({ id: 'replace', label: '换新协调者', icon: 'refresh-outline', onSelect: () => handlers.onReplace(project) })
+  items.push({ id: 'replace', label: '换新 leader', icon: 'refresh-outline', onSelect: () => handlers.onReplace(project) })
   items.push({ id: 'remove', label: '删除', icon: 'trash-outline', danger: true, onSelect: () => handlers.onRemove(project) })
   return items
 }

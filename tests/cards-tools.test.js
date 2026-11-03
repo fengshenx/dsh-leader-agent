@@ -273,7 +273,7 @@ test('查卡工具按状态过滤，模型视图列出编号与标题', async ()
     const rendered = tools.list_cards.output.render({}, listed)[0].text
     assert.match(rendered, /# #1 一 \[active\]/)
     assert.match(rendered, /# #2 二 \[active\]/)
-    // 最近更新的排前面：协调者关心的是正在动的卡
+    // 最近更新的排前面：leader 关心的是正在动的卡
     assert.ok(rendered.indexOf('# #2 二') < rendered.indexOf('# #1 一'))
   } finally {
     await rm(home, { recursive: true, force: true })
@@ -707,14 +707,14 @@ test('查卡默认只列本项目的卡，scope=all 才跨项目', async () => {
   }
 })
 
-test('退役协调者不能跨项目查卡：scope=all 与单卡 cardId 两条路径都被拒', async () => {
+test('退役 leader 不能跨项目查卡：scope=all 与单卡 cardId 两条路径都被拒', async () => {
   // 退役会话按 cwd 仍解析到项目；摘要里的退役集合就是判据。
   const project = {
     id: 'p1',
     name: '项目一',
     directory: '/repo',
-    coordinatorSessionId: 'session-new',
-    retiredCoordinatorSessionIds: ['session-1'],
+    leaderSessionId: 'session-new',
+    retiredLeaderSessionIds: ['session-1'],
   }
   const { home, tools } = await createTools(async () => project)
   try {
@@ -740,13 +740,13 @@ test('退役协调者不能跨项目查卡：scope=all 与单卡 cardId 两条�
   }
 })
 
-test('当前协调者的跨项目查卡不受影响', async () => {
+test('当前 leader 的跨项目查卡不受影响', async () => {
   const project = {
     id: 'p1',
     name: '项目一',
     directory: '/repo',
-    coordinatorSessionId: 'session-1',
-    retiredCoordinatorSessionIds: ['session-old'],
+    leaderSessionId: 'session-1',
+    retiredLeaderSessionIds: ['session-old'],
   }
   const { home, tools } = await createTools(async () => project)
   try {
@@ -804,30 +804,30 @@ test('项目外的会话改不了有归属的卡', async () => {
 })
 
 test('普通会话不能写卡：建卡与改卡都被身份闸拒绝，且不落盘', async () => {
-  // 工具面在 agent/created 裁，换协调者不重建旧会话——退役者手里仍有写入工具，
+  // 工具面在 agent/created 裁，换 leader 不重建旧会话——退役者手里仍有写入工具，
   // 所以执行时再判一次身份。
   const { home, tools } = await createTools(async () => undefined, () => false)
   try {
     const store = createCardStore({ home })
-    const existing = await store.create({ title: '协调者建的卡' })
+    const existing = await store.create({ title: 'leader 建的卡' })
 
     await assert.rejects(
       () => tools.create_card.execute({ title: '普通会话的卡' }, exec),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
     await assert.rejects(
-      () => tools.update_card.execute({ id: existing.id, title: '改协调者的卡' }, exec),
-      /只有协调者与 worker 能写卡/,
+      () => tools.update_card.execute({ id: existing.id, title: '改 leader 的卡' }, exec),
+      /只有 leader 与 worker 能写卡/,
     )
     // 被拒的写入不能落盘：卡库里仍只有那一张，标题没变
     const cards = await store.list()
-    assert.deepEqual(cards.map((card) => card.title), ['协调者建的卡'])
+    assert.deepEqual(cards.map((card) => card.title), ['leader 建的卡'])
   } finally {
     await rm(home, { recursive: true, force: true })
   }
 })
 
-test('协调者与 worker 都过写卡身份闸', async () => {
+test('leader 与 worker 都过写卡身份闸', async () => {
   const { home, tools } = await createTools(async () => undefined, (sessionId) => sessionId !== 'plain-1')
   try {
     const created = await tools.create_card.execute({ title: '任务' }, exec)
@@ -845,7 +845,7 @@ test('协调者与 worker 都过写卡身份闸', async () => {
     const plain = { agent: { id: 'plain-1' }, signal: undefined }
     await assert.rejects(
       () => tools.create_card.execute({ title: '普通会话的卡' }, plain),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
   } finally {
     await rm(home, { recursive: true, force: true })
@@ -857,11 +857,11 @@ test('身份闸先于入参校验：普通会话传空标题也报身份错误',
   try {
     await assert.rejects(
       () => tools.create_card.execute({ title: '  ' }, exec),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
     await assert.rejects(
       () => tools.update_card.execute({ id: '' }, exec),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
   } finally {
     await rm(home, { recursive: true, force: true })
@@ -876,7 +876,7 @@ test('createBundleTools 把写卡身份判定透传给卡片工具', async () =>
     const tools = createBundleTools({
       cards: store,
       resolveProject: async () => undefined,
-      canWriteCards: (sessionId) => sessionId === 'coordinator-1',
+      canWriteCards: (sessionId) => sessionId === 'leader-1',
       isWorkerSession: () => false,
       cardBindingsOf: async () => [],
     })
@@ -885,15 +885,15 @@ test('createBundleTools 把写卡身份判定透传给卡片工具', async () =>
 
     await assert.rejects(
       () => createCard.execute({ title: '普通会话的卡' }, exec),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
     const created = await createCard.execute(
-      { title: '协调者的卡' },
-      { agent: { id: 'coordinator-1' }, signal: undefined },
+      { title: 'leader 的卡' },
+      { agent: { id: 'leader-1' }, signal: undefined },
     )
     await assert.rejects(
       () => updateCard.execute({ id: created.card.id, status: 'done' }, exec),
-      /只有协调者与 worker 能写卡/,
+      /只有 leader 与 worker 能写卡/,
     )
   } finally {
     await rm(home, { recursive: true, force: true })
@@ -959,36 +959,36 @@ test('worker 只能改自己挂着的卡，且不能改槽位、状态、规格�
       /只能改自己挂着的卡/,
     )
 
-    // 协调者不受范围限制
-    const coordinator = { agent: { id: 'coordinator-1' }, signal: undefined }
-    const byCoordinator = await updateCard.execute({ id: other.id, title: '协调者改的' }, coordinator)
-    assert.equal(byCoordinator.card.title, '协调者改的')
+    // leader 不受范围限制
+    const leader = { agent: { id: 'leader-1' }, signal: undefined }
+    const byLeader = await updateCard.execute({ id: other.id, title: 'leader 改的' }, leader)
+    assert.equal(byLeader.card.title, 'leader 改的')
 
-    // 状态归协调者：关闭会释放执行者、抽走卡片上下文，协议层要求它验收后再关
+    // 状态归 leader：关闭会释放执行者、抽走卡片上下文，协议层要求它验收后再关
     for (const status of ['done', 'archived', 'active']) {
       await assert.rejects(
         () => updateCard.execute({ id: mine.id, status }, worker),
         /worker 不能改卡片状态/,
       )
     }
-    // 规格归协调者：spec 是验收锚点，worker 往回报与 links 里写
+    // 规格归 leader：spec 是验收锚点，worker 往回报与 links 里写
     await assert.rejects(
       () => updateCard.execute({ id: mine.id, spec: 'worker 自己改的验收标准' }, worker),
       /worker 不能改卡片规格/,
     )
-    // 协调者能关自己的卡、能改规格
+    // leader 能关自己的卡、能改规格
     const done = await updateCard.execute(
-      { id: mine.id, status: 'done', spec: '协调者写的验收标准' },
-      coordinator,
+      { id: mine.id, status: 'done', spec: 'leader 写的验收标准' },
+      leader,
     )
     assert.equal(done.card.status, 'done')
-    assert.equal(done.card.spec, '协调者写的验收标准')
+    assert.equal(done.card.spec, 'leader 写的验收标准')
   } finally {
     await rm(home, { recursive: true, force: true })
   }
 })
 
-test('worker 不能建卡：建卡与派工是协调者的一条动作链', async () => {
+test('worker 不能建卡：建卡与派工是 leader 的一条动作链', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
   try {
     const store = createCardStore({ home })
@@ -1005,9 +1005,9 @@ test('worker 不能建卡：建卡与派工是协调者的一条动作链', asyn
     // 被拒时不落盘：卡库里没有无主卡
     assert.deepEqual(await store.list(), [])
 
-    const coordinator = { agent: { id: 'coordinator-1' }, signal: undefined }
-    const created = await createCard.execute({ title: '协调者的卡' }, coordinator)
-    assert.equal(created.card.title, '协调者的卡')
+    const leader = { agent: { id: 'leader-1' }, signal: undefined }
+    const created = await createCard.execute({ title: 'leader 的卡' }, leader)
+    assert.equal(created.card.title, 'leader 的卡')
   } finally {
     await rm(home, { recursive: true, force: true })
   }

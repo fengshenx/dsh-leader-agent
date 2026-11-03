@@ -3,9 +3,9 @@
  *
  * 贡献九件事：bundle 内置 skill 的发现（协议层）、后台派工工具、worker 会话的
  * 创建与续聊（常驻根会话 + 登记表落盘 + `message_worker` 工具）、按回合回看 worker
- * 会话（`read_worker_session`）、轮次结束时由会话事件自动结算回报并唤醒协调者、
+ * 会话（`read_worker_session`）、轮次结束时由会话事件自动结算回报并唤醒 leader、
  * 任务看板卡片存储与卡片工具、项目注册表、项目数据的 Typert 远程通道、角色槽位
- * 到系统提示词的注入，以及项目协调者手册（`COORDINATOR.md`）的注入。
+ * 到系统提示词的注入，以及项目 leader 手册（`LEADER.md`）的注入。
  *
  * 客户端侧（交付看板 UI 与左栏项目区块）在 `src/client/`，跑在浏览器进程，与本
  * 模块不共处。
@@ -29,10 +29,10 @@ import { createProjectStore } from './projects/store.js'
 import { createProjectService } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { createDispatcher } from './dispatch.js'
-import { createCoordinatorHandover } from './coordinator-handover.js'
+import { createLeaderHandover } from './leader-handover.js'
 import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
-import { applyCoordinatorContext } from './coordinator-context.js'
+import { applyLeaderContext } from './leader-context.js'
 import { applyTeamGuard } from './team-guard.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -118,7 +118,7 @@ export function createBundleTools({
  *
  * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主三件不进本 bundle 的
  * 注册面，但文档会写它们——所以从 `HOST_SUBAGENT_TOOLS` 这个语义来源取，而不是
- * 借用 deny 名单：那份名单的变化理由是「协调者能不能用」，与「文档能不能写」不同。
+ * 借用 deny 名单：那份名单的变化理由是「leader 能不能用」，与「文档能不能写」不同。
  *
  * @returns {string[]} 工具名
  */
@@ -149,7 +149,7 @@ export function apply(ctx) {
   // worker 会话管理器要先建：项目服务列 worker 时要用它的同步判定（会话头没有
   // subagent 标记了，只有登记知道谁是 worker）。
   const workerSessions = createWorkerSessions({ ctx, logger })
-  // 换协调者后的接管要同时改登记表、通知队列与派工器内存态，而派工器依赖项目
+  // 换 leader 后的接管要同时改登记表、通知队列与派工器内存态，而派工器依赖项目
   // 服务（身份判定、worker 目录），只能晚绑定：先占位，装配完再换成真动作。
   /** @type {(change: { projectId: string }) => Promise<void>} */
   let handover = async () => {}
@@ -157,18 +157,18 @@ export function apply(ctx) {
     store: projects,
     ctx,
     isWorkerSession: workerSessions.isWorkerSession,
-    onCoordinatorReplaced: (change) => handover(change),
+    onLeaderReplaced: (change) => handover(change),
     logger,
   })
 
-  // 工具面按角色分配：协调者拿到编排与全库查询，worker 与普通会话都没有。
+  // 工具面按角色分配：leader 拿到编排与全库查询，worker 与普通会话都没有。
   // 裁剪在 `agent/created` 时对 agent 作用域做（见 `applyToolGate`）。
-  const isCoordinatorSession = (sessionId) => projectService.isCoordinatorSession(sessionId)
-  // 卡片写入只给协调者与 worker。工具面已经按角色裁过，这里再判一次是因为换协调
+  const isLeaderSession = (sessionId) => projectService.isLeaderSession(sessionId)
+  // 卡片写入只给 leader 与 worker。工具面已经按角色裁过，这里再判一次是因为换协调
   // 者不重建旧会话：退役者手里的写入工具要到下次会话重建才收走。
   const canWriteCards = (sessionId) => canWriteCardsFor({
     sessionId,
-    isCoordinatorSession,
+    isLeaderSession,
     isWorkerSession: workerSessions.isWorkerSession,
     awaitIndex: () => projectService.awaitIndex(),
   })
@@ -182,7 +182,7 @@ export function apply(ctx) {
   const store = createNotificationStore({ logger })
   const workers = createWorkerRegistry({ home: resolveDshHome(), logger })
   // 启动时按登记表收编既有 worker 会话 id：工具面裁剪是同步判定，登记表是异步的，
-  // 需要一份内存集合；不灌入的话重启后老 worker 会被当成普通会话，拿到协调者工具。
+  // 需要一份内存集合；不灌入的话重启后老 worker 会被当成普通会话，拿到 leader 工具。
   void workers.list().then((records) => {
     for (const record of records) workerSessions.adopt(record.childId)
   }).catch((error) => {
@@ -199,12 +199,12 @@ export function apply(ctx) {
     // worker 是普通根会话（不是 subagent）：常驻、可被人下钻对话、进程重启后能
     // 用 `agents.resume` 接着跑。会话的创建与销毁都归它管。
     workerSessions,
-    // worker 跑在项目目录里：协调者不能指定 worker 的工作目录。
-    resolveWorkerCwd: (sessionId) => projectService.directoryOfCoordinator(sessionId),
-    // worker 与协调者同属项目工作区：不挂就落官方树的「未分组」。
-    resolveWorkerWorkspaceId: (sessionId) => projectService.workspaceIdOfCoordinator(sessionId),
-    // 派工前要确认调用方是协调者，且索引真的读出来了，不能靠工具面的宽松放行。
-    coordinatorIndex: projectService,
+    // worker 跑在项目目录里：leader 不能指定 worker 的工作目录。
+    resolveWorkerCwd: (sessionId) => projectService.directoryOfLeader(sessionId),
+    // worker 与 leader 同属项目工作区：不挂就落官方树的「未分组」。
+    resolveWorkerWorkspaceId: (sessionId) => projectService.workspaceIdOfLeader(sessionId),
+    // 派工前要确认调用方是 leader，且索引真的读出来了，不能靠工具面的宽松放行。
+    leaderIndex: projectService,
     // 名册上限与投递卡门禁都读宿主现状：归档集合来自工作区注册表，卡绑定来自
     // 卡片库。两者缺失时各自降级（不限数量 / 不做门禁），不阻塞派工。
     archivedSessionIds: () => ctx.get('workspaceRegistry')?.archivedSessionIds ?? [],
@@ -212,7 +212,7 @@ export function apply(ctx) {
     // 名册一次读盘取全量绑定再分组：逐 worker 读 cards.json 会让一次派工付
     // O(N × 文件体积)。
     cardBindingsBySession: () => cards.bindingsBySession(),
-    // 派工时绑卡：会话 id 是预生成的，绑好之后协调者投递的第一条消息就带着
+    // 派工时绑卡：会话 id 是预生成的，绑好之后 leader 投递的第一条消息就带着
     // 角色槽位与卡片事实。
     bindCardSlot: (input) => cards.bindSlot(input),
     // 绑卡前校验归属与状态：与 update_card 同口径，跨项目、已关闭或已归档的卡
@@ -223,11 +223,11 @@ export function apply(ctx) {
   })
 
   // 装配收尾：接管动作依赖上面全部组件，现在才成形。
-  handover = createCoordinatorHandover({ projects, workers, notifications: store, dispatcher, logger })
+  handover = createLeaderHandover({ projects, workers, notifications: store, dispatcher, logger })
 
-  // 卡片写入只给协调者与 worker（见 `applyToolGate`）：普通会话不在项目编排里，
+  // 卡片写入只给 leader 与 worker（见 `applyToolGate`）：普通会话不在项目编排里，
   // 建出来的卡没有槽位、没人认领，改别人的卡更没有依据。查全库卡片、派工与续聊
-  // 同样只给协调者。
+  // 同样只给 leader。
   for (const tool of createBundleTools({
     dispatcher,
     cards,
@@ -242,9 +242,9 @@ export function apply(ctx) {
   applyRoleContext({
     ctx,
     slotIndex: cards.slotIndex,
-    // 手册属于项目：协调者会话按项目注册表反查项目目录，worker 的会话 cwd 就是
+    // 手册属于项目：leader 会话按项目注册表反查项目目录，worker 的会话 cwd 就是
     // 项目目录。都不是时回落会话自己的目录。
-    resolveDirectory: (sessionId) => projectService.directoryOfCoordinator(sessionId)
+    resolveDirectory: (sessionId) => projectService.directoryOfLeader(sessionId)
       ?? ctx.get('sessions')?.get(sessionId)?.header?.cwd,
     logger,
   })
@@ -258,22 +258,22 @@ export function apply(ctx) {
     logger,
   })
 
-  // 协调者手册注入：项目的协调者会话每轮请求组装时求值项目根 `COORDINATOR.md`
-  // 的正文，内容变化才追加。它按身份决定，不需要卡片绑定——协调者天然属于这个项目。
-  applyCoordinatorContext({
+  // leader 手册注入：项目的 leader 会话每轮请求组装时求值项目根 `LEADER.md`
+  // 的正文，内容变化才追加。它按身份决定，不需要卡片绑定——leader 天然属于这个项目。
+  applyLeaderContext({
     ctx,
-    // 只有协调者会话在这里有值；索引还没重建完时同样为空，那一轮不注入、
+    // 只有 leader 会话在这里有值；索引还没重建完时同样为空，那一轮不注入、
     // 下一轮补上（上下文每轮重新求值）。
-    resolveDirectory: (sessionId) => projectService.directoryOfCoordinator(sessionId),
+    resolveDirectory: (sessionId) => projectService.directoryOfLeader(sessionId),
     logger,
   })
 
   // agent-team（experimental）并存时的护栏：检测到 `agentTeams` 服务时告警一次，
-  // 并给协调者与 worker 注入「团队工具对本流程无效」的运行时上下文。工具面挡不住
+  // 并给 leader 与 worker 注入「团队工具对本流程无效」的运行时上下文。工具面挡不住
   // 团队工具（它们注册在 Agent scope），原因见 `team-guard.js` 头注释。
   const teamGuard = applyTeamGuard({
     ctx,
-    isCoordinatorSession,
+    isLeaderSession,
     isWorkerSession: workerSessions.isWorkerSession,
     logger,
   })
@@ -282,7 +282,7 @@ export function apply(ctx) {
   void cards.loadIndexes().catch((error) => {
     logger(`dsh-leader-kit: 重建卡片索引失败：${error instanceof Error ? error.message : String(error)}`)
   })
-  // 项目索引失败会永久停在「未就绪」，而那个状态下所有会话都被当作协调者。
+  // 项目索引失败会永久停在「未就绪」，而那个状态下所有会话都被当作 leader。
   // 重启进程代价太大，退避重试几次；最终失败则由派工路径上的 awaitIndex 拒绝。
   /** @type {ReturnType<typeof setTimeout> | undefined} 重试定时器，卸载时清掉 */
   let indexRetryTimer
@@ -304,7 +304,7 @@ export function apply(ctx) {
   // 工具面也在这里裁：`agent/created` 早于首轮请求组装，作用域是新建的，每次
   // 会话创建（含冷恢复）都重算一遍，不会带着上一次的限制。
   ctx.on('agent/created', ({ agent }) => {
-    applyToolGate({ agent, isCoordinatorSession, isWorkerSession: workerSessions.isWorkerSession })
+    applyToolGate({ agent, isLeaderSession, isWorkerSession: workerSessions.isWorkerSession })
     // agent-team 服务可能在本次装配之后才注册（bundle 顺序不保证），所以检测放在
     // 第一次会话创建时，而不是 apply 里。
     teamGuard.warnOnce()

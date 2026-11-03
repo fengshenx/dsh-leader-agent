@@ -6,13 +6,13 @@
  *
  * **项目下只列 worker 会话**。worker 是普通根会话，会话头里没有身份标记，谁是
  * worker 只能由调用方传入的登记判定（`isWorkerSession`）说了算。同一目录里还可能
- * 有别的会话：协调者自己（入口在项目行上）、用户在项目目录里手动开的（那是用户
+ * 有别的会话：leader 自己（入口在项目行上）、用户在项目目录里手动开的（那是用户
  * 自己的会话，不属于项目编排）。把它们混进项目会让「项目下有哪些 worker」失真。
  *
  * **目录必须按 realpath 归一后再比**。同一物理目录在会话头里有多种写法：macOS 的
  * `/tmp` 是指向 `/private/tmp` 的符号链接，项目记录里存的是用户给的原始路径，会话
  * 头里存的是宿主创建会话时的写法，两者字符串不等但目录相同。按字符串比会把同一个
- * 项目拆成两组，worker 会话与协调者会话分家。官方 workspace 注册表也是这么做的
+ * 项目拆成两组，worker 会话与 leader 会话分家。官方 workspace 注册表也是这么做的
  * （`realpathNormalize`），第三方没有理由发明另一套。
  *
  * @module dsh-leader-kit/host/projects/session-index
@@ -74,7 +74,7 @@ export async function groupSessionsByProject({ projects, sessions, canonicalize,
   /** @type {Map<string, string[]>} 项目 id 到会话 id 列表 */
   const grouped = new Map()
   for (const session of sessions) {
-    // 只有本 bundle 派出的 worker 属于项目：协调者会话的入口在项目行上，用户在项目
+    // 只有本 bundle 派出的 worker 属于项目：leader 会话的入口在项目行上，用户在项目
     // 目录里手动开的会话也不该混进项目的编排视图。身份只能按登记表判——worker 是
     // 普通根会话（由 `agents.create` 建），会话头没有 `origin` 标记。
     if (!isWorkerSession(session.id)) continue

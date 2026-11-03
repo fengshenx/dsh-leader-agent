@@ -1,9 +1,9 @@
 /**
- * 换协调者之后的接管：派工归属与未投递的完成通知一起改投新协调者。
+ * 换 leader 之后的接管：派工归属与未投递的完成通知一起改投新 leader。
  *
- * 「新会话立刻接手项目」（`COORDINATOR.md`）不只是换项目记录里的一条指针。worker
+ * 「新会话立刻接手项目」（`LEADER.md`）不只是换项目记录里的一条指针。worker
  * 登记表与通知队列都以**父会话 id** 归属，只改指针的话，原班 worker 谁的父会话都
- * 对不上：退役会话被身份闸挡住，新协调者被父会话校验挡住——两边的投递都落空，
+ * 对不上：退役会话被身份闸挡住，新 leader 被父会话校验挡住——两边的投递都落空，
  * 那批工既交不出去也接不回来。
  *
  * 三处一起改，按「先落盘归属、后内存态」的顺序：
@@ -19,7 +19,7 @@
  * 就会把工交回一个已经被换下的会话。按当前记录算则每次都朝最新值收敛（与索引
  * 对齐同一个道理）。
  *
- * @module dsh-leader-kit/host/coordinator-handover
+ * @module dsh-leader-kit/host/leader-handover
  */
 
 /**
@@ -34,14 +34,14 @@
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {(change: { projectId: string }) => Promise<void>} 接管动作
  */
-export function createCoordinatorHandover({ projects, workers, notifications, dispatcher, logger = () => {} }) {
+export function createLeaderHandover({ projects, workers, notifications, dispatcher, logger = () => {} }) {
   return async function handover({ projectId }) {
     const project = await projects.get(projectId)
     if (project === undefined) return
-    const target = project.coordinatorSessionId
+    const target = project.leaderSessionId
     if (typeof target !== 'string' || target === '') return
-    const retired = Array.isArray(project.retiredCoordinatorSessionIds)
-      ? project.retiredCoordinatorSessionIds
+    const retired = Array.isArray(project.retiredLeaderSessionIds)
+      ? project.retiredLeaderSessionIds
       : []
     let moved = 0
     // 遍历**全部**退役 id 而不是只迁本轮换下的那个：改绑幂等，重复调用只会命中
@@ -54,7 +54,7 @@ export function createCoordinatorHandover({ projects, workers, notifications, di
       moved += workerIds.length + notificationCount + inflightCount
       if (workerIds.length === 0 && notificationCount === 0 && inflightCount === 0) continue
       logger(
-        `dsh-leader-kit: 项目 ${projectId} 的协调者换到 ${target}：`
+        `dsh-leader-kit: 项目 ${projectId} 的 leader 换到 ${target}：`
         + `接管 ${workerIds.length} 条派工记录、${notificationCount} 条待投通知、${inflightCount} 条在飞派工`,
       )
     }

@@ -12,10 +12,10 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
 /**
  * 造一个假的宿主上下文：记录建/恢复/投递/销毁。
  *
- * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, workspaceExists?: boolean, attachError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
+ * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, workspaceExists?: boolean, attachError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError, permissions } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError, renameError, permissions } = {}) {
   const created = []
   const resumed = []
   /** 挂进工作区的记录：`{ workspaceId, sessionId }` */
@@ -96,6 +96,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       if (key === 'sessionTitle') {
         return {
           rename(session, title) {
+            if (renameError !== undefined) throw renameError
             titles.push({ sessionId: session.id, title })
           },
         }
@@ -155,7 +156,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
   return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, attached, appended }
 }
 
-test('建会话时用带前缀的会话 id，且不投递任务——开工等协调者的消息', async () => {
+test('建会话时用带前缀的会话 id，且不投递任务——开工等 leader 的消息', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
@@ -170,32 +171,32 @@ test('建会话时用带前缀的会话 id，且不投递任务——开工等�
   assert.equal(entry.options.sessionId, sessionId)
   // 工作目录决定会话归属哪个项目，必须传给宿主而不是事后改。
   assert.equal(entry.options.meta.cwd, '/repo')
-  // 建会话不产生模型调用：任务正文由协调者的 `message_worker` 投递。
+  // 建会话不产生模型调用：任务正文由 leader 的 `message_worker` 投递。
   assert.equal(entry.messages.length, 0)
 })
 
-test('建会话时继承协调者的权限，而不是宿主的默认 preset', async () => {
+test('建会话时继承 leader 的权限，而不是宿主的默认 preset', async () => {
   const fixture = createFixture({
     permissions: {
-      sandbox: { 'coordinator-1': 'danger-full-access' },
-      approval: { 'coordinator-1': 'never' },
+      sandbox: { 'leader-1': 'danger-full-access' },
+      approval: { 'leader-1': 'never' },
     },
   })
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
   const { sessionId, permission } = await sessions.spawn({
     cwd: '/repo',
-    permissionFrom: { id: 'coordinator-1' },
+    permissionFrom: { id: 'leader-1' },
     signal: new AbortController().signal,
   })
 
   // 宿主的 permissionPresets 在 `session/created` 上给新会话 pin 的是用户默认 preset
-  // （夹具默认 workspace-write + ask）；协调者的覆盖必须在首轮之前落到 worker 上。
+  // （夹具默认 workspace-write + ask）；leader 的覆盖必须在首轮之前落到 worker 上。
   assert.deepEqual(fixture.appended, [
     { id: sessionId, type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },
     { id: sessionId, type: 'approval/policy', data: { policy: 'never', source: 'delegation' } },
   ])
-  // 派工结果带着继承到的权限：协调者要知道这个 worker 以什么权限在跑。
+  // 派工结果带着继承到的权限：leader 要知道这个 worker 以什么权限在跑。
   assert.equal(permission.sandbox, 'danger-full-access')
   assert.equal(permission.approval, 'never')
   assert.deepEqual(permission.skipped, [])
@@ -654,6 +655,21 @@ test('缺 agents 服务时报错说清是哪个缺口', async () => {
       return true
     },
   )
+})
+
+test('会话标题改名被拒时只记日志，worker 照样建成', async () => {
+  const fixture = createFixture({ renameError: new Error('TITLE_LOCKED') })
+  const warnings = []
+  const sessions = createWorkerSessions({ ctx: fixture.ctx, logger: (message) => warnings.push(message) })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.ok(sessionId)
+  assert.ok(warnings.some((message) => message.includes('标题改名被拒') && message.includes('TITLE_LOCKED')))
+  await sessions.dispose(sessionId)
 })
 
 test('宿主销毁失败只记日志，不改判成没销毁', async () => {

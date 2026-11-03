@@ -9,7 +9,7 @@
  *
  * - 列表按最近更新倒序，默认只列 active，一页 20 张；
  * - 列表只给可观测事实（标题、编号、状态、id、版本、更新时间、链接标签、槽位），
- *   规格全文只在单卡查询出现——它是协调者自述，读回不产生新信息；
+ *   规格全文只在单卡查询出现——它是 leader 自述，读回不产生新信息；
  * - 规格与链接两项无论有无都显式成行：省略会让模型把「未渲染」读成
  *   「没有」，而「这张卡该补规格」「这张卡有产物链接」都会改变下一步动作；
  * - 输出有字符预算，逐卡累加，超出按卡截断并给出续页位置。
@@ -116,7 +116,7 @@ export function selectCards(cards, query) {
   const filtered = query.status === 'all'
     ? [...cards]
     : cards.filter((card) => card.status === query.status)
-  // 最近更新在前：协调者关心的是正在动的卡，历史卡不能把当前卡挤出第一页
+  // 最近更新在前：leader 关心的是正在动的卡，历史卡不能把当前卡挤出第一页
   const ordered = [...filtered].sort((left, right) => (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
   return {
     page: ordered.slice(query.offset, query.offset + query.limit),
@@ -237,7 +237,7 @@ export function renderCardList(cards, query) {
   const where = query.scope === 'all' ? '全库' : '本项目'
   if (page.length === 0) {
     // 空页有两种：范围里真的没有卡，与 offset 翻过头。后者不能说成「没有卡」，
-    // 同一句里报「没有 active 卡」又列 active 5 会让协调者误判项目无在途任务。
+    // 同一句里报「没有 active 卡」又列 active 5 会让 leader 误判项目无在途任务。
     if (total > 0) {
       const scope = query.status === 'all' ? `${where}共 ${total} 张` : `status=${query.status} 共 ${total} 张`
       return `offset 超出范围：${scope}，请从 offset=0 重新翻页。`

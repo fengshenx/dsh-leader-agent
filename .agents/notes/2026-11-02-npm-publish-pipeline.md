@@ -37,7 +37,7 @@
 
 `files` 里的固定路径（不带通配的条目，如 `README_ZH.md`、`lib/client.js`）同样并进必需集。方向是「白名单声明了就必须真的在包里」：文件改名后 `files` 还留着旧名时 npm 不报错、只是不带它，门禁照绿——这正是假绿的另一个方向。通配条目（`src/**`）不展开，覆盖面由 `exports` 推导加装机 smoke 兜住。
 
-黑名单（`FORBIDDEN_PATTERNS`）是 `files` 白名单的补集，覆盖 `tests/`、`.dev/`、`.worktrees/`、`.github/`、`AGENTS.md` / `CLAUDE.md` / `SLOTS.md` / `COORDINATOR.md`、`docs/`、`scripts/`、`build/`、`node_modules/` 与 `.tgz` / `.DS_Store` 残留（`.agents/` 由上一个子节的允许面管）。它的作用不是复述白名单，而是白名单被放宽时兜底——`files` 里一旦出现 `"docs/**"` 或 `"*.md"`，`AGENTS.md`（写本机凭据布局）与决策笔记就会随包装进用户的 `node_modules`。`scripts/` 与 `build/` 进黑名单是当前事实：它们是开发工具，装机后没有任何加载路径会用到。
+黑名单（`FORBIDDEN_PATTERNS`）是 `files` 白名单的补集，覆盖 `tests/`、`.dev/`、`.worktrees/`、`.github/`、`AGENTS.md` / `CLAUDE.md` / `SLOTS.md` / `LEADER.md` / `COORDINATOR.md`、`docs/`、`scripts/`、`build/`、`node_modules/` 与 `.tgz` / `.DS_Store` 残留（`.agents/` 由上一个子节的允许面管）。它的作用不是复述白名单，而是白名单被放宽时兜底——`files` 里一旦出现 `"docs/**"` 或 `"*.md"`，`AGENTS.md`（写本机凭据布局）与决策笔记就会随包装进用户的 `node_modules`。`scripts/` 与 `build/` 进黑名单是当前事实：它们是开发工具，装机后没有任何加载路径会用到。
 
 ### 客户端产物要验形状，不只看在不在
 
@@ -88,7 +88,7 @@
 - **actions 的 SHA 要手工跟进**：pin 到 commit SHA 后不会自动收安全更新（未接 Dependabot）。升 action 时把 SHA 与注释里的版本号一起改，别改回浮动 tag。
 - **幂等跳过不校验 registry 上的内容**：`npm view <name>@<version>` 命中就跳过发布，不比对 digest。内容一致性由「发布前同一个提交跑过 `release:check`」保证；要比对得先把 tarball 拉下来，成本高于收益。
 - **`verify:pack` 用的是磁盘上已有的 `lib/client.js`**：没先 `build:client` 时，smoke 装进临时目录的就是上一次的产物。`release:check` 先构建，所以发布链路不受影响；单跑门禁时自己保证构建过。
-- **发布说明按文档分层落位**：流程与命令在[发布与打包](../development.md#发布与打包)，限制在[发布](../limitations.md#发布)；README 是亮点层，不写发版步骤（合并 main 时把原本放在 README 的一节搬了过去）。这两篇因此各抬了一次天花板（`docs/development.md` 1780 → 2350、`docs/limitations.md` 6300 → 6750）：新增的是整条发布链路的操作契约与发布侧边界，放 Note 里就失去「发布怎么做」的归属，压缩空间在信息量上不划算；抬后余量分别是 7.1% 与 5.9%。
+- **发布说明按文档分层落位**：流程与命令在[发布与打包](../development.md#发布与打包)，限制在[发布](../limitations.md#发布)；README 是亮点层，不写发版步骤（合并 main 时把原本放在 README 的一节搬了过去）。这两篇因此各抬了一次天花板（`docs/development.md` 1780 → 2500、`docs/limitations.md` 6300 → 6750）：新增的是整条发布链路的操作契约与发布侧边界，放 Note 里就失去「发布怎么做」的归属，压缩空间在信息量上不划算（development 已从 2423 压到 2360，并把「只从无参发布」的事实搬到 limitations）；抬后余量分别是 5.6% 与 6.7%。
 
 ## 验证
 

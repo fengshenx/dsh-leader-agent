@@ -44,12 +44,12 @@ const noopStore = {
  *
  * @param {object} [options] - 覆盖项
  * @param {object} [options.sessionQuery] - `ctx.get('sessionQuery')` 的返回值
- * @param {boolean} [options.coordinator] - 调用方是否为项目协调者
+ * @param {boolean} [options.leader] - 调用方是否为项目 leader
  * @param {boolean} [options.indexReady] - 项目索引是否已就绪
  * @param {object} [options.workers] - 登记表假件
  * @returns {object} 夹具
  */
-function makeFixture({ sessionQuery, coordinator = true, indexReady = true, workers = createMemoryRegistry() } = {}) {
+function makeFixture({ sessionQuery, leader = true, indexReady = true, workers = createMemoryRegistry() } = {}) {
   const spawned = []
   /**
    * 写方法的调用记录。读取路径必须一条都没有：`read_worker_session` 承诺只读、
@@ -96,11 +96,11 @@ function makeFixture({ sessionQuery, coordinator = true, indexReady = true, work
       },
       isWorkerSession: () => true,
     },
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return indexReady
       },
-      isCoordinatorSession: () => coordinator,
+      isLeaderSession: () => leader,
     },
   })
   return { dispatcher, workers, spawned, mutations, tool: createReadWorkerTool({ dispatcher }) }
@@ -117,7 +117,7 @@ function event(type, data) {
 }
 
 /**
- * 一段完整的回合事件：协调者投任务、助手说了两段、一次成功的工具调用。
+ * 一段完整的回合事件：leader 投任务、助手说了两段、一次成功的工具调用。
  * @param {number} turn - 回合号
  * @returns {object[]} 事件
  */
@@ -160,7 +160,7 @@ async function fixtureWithWorker(options = {}) {
 
 const parent = { id: 'parent-1' }
 
-test('协调者能读自己派出的 worker：正文、回合数与进行中标记', async () => {
+test('leader 能读自己派出的 worker：正文、回合数与进行中标记', async () => {
   const read = []
   const fixture = await fixtureWithWorker({
     sessionQuery: {
@@ -209,10 +209,10 @@ test('读失败时同样没有写动作', async () => {
 
 test('授权拒绝发生在读取之前，更不会有写动作', async () => {
   const fixture = await fixtureWithWorker({
-    coordinator: false,
+    leader: false,
     sessionQuery: { async readSession() { throw new Error('不该被调用') } },
   })
-  await assert.rejects(() => fixture.tool.execute({ sessionId: WORKER_ID }, { agent: parent }), /只有项目协调者能读/)
+  await assert.rejects(() => fixture.tool.execute({ sessionId: WORKER_ID }, { agent: parent }), /只有项目 leader 能读/)
   assert.deepEqual(fixture.mutations, [])
 })
 
@@ -231,14 +231,14 @@ test('turns 只影响渲染的回合数，不影响读取', async () => {
   assert.match(result.text, /更早的 2 个回合超出 turns=1 的范围/)
 })
 
-test('退役或非项目协调者不能读（工具面不会重裁，身份在调用时再判一次）', async () => {
+test('退役或非项目 leader 不能读（工具面不会重裁，身份在调用时再判一次）', async () => {
   const fixture = await fixtureWithWorker({
-    coordinator: false,
+    leader: false,
     sessionQuery: { async readSession() { throw new Error('不该被调用') } },
   })
   await assert.rejects(
     () => fixture.tool.execute({ sessionId: WORKER_ID }, { agent: parent }),
-    /只有项目协调者能读 worker 的会话/,
+    /只有项目 leader 能读 worker 的会话/,
   )
 })
 
@@ -290,7 +290,7 @@ test('查询后端没有 readSession 时同样报缺口', async () => {
   )
 })
 
-test('日志读不出来时把原因转述给协调者（还没跑过回合是预期状态）', async () => {
+test('日志读不出来时把原因转述给 leader（还没跑过回合是预期状态）', async () => {
   const fixture = await fixtureWithWorker({
     sessionQuery: {
       async readSession() {
@@ -416,4 +416,19 @@ test('工具 schema 只用宿主执行子集里的关键字', () => {
   collectSchemaViolations(tool.parameters, 'parameters', violations)
   collectSchemaViolations(tool.output.schema, 'output.schema', violations)
   assert.deepEqual(violations, [])
+})
+
+test('output.render 只输出正文，不回显排障字段', () => {
+  const tool = createReadWorkerTool({ dispatcher: {} })
+  assert.deepEqual(tool.output.render({}, { text: '第一轮：调 tool_a 失败' }), [
+    { type: 'text', text: '第一轮：调 tool_a 失败' },
+  ])
+})
+
+test('没有调用方 agent 时明确报错，不静默读到空会话', async () => {
+  const tool = createReadWorkerTool({ dispatcher: {} })
+  await assert.rejects(
+    () => tool.execute({ sessionId: 'child-1' }, {}),
+    /需要调用方 agent/,
+  )
 })

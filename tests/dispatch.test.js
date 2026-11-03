@@ -233,7 +233,7 @@ function createMemoryRegistry() {
 }
 
 /**
- * 建派工器。协调者索引默认放行，个别用例覆盖它验证拒绝路径。
+ * 建派工器。leader 索引默认放行，个别用例覆盖它验证拒绝路径。
  * @param {object} options - 传给 createDispatcher 的选项
  * @returns {object} 派工器
  */
@@ -241,11 +241,11 @@ function makeDispatcher(options) {
   return createDispatcher({
     // worker 会话管理器用同一份假 ctx：它会去 ctx 取 agents / sessions / sessionTitle。
     workerSessions: createWorkerSessions({ ctx: options.ctx, logger: options.logger }),
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return true
       },
-      isCoordinatorSession: () => true,
+      isLeaderSession: () => true,
     },
     ...options,
   })
@@ -380,7 +380,7 @@ test('worker 一轮说完话就自动回报，不需要它调任何工具', asyn
   assert.match(fixture.delivered[0].content[0].text, /状态：completed/)
 })
 
-test('人直接跟 worker 聊的轮次不打扰协调者', async () => {
+test('人直接跟 worker 聊的轮次不打扰 leader', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
@@ -488,10 +488,10 @@ test('被取消、被阻断、撞 token 上限的轮次都判失败并写明原�
   }
 })
 
-test('漏传 coordinatorIndex 时装配直接报错，不静默跳过派工校验', () => {
+test('漏传 leaderIndex 时装配直接报错，不静默跳过派工校验', () => {
   assert.throws(
     () => createDispatcher({ ctx: createFixture().ctx, store: {}, workers: {} }),
-    /coordinatorIndex/,
+    /leaderIndex/,
   )
 })
 
@@ -559,7 +559,7 @@ test('父会话正忙时通知先留队，空闲后自动投递', async () => {
       signal: new AbortController().signal,
     })
     await finishWorker(dispatcher, fixture)
-    // 协调者正忙：不投，通知留在落盘队列里
+    // leader 正忙：不投，通知留在落盘队列里
     await waitFor(async () => (await store.listPending()).length === 1)
     assert.equal(fixture.delivered.length, 0)
 
@@ -961,25 +961,25 @@ test('spawn_worker 只建会话并返回子会话 id，不开工', async () => {
     assert.match(result.childId, /^worker-/)
     assert.equal(result.status, 'spawned')
     assert.equal(result.name, '实现派工')
-    // 建会话不产生模型调用：任务正文等协调者的 message_worker。
+    // 建会话不产生模型调用：任务正文等 leader 的 message_worker。
     assert.equal(fixture.spawned[0].messages.length, 0)
     assert.equal(dispatcher.inflightCount(), 0)
   } finally {
   }
 })
 
-test('派工时 worker 继承协调者的权限（沙箱模式 + 审批策略）', async () => {
+test('派工时 worker 继承 leader 的权限（沙箱模式 + 审批策略）', async () => {
   const fixture = createFixture({
     permissions: {
-      sandbox: { 'coordinator-1': 'danger-full-access' },
-      approval: { 'coordinator-1': 'never' },
+      sandbox: { 'leader-1': 'danger-full-access' },
+      approval: { 'leader-1': 'never' },
     },
   })
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
-  // 权限来源是协调者会话本身：宿主的默认 preset 不一定是用户当前选的那套。
-  const parent = { ...createParent('coordinator-1', []), session: { id: 'coordinator-1' } }
+  // 权限来源是 leader 会话本身：宿主的默认 preset 不一定是用户当前选的那套。
+  const parent = { ...createParent('leader-1', []), session: { id: 'leader-1' } }
 
   const record = await dispatcher.dispatch({
     parent,
@@ -998,11 +998,11 @@ test('派工时 worker 继承协调者的权限（沙箱模式 + 审批策略）
   assert.deepEqual(record.permission.skipped, [])
 })
 
-test('spawn_worker 把继承到的权限写进回执，完全权限要让协调者看见', async () => {
+test('spawn_worker 把继承到的权限写进回执，完全权限要让 leader 看见', async () => {
   const fixture = createFixture({
     permissions: {
-      sandbox: { 'coordinator-1': 'danger-full-access' },
-      approval: { 'coordinator-1': 'never' },
+      sandbox: { 'leader-1': 'danger-full-access' },
+      approval: { 'leader-1': 'never' },
     },
   })
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
@@ -1014,7 +1014,7 @@ test('spawn_worker 把继承到的权限写进回执，完全权限要让协调�
     { name: '实现派工' },
     {
       signal: new AbortController().signal,
-      agent: { ...createParent('coordinator-1', fixture.delivered), session: { id: 'coordinator-1' } },
+      agent: { ...createParent('leader-1', fixture.delivered), session: { id: 'leader-1' } },
     },
   )
 
@@ -1031,8 +1031,8 @@ test('spawn_worker 把继承到的权限写进回执，完全权限要让协调�
 test('写失败时派工回执报 worker 的实际权限，不是继承目标', async () => {
   const fixture = createFixture({
     permissions: {
-      sandbox: { 'coordinator-1': 'danger-full-access' },
-      approval: { 'coordinator-1': 'never' },
+      sandbox: { 'leader-1': 'danger-full-access' },
+      approval: { 'leader-1': 'never' },
     },
   })
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
@@ -1053,7 +1053,7 @@ test('写失败时派工回执报 worker 的实际权限，不是继承目标', 
     { name: '实现派工' },
     {
       signal: new AbortController().signal,
-      agent: { ...createParent('coordinator-1', fixture.delivered), session: { id: 'coordinator-1' } },
+      agent: { ...createParent('leader-1', fixture.delivered), session: { id: 'leader-1' } },
     },
   )
 
@@ -1063,7 +1063,7 @@ test('写失败时派工回执报 worker 的实际权限，不是继承目标', 
   const rendered = tool.output.render({}, result).map((block) => block.text).join('\n')
   assert.doesNotMatch(rendered, /完全访问、无审批/)
   assert.match(rendered, /权限未完整继承/)
-  assert.match(rendered, /未必比协调者的权限更严/)
+  assert.match(rendered, /未必比 leader 的权限更严/)
 })
 
 test('派工带 cardId 与 slot 时，绑定先于开工完成', async () => {
@@ -1088,7 +1088,7 @@ test('派工带 cardId 与 slot 时，绑定先于开工完成', async () => {
       signal: new AbortController().signal,
     })
 
-    // 绑定在返回前完成：协调者接下来的第一条消息就带着角色与卡片事实。
+    // 绑定在返回前完成：leader 接下来的第一条消息就带着角色与卡片事实。
     const bound = await cards.get(card.id)
     assert.deepEqual(bound.slots, { dev: { sessionId: record.childId } })
     assert.equal(cards.slotIndex.get(record.childId), 'dev')
@@ -1382,11 +1382,11 @@ test('项目索引读不出来时拒绝派工，不拉起子会话', async () =>
     ctx: fixture.ctx,
     store,
     workers: fixture.workers,
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return false
       },
-      isCoordinatorSession: () => true,
+      isLeaderSession: () => true,
     },
   })
 
@@ -1402,7 +1402,7 @@ test('项目索引读不出来时拒绝派工，不拉起子会话', async () =>
   assert.equal(fixture.spawned.length, 0)
 })
 
-test('非协调者会话派工被拒绝', async () => {
+test('非 leader 会话派工被拒绝', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
@@ -1410,11 +1410,11 @@ test('非协调者会话派工被拒绝', async () => {
     ctx: fixture.ctx,
     store,
     workers: fixture.workers,
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return true
       },
-      isCoordinatorSession: () => false,
+      isLeaderSession: () => false,
     },
   })
 
@@ -1425,12 +1425,12 @@ test('非协调者会话派工被拒绝', async () => {
       name: '工',
       signal: new AbortController().signal,
     }),
-    /只有项目协调者能派工/,
+    /只有项目 leader 能派工/,
   )
   assert.equal(fixture.spawned.length, 0)
 })
 
-test('换下的协调者不能再给原班 worker 发消息', async () => {
+test('换下的 leader 不能再给原班 worker 发消息', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
@@ -1441,11 +1441,11 @@ test('换下的协调者不能再给原班 worker 发消息', async () => {
     ctx: fixture.ctx,
     store,
     workers: fixture.workers,
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return true
       },
-      isCoordinatorSession: (sessionId) => sessionId !== 'retired-1',
+      isLeaderSession: (sessionId) => sessionId !== 'retired-1',
     },
   })
 
@@ -1456,7 +1456,7 @@ test('换下的协调者不能再给原班 worker 发消息', async () => {
       message: '接着做',
       signal: new AbortController().signal,
     }),
-    /只有项目协调者能给 worker 发消息/,
+    /只有项目 leader 能给 worker 发消息/,
   )
   // 拒绝发生在投递之前：既没冷恢复，也没往 worker 里塞消息。
   assert.deepEqual(fixture.resumed, [])
@@ -1472,11 +1472,11 @@ test('注册表没读出来时 message_worker 不投递', async () => {
     ctx: fixture.ctx,
     store,
     workers: fixture.workers,
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return false
       },
-      isCoordinatorSession: () => true,
+      isLeaderSession: () => true,
     },
   })
 
@@ -1492,7 +1492,7 @@ test('注册表没读出来时 message_worker 不投递', async () => {
   assert.deepEqual(fixture.resumed, [])
 })
 
-test('换协调者后新协调者接管原班 worker，退役会话仍然投不进去', async () => {
+test('换 leader 后新 leader 接管原班 worker，退役会话仍然投不进去', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
@@ -1502,11 +1502,11 @@ test('换协调者后新协调者接管原班 worker，退役会话仍然投不�
     ctx: fixture.ctx,
     store,
     workers,
-    coordinatorIndex: {
+    leaderIndex: {
       async awaitIndex() {
         return true
       },
-      isCoordinatorSession: (sessionId) => sessionId === 'coordinator-2',
+      isLeaderSession: (sessionId) => sessionId === 'leader-2',
     },
   })
   const send = (parentId) => dispatcher.message({
@@ -1516,24 +1516,24 @@ test('换协调者后新协调者接管原班 worker，退役会话仍然投不�
     signal: new AbortController().signal,
   })
 
-  // 换人前：新协调者过不了父会话校验（登记表里还是退役会话派的工）
-  await assert.rejects(() => send('coordinator-2'), /别的会话派的/)
+  // 换人前：新 leader 过不了父会话校验（登记表里还是退役会话派的工）
+  await assert.rejects(() => send('leader-2'), /别的会话派的/)
 
   // 接管：登记表归属与派工器内存态一起改投
-  assert.deepEqual(await workers.reassignParent('retired-1', 'coordinator-2'), ['child-9'])
-  dispatcher.reassignParent('retired-1', 'coordinator-2')
-  assert.equal((await send('coordinator-2')).code, 'sent')
+  assert.deepEqual(await workers.reassignParent('retired-1', 'leader-2'), ['child-9'])
+  dispatcher.reassignParent('retired-1', 'leader-2')
+  assert.equal((await send('leader-2')).code, 'sent')
 
   // 退役会话自己仍然被身份闸挡住
-  await assert.rejects(() => send('retired-1'), /只有项目协调者能给 worker 发消息/)
+  await assert.rejects(() => send('retired-1'), /只有项目 leader 能给 worker 发消息/)
 })
 
-test('换协调者时 owners 与在飞记录一起改投，登记失败的 worker 也能续聊', async () => {
+test('换 leader 时 owners 与在飞记录一起改投，登记失败的 worker 也能续聊', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
   // 登记落盘失败（磁盘满这一类）：归属只剩本进程的 `owners`，跨进程真源里没有
-  // 这条 worker。换协调者时 `owners` 不改投，接手会话连同一轮都投不进去。
+  // 这条 worker。换 leader 时 `owners` 不改投，接手会话连同一轮都投不进去。
   const workers = createMemoryRegistry()
   workers.register = async () => {
     throw new Error('磁盘满')
@@ -1571,12 +1571,12 @@ test('换协调者时 owners 与在飞记录一起改投，登记失败的 worke
 
   dispatcher.reassignParent('parent-1', 'parent-2')
 
-  // 在飞记录改投：这一轮的回报要送到新协调者。
+  // 在飞记录改投：这一轮的回报要送到新 leader。
   await fixture.finishTurn(workerId, { text: '改完了' })
   assert.equal(handedOver.length, 1)
   assert.equal(fixture.delivered.length, 0)
 
-  // owners 改投：登记表里没有这条记录，新协调者仍能接着给同一个 worker 派活。
+  // owners 改投：登记表里没有这条记录，新 leader 仍能接着给同一个 worker 派活。
   const sent = await dispatcher.message({
     parent: newParent,
     sessionId: workerId,
@@ -1586,7 +1586,7 @@ test('换协调者时 owners 与在飞记录一起改投，登记失败的 worke
   assert.equal(sent.code, 'merged')
 })
 
-test('换协调者后，在飞 worker 的回报投给新协调者', async () => {
+test('换 leader 后，在飞 worker 的回报投给新 leader', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
@@ -1617,12 +1617,12 @@ test('换协调者后，在飞 worker 的回报投给新协调者', async () => 
   })
   const workerId = fixture.spawned.at(-1).sessionId
 
-  // 换协调者：登记表与内存态改绑之后这批在飞记录才跟着换父会话
+  // 换 leader：登记表与内存态改绑之后这批在飞记录才跟着换父会话
   await workers.reassignParent('parent-1', 'parent-2')
   assert.equal(dispatcher.reassignParent('parent-1', 'parent-2'), 1)
   await fixture.finishTurn(workerId, { text: '改完了' })
 
-  // 回报投给了新协调者，退役会话那边一条都没有
+  // 回报投给了新 leader，退役会话那边一条都没有
   assert.equal(handedOverMessages.length, 1)
   assert.match(handedOverMessages[0].content?.[0]?.text ?? '', /实现派工/)
   assert.equal(fixture.delivered.length, 0)
@@ -1630,29 +1630,29 @@ test('换协调者后，在飞 worker 的回报投给新协调者', async () => 
   assert.deepEqual(await store.listPending(), [])
 })
 
-test('接管后按会话 id 补投：改投过来的通知直接送到新协调者', async () => {
+test('接管后按会话 id 补投：改投过来的通知直接送到新 leader', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-kit-dispatch-')
   const store = createNotificationStore({ home })
-  // 队列里躺着一条已改投给新协调者的通知：它没有对应的在飞记录，也没人在等
+  // 队列里躺着一条已改投给新 leader 的通知：它没有对应的在飞记录，也没人在等
   await store.enqueue({
     id: 'note-1',
     childId: 'child-1',
-    parentSessionId: 'coordinator-2',
+    parentSessionId: 'leader-2',
     name: '实现工',
     text: '任务「实现工」已结束。',
     createdAt: 1,
     attempts: 0,
   })
   const messages = []
-  const parent2 = createParent('coordinator-2', messages)
+  const parent2 = createParent('leader-2', messages)
   const ctx = {
     ...fixture.ctx,
     get(key) {
       if (key === 'sessionController') {
         return {
           async resolveAgent(sessionId) {
-            return sessionId === 'coordinator-2' ? { agent: parent2 } : { error: '会话不在内存' }
+            return sessionId === 'leader-2' ? { agent: parent2 } : { error: '会话不在内存' }
           },
         }
       }
@@ -1661,7 +1661,7 @@ test('接管后按会话 id 补投：改投过来的通知直接送到新协调�
   }
   const dispatcher = makeDispatcher({ ctx, store, workers: createWorkerRegistry({ home }) })
 
-  assert.equal(await dispatcher.redeliverPendingFor('coordinator-2'), 1)
+  assert.equal(await dispatcher.redeliverPendingFor('leader-2'), 1)
   assert.equal(messages.length, 1)
   assert.match(messages[0].content?.[0]?.text ?? '', /实现工/)
   assert.deepEqual(await store.listPending(), [])
@@ -1675,7 +1675,7 @@ test('补投期间会话转忙：新进等待表的那条仍然送达', async ()
     await store.enqueue({
       id,
       childId: `child-${id}`,
-      parentSessionId: 'coordinator-2',
+      parentSessionId: 'leader-2',
       name: '实现工',
       text: `任务「${id}」已结束。`,
       createdAt: 1,
@@ -1685,7 +1685,7 @@ test('补投期间会话转忙：新进等待表的那条仍然送达', async ()
   const messages = []
   // 投出第一条之后会话转忙：第二条只能先进等待表（补投这一轮里 delivered 已经是 1）
   const parent2 = {
-    id: 'coordinator-2',
+    id: 'leader-2',
     status: 'idle',
     followup(message) {
       messages.push(message)
@@ -1698,7 +1698,7 @@ test('补投期间会话转忙：新进等待表的那条仍然送达', async ()
       if (key === 'sessionController') {
         return {
           async resolveAgent(sessionId) {
-            return sessionId === 'coordinator-2' ? { agent: parent2 } : { error: '会话不在内存' }
+            return sessionId === 'leader-2' ? { agent: parent2 } : { error: '会话不在内存' }
           },
         }
       }
@@ -1707,7 +1707,7 @@ test('补投期间会话转忙：新进等待表的那条仍然送达', async ()
   }
   const dispatcher = makeDispatcher({ ctx, store, workers: createWorkerRegistry({ home }) })
 
-  assert.equal(await dispatcher.redeliverPendingFor('coordinator-2'), 1)
+  assert.equal(await dispatcher.redeliverPendingFor('leader-2'), 1)
   // 会话空闲下来之后，等待表里那条要自己投出去（整表删会把刚进去的它一起丢掉）
   parent2.status = 'idle'
   assert.equal(await waitFor(() => messages.length === 2), true)
@@ -1720,14 +1720,14 @@ test('接管后等待中的通知按接手会话的额度计，不绕过自动�
   const store = createNotificationStore({ home })
   const workers = createWorkerRegistry({ home })
   const handedOverMessages = []
-  const handedOver = createParent('coordinator-2', handedOverMessages)
+  const handedOver = createParent('leader-2', handedOverMessages)
   const ctx = {
     ...fixture.ctx,
     get(key) {
       if (key === 'sessionController') {
         return {
           async resolveAgent(sessionId) {
-            return sessionId === 'coordinator-2' ? { agent: handedOver } : { error: '会话不在内存' }
+            return sessionId === 'leader-2' ? { agent: handedOver } : { error: '会话不在内存' }
           },
         }
       }
@@ -1735,7 +1735,7 @@ test('接管后等待中的通知按接手会话的额度计，不绕过自动�
     },
   }
   const dispatcher = makeDispatcher({ ctx, store, workers, autoResumeLimit: 1 })
-  // 旧协调者正忙：这条回报进等待表，条目里的通知还带着旧父会话 id
+  // 旧 leader 正忙：这条回报进等待表，条目里的通知还带着旧父会话 id
   const retiredParent = createParent('parent-1', [], 'busy')
   await dispatchAndStart(dispatcher, {
     parent: retiredParent,
@@ -1746,9 +1746,9 @@ test('接管后等待中的通知按接手会话的额度计，不绕过自动�
   await fixture.finishTurn(fixture.spawned.at(-1).sessionId, { text: '第一件事做完了' })
   assert.equal((await store.listPending()).length, 1)
 
-  await workers.reassignParent('parent-1', 'coordinator-2')
+  await workers.reassignParent('parent-1', 'leader-2')
   // 这一轮已经没有在飞记录（工已结算），改绑要动的是等待表里的那条通知
-  dispatcher.reassignParent('parent-1', 'coordinator-2')
+  dispatcher.reassignParent('parent-1', 'leader-2')
   // 等待表里的那条投给新会话：额度记在新会话名下（上限 1，这里用掉唯一一次）
   assert.equal(await waitFor(() => handedOverMessages.length === 1), true)
 
@@ -2311,7 +2311,7 @@ test('一轮只结算一次回报，重复上报不重复唤醒', async () => {
     signal: new AbortController().signal,
   })
   assert.equal(await finishWorker(dispatcher, fixture), true)
-  // worker 一时不确定有没有报过、又报一次：不能把协调者唤醒两遍。
+  // worker 一时不确定有没有报过、又报一次：不能把 leader 唤醒两遍。
   assert.equal(await finishWorker(dispatcher, fixture), false)
   await waitFor(() => fixture.delivered.length === 1)
   await new Promise((resolve) => setTimeout(resolve, 20))
@@ -2384,7 +2384,7 @@ test('非派工的轮次不攒 assistant 文本，不会把人的话当成 worke
     type: 'assistant/message',
     data: { message: { content: [{ type: 'text', text: '人自己聊出来的东西' }] } },
   })
-  // 协调者此时给它投了下一轮，登记在飞记录。
+  // leader 此时给它投了下一轮，登记在飞记录。
   await dispatcher.message({
     parent,
     sessionId: record.childId,
@@ -2432,7 +2432,7 @@ test('通知落盘失败时保留在飞记录，重试送出的仍是这一轮�
     signal: new AbortController().signal,
   })
 
-  // 落盘失败要留痕，而且不能把在飞记录删掉——删了这条回报就没了，协调者还在等它。
+  // 落盘失败要留痕，而且不能把在飞记录删掉——删了这条回报就没了，leader 还在等它。
   assert.equal(await finishWorker(dispatcher, fixture, { summary: '第一轮产物' }), false)
   assert.equal(dispatcher.inflightCount(), 1)
   assert.ok(logs.some((line) => /DISK_FULL/.test(line)), `期望日志留痕，实际：${logs.join(' / ')}`)

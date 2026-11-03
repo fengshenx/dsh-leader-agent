@@ -1,13 +1,13 @@
 /**
  * 任务卡事实在提示词中的注入点。
  *
- * 与角色槽位（`src/host/slots/index.js`）、协调者手册（`coordinator-context.js`）
+ * 与角色槽位（`src/host/slots/index.js`）、leader 手册（`leader-context.js`）
  * 走同一套通道：注册运行时上下文 provider。宿主在每次模型请求前求值，但只有
  * 渲染文本与上一份快照不同时才把它作为一条 user 消息追加——所以卡片没变的
- * 那一轮不重复注入，卡片被改（worker 自己挂 PR、协调者改规格）才补一份新快照。
+ * 那一轮不重复注入，卡片被改（worker 自己挂 PR、leader 改规格）才补一份新快照。
  *
  * 卡片事实因此不拼进任务消息：消息会冻结成派工那一刻的快照，而卡片是会被改的
- * 事实。协调者的第一条消息只说「做什么」，规格与链接由同一请求的上下文给出。
+ * 事实。leader 的第一条消息只说「做什么」，规格与链接由同一请求的上下文给出。
  *
  * 索引是同步内存镜像（`cards/store.js` 的 `cardIndex`）：提示词组装函数是同步的，
  * 不能在里面 await 异步落盘的卡片库。
@@ -66,7 +66,7 @@ export function renderCardContext({ sessionId, cardIndex }) {
     lines.push('')
   }
   lines.push(
-    '卡片是任务事实的真源：新增或修正链接用 `update_card` 的 `addLinks` 追加，不要整份重写；`status` 与 `spec` 由协调者维护。',
+    '卡片是任务事实的真源：新增或修正链接用 `update_card` 的 `addLinks` 追加，不要整份重写；`status` 与 `spec` 由 leader 维护。',
   )
   return lines.join('\n').trim()
 }

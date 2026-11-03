@@ -3,18 +3,18 @@
  *
  * **项目是显式注册的实体**，不是从会话反查出来的目录。dsh 自带的 workspace 是
  * 「目录列表 + 按目录归组会话」，对应的是代码语境（目录、文件、git）；项目是编排
- * 语境（协调者会话、卡片、worker、手册），同一个目录可以挂多个项目，二者不合并。
+ * 语境（leader 会话、卡片、worker、手册），同一个目录可以挂多个项目，二者不合并。
  * 因此注册表独立于会话存储存在。
  *
  * 两条领域规则：
  *
  * - **目录不可改**：项目目录是项目身份的一部分，改目录等于换项目。存储层只接受
- *   `name`、`coordinatorSessionId`、`retiredCoordinatorSessionIds` 与 `workspaceId`
+ *   `name`、`leaderSessionId`、`retiredLeaderSessionIds` 与 `workspaceId`
  *   四个可变字段，其余字段原样保留。`workspaceId` 是插件自己注册的工作区 id——它
  *   标明了「这个工作区是我们的」，用户自己加的同目录工作区不会写进来。
- *   `retiredCoordinatorSessionIds` 是被换下的协调者会话，换下后它们作为项目里的
+ *   `retiredLeaderSessionIds` 是被换下的 leader 会话，换下后它们作为项目里的
  *   普通会话保留，项目列表按它把它们和 worker 列在一起。
- * - **协调者会话硬绑定**：项目与它的协调者会话是显式指针，不是「目录里最新的那个
+ * - **leader 会话硬绑定**：项目与它的 leader 会话是显式指针，不是「目录里最新的那个
  *   会话」这类软约定。
  *
  * 落盘位置在 dsh home 下的自有目录，与卡片库同域；不占用 session 事件流——仓外
@@ -31,6 +31,20 @@ import { MAX_PROJECT_NAME_LENGTH } from '../../shared/projects.js'
 const STORE_VERSION = 1
 
 /**
+ * 改名前的字段名 → 现行字段名。
+ *
+ * 项目注册表是已落盘的运行时数据：旧版本写下的 `coordinatorSessionId` 不退回的话，
+ * 升级后 `getByLeader()` 查不到项目，leader 会话会被当成普通会话——工具面按身份
+ * 裁剪，它连 `spawn_worker` / `create_card` 都拿不到，且没有任何报错。读的时候
+ * 退回旧键，写的时候只写新键（归一化发生在 `readStore()`，`update()` 的
+ * `{ ...current }` 与白名单都在其后，旧键不会回写）。
+ */
+const LEGACY_FIELDS = Object.freeze({
+  coordinatorSessionId: 'leaderSessionId',
+  retiredCoordinatorSessionIds: 'retiredLeaderSessionIds',
+})
+
+/**
  * 项目记录里允许被修改的字段。
  *
  * 白名单而非黑名单：展开 `updates` 会让 `{id}`、`{directory}` 之类字段绕过校验
@@ -38,8 +52,8 @@ const STORE_VERSION = 1
  */
 const MUTABLE_FIELDS = Object.freeze([
   'name',
-  'coordinatorSessionId',
-  'retiredCoordinatorSessionIds',
+  'leaderSessionId',
+  'retiredLeaderSessionIds',
   'workspaceId',
 ])
 
@@ -74,6 +88,26 @@ export function uniqueProjectName(existingProjects, name) {
 }
 
 /**
+ * 把一条记录里的旧字段名换成现行字段名。
+ *
+ * 新键已有值时以新键为准（同一个文件被两个版本交替写过）；旧键一律删掉，
+ * 否则归一化后的记录再写回磁盘时会带着两份。
+ *
+ * @param {object} record - 注册表里的一条项目记录
+ * @returns {object} 归一化后的记录；没有旧字段时原样返回
+ */
+function adoptLegacyFields(record) {
+  let next = record
+  for (const [legacy, current] of Object.entries(LEGACY_FIELDS)) {
+    if (!Object.hasOwn(next, legacy)) continue
+    if (next === record) next = { ...record }
+    if (next[current] === undefined) next[current] = next[legacy]
+    delete next[legacy]
+  }
+  return next
+}
+
+/**
  * 读取项目注册表；文件缺失返回空表。
  * @param {string} file - 注册表文件路径
  * @param {() => Promise<void>} [onCorrupt] - 表损坏且已备份后的补救动作
@@ -87,7 +121,10 @@ async function readStore(file, onCorrupt) {
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) {
       throw new Error('项目注册表结构非法：缺少 projects 数组')
     }
-    return { version: STORE_VERSION, projects: parsed.projects.filter(isProjectRecord) }
+    return {
+      version: STORE_VERSION,
+      projects: parsed.projects.filter(isProjectRecord).map(adoptLegacyFields),
+    }
   } catch {
     const backup = `${file}.corrupt-${Date.now()}`
     await rename(file, backup).catch(() => undefined)
@@ -164,21 +201,21 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
     /**
      * 新建一条项目记录（不落盘）。
      *
-     * 落盘由调用方决定：建项目要先建协调者会话再一次性写入，失败时不留半条记录。
+     * 落盘由调用方决定：建项目要先建 leader 会话再一次性写入，失败时不留半条记录。
      *
      * @param {object} input - 建项输入
      * @param {string} input.name - 项目名
      * @param {string} input.directory - 项目目录绝对路径
-     * @param {string} [input.coordinatorSessionId] - 协调者会话 id
+     * @param {string} [input.leaderSessionId] - leader 会话 id
      * @returns {object} 项目记录
      */
-    draft({ name, directory, coordinatorSessionId, workspaceId }) {
+    draft({ name, directory, leaderSessionId, workspaceId }) {
       const now = Date.now()
       return {
         id: randomUUID(),
         name,
         directory,
-        ...coordinatorSessionId === undefined ? {} : { coordinatorSessionId },
+        ...leaderSessionId === undefined ? {} : { leaderSessionId },
         ...workspaceId === undefined ? {} : { workspaceId },
         createdAt: now,
         updatedAt: now,
@@ -212,13 +249,13 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
     },
 
     /**
-     * 按协调者会话 id 反查项目。
+     * 按 leader 会话 id 反查项目。
      * @param {string} sessionId - 会话 id
      * @returns {Promise<object | undefined>} 项目，不存在时 undefined
      */
-    async getByCoordinator(sessionId) {
+    async getByLeader(sessionId) {
       const store = await readStore(file, recoverFromCorruption)
-      return store.projects.find((item) => item.coordinatorSessionId === sessionId)
+      return store.projects.find((item) => item.leaderSessionId === sessionId)
     },
 
     /**
@@ -279,7 +316,7 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      * 落盘等于没改。
      *
      * @param {string} id - 项目 id
-     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、coordinatorSessionId、retiredCoordinatorSessionIds 与 workspaceId；或按当前记录算出待改字段的函数
+     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、leaderSessionId、retiredLeaderSessionIds 与 workspaceId；或按当前记录算出待改字段的函数
      * @returns {Promise<object>} 更新后的项目
      */
     async update(id, updates) {

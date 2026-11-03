@@ -83,7 +83,7 @@ test('门禁的已知集合只来自 documentedToolNames，不碰 gate.js', () =
   assert.ok(source.includes('documentedToolNames'), '门禁要用 documentedToolNames()，不要自己拼集合')
   assert.ok(
     !imports.some((path) => path.endsWith('/gate.js')),
-    '门禁不该 import gate.js 的任何符号：那份名单的变化理由是「协调者能不能用」',
+    '门禁不该 import gate.js 的任何符号：那份名单的变化理由是「leader 能不能用」',
   )
   for (const name of ['HOST_SUBAGENT_TOOLS', 'list_agents', 'send_message', 'interrupt_agent']) {
     assert.ok(!source.includes(name), `门禁里不该出现 ${name}：那是 gate.js 的符号或宿主工具名的副本`)

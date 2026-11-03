@@ -2,7 +2,7 @@
  * 看板面板：项目维度的任务看板。
  *
  * 看板是**项目**的看板：一个项目一个看板。面板先按自己所属的会话解析出项目，
- * 再从宿主取该项目的全部卡片（`src/client/project-board-data.js`）——协调者建的
+ * 再从宿主取该项目的全部卡片（`src/client/project-board-data.js`）——leader 建的
  * 卡与 worker 建的卡在同一处，不再是「卡建在哪个会话就只能在哪看到」。
  *
  * 卡面视觉与交互：卡面零操作铬，active 卡三层、done 卡单行并收进折叠区，
@@ -45,9 +45,9 @@ import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 
 /**
- * 项目归属与协调者身份的复核间隔。
+ * 项目归属与 leader 身份的复核间隔。
  *
- * 卡片每 2 秒拉一次，但「这个会话还是不是该项目的协调者」不必那么频繁：协调者
+ * 卡片每 2 秒拉一次，但「这个会话还是不是该项目的 leader」不必那么频繁：leader
  * 被换新或归档是低频事件，30 秒足以让旧面板切到提示。
  */
 const PROJECT_RECHECK_MS = 30_000
@@ -204,7 +204,7 @@ function useSlotStates(cards, getSessions, useSessionStatus, parentSessionId) {
       retain: (sessionId) => {
         const sessions = latest.current()
         if (sessions === undefined || sessions === null) throw new Error('会话服务不可用')
-        const options = { source: 'dshCoordinatorBoard' }
+        const options = { source: 'dshLeaderBoard' }
         try {
           return sessions.retain(sessionId, options)
         } catch (error) {
@@ -302,7 +302,7 @@ function BoardEmpty({ allDone, projectName }) {
     createElement(
       'div',
       { className: 'dsh-leader-kit-board-empty-hint' },
-      allDone ? `${whose}的卡片都已完成` : '协调者调用 create_card 后，卡片会出现在这里',
+      allDone ? `${whose}的卡片都已完成` : 'leader 调用 create_card 后，卡片会出现在这里',
     ),
   )
 }
@@ -369,7 +369,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }, [])
 
   // 看板是项目维度的：先按面板所属的会话解析出项目。会话换了（面板随之重挂载）
-  // 就重新解析；同一会话下定期复核——协调者可能在面板打开期间被换新或归档，
+  // 就重新解析；同一会话下定期复核——leader 可能在面板打开期间被换新或归档，
   // 身份与存活状态不能只在挂载时问一次。
   useEffect(() => {
     let cancelled = false
@@ -425,7 +425,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   // 的窗口里，等不到它的变化。
   useEffect(() => {
     // 看板只对项目会话开放：同目录的普通会话也能解析到项目（卡片归属要用），
-    // 但这里不给它们取卡。协调者会话已失效时同样不取。
+    // 但这里不给它们取卡。leader 会话已失效时同样不取。
     if (!isBoardViewable(project, sessionId, worker)) return undefined
     let cancelled = false
     const refresh = () => {
@@ -514,7 +514,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
             createElement(
               'div',
               { className: 'dsh-leader-kit-board-empty-hint' },
-              '看板按项目组织：在项目会话（协调者或 worker）里打开它。',
+              '看板按项目组织：在项目会话（leader 或 worker）里打开它。',
             ),
           )
         : createElement(BoardSkeleton),
@@ -527,10 +527,10 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     return createElement(BoardSkeleton)
   }
 
-  // 属于项目但不是项目会话（同目录的普通会话）；协调者本身已失效（归档或被
-  // 替换但绑定没改）时指路去左栏换新协调者，不把人指向一个打不开的会话。
-  if (view === 'coordinator-dead' || view === 'not-viewable') {
-    const coordinatorDead = view === 'coordinator-dead'
+  // 属于项目但不是项目会话（同目录的普通会话）；leader 本身已失效（归档或被
+  // 替换但绑定没改）时指路去左栏换新 leader，不把人指向一个打不开的会话。
+  if (view === 'leader-dead' || view === 'not-viewable') {
+    const leaderDead = view === 'leader-dead'
     return createElement(
       'div',
       { className: 'dsh-leader-kit-board-list' },
@@ -540,14 +540,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
         createElement(
           'div',
           { className: 'dsh-leader-kit-board-empty-title' },
-          coordinatorDead ? '该项目的协调者会话已失效' : '看板只在项目会话中打开',
+          leaderDead ? '该项目的 leader 会话已失效' : '看板只在项目会话中打开',
         ),
         createElement(
           'div',
           { className: 'dsh-leader-kit-board-empty-hint' },
-          coordinatorDead
-            ? '请在左栏项目区块对该项目换新协调者，再打开看板。'
-            : `这是「${project.name ?? '本项目'}」所在目录里的普通会话；去该项目的协调者或 worker 会话查看交付看板。`,
+          leaderDead
+            ? '请在左栏项目区块对该项目换新 leader，再打开看板。'
+            : `这是「${project.name ?? '本项目'}」所在目录里的普通会话；去该项目的 leader 或 worker 会话查看交付看板。`,
         ),
       ),
     )

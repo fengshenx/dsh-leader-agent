@@ -1,12 +1,12 @@
 /**
  * `spawn_worker` 工具：建一个后台 worker 会话，但**不开工**。
  *
- * 分成两步是为了让绑定先落盘：建会话时可以把卡片槽位直接绑到它身上，协调者
+ * 分成两步是为了让绑定先落盘：建会话时可以把卡片槽位直接绑到它身上，leader
  * 随后用 `message_worker` 投递的第一条消息，请求组装时就已经带着角色槽位与
  * 卡片事实。若在这里直接投递任务，角色与卡片上下文只能晚一次模型请求才出现。
  *
  * 建会话本身不产生模型调用；worker 结束一轮后仍由派工与唤醒器
- * （`src/host/dispatch.js`）构造完成通知并唤醒协调者会话。
+ * （`src/host/dispatch.js`）构造完成通知并唤醒 leader 会话。
  *
  * @module dsh-leader-kit/host/tools/spawn-worker
  */
@@ -14,7 +14,7 @@
 import { isValidSlotName } from '../slots/slot-templates.js'
 
 /**
- * 把 worker 的权限写成给协调者看的一段文案（多行时按行拼）。
+ * 把 worker 的权限写成给 leader 看的一段文案（多行时按行拼）。
  *
  * worker 的输入来自项目文件、issue 与 PR 正文这类外部内容；跑在完全权限、
  * 无审批下时，prompt injection 直接等于任意代码执行。派工这一刻必须让用户看见，
@@ -43,7 +43,7 @@ function describePermission(permission) {
   if (permission.skipped.length > 0) {
     lines.push(`权限未完整继承：${permission.skipped.map((item) => `${item.knob}（${item.reason}）`).join('、')}。`)
     if (permission.skipped.some((item) => item.knob !== 'preset')) {
-      lines.push('未继承的那部分停在部署默认 preset 上；默认 preset 可能是任意一档，未必比协调者的权限更严。')
+      lines.push('未继承的那部分停在部署默认 preset 上；默认 preset 可能是任意一档，未必比 leader 的权限更严。')
     }
   }
   return lines.join('\n')

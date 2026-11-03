@@ -96,6 +96,7 @@ test('files 放宽后，仓内文档与决策笔记仍进不了包', () => {
     'AGENTS.md',
     'CLAUDE.md',
     'SLOTS.md',
+    'LEADER.md',
     'COORDINATOR.md',
     '.agents/README.md',
     'docs/architecture.md',
@@ -106,6 +107,7 @@ test('files 放宽后，仓内文档与决策笔记仍进不了包', () => {
     'AGENTS.md',
     'CLAUDE.md',
     'COORDINATOR.md',
+    'LEADER.md',
     'SLOTS.md',
     'docs/architecture.md',
   ])

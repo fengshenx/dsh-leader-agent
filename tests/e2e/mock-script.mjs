@@ -62,7 +62,7 @@ export function resolveMarker(body) {
  * 标记继续走同一份脚本——否则「调工具、看到结果、收工」这种两轮场景没法表达。
  *
  * 边界：`active` 是全局单值，一轮只支持一个会话在请求模型。同一场景里两个会话
- * （协调者 + worker）并行时，无标记的请求会续到「最后命中的那份脚本」上，表现为
+ * （leader + worker）并行时，无标记的请求会续到「最后命中的那份脚本」上，表现为
  * 脚本多跑一轮而不是会话串了。做派工场景前先按 session id 分游标。
  *
  * @param {Record<string, object[]>} scripts - 标记到步骤列表的映射

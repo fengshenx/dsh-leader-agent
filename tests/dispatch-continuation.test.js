@@ -113,12 +113,12 @@ function createHost({ resumeError } = {}) {
   return { ctx, spawned, resumed, finishTurn }
 }
 
-/** 协调者索引假件：续聊用例都在协调者会话里跑，默认放行。 */
-const coordinatorIndex = {
+/** leader 索引假件：续聊用例都在 leader 会话里跑，默认放行。 */
+const leaderIndex = {
   async awaitIndex() {
     return true
   },
-  isCoordinatorSession: () => true,
+  isLeaderSession: () => true,
 }
 
 /**
@@ -153,7 +153,7 @@ async function createFixture({ resumeError } = {}) {
       store,
       workers,
       workerSessions: createWorkerSessions({ ctx: host.ctx }),
-      coordinatorIndex,
+      leaderIndex,
     })
   }
 
@@ -208,7 +208,7 @@ test('缺会话持久化后端时拒绝派工', async () => {
     store: createNotificationStore({ home }),
     workers: createWorkerRegistry({ home }),
     workerSessions: createWorkerSessions({ ctx }),
-    coordinatorIndex,
+    leaderIndex,
   })
 
   await assert.rejects(
@@ -240,7 +240,7 @@ test('缺会话查询后端时拒绝派工', async () => {
     store: createNotificationStore({ home }),
     workers: createWorkerRegistry({ home }),
     workerSessions: createWorkerSessions({ ctx }),
-    coordinatorIndex,
+    leaderIndex,
   })
 
   await assert.rejects(

@@ -360,7 +360,7 @@ test('轮询快照不覆盖版本更高的本地回填', () => {
   assert.equal(merged[0], local)
   assert.equal(merged[1], fresh)
 
-  // 同版本以宿主快照为准：别处（协调者）的改动照样能落到看板
+  // 同版本以宿主快照为准：别处（leader）的改动照样能落到看板
   const equal = mergeCardSnapshot([local], [{ id: 'c1', revision: 3, links: [{ label: '别处改的' }] }])
   assert.equal(equal[0].links[0].label, '别处改的')
 })

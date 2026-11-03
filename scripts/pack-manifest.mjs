@@ -26,7 +26,8 @@ export const AGENTS_SKILLS_PREFIX = '.agents/skills/'
  *
  * 这份名单是 `files` 白名单的补集，不是它的复述：白名单一旦放宽（比如有人写
  * `"docs/**"`、`"*.md"`），这里负责把不该发的东西拦下来。`.agents/` 例外，走
- * `isForbiddenPath` 的允许面。
+ * `isForbiddenPath` 的允许面。仓根提示词两个名字都拦：`LEADER.md` 是当前名，
+ * `COORDINATOR.md` 只剩指向它的兼容入口，都是仓内上下文。
  */
 export const FORBIDDEN_PATTERNS = Object.freeze([
   /(^|\/)tests\//,
@@ -36,6 +37,7 @@ export const FORBIDDEN_PATTERNS = Object.freeze([
   /^AGENTS\.md$/,
   /^CLAUDE\.md$/,
   /^SLOTS\.md$/,
+  /^LEADER\.md$/,
   /^COORDINATOR\.md$/,
   /^docs\//,
   /^scripts\//,

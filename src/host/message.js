@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto'
 
 /**
- * 协调者投递任务消息的 source kind。
+ * leader 投递任务消息的 source kind。
  *
  * 读侧（`worker-transcript`）靠它把任务正文与宿主注入的上下文区分开：两者都是
  * `user/message`，只有 `source.kind` 不同。
