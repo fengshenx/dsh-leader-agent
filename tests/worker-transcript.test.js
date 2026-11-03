@@ -22,7 +22,7 @@ function event(type, data, time = 0) {
  * 造一条真人输入的消息事件。
  *
  * 三种生产者的 `user/message` 只靠 `source.kind` 区分：`user` 是真人输入，
- * `dsh-leader-kit/worker-task` 是协调者投递的任务，其余是宿主注入的上下文。
+ * `dsh-leader-kit/worker-task` 是 leader 投递的任务，其余是宿主注入的上下文。
  *
  * @param {string} text - 正文
  * @returns {object} 事件
@@ -32,7 +32,7 @@ function user(text) {
 }
 
 /**
- * 造一条协调者投递的任务消息事件。
+ * 造一条 leader 投递的任务消息事件。
  * @param {string} text - 正文
  * @returns {object} 事件
  */
@@ -205,7 +205,7 @@ test('超长正文与失败原因按上限截断并标注', () => {
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
   assert.match(text, /已截断，原长 3000 字符/)
   assert.doesNotMatch(text, new RegExp(`y{300}`))
-  // 会话级失败原因同样截断，不把整段错误栈塞进协调者上下文。
+  // 会话级失败原因同样截断，不把整段错误栈塞进 leader 上下文。
   assert.doesNotMatch(text, new RegExp(`z{300}`))
 })
 

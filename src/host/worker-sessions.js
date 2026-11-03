@@ -71,11 +71,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   }
 
   /**
-   * 造一条协调者发来的任务消息。
+   * 造一条 leader 发来的任务消息。
    *
    * @param {string} text - 正文
    * @param {string} name - worker 显示名
-   * @param {string} parentSessionId - 协调者会话 id
+   * @param {string} parentSessionId - leader 会话 id
    * @returns {object} 用户消息
    */
   function taskMessage(text, name, parentSessionId) {
@@ -90,7 +90,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
    *
    * 不传的话会话能建起来，但系统提示里的 `{{model}}` 变量没有值——deployment
    * persona 段是模板，渲染时严格插值，缺值直接让首轮失败（实测：
-   * `prompt variable "{{model}}" has no value`）。协调者会话走
+   * `prompt variable "{{model}}" has no value`）。leader 会话走
    * `sessionController.create` 自带模型选择，worker 走 `agents.create` 就得自己给。
    *
    * @returns {object} agentOptions；当前组合没有默认模型服务时为空对象
@@ -110,7 +110,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   /**
    * 把新 worker 会话挂进项目工作区。
    *
-   * 归属只决定它在官方左栏里落在哪个分组：不挂就是「未分组」，而它的协调者已经
+   * 归属只决定它在官方左栏里落在哪个分组：不挂就是「未分组」，而它的 leader 已经
    * 挂在项目工作区里。挂失败不阻塞派工——会话已经建好并要收任务，少一层归属比
    * 派工失败轻得多，所以这里只记日志。
    *
@@ -263,15 +263,15 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     /**
      * 新建一个 worker 会话，但**不投递任务**。
      *
-     * 开工由协调者随后的 `message_worker` 触发：这样槽位绑定可以先落盘，第一条
+     * 开工由 leader 随后的 `message_worker` 触发：这样槽位绑定可以先落盘，第一条
      * 任务请求组装时角色槽位与卡片事实才读得到。建会话本身不产生任何模型调用。
      *
      * @param {object} options - 派工参数
      * @param {string | undefined} options.cwd - 工作目录
      * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
-     * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
+     * @param {string} [options.workspaceId] - 与 leader 同属的项目工作区
      * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
-     * @param {object} [options.permissionFrom] - 权限来源会话（协调者）；沙箱模式与审批策略从它继承
+     * @param {object} [options.permissionFrom] - 权限来源会话（leader）；沙箱模式与审批策略从它继承
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与 worker 实际生效的权限
      */
@@ -306,7 +306,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       }
       live.set(sessionId, handle)
       // 权限要在首轮之前落定：宿主的 permissionPresets 已在 `session/created` 上给
-      // 这条新会话 pin 了**用户默认** preset，这里用协调者的有效值覆盖它。
+      // 这条新会话 pin 了**用户默认** preset，这里用 leader 的有效值覆盖它。
       const permission = inheritPermission({ ctx, fromSession: permissionFrom, toSession: handle.agent.session, logger })
       if (!deferPresentation) presentOne(handle, sessionId, name, workspaceId)
       return { sessionId, permission }
@@ -322,7 +322,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} sessionId - 会话 id
      * @param {object} options - 呈现参数
      * @param {string} [options.name] - 显示名
-     * @param {string} [options.workspaceId] - 与协调者同属的项目工作区
+     * @param {string} [options.workspaceId] - 与 leader 同属的项目工作区
      * @returns {void}
      */
     present(sessionId, { name, workspaceId }) {
@@ -338,7 +338,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} options.sessionId - worker 会话 id
      * @param {string} options.text - 正文
      * @param {string} [options.name] - 顺手改的显示名
-     * @param {string} options.parentSessionId - 协调者会话 id
+     * @param {string} options.parentSessionId - leader 会话 id
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<'live' | 'resumed'>} 投递形态
      */

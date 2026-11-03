@@ -2,19 +2,19 @@
  * 左栏项目区块。
  *
  * 宿主侧的项目注册表是唯一真源，浏览器侧只做呈现与操作：列项目、加项目、打开
- * 项目的协调者会话、改名、换新协调者、删除项目。
+ * 项目的 leader 会话、改名、换新 leader、删除项目。
  *
- * **加项目**：选目录 → 直接建好。宿主在选中的目录里建一个协调者会话并与项目
+ * **加项目**：选目录 → 直接建好。宿主在选中的目录里建一个 leader 会话并与项目
  * 绑定，项目名默认取目录名（要改随时用行上的「重命名」）。建完就在列表里，不多
  * 一步确认——注册流程要用户再点一次才生效，凭空多一道手续。
  *
- * **打开项目**：点项目名就打开它的协调者会话——项目的切换就是会话的切换，会话
+ * **打开项目**：点项目名就打开它的 leader 会话——项目的切换就是会话的切换，会话
  * 的工作目录在创建时定死。
  *
  * **项目树**：点项目行展开或收起该项目的 worker 会话。归属由宿主判定——浏览器侧
  * 没有文件系统，做不了路径归一；worker 身份看会话头的 `origin`。
  *
- * **与官方工作区树并行**：项目的 worker 与协调者会话不在官方工作区树里重复出现。
+ * **与官方工作区树并行**：项目的 worker 与 leader 会话不在官方工作区树里重复出现。
  * 官方没有「按项目排除会话」的扩展点，这层排除走渲染层（见
  * `workspace-exclusion.js`）。项目目录的工作区行照常显示：用户在项目目录里手动
  * 开的会话不属于项目，藏掉工作区会让它们无处可寻。
@@ -45,7 +45,7 @@ import {
   isArchiveActiveRefusal,
   isProjectOpenable,
   moveProjectBefore,
-  openCoordinatorSession,
+  openLeaderSession,
   quietWorkspaceOf,
   validateProjectName,
 } from './project-panel-logic.js'
@@ -114,7 +114,7 @@ export function ProjectPanel(props) {
     try {
       const value = await callRemote('list', [])
       setProjects(Array.isArray(value) ? value : [])
-      // 项目有变就广播：右栏「看板」入口按项目与会话身份画，注销项目或换协调者
+      // 项目有变就广播：右栏「看板」入口按项目与会话身份画，注销项目或换 leader
       // 之后不通知，那里会留下一枚点开说「不属于任何项目」的胶囊。增删改的每个
       // 入口都在成功之后调本函数，广播放这里就不会漏。
       notifyProjectsChanged()
@@ -245,7 +245,7 @@ export function ProjectPanel(props) {
     [projects, sessionsByProject],
   )
 
-  // 项目的协调者与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
+  // 项目的 leader 与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
   // worker 是普通根会话（不是 subagent），官方树不会自己滤掉，只能按会话 id 排除。
   // 用户在项目目录里手动开的会话不属于项目，留在官方树里。
   //
@@ -330,7 +330,7 @@ export function ProjectPanel(props) {
 
   const openProject = useCallback(async (project) => {
     if (!isProjectOpenable(project)) {
-      showToast(`项目「${project.name}」的协调者会话已被删除，请换新协调者。`)
+      showToast(`项目「${project.name}」的 leader 会话已被删除，请换新 leader。`)
       return
     }
     const uiWorkspace = getUiWorkspace?.()
@@ -340,7 +340,7 @@ export function ProjectPanel(props) {
     }
     // 归属是为了分组：不归属就落「未分组」，而项目会话行被藏了，那里只剩空组头。
     // 打开前先确保它挂上（工作区被删过时这一步会重建并归位）。
-    const result = await openCoordinatorSession({
+    const result = await openLeaderSession({
       project,
       callRemote,
       openSession: (sessionId) => uiWorkspace.openSession(sessionId),
@@ -407,20 +407,20 @@ export function ProjectPanel(props) {
       } catch (error) {
         showToast(`调整项目顺序失败：${error instanceof Error ? error.message : String(error)}`)
       }
-      // 成功时把宿主算出的顺序（协调者状态等派生字段也一并刷新）拉回来；失败时
+      // 成功时把宿主算出的顺序（leader 状态等派生字段也一并刷新）拉回来；失败时
       // 用同一份快照把本地乐观重排撤销掉。
       if (isLatest()) await refresh()
     })
   }, [callRemote, refresh, reorderQueue])
 
-  const replaceCoordinator = useCallback(async (project) => {
+  const replaceLeader = useCallback(async (project) => {
     if (busy) return
     setBusy(true)
     try {
-      await callRemote('replaceCoordinator', [project.id])
+      await callRemote('replaceLeader', [project.id])
       await refresh()
     } catch (error) {
-      showToast(`换新协调者失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(`换新 leader 失败：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setBusy(false)
     }
@@ -528,7 +528,7 @@ export function ProjectPanel(props) {
     onNamingChange,
     onOpen: openProject,
     onRename: (project, name) => { void renameProject(project, name) },
-    onReplace: (project) => { void replaceCoordinator(project) },
+    onReplace: (project) => { void replaceLeader(project) },
     onRemove: requestDelete,
     onReorder: (projectId, beforeId) => { void reorderProject(projectId, beforeId) },
     sessionsByProject,

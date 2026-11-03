@@ -2,7 +2,7 @@
  * 注入给会话的文档里，工具名必须真实注册。判定逻辑在 doc-tool-names.mjs，这里
  * 只读盘、取真实工具名与报数。
  *
- * 扫描面只覆盖会进会话提示词的三处：SLOTS.md、COORDINATOR.md、.agents/skills/**\/*.md。
+ * 扫描面只覆盖会进会话提示词的三处：SLOTS.md、LEADER.md、.agents/skills/**\/*.md。
  * README 与 docs/ 是给人读的，`.agents/notes/` 里还记着已删工具的历史，都不扫。
  *
  * 规则与理由见 AGENTS.md 的「提交与 PR」一节。

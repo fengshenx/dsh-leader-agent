@@ -7,7 +7,7 @@
  * 项目会话」——入口本身是一句谎。
  *
  * 这里接管这个胶囊的渲染：`sidebar.right.tab.guide.entry` 按 provider id 分发，
- * 本插件渲染自己的那一个，按当前会话决定画还是不画。项目会话（协调者与
+ * 本插件渲染自己的那一个，按当前会话决定画还是不画。项目会话（leader 与
  * worker）画，其余返回 `null`。代价是胶囊的样式要自己复刻宿主的
  * `EntryBox`（第三方 bundle 不能 import 宿主的 CSS module），数值取自
  * `ui-sidebar-right` 的 `GuideBody.module.css`。
@@ -45,8 +45,8 @@ export function BoardGuideEntry({ sessionId, kind, title, description, useTabInf
 
   // 入口可见性跟着会话走：解析项目与身份，与看板面板读同一个判定。三种时机
   // 重判——通道就绪（guide 页常比 `$mount` 先画出来，挂载那一次必然失败）、
-  // 窗口聚焦（项目可能在另一个窗口里被建出来或换过协调者）、项目有变（同窗口
-  // 里注销项目或换协调者）。
+  // 窗口聚焦（项目可能在另一个窗口里被建出来或换过 leader）、项目有变（同窗口
+  // 里注销项目或换 leader）。
   useEffect(() => {
     let cancelled = false
     const check = async () => {

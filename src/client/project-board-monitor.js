@@ -23,9 +23,9 @@ import {
 } from './project-board-data.js'
 
 /**
- * 重新解析项目、复核协调者身份的间隔（轮数）。
+ * 重新解析项目、复核 leader 身份的间隔（轮数）。
  *
- * 卡片每 2 秒拉一次；协调者被换新或归档是低频事件，15 轮（约 30 秒）复核一次
+ * 卡片每 2 秒拉一次；leader 被换新或归档是低频事件，15 轮（约 30 秒）复核一次
  * 即可，避免每轮都多一次远程调用。
  */
 const RECHECK_TICKS = 15
@@ -48,7 +48,7 @@ export function createBoardWatch({ callRemote, onNewCard }) {
   let sessionId = undefined
   /** @type {object | undefined} 当前屏幕会话所属的项目 */
   let project = undefined
-  /** @type {boolean} 已解析出项目，但屏幕会话不是它的协调者 */
+  /** @type {boolean} 已解析出项目，但屏幕会话不是它的 leader */
   let ineligible = false
   /** @type {object[]} 上一轮看到的卡片，作为「有没有新卡」的基线 */
   let baseline = []
@@ -83,25 +83,25 @@ export function createBoardWatch({ callRemote, onNewCard }) {
      */
     async poll() {
       if (typeof sessionId !== 'string' || sessionId === '') return
-      // 自动弹出只给项目协调者：worker 能看待办，但新卡不该在它干活时把右栏
+      // 自动弹出只给项目 leader：worker 能看待办，但新卡不该在它干活时把右栏
       // 弹到看板上；同目录的普通会话更不该被打断。
       if (ineligible) return
       if (project === undefined) {
         const resolved = await resolveProject(callRemote, sessionId)
         if (resolved === undefined) return
-        // 显式写成「协调者」：自动弹出只给协调者，不靠 `isBoardViewable` 的
+        // 显式写成「leader」：自动弹出只给 leader，不靠 `isBoardViewable` 的
         // 默认参数把 worker 挡在外面——那读起来像「可看就弹」。
-        if (boardViewState(resolved, sessionId, false) !== 'coordinator') {
+        if (boardViewState(resolved, sessionId, false) !== 'leader') {
           ineligible = true
           return
         }
         project = resolved
       } else if ((ticks += 1) % RECHECK_TICKS === 0) {
-        // 协调者可能在监视期间被换新或归档：定期复核身份与存活状态，别把新卡
-        // 继续弹给一个已经不是协调者的会话。
+        // leader 可能在监视期间被换新或归档：定期复核身份与存活状态，别把新卡
+        // 继续弹给一个已经不是 leader 的会话。
         const resolved = await resolveProject(callRemote, sessionId)
         if (resolved === undefined) return
-        if (boardViewState(resolved, sessionId, false) !== 'coordinator') {
+        if (boardViewState(resolved, sessionId, false) !== 'leader') {
           ineligible = true
           return
         }

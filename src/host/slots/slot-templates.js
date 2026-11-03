@@ -3,14 +3,14 @@
  *
  * 槽位配置放在项目目录下的 `SLOTS.md`：文件顶部用 YAML frontmatter 的
  * `slots:` 声明每个槽位的显示名，正文按 `## <槽位名>` 分节，是该槽位角色的
- * 方法与人设。协调者会话通过卡片把执行会话绑到某个槽位，被绑会话的每一轮
+ * 方法与人设。leader 会话通过卡片把执行会话绑到某个槽位，被绑会话的每一轮
  * turn 都会注入对应槽位的正文。
  *
  * 槽位名是机器标识（小写 ASCII），显示名是给人看的：`label` 只进入界面，不进
  * 卡片 `slots` 的键、注入文本与反查索引。客户端经项目远程通道取这份显示名字典
  * （`src/host/projects/remote.js` 的 `projectSlots`）。
  *
- * 本模块**只读不写** `SLOTS.md`——用户与协调者用常规的 Write/Edit 工具维护它。
+ * 本模块**只读不写** `SLOTS.md`——用户与 leader 用常规的 Write/Edit 工具维护它。
  *
  * @module dsh-leader-kit/host/slots/slot-templates
  */

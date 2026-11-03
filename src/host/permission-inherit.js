@@ -1,10 +1,10 @@
 /**
- * 新建的 worker 会话继承协调者的权限（沙箱模式 + 审批策略）。
+ * 新建的 worker 会话继承 leader 的权限（沙箱模式 + 审批策略）。
  *
  * worker 是 `agents.create` 建的普通根会话，宿主的 `permissionPresets` 在
  * `session/created` 上给每个新会话 pin **用户默认 preset**（`pinInitialPermission()`）
- * ——协调者自己切过的 `danger-full-access` / `never` 不会跟过来。于是同一个命令
- * 协调者能跑，worker 被沙箱拒绝；需要审批的调用还会落空：审批 answerer 按会话 UI
+ * ——leader 自己切过的 `danger-full-access` / `never` 不会跟过来。于是同一个命令
+ * leader 能跑，worker 被沙箱拒绝；需要审批的调用还会落空：审批 answerer 按会话 UI
  * 作用域注册（`ui-approval` 的 `ctx.sessions.scopeOf(owner)`），后台 worker 的会话
  * 没人在界面上打开，`ask` 一律落到 `unavailable` → 工具被拒。
  *
@@ -12,14 +12,14 @@
  * 给派生子会话的既有标记（宿主 subagent 也用它写 `approval/policy`），表示这不是
  * 用户在这条会话里的选择。
  *
- * `permission/preset` 只在协调者是 `auto` 时补写：auto 的身份不在 knob 值里——它的
+ * `permission/preset` 只在 leader 是 `auto` 时补写：auto 的身份不在 knob 值里——它的
  * bundle（`danger-full-access` + `ask`）不匹配任何配置 preset，`derive()` 从 knobs
  * 反推会落到 `custom`，而 auto-review 的审查门判据正是
  * `permissionPresets.current(session) === 'auto'`。只继承裸 knobs 等于「沙箱放开、
  * 审查门关掉」，比不继承更宽。普通 preset 不写名字：knobs 一致时 `derive()` 反推
  * 出的就是同一个档。
  *
- * 边界：只继承一次，即派工那一刻。协调者之后切换 preset 不影响已派出的 worker——
+ * 边界：只继承一次，即派工那一刻。leader 之后切换 preset 不影响已派出的 worker——
  * 权限在宿主里本来就是逐会话的，worker 是独立会话。
  *
  * @module dsh-leader-kit/host/permission-inherit
@@ -41,7 +41,7 @@ function readSandbox(sandboxPolicy, session, logger) {
   try {
     return sandboxPolicy.resolve({ session }).mode
   } catch (error) {
-    logger(`dsh-leader-kit: 读协调者的沙箱模式失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-kit: 读 leader 的沙箱模式失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -63,7 +63,7 @@ function readApproval(approval, session, logger) {
     return approval.overrideOf(session) ?? approval.config.policy ?? 'ask'
   } catch (error) {
     // projection 还没注册时 stateOf 会抛（宿主启停窗口）；权限读取不该让派工失败。
-    logger(`dsh-leader-kit: 读协调者的审批策略失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-kit: 读 leader 的审批策略失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -79,13 +79,13 @@ function readApproval(approval, session, logger) {
 function readPreset(permissionPresets, session, logger) {
   if (permissionPresets === undefined) return undefined
   if (typeof permissionPresets.current !== 'function') {
-    logger('dsh-leader-kit: permissionPresets 服务缺少 current()，无法确认协调者的 preset，worker 不继承权限')
+    logger('dsh-leader-kit: permissionPresets 服务缺少 current()，无法确认 leader 的 preset，worker 不继承权限')
     return undefined
   }
   try {
     return permissionPresets.current(session)
   } catch (error) {
-    logger(`dsh-leader-kit: 读协调者的 preset 失败，worker 不继承权限：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-kit: 读 leader 的 preset 失败，worker 不继承权限：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -181,7 +181,7 @@ function readEffectiveApproval(approval, session, logger) {
 /**
  * 组装派工回执里的权限事实：**worker 实际生效的值**，不是继承的目标值。
  *
- * 写失败、读协调者失败、整体放弃继承时，目标值与 worker 真正跑的值不是一回事。
+ * 写失败、读 leader 失败、整体放弃继承时，目标值与 worker 真正跑的值不是一回事。
  * 读不到的键不写：值为 `undefined` 的键过不了宿主工具结果的 lossless JSON 判定
  * （`snapshotJsonValue` 返回 undefined → `ToolOutputError`），而报错发生在派工
  * 完成之后，会留下一个挂卡的孤儿 worker。
@@ -212,14 +212,14 @@ function describeEffective({ sandboxPolicy, approval, permissionPresets, session
 }
 
 /**
- * 把协调者的有效权限写到 worker 会话上。
+ * 把 leader 的有效权限写到 worker 会话上。
  *
  * 与 worker 当前值相同就不写：`permissionPresets` 已经 pin 过默认 knobs，覆盖值
  * 与默认一致时再追加一条只会在日志里留噪声。
  *
  * @param {object} options - 选项
  * @param {object} options.ctx - Cordis 上下文
- * @param {object} [options.fromSession] - 协调者会话（权限来源）
+ * @param {object} [options.fromSession] - leader 会话（权限来源）
  * @param {object} [options.toSession] - worker 会话（写入目标）
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {{ sandbox?: string, approval?: string, preset?: string, skipped: { knob: string, reason: string }[] } | undefined}
@@ -244,7 +244,7 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
   if (permissionPresets !== undefined && preset === undefined) {
     return {
       ...actual(),
-      skipped: [{ knob: 'preset', reason: '读不到协调者的 preset 身份，无法排除 auto，已放弃继承' }],
+      skipped: [{ knob: 'preset', reason: '读不到 leader 的 preset 身份，无法排除 auto，已放弃继承' }],
     }
   }
 
@@ -255,7 +255,7 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
   } else {
     const mode = readSandbox(sandboxPolicy, fromSession, logger)
     if (mode === undefined) {
-      skipped.push({ knob: 'sandbox', reason: '读协调者的沙箱模式失败，worker 保持默认' })
+      skipped.push({ knob: 'sandbox', reason: '读 leader 的沙箱模式失败，worker 保持默认' })
     } else if (currentOverride(sandboxPolicy, toSession) === mode) {
       sandboxSettled = true
     } else if (appendOverride(toSession, 'sandbox/mode', { mode, source: 'delegation' }, logger)) {
@@ -270,7 +270,7 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
   } else {
     const policy = readApproval(approval, fromSession, logger)
     if (policy === undefined) {
-      skipped.push({ knob: 'approval', reason: '读协调者的审批策略失败，worker 保持默认' })
+      skipped.push({ knob: 'approval', reason: '读 leader 的审批策略失败，worker 保持默认' })
     } else if (currentOverride(approval, toSession) !== policy
       && !appendOverride(toSession, 'approval/policy', { policy, source: 'delegation' }, logger)) {
       skipped.push({ knob: 'approval', reason: '写 approval/policy 失败，worker 保持默认' })

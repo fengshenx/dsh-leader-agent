@@ -2,7 +2,7 @@
  * 左栏「项目」区块的内容。
  *
  * 结构是**项目树**：项目行下面挂着该项目目录里的会话。点项目行展开或收起子会话
- * 列表；协调者会话的入口在行的「更多」菜单里（项目名不再承担两个动作）。
+ * 列表；leader 会话的入口在行的「更多」菜单里（项目名不再承担两个动作）。
  *
  * 排版对齐宿主的工作区浏览：小节标题用同一套行高与三级标签色，项目行用工作区
  * 行的高度、内边距、圆角与 hover 反馈；行首槽位与官方工作区行同款——平时是目录
@@ -16,7 +16,7 @@ import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } 
 import { createPortal } from 'react-dom'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isCoordinatorCurrent, isCoordinatorRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
+import { buildProjectMenuItems, isLeaderCurrent, isLeaderRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-kit-project-section'
@@ -109,7 +109,7 @@ const STYLE_TEXT = `
   background: var(--dsw-alias-interactive-bg-hover);
 }
 /* 组里有当前会话（被打开的 worker）：点亮行首文件夹，与宿主工作区树的
-   folderActive 同色。整行底色留给协调者会话的选中态——两层同时铺色会看成
+   folderActive 同色。整行底色留给 leader 会话的选中态——两层同时铺色会看成
    选了两个。 */
 .dsh-leader-kit-project-row[data-active='true'] .dsh-leader-kit-project-lead-folder {
   color: var(--dsw-alias-state-business-primary);
@@ -175,7 +175,7 @@ const STYLE_TEXT = `
   cursor: pointer;
 }
 /* 行首加载圈：本组有活动时替换目录图标（尺寸与位置仍占行首槽位）。收起时
-   任一会话行在跑、或协调者自己在跑；展开后只剩协调者——其它会话行自己带
+   任一会话行在跑、或 leader 自己在跑；展开后只剩 leader——其它会话行自己带
    spinner，不重复画同一个状态。悬停规则对槽位容器生效，箭头照常盖住它。
    圈本身是宿主的 StateDot（state: 'ongoing'）：轨道、呼吸弧、1.5s 周期与页面
    上多个圈的同步相位都由基线 ui-primitives 自带，不再自己写圆环。 */
@@ -591,7 +591,7 @@ export function ProjectSection(props) {
       ? createElement(
           'div',
           { className: 'dsh-leader-kit-project-notice' },
-          '还没有项目。加一个即在它的目录里建好协调者会话。',
+          '还没有项目。加一个即在它的目录里建好 leader 会话。',
         )
       : null,
     layout.showList
@@ -678,7 +678,7 @@ function dropHalfOf(event) {
 /**
  * 一个项目行：行首目录图标、项目名，悬停整行时行首换成展开箭头、右端露出操作按钮。
  *
- * 点行打开该项目的协调者会话；点行首槽位折叠/展开该项目下的会话列表。协调者不在
+ * 点行打开该项目的 leader 会话；点行首槽位折叠/展开该项目下的会话列表。leader 不在
  * 子会话列表里——它的入口就是这一行，重复列出会让入口含糊。
  *
  * @param {object} props - 组件属性
@@ -728,21 +728,21 @@ function ProjectRow(props) {
   const childSessions = selectProjectSessionRows({
     sessionIds: sessions,
     sessionRows,
-    coordinatorSessionId: project.coordinatorSessionId,
+    leaderSessionId: project.leaderSessionId,
     archivedSessionIds,
   })
-  // 整行底色只给协调者会话：那一行就是它的入口。worker 会话被打开时选中的是
+  // 整行底色只给 leader 会话：那一行就是它的入口。worker 会话被打开时选中的是
   // 下面列表里的那一行，项目行只点亮行首文件夹——分层与宿主工作区树一致
   // （工作区分组亮文件夹图标，会话行铺整行底色）。
-  const selected = isCoordinatorCurrent(project, currentSessionId, archivedSessionIds)
+  const selected = isLeaderCurrent(project, currentSessionId, archivedSessionIds)
   const active = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
-  // 行首加载圈 = 本组有活动，两个来源（会话行、协调者自身）在判定函数里合成，
-  // 渲染上只有一个入口。协调者在项目树下不单独出行，它跑起来时任何展开状态都
+  // 行首加载圈 = 本组有活动，两个来源（会话行、leader 自身）在判定函数里合成，
+  // 渲染上只有一个入口。leader 在项目树下不单独出行，它跑起来时任何展开状态都
   // 只能靠行首提示；其它会话在跑则只在收起时算——展开后会话行自己带 spinner。
   const leadActivity = showsProjectActivity({
     expanded,
     rows: childSessions,
-    coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds),
+    leaderRunning: isLeaderRunning(project, sessionRows, archivedSessionIds),
   })
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
@@ -862,7 +862,7 @@ function ProjectRow(props) {
               {
                 type: 'button',
                 className: 'dsh-leader-kit-project-icon-button',
-                title: '换新协调者',
+                title: '换新 leader',
                 disabled: busy,
                 onClick: (event) => { event.stopPropagation(); onReplace(project) },
               },

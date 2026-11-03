@@ -61,7 +61,7 @@ async function makeChain({ withRegistry = true, deletable = true } = {}) {
     store,
     ctx,
     isWorkerSession: () => false,
-    createCoordinatorSession: async (target, sessionId) => sessionId,
+    createLeaderSession: async (target, sessionId) => sessionId,
     sessionExists: async () => true,
   })
   const remote = createProjectRemote({

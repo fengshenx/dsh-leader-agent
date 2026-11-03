@@ -17,8 +17,8 @@
 import { BoardBody } from './board.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
-import { mountCoordinatorView } from './coordinator-view.js'
-import { watchCoordinatorSessions } from './coordinator-session-index.js'
+import { mountLeaderView } from './leader-view.js'
+import { watchLeaderSessions } from './leader-session-index.js'
 import { SLOT_LOCALE_NAMESPACE, en, zh } from './locales.js'
 import { callProjectRemote, mountProjectRemote, reportProjectRemoteError } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
@@ -60,7 +60,7 @@ export function apply(ctx) {
       id: 'board',
       order: 10,
       title: () => '看板',
-      description: () => '项目协调者与 worker 会话里的任务交付看板',
+      description: () => '项目 leader 与 worker 会话里的任务交付看板',
     }],
   }), 'dsh-leader-kit 看板 tab 类型')
 
@@ -131,12 +131,12 @@ export function apply(ctx) {
     order: 20,
   }, ToastOverlay)), 'dsh-leader-kit 提示浮层')
 
-  // 协调者视图目标：让协调者会话进入官方 active 形态，输入框停靠底部而会话区
+  // leader 视图目标：让 leader 会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调
-  // 不执行（`ctx.inject` 单独起一个 fiber，不拖累本插件），协调者会话退化成
+  // 不执行（`ctx.inject` 单独起一个 fiber，不拖累本插件），leader 会话退化成
   // 官方欢迎页。
-  ctx.inject(['uiConversation'], function mountCoordinatorViewFiber(conversationCtx) {
-    mountCoordinatorView(conversationCtx)
+  ctx.inject(['uiConversation'], function mountLeaderViewFiber(conversationCtx) {
+    mountLeaderView(conversationCtx)
     mountWorkerReport(conversationCtx)
   })
 
@@ -149,8 +149,8 @@ export function apply(ctx) {
       reportProjectRemoteError(message)
       remoteCtx.logger?.warn?.(`dsh-leader-kit: 项目通道挂载失败：${message}`)
     })
-    // 协调者会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
-    watchCoordinatorSessions(remoteCtx)
+    // leader 会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
+    watchLeaderSessions(remoteCtx)
     // 建卡后自动打开右栏看板：监视器要走项目通道取卡片，通道没挂好就开不了。
     mountBoardMonitor(ctx)
   })

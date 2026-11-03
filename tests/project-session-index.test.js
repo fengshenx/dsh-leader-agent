@@ -31,7 +31,7 @@ function createFakeCanonicalizer(mapping) {
 /**
  * 造一个按调用方 id 建会话的替身。
  *
- * 与真实实现同一个契约：协调者身份在建会话之前就登记了，所以必须原样用传入的
+ * 与真实实现同一个契约：leader 身份在建会话之前就登记了，所以必须原样用传入的
  * id。id 记在 `ids` 里，供 `sessionQuery` 的会话列表引用。
  *
  * @returns {((directory: string, sessionId: string) => Promise<string>) & { ids: string[] }} 替身
@@ -57,11 +57,11 @@ test('worker 会话 cwd 等于项目目录时归属该项目', async () => {
 })
 
 test('非 worker 会话不归属项目', async () => {
-  // 协调者会话的入口在项目行上，用户在项目目录里手动开的会话也不属于项目编排。
+  // leader 会话的入口在项目行上，用户在项目目录里手动开的会话也不属于项目编排。
   const grouped = await groupSessionsByProject({
     projects: [{ id: 'p1', directory: '/repo' }],
     sessions: [
-      { id: 'coordinator', cwd: '/repo' },
+      { id: 'leader', cwd: '/repo' },
       { id: 'manual', cwd: '/repo' },
     ],
     canonicalize: createFakeCanonicalizer({}),
@@ -153,14 +153,14 @@ test('服务按项目聚合会话', async () => {
   const service = createProjectService({
     store,
     ctx: { get: (key) => (key === 'sessionQuery' ? query : undefined) },
-    createCoordinatorSession: factory,
+    createLeaderSession: factory,
     sessionExists: async () => true,
     isWorkerSession: (id) => id === 'session-worker',
   })
   const project = await service.create({ directory: workspace, name: 'alpha' })
 
   const grouped = await service.sessionsByProject()
-  // 保住判别力：会话没建成就拿不到 id，listSessions 里的协调者条目会变成 undefined
+  // 保住判别力：会话没建成就拿不到 id，listSessions 里的 leader 条目会变成 undefined
   // 而被过滤掉，用例照样绿
   assert.equal(factory.ids.length, 1)
   assert.equal(grouped.length, 1)
@@ -174,7 +174,7 @@ test('服务在没有 sessionQuery 时返回空映射', async () => {
   const service = createProjectService({
     store,
     ctx: { get: () => undefined },
-    createCoordinatorSession: createSessionFactory(),
+    createLeaderSession: createSessionFactory(),
     sessionExists: async () => true,
     isWorkerSession: () => true,
   })
@@ -209,7 +209,7 @@ test('真实符号链接目录按 realpath 归一后归属同一项目', async (
           }
         : undefined),
     },
-    createCoordinatorSession: createSessionFactory(),
+    createLeaderSession: createSessionFactory(),
     sessionExists: async () => true,
     isWorkerSession: () => true,
   })
@@ -232,7 +232,7 @@ test('项目目录下新建的子目录不改变归属', async () => {
         ? { listSessions: async () => [{ header: { id: 's1', cwd: join(workspace, 'nested') } }] }
         : undefined),
     },
-    createCoordinatorSession: createSessionFactory(),
+    createLeaderSession: createSessionFactory(),
     sessionExists: async () => true,
     isWorkerSession: () => true,
   })
@@ -271,7 +271,7 @@ test('服务把 worker 判定透传给分组', async () => {
           }
         : undefined),
     },
-    createCoordinatorSession: factory,
+    createLeaderSession: factory,
     sessionExists: async () => true,
     isWorkerSession: (id) => id === 'worker-root',
   })
@@ -282,7 +282,7 @@ test('服务把 worker 判定透传给分组', async () => {
   assert.deepEqual(grouped, [{ projectId: project.id, sessionIds: ['worker-root'] }])
 })
 
-test('换下的协调者列在项目下，与 worker 同列', async () => {
+test('换下的 leader 列在项目下，与 worker 同列', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
   const factory = createSessionFactory()
@@ -294,41 +294,41 @@ test('换下的协调者列在项目下，与 worker 同列', async () => {
         ? { listSessions: async () => sessions.map((id) => ({ header: { id, cwd: workspace } })) }
         : undefined),
     },
-    createCoordinatorSession: factory,
+    createLeaderSession: factory,
     sessionExists: async () => true,
     isWorkerSession: (id) => id === 'worker-root',
   })
   const project = await service.create({ directory: workspace, name: 'alpha' })
   sessions.push(factory.ids[0], 'worker-root')
-  const updated = await service.replaceCoordinator(project.id)
-  sessions.push(updated.coordinatorSessionId)
+  const updated = await service.replaceLeader(project.id)
+  sessions.push(updated.leaderSessionId)
 
   const grouped = await service.sessionsByProject()
-  // 当前协调者仍不列（入口在项目行上），换下的那个跟着 worker 走
+  // 当前 leader 仍不列（入口在项目行上），换下的那个跟着 worker 走
   assert.deepEqual(grouped, [{
     projectId: project.id,
     sessionIds: ['worker-root', factory.ids[0]],
   }])
 })
 
-test('连续换协调者：退役列表只增不重，当前协调者不在其中', async () => {
+test('连续换 leader：退役列表只增不重，当前 leader 不在其中', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
   const factory = createSessionFactory()
   const service = createProjectService({
     store,
     ctx: { get: () => undefined },
-    createCoordinatorSession: factory,
+    createLeaderSession: factory,
     sessionExists: async () => true,
     isWorkerSession: () => false,
   })
   const project = await service.create({ directory: workspace, name: 'alpha' })
-  await service.replaceCoordinator(project.id)
-  const updated = await service.replaceCoordinator(project.id)
+  await service.replaceLeader(project.id)
+  const updated = await service.replaceLeader(project.id)
 
-  assert.deepEqual(updated.retiredCoordinatorSessionIds, factory.ids.slice(0, 2))
-  assert.equal(updated.coordinatorSessionId, factory.ids[2])
-  assert.equal(updated.retiredCoordinatorSessionIds.includes(updated.coordinatorSessionId), false)
+  assert.deepEqual(updated.retiredLeaderSessionIds, factory.ids.slice(0, 2))
+  assert.equal(updated.leaderSessionId, factory.ids[2])
+  assert.equal(updated.retiredLeaderSessionIds.includes(updated.leaderSessionId), false)
 })
 
 test('退役会话已从会话库消失时不再列出', async () => {
@@ -343,14 +343,14 @@ test('退役会话已从会话库消失时不再列出', async () => {
         ? { listSessions: async () => sessions.map((id) => ({ header: { id, cwd: workspace } })) }
         : undefined),
     },
-    createCoordinatorSession: factory,
+    createLeaderSession: factory,
     sessionExists: async () => true,
     isWorkerSession: () => false,
   })
   const project = await service.create({ directory: workspace, name: 'alpha' })
-  const updated = await service.replaceCoordinator(project.id)
-  // 退役那条的会话记录被宿主清掉了，只剩当前协调者
-  sessions = [updated.coordinatorSessionId]
+  const updated = await service.replaceLeader(project.id)
+  // 退役那条的会话记录被宿主清掉了，只剩当前 leader
+  sessions = [updated.leaderSessionId]
 
   assert.deepEqual(await service.sessionsByProject(), [])
 })

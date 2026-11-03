@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { coordinatorSessionIndex, watchCoordinatorSessions } from '../src/client/coordinator-session-index.js'
+import { leaderSessionIndex, watchLeaderSessions } from '../src/client/leader-session-index.js'
 import { notifyProjectsChanged } from '../src/client/project-changes.js'
 import { mountProjectRemote } from '../src/client/project-remote.js'
 
@@ -63,40 +63,40 @@ function setup(projects, { listError } = {}) {
   }
 }
 
-test('协调者会话名单：通道就绪后按项目列表填充', async () => {
-  const projects = [{ id: 'p-1', coordinatorSessionId: 's-1' }]
+test('leader 会话名单：通道就绪后按项目列表填充', async () => {
+  const projects = [{ id: 'p-1', leaderSessionId: 's-1' }]
   const env = setup(projects)
-  coordinatorSessionIndex.update([])
+  leaderSessionIndex.update([])
   await mountProjectRemote(env.ctx)
-  watchCoordinatorSessions(env.ctx)
+  watchLeaderSessions(env.ctx)
   await flush()
-  assert.deepEqual([...coordinatorSessionIndex.getSnapshot()], ['s-1'])
+  assert.deepEqual([...leaderSessionIndex.getSnapshot()], ['s-1'])
   env.dispose()
   assert.equal(env.focusListeners(), 0)
 })
 
-test('同窗口新建项目后名单跟着刷新——否则协调者会话退回居中的欢迎页', async () => {
-  const projects = [{ id: 'p-1', coordinatorSessionId: 's-1' }]
+test('同窗口新建项目后名单跟着刷新——否则 leader 会话退回居中的欢迎页', async () => {
+  const projects = [{ id: 'p-1', leaderSessionId: 's-1' }]
   const env = setup(projects)
-  coordinatorSessionIndex.update([])
+  leaderSessionIndex.update([])
   await mountProjectRemote(env.ctx)
-  watchCoordinatorSessions(env.ctx)
+  watchLeaderSessions(env.ctx)
   await flush()
-  assert.deepEqual([...coordinatorSessionIndex.getSnapshot()], ['s-1'])
+  assert.deepEqual([...leaderSessionIndex.getSnapshot()], ['s-1'])
 
-  projects.push({ id: 'p-2', coordinatorSessionId: 's-2' })
+  projects.push({ id: 'p-2', leaderSessionId: 's-2' })
   notifyProjectsChanged()
   await flush()
-  assert.deepEqual([...coordinatorSessionIndex.getSnapshot()].sort(), ['s-1', 's-2'])
+  assert.deepEqual([...leaderSessionIndex.getSnapshot()].sort(), ['s-1', 's-2'])
   env.dispose()
 })
 
 test('卸载后三条订阅都退订：通道就绪与项目广播不再触发名单刷新', async () => {
-  const projects = [{ id: 'p-1', coordinatorSessionId: 's-1' }]
+  const projects = [{ id: 'p-1', leaderSessionId: 's-1' }]
   const env = setup(projects)
-  coordinatorSessionIndex.update([])
+  leaderSessionIndex.update([])
   await mountProjectRemote(env.ctx)
-  watchCoordinatorSessions(env.ctx)
+  watchLeaderSessions(env.ctx)
   await flush()
   const calls = env.listCalls()
   env.dispose()
@@ -110,13 +110,13 @@ test('卸载后三条订阅都退订：通道就绪与项目广播不再触发�
 
 test('拉名单失败时只告警：未处理的 rejection 会打穿插件的订阅链', async () => {
   const env = setup([], { listError: new Error('gateway/internal') })
-  coordinatorSessionIndex.update([])
+  leaderSessionIndex.update([])
   await mountProjectRemote(env.ctx)
-  watchCoordinatorSessions(env.ctx)
+  watchLeaderSessions(env.ctx)
   await flush()
 
   assert.equal(env.warnings.length, 1)
-  assert.match(env.warnings[0], /读取协调者会话名单失败/)
+  assert.match(env.warnings[0], /读取 leader 会话名单失败/)
   assert.match(env.warnings[0], /gateway\/internal/)
   env.dispose()
 })
