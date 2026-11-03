@@ -34,6 +34,8 @@
 
 加载圈画在 `.dsh-leader-kit-project-lead-folder` 槽位**内部**，不替换容器：组内有当前会话的激活色挂在容器的 `color` 上（`project-section.js` 的 `[data-active='true'] .dsh-leader-kit-project-lead-folder`），容器一被顶掉，收起态下的活动提示与「本组有当前会话」就丢了同一处承载。边框因此写 `currentColor`（与目录图标的 `stroke: currentColor` 同源），不写死 `label-tertiary`；加载圈本身是装饰，挂 `aria-hidden="true"`。
 
+> **已被 [2026-11-03 加载圈改用宿主 StateDot](2026-11-03-spinner-aligned-with-host-state-dot.md) 取代**：加载圈现在是宿主基线模块的 `StateDot`（`state: 'ongoing'`），颜色固定 `label-tertiary`，不再用 `currentColor`；「画在槽位内部、hover 让位」这两条仍然成立。
+
 hover 时整个槽位让位给展开箭头（既有规则对容器生效），加载圈跟着一起收起来，移开指针就回来。
 
 ### 与 #64 的合成：行首活动提示分两种来源
@@ -89,4 +91,4 @@ leadActivity = showsProjectActivity({
   | 修复前（替代容器）+ `data-active=true` | 否 | 否 | `rgb(120, 130, 150)` | 无 |
   | 修复后、非激活 | 是 | 是 | `rgb(120, 130, 150)` | `rgb(120, 130, 150)` |
 
-  三者行高都是 34px（槽位没被撑开）、`width/height=12px`、`animationName=dsh-leader-kit-spin`、`border-top-color` 透明（旋转缺口）。修复前那一行就是审查实测的激活色丢失：容器被顶掉后边框落回写死的 tertiary，与图标的 `rgb(65, 118, 230)` 不一致。真实运行态下的切换依赖的是同一条渲染分支与会话行的 `running` 订阅（`ProjectPanel` 的 `sessions.list.subscribe`），这条订阅链在选中态的真机读数里已经跑通。
+  三者行高都是 34px（槽位没被撑开）、`width/height=12px`、`animationName=dsh-leader-kit-spin`、`border-top-color` 透明（旋转缺口）。修复前那一行就是审查实测的激活色丢失：容器被顶掉后边框落回写死的 tertiary，与图标的 `rgb(65, 118, 230)` 不一致。真实运行态下的切换依赖的是同一条渲染分支与会话行的 `running` 订阅（`ProjectPanel` 的 `sessions.list.subscribe`），这条订阅链在选中态的真机读数里已经跑通。这段读数对应已删除的自绘实现，现实现见 [2026-11-03](2026-11-03-spinner-aligned-with-host-state-dot.md)。
