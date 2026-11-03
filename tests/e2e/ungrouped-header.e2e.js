@@ -21,7 +21,7 @@ import { chromium } from 'playwright'
 import { startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
 import { readSessionLogs } from './session-logs.mjs'
-import { waitFor } from './harness.mjs'
+import { waitFor, waitForLocator } from './harness.mjs'
 
 
 test('删掉工作区后，会话落进未分组且组头不被藏', { timeout: 180_000 }, async (t) => {
@@ -46,28 +46,10 @@ test('删掉工作区后，会话落进未分组且组头不被藏', { timeout: 
   })
   await page.goto(instance.url, { waitUntil: 'domcontentloaded' })
 
-  const workspaceRow = page.locator('[data-row-key^="workspace:"]').first()
-  await workspaceRow.waitFor({ state: 'visible', timeout: 60_000 })
-  const workspaceKey = await workspaceRow.getAttribute('data-row-key')
-  assert.notEqual(workspaceKey, 'workspace:', '删之前要先有一个真工作区')
-
-  // 删工作区：注册没了，会话与落盘记录都还在。
-  await workspaceRow.hover()
-  await workspaceRow.locator('button[aria-label*="操作"]').first().click({ force: true })
-  const removeItem = page.locator('[role="menuitem"]').filter({ hasText: '删除工作区' }).first()
-  await removeItem.waitFor({ state: 'visible', timeout: 15_000 })
-  await removeItem.click()
-  const confirm = page.locator('button').filter({ hasText: '删除工作区' }).last()
-  await confirm.click()
-
-  // 工作区组头消失，会话换到「未分组」下。
-  await waitFor({
-    description: '真工作区的组头消失',
-    check: async () => (await page.locator(`[data-row-key="${workspaceKey}"]`).count()) === 0,
-    timeoutMs: 30_000,
-  })
+  // 删工作区：注册没了，会话与落盘记录都还在，它们换到「未分组」下。
+  await removeWorkspace(page)
   const header = page.locator('[data-row-key="workspace:"]').first()
-  await header.waitFor({ state: 'attached', timeout: 15_000 })
+  await waitForLocator(header, { description: '未分组的组头', state: 'attached' })
 
   // 只数「未分组这一组」里的行：全树行数在别的组有会话时恒真，证明不了这一组
   const sectionRows = await header.evaluate((node) => {
@@ -90,6 +72,26 @@ test('删掉工作区后，会话落进未分组且组头不被藏', { timeout: 
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
 })
+
+/** 走界面删掉真工作区，让它的会话落进「未分组」；返回被删组头的 key。 */
+async function removeWorkspace(page) {
+  const workspaceRow = page.locator('[data-row-key^="workspace:"]').first()
+  await waitForLocator(workspaceRow, { description: '真工作区的行', timeoutMs: 20_000 })
+  const workspaceKey = await workspaceRow.getAttribute('data-row-key')
+  assert.notEqual(workspaceKey, 'workspace:', '删之前要先有一个真工作区')
+  await workspaceRow.hover()
+  await workspaceRow.locator('button[aria-label*="操作"]').first().click({ force: true })
+  const removeItem = page.locator('[role="menuitem"]').filter({ hasText: '删除工作区' }).first()
+  await waitForLocator(removeItem, { description: '工作区菜单里的「删除工作区」' })
+  await removeItem.click()
+  await page.locator('button').filter({ hasText: '删除工作区' }).last().click()
+  await waitFor({
+    description: '真工作区的组头消失',
+    check: async () => (await page.locator(`[data-row-key="${workspaceKey}"]`).count()) === 0,
+    timeoutMs: 30_000,
+  })
+  return workspaceKey
+}
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -147,24 +149,13 @@ test('项目目录被删后，项目会话不再被排除，「未分组」组�
     if (message.type() === 'error') problems.push(`console.error: ${message.text()}`)
   })
   await page.goto(instance.url, { waitUntil: 'domcontentloaded' })
-  await page.locator('div[role="textbox"][contenteditable="true"]').first()
-    .waitFor({ state: 'visible', timeout: 60_000 })
+  await waitForLocator(page.locator('div[role="textbox"][contenteditable="true"]').first(), {
+    description: '输入框就绪',
+    timeoutMs: 20_000,
+  })
 
   // 先删工作区，把会话赶进「未分组」——这一步之后才有那个组头。
-  const workspaceRow = page.locator('[data-row-key^="workspace:"]').first()
-  await workspaceRow.waitFor({ state: 'visible', timeout: 60_000 })
-  const workspaceKey = await workspaceRow.getAttribute('data-row-key')
-  await workspaceRow.hover()
-  await workspaceRow.locator('button[aria-label*="操作"]').first().click({ force: true })
-  const removeItem = page.locator('[role="menuitem"]').filter({ hasText: '删除工作区' }).first()
-  await removeItem.waitFor({ state: 'visible', timeout: 15_000 })
-  await removeItem.click()
-  await page.locator('button').filter({ hasText: '删除工作区' }).last().click()
-  await waitFor({
-    description: '真工作区的组头消失',
-    check: async () => (await page.locator(`[data-row-key="${workspaceKey}"]`).count()) === 0,
-    timeoutMs: 30_000,
-  })
+  await removeWorkspace(page)
 
   // 把这个松散会话登记成以临时目录为家的项目：下一次 refresh 就会排除它。
   const session = firstSession(instance.home)
@@ -172,7 +163,7 @@ test('项目目录被删后，项目会话不再被排除，「未分组」组�
   seedProject(instance.home, { id: session.id, directory })
 
   const header = page.locator('[data-row-key="workspace:"]').first()
-  await header.waitFor({ state: 'attached', timeout: 30_000 })
+  await waitForLocator(header, { description: '未分组的组头', state: 'attached' })
   await page.evaluate(() => {
     window.dispatchEvent(new Event('focus'))
   })
