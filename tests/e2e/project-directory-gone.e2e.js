@@ -85,13 +85,10 @@ test('项目目录被删后，它的会话回到官方树里可见', { timeout: 
     check: async () => sessionRow.evaluate((node, cls) => node.classList.contains(cls), EXCLUDED_CLASS),
     timeoutMs: 30_000,
   })
+  // 项目行的 `data-dead` 只看 leader 是否存活（`isProjectOpenable`），与目录态无关，
+  // 拿它断言目录等于恒真；这里只等行渲染出来，删目录后再断言它没消失。
   const projectRow = page.locator('.dsh-leader-kit-project-row').first()
   await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
-  assert.notEqual(
-    await projectRow.getAttribute('data-dead'),
-    'true',
-    'leader 还活着：项目行不该因为目录检查被判成失效',
-  )
 
   // 删目录：项目行再也打不开，继续排除会让会话两处都不可达。
   rmSync(directory, { recursive: true, force: true })
