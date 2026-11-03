@@ -33,7 +33,6 @@ import { createLeaderHandover } from './leader-handover.js'
 import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
 import { applyRoleContext } from './slots/index.js'
 import { applyLeaderContext } from './leader-context.js'
-import { createInitDeclinedStore } from './init-declined.js'
 import { applyTeamGuard } from './team-guard.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -261,15 +260,11 @@ export function apply(ctx) {
 
   // leader 手册注入：项目的 leader 会话每轮请求组装时求值项目根 `LEADER.md`
   // 的正文，内容变化才追加。它按身份决定，不需要卡片绑定——leader 天然属于这个项目。
-  // 「用户不要初始化」的标记落在插件自己的数据域，不写进用户仓库。
-  const initDeclined = createInitDeclinedStore({ home: resolveDshHome() })
   applyLeaderContext({
     ctx,
     // 只有 leader 会话在这里有值；索引还没重建完时同样为空，那一轮不注入、
     // 下一轮补上（上下文每轮重新求值）。
     resolveDirectory: (sessionId) => projectService.directoryOfLeader(sessionId),
-    isDeclined: (directory) => initDeclined.isDeclined(directory),
-    declinedFileOf: (directory) => initDeclined.fileOf(directory),
     logger,
   })
 

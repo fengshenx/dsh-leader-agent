@@ -12,7 +12,6 @@ import {
   loadLeaderManual,
   renderLeaderContext,
 } from '../src/host/leader-context.js'
-import { createInitDeclinedStore } from '../src/host/init-declined.js'
 import { ROLE_CONTEXT_ORDER } from '../src/host/slots/index.js'
 
 /**
@@ -189,31 +188,17 @@ test('LEADER.md 是空的、旧名手册有内容时回落到旧名，不当成�
   }
 })
 
-test('用户拒绝初始化后（数据域标记存在）不再注入提示，删掉标记下一轮恢复', async () => {
+test('提示要求拒绝后不追问、不写文件，并给出彻底停用的办法', async () => {
   const project = await createProject(undefined)
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
-  const declined = createInitDeclinedStore({ home })
-  const options = {
-    sessionId: 'session-a',
-    resolveDirectory: () => project.directory,
-    isDeclined: declined.isDeclined,
-    declinedFileOf: declined.fileOf,
-  }
   try {
-    const before = renderLeaderContext(options)
-    assert.match(before, /## 项目待初始化/)
-    // 提示直接给出数据域里的绝对路径：模型照抄即可，不需要知道 dsh home 怎么解析。
-    assert.ok(before.includes(declined.fileOf(project.directory)))
-    assert.ok(declined.fileOf(project.directory).startsWith(home))
-    await mkdir(declined.directory, { recursive: true })
-    await writeFile(declined.fileOf(project.directory), '', 'utf8')
-    assert.equal(renderLeaderContext(options), '')
-    // 标记是每轮求值的：删掉后下一轮就恢复提示，不需要重启。
-    await rm(declined.fileOf(project.directory))
-    assert.match(renderLeaderContext(options), /## 项目待初始化/)
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /本轮及本会话不要再追问/)
+    assert.match(text, /不要为了记录这个拒绝去写任何文件/)
+    // 拒绝只在本会话生效，所以要给出真正能让提示消失的办法。
+    assert.match(text, /自行创建 `LEADER\.md`/)
+    assert.match(text, /init-leader-kit/)
   } finally {
     await project.cleanup()
-    await rm(home, { recursive: true, force: true })
   }
 })
 
