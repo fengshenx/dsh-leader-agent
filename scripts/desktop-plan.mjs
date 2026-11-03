@@ -9,7 +9,7 @@
  * @module dsh-leader-kit/scripts/desktop-plan
  */
 
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { LEADER_KIT_PACKAGE } from './dev-plan.mjs'
 
 /** 桌面应用自己拥有的 profile 名；`apps/desktop/src/paths.ts` 里写死的那个。 */
@@ -17,6 +17,40 @@ export const DESKTOP_PROFILE = 'desktop'
 
 /** 桌面应用在 macOS 上的默认名字，`open -a` 用；`DSH_DESKTOP_APP` 可换。 */
 export const DESKTOP_APP_NAME = 'DeepSeek Harness'
+
+/**
+ * `pgrep` 用的进程名。
+ *
+ * `DSH_DESKTOP_APP` 允许写成 `.app` 路径（`open -a` 两种都收），但 `pgrep -x`
+ * 匹配的是进程名，拿整条路径去比永远不命中——运行中的应用就漏判了。
+ *
+ * @param {string} appName - 应用名或 `.app` 路径
+ * @returns {string} 进程名
+ */
+export function pgrepNameOf(appName) {
+  const trimmed = String(appName ?? '').trim()
+  if (trimmed === '') return ''
+  const name = trimmed.endsWith('.app') || trimmed.includes('/') ? basename(trimmed) : trimmed
+  return name.endsWith('.app') ? name.slice(0, -'.app'.length) : name
+}
+
+/**
+ * 算出 `node_modules` 链接要做什么。
+ *
+ * 只认两种放行：不存在就建，已经指向当前工作树就不动。指向别处、或占位是实体
+ * 目录（插件管理装的），一律拒绝——那是别人的安装，覆盖要由人决定。
+ *
+ * @param {object} options - 选项
+ * @param {boolean} options.exists - 目标路径上有没有东西
+ * @param {boolean} options.isSymbolicLink - 是不是符号链接
+ * @param {boolean} options.sameTarget - 链接是否已指向当前工作树
+ * @returns {'create' | 'keep' | 'refuse'} 动作
+ */
+export function planLinkAction({ exists, isSymbolicLink, sameTarget }) {
+  if (exists !== true) return 'create'
+  if (isSymbolicLink !== true) return 'refuse'
+  return sameTarget === true ? 'keep' : 'refuse'
+}
 
 /**
  * 算出桌面 profile 的各个路径。

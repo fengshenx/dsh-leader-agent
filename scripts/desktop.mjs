@@ -33,7 +33,9 @@ import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { writeFileAtomicSync } from './atomic-write.mjs'
 import { LEADER_KIT_PACKAGE, assertWebBundle } from './dev-plan.mjs'
-import { DESKTOP_APP_NAME, planDesktopDisable, planDesktopEnable, resolveDesktopPaths } from './desktop-plan.mjs'
+import {
+  DESKTOP_APP_NAME, pgrepNameOf, planDesktopDisable, planDesktopEnable, planLinkAction, resolveDesktopPaths,
+} from './desktop-plan.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -105,13 +107,17 @@ function writeManifest(path, manifest) {
  * 运行中写 profile 不会生效（宿主只在启动时读），而且可能和应用自己的插件管理撞上，
  * 所以先探再写。Windows 上不探：脚本会在启动那一步明确提示手动打开。
  *
- * @param {string} appName - 应用名
+ * `DSH_DESKTOP_APP` 可能是 `.app` 路径，`pgrep -x` 只认进程名，要先归一化。
+ *
+ * @param {string} appName - 应用名或 `.app` 路径
  * @returns {boolean | null} 运行中为 true，未运行为 false，探不了为 null
  */
 function desktopAppRunning(appName) {
   if (process.platform === 'win32') return null
+  const processName = pgrepNameOf(appName)
+  if (processName === '') return null
   try {
-    const probe = spawnCommandSync({ command: 'pgrep', args: ['-x', appName], encoding: 'utf8' })
+    const probe = spawnCommandSync({ command: 'pgrep', args: ['-x', processName], encoding: 'utf8' })
     return probe.status === 0
   } catch (error) {
     // pgrep 不在 PATH 上时别把「探不了」说成「没在跑」。
@@ -143,31 +149,36 @@ function launchDesktopApp(appName) {
 /**
  * 让 `node_modules/dsh-leader-kit` 指向当前工作树。
  *
- * 已指向同一目录时不动；指向别的目录或已被桌面 App 的插件管理装成真目录时拒绝——
- * 两种都是别人的安装，由人决定要不要换。
+ * 只建不覆盖：已指向同一目录时不动；指向别的目录或已被桌面 App 的插件管理装成
+ * 真目录时拒绝——两种都是别人的安装，由人决定要不要换。
  *
  * @param {object} options - 选项
  * @param {string} options.linkPath - profile 里的链接路径
  * @param {string} options.worktree - 工作树绝对路径
- * @returns {'created' | 'kept' | 'replaced'} 本次动作
+ * @returns {'created' | 'kept'} 本次动作
  */
 function ensureLink({ linkPath, worktree }) {
   mkdirSync(dirname(linkPath), { recursive: true })
   const existing = lstatSync(linkPath, { throwIfNoEntry: false })
-  if (existing === undefined) {
-    symlinkSync(worktree, linkPath, 'junction')
-    return 'created'
-  }
-  if (!existing.isSymbolicLink()) {
+  const isSymbolicLink = existing?.isSymbolicLink() === true
+  const action = planLinkAction({
+    exists: existing !== undefined,
+    isSymbolicLink,
+    sameTarget: isSymbolicLink && identityOf(linkPath) === identityOf(worktree),
+  })
+  if (action === 'refuse') {
+    const what = isSymbolicLink
+      ? `已经指向另一份安装（${readlinkSync(linkPath)}），不是当前目录 ${worktree}`
+      : '已存在且不是符号链接（像是桌面 App 插件管理装的一份实体目录）'
     throw new Error(
-      `${linkPath} 已存在且不是符号链接（像是桌面 App 插件管理装的一份实体目录）。`
-      + '\n先卸载再重跑：npm run desktop -- --remove，或到 DeepSeek Harness 的插件管理里卸载。',
+      `${linkPath} ${what}。`
+      + '\n它可能是桌面 App 的插件管理装的，也可能是另一个工作树挂上去的。'
+      + `\n先卸掉再重跑：npm run desktop -- --remove，或在 DeepSeek Harness 的插件管理里卸载。`,
     )
   }
-  if (identityOf(linkPath) === identityOf(worktree)) return 'kept'
-  rmSync(linkPath, { force: true })
+  if (action === 'keep') return 'kept'
   symlinkSync(worktree, linkPath, 'junction')
-  return 'replaced'
+  return 'created'
 }
 
 /**
@@ -219,7 +230,7 @@ function main() {
 
   const running = desktopAppRunning(appName)
   if (running === true) {
-    console.error(`DeepSeek Harness 正在运行，profile 只在启动时读入。`)
+    console.error(`${appName} 正在运行，profile 只在启动时读入。`)
     console.error('先完全退出桌面应用（macOS 用 ⌘Q，关窗口只是隐藏），再重跑本命令。')
     process.exit(1)
   }
@@ -239,8 +250,11 @@ function main() {
   }
 
   const { manifest: next, changed } = planDesktopEnable({ manifest, worktree })
-  if (changed) writeManifest(paths.packagePath, next)
+  // 先建链接再写 manifest：链接建不起来（别人的安装占着位置）时 manifest 保持
+  // 原样，不会留下「声明了依赖、磁盘上没有对应链接」的坏状态。反过来链接成功、
+  // 写 manifest 失败，只是一个没人引用的链接，下次重跑会当成「已指向当前目录」。
   const action = ensureLink({ linkPath: paths.linkPath, worktree })
+  if (changed) writeManifest(paths.packagePath, next)
 
   console.log('')
   console.log('== dsh-leader-kit 挂进桌面版 ==')
@@ -248,7 +262,7 @@ function main() {
   console.log(`  profile   ${paths.profileDir}`)
   console.log(`  插件      ${paths.linkPath} -> ${worktree}`)
   console.log(`  manifest  ${changed ? '已更新' : '已是最新'}`)
-  console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : action === 'created' ? '已创建' : '已改指当前目录'}`)
+  console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
   console.log('')
 
   run('npm', ['run', 'build:client'], { cwd: worktree })

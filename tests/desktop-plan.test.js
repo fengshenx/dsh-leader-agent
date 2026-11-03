@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
-  DESKTOP_PROFILE, desktopLinkSpec, planDesktopDisable, planDesktopEnable, resolveDesktopPaths,
+  DESKTOP_PROFILE, desktopLinkSpec, pgrepNameOf, planDesktopDisable, planDesktopEnable, planLinkAction, resolveDesktopPaths,
 } from '../scripts/desktop-plan.mjs'
 import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
@@ -94,4 +96,36 @@ test('摘除只动本插件，其余 bundle 顺序保留', () => {
 test('没装时摘除是空操作', () => {
   const { changed } = planDesktopDisable({ manifest: desktopPackage() })
   assert.equal(changed, false)
+})
+
+test('pgrep 用进程名：.app 路径先取 basename 再去后缀', () => {
+  // DSH_DESKTOP_APP 允许写成 .app 路径，pgrep -x 只认进程名。
+  assert.equal(pgrepNameOf('DeepSeek Harness'), 'DeepSeek Harness')
+  assert.equal(pgrepNameOf('DeepSeek Harness.app'), 'DeepSeek Harness')
+  assert.equal(pgrepNameOf('/Applications/DeepSeek Harness.app'), 'DeepSeek Harness')
+  assert.equal(pgrepNameOf('/Applications/DeepSeek Harness.app/'), 'DeepSeek Harness')
+  assert.equal(pgrepNameOf('  Finder.app  '), 'Finder')
+  assert.equal(pgrepNameOf(''), '')
+  assert.equal(pgrepNameOf(undefined), '')
+})
+
+test('node_modules 链接只建不覆盖：别处来的安装一律拒绝', () => {
+  assert.equal(planLinkAction({ exists: false, isSymbolicLink: false, sameTarget: false }), 'create')
+  assert.equal(planLinkAction({ exists: true, isSymbolicLink: true, sameTarget: true }), 'keep')
+  // 指向别的工作树：拒绝，不静默改指。
+  assert.equal(planLinkAction({ exists: true, isSymbolicLink: true, sameTarget: false }), 'refuse')
+  // 实体目录（插件管理装的）：拒绝。
+  assert.equal(planLinkAction({ exists: true, isSymbolicLink: false, sameTarget: false }), 'refuse')
+})
+
+test('先建链接再写 manifest：链接被别人的安装挡住时不留坏状态', () => {
+  // IO 层不硬测，只钉顺序：ensureLink 抛错时 writeManifest 还没执行，manifest
+  // 保持原样；反过来会留下「bundles 声明了本插件、node_modules 却是别人的目录」。
+  const scriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts/desktop.mjs')
+  const source = readFileSync(scriptPath, 'utf8')
+  const linkAt = source.indexOf('const action = ensureLink(')
+  assert.notEqual(linkAt, -1, '找不到 ensureLink 调用')
+  const writeAt = source.indexOf('writeManifest(paths.packagePath, next)', linkAt)
+  assert.notEqual(writeAt, -1, '挂载分支里找不到 writeManifest 调用')
+  assert.ok(writeAt > linkAt, 'ensureLink 必须在 writeManifest 之前')
 })
