@@ -526,6 +526,21 @@ function detachLink(linkPath) {
 }
 
 /**
+ * 派生数据根里 desktop profile 的各条路径。
+ *
+ * 只算路径、不碰文件系统：摘除要先判「这个根上有没有挂载」，为了判这件事去派生
+ * 就会建目录、复制凭据，把空操作变成有副作用的操作。挂载与摘除共用这一处计算，
+ * 两边看到的永远是同一条根。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.worktree - 工作树绝对路径
+ * @returns {object} `desktopPathsOf` 的结果
+ */
+function derivedDesktopPaths({ worktree }) {
+  return desktopPathsOf(derivedDesktopHome({ worktree }))
+}
+
+/**
  * 在工作树内派生一份只挂当前工作树的 desktop profile。
  *
  * 桌面 profile 只有一份，同一数据根下挂不了两个版本。日常那份被别的来源占着时
@@ -559,7 +574,7 @@ function prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest }) {
     credentialsPath: derived.credentialsPath,
     sourceCredentialsPath: derived.sourceCredentialsPath,
   })
-  return { paths: desktopPathsOf(home), credentials }
+  return { paths: derivedDesktopPaths({ worktree }), credentials }
 }
 
 /**
@@ -590,17 +605,6 @@ async function main() {
   const remove = process.argv.slice(2).includes('--remove')
 
   const dailyManifest = existsSync(dailyPaths.packagePath) ? readManifest(dailyPaths.packagePath) : null
-  if (dailyManifest === null) {
-    if (remove) {
-      console.log(`没有可摘的挂载：${dailyPaths.packagePath} 不存在。`)
-      return
-    }
-    console.error(`找不到桌面 profile: ${dailyPaths.packagePath}`)
-    console.error('桌面版第一次启动时会自己建出它：先打开一次 DeepSeek Harness，退出后再跑本命令。')
-    console.error('数据根不在默认位置时用 DSH_HOME 指定（桌面应用也读它）。')
-    process.exit(1)
-  }
-
   // 显式给了 DSH_HOME 就是指定了数据根，脚本不另找地方：那条根被别人占着时照旧
   // 拒绝（由人决定要不要卸），免得「我指定的目录怎么没生效」。
   const installedSpec = installedSpecOf(dailyManifest)
@@ -610,9 +614,9 @@ async function main() {
   const useDerived = homePlan.mode === 'derived'
 
   if (remove) {
-    const paths = useDerived
-      ? prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest }).paths
-      : dailyPaths
+    // 摘除只看目标根自己：为了算路径去派生会新建目录、把日常凭据复制进来，
+    // 而「这个根上没装过」本来就该是空操作。
+    const paths = useDerived ? derivedDesktopPaths({ worktree }) : dailyPaths
     if (!existsSync(paths.packagePath)) {
       console.log(`没有可摘的挂载：${paths.packagePath} 不存在。`)
       return
@@ -652,6 +656,13 @@ async function main() {
     console.log('')
     console.log('重新打开 DeepSeek Harness 生效。')
     return
+  }
+
+  if (dailyManifest === null) {
+    console.error(`找不到桌面 profile: ${dailyPaths.packagePath}`)
+    console.error('桌面版第一次启动时会自己建出它：先打开一次 DeepSeek Harness，退出后再跑本命令。')
+    console.error('数据根不在默认位置时用 DSH_HOME 指定（桌面应用也读它）。')
+    process.exit(1)
   }
 
   // 支持的平台上找不到应用是硬错误：再往下走只会把 profile 挂好、然后无声地不启动。

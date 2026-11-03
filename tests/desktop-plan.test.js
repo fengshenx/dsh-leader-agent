@@ -421,9 +421,12 @@ test('派生分支接线：worktree 内才派生，源固定成日常根', () =>
   // 数据根独立则凭据也独立：派生时把源 HOME 的 refs 搬过来，否则一进界面就没 API key。
   assert.match(source, /const credentials = inheritCredentialRefs\(\{\s*\n\s*credentialsPath: derived\.credentialsPath,\s*\n\s*sourceCredentialsPath: derived\.sourceCredentialsPath,/)
   // 派生根要先建好 profile 再进锁：进锁时才 mkdir 会晚一步看到别的来源。
+  // 只在挂载分支里要求这个顺序——摘除分支不派生（见下一条用例）。
+  const mountAt = source.indexOf('const derived = useDerived')
+  assert.notEqual(mountAt, -1, '找不到挂载分支的派生调用')
   assert.ok(
-    source.indexOf('prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })')
-    < source.indexOf('withProfileLock(paths, () => {'),
+    source.indexOf('prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })', mountAt)
+    < source.indexOf('withProfileLock(paths, () => {', mountAt),
   )
   // 显式 DSH_HOME 时不派生：那条根是用户指定的，另找地方会让「我指定的目录没生效」。
   assert.match(source, /: \{ mode: 'daily', owner: null \}/)
@@ -439,6 +442,20 @@ test('派生只影响数据根：日常 profile 的说明符与链接一个都�
   assert.match(derivedBody, /prepareProfileDir\(/)
   assert.doesNotMatch(derivedBody, /writeFileSync|rmSync|symlinkSync\(/)
   assert.doesNotMatch(derivedBody, /dailyPaths\.linkPath/)
+})
+
+test('摘除分支不派生：只算派生根路径，根为空时不建目录也不复制凭据', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  const removeAt = source.indexOf('if (remove) {')
+  const removeBody = source.slice(removeAt, source.indexOf('\n  if (dailyManifest === null) {', removeAt))
+  assert.ok(removeAt !== -1 && removeBody !== '', '找不到摘除分支')
+  // 派生带副作用（建目录、重写 manifest、复制凭据），摘除只能算路径。
+  assert.doesNotMatch(removeBody, /prepareDerivedPaths/)
+  assert.match(removeBody, /derivedDesktopPaths\(\{ worktree \}\)/)
+  // 判「有没有可摘的」只看目标根自己，没有就是空操作。
+  assert.match(removeBody, /if \(!existsSync\(paths\.packagePath\)\)/)
+  // 摘除不受日常 profile 是否存在影响：那条检查只拦挂载分支。
+  assert.ok(removeAt < source.indexOf('if (dailyManifest === null) {'))
 })
 
 test('已装来源的说明符按链接原样取出，供派生判定用', () => {

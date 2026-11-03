@@ -25,9 +25,13 @@
 
 派生数据根是 `.dev/desktop-home` 而不是 `.dev/home`：`npm run dev` 与桌面实例同时开着时，共用一份数据根会让两边往同一批会话、项目、卡片里写。
 
-顺序上，**探活放在派生之前**：应用在跑时连派生根都不碰，免得改到正在被读的 profile。`--remove` 跟随同一套判定，在哪个目录跑就摘哪个根。
+顺序上，**探活放在派生之前**：应用在跑时连派生根都不碰，免得改到正在被读的 profile。
+
+`--remove` 反方向但同样只算路径、不派生：派生带副作用（建目录、重写 manifest、把日常凭据复制进来），而「这根上没挂过」本来就该是空操作。摘除因此只用 `derivedDesktopPaths` 算出目标根，判的是**那条根上有没有挂载**：派生根没建过就打印「没有可摘的挂载」返回，不创建任何目录、不读日常凭据。它也早于「日常 profile 是否存在」的检查——日常那份被删掉时，派生根里的挂载照样摘得掉。
 
 ## 边界
+
+- **`--remove` 不依赖日常 profile**。摘的是目标根：日常 profile 缺 `node_modules`、甚至整个不存在，都不影响摘派生根。反过来说，「派生 + 摘除」的对称性靠同一处路径计算（`derivedDesktopPaths`）保证，不靠两段各自拼路径。
 
 - **数据是两套**。派生根的会话、项目、卡片与日常实例不通；这是隔离的代价，不是缺陷。要日常那套就在主 checkout 跑。
 - **同一时刻只能有一个桌面实例**。Electron 的 `requestSingleInstanceLock` 按 userData（共享的 `%APPDATA%\@deepseek-ai\dsh-desktop`）判定，日常实例在跑时派生根起的进程会自己退出。脚本在探到运行态时直接拒绝，不为隔离实例绕单实例锁（`--user-data-dir` 会把账号与更新状态一起隔离，代价更大）。
@@ -37,7 +41,7 @@
 
 ## 验证
 
-- 单测（`tests/desktop-plan.test.js`，Windows 上 35 pass / 0 fail）：`planDesktopHome` 覆盖 worktree 与主 checkout 两态、`installedSpec` 只作为提示；`derivedDesktopHome` 断言与 `.dev/home` 不同目录；接线断言锁住「`DSH_HOME` 未显式指定」「源固定成 `dailyPaths.home`」「派生在 `withProfileLock` 之前」「worktree 标记读 `.git` 的文件态」「派生时把日常凭据的 refs 搬进派生根」。
+- 单测（`tests/desktop-plan.test.js`，Windows 上 36 pass / 0 fail）：`planDesktopHome` 覆盖 worktree 与主 checkout 两态、`installedSpec` 只作为提示；`derivedDesktopHome` 断言与 `.dev/home` 不同目录；接线断言锁住「`DSH_HOME` 未显式指定」「源固定成 `dailyPaths.home`」「派生在 `withProfileLock` 之前」「worktree 标记读 `.git` 的文件态」「派生时把日常凭据的 refs 搬进派生根」「摘除分支不调用 `prepareDerivedPaths`」。
 - 真机（Windows，桌面版 0.2.1-rc.5，worktree 内 `node scripts/desktop.mjs`，日常 `~/.dsh/profiles/desktop` 只读）：
   - 输出走「分支隔离」分支，数据根 `…\.worktrees\windows-desktop-launch\.dev\desktop-home`，插件链接指向当前工作树；
   - 宿主进程命令行第 4 个参数是 `<派生根>\profiles\desktop`，派生根生成 `sessions`、`storages`、`.credentials.yaml`；
@@ -47,4 +51,5 @@
   - 应用运行中重跑：报「正在运行」、退出 1、派生根 manifest 哈希不变（探活在派生之前）；
   - `--remove`：摘掉派生根的依赖与链接，日常 profile 哈希仍不变。
 - `inheritCredentialRefs` 搬出 `dev.mjs` 后用探针脚本验三种形态：源有 `refs` 时搬过来、目标已有同名键时不覆盖（`keys` 为空）、源不存在时不建目标文件。
+- `--remove` 的对称性由 `tests/desktop-remove.integration.test.js` 钉住（真实脚本 + 临时 `USERPROFILE`/`HOME`，4 条：派生根没建过是空操作、派生根已存在时只摘它且日常根缺 `node_modules` 也不重建、显式 `DSH_HOME` 不派生、主 checkout 摘日常根不建 `.dev`）。撤销「摘除不派生」后前两条变红；两条都断言日常根文件的 sha 与 mtime 前后不变。
 - 未验证：macOS 上的派生分支（本机无 macOS；两端共用同一段路径计算与 `open --env`，平台差异只在校验过的启动那一段）。
