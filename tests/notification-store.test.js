@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createNotificationStore, resolveDshHome } from '../src/host/notification-store.js'
@@ -118,6 +118,17 @@ test('落盘内容是可读 JSON，便于人工排查', async () => {
 test('DSH_HOME 优先于默认家目录', () => {
   assert.equal(resolveDshHome({ DSH_HOME: '/custom/dsh' }, () => '/home/user'), '/custom/dsh')
   assert.equal(resolveDshHome({}, () => '/home/user'), join('/home/user', '.dsh'))
+})
+
+test('进程环境没有 HOME 时回落到 os.homedir()', (t) => {
+  // Windows 桌面端从资源管理器启动，进程环境里没有 HOME：按 process.env.HOME
+  // 拼路径会让宿主半边在 apply 里抛错，浏览器侧的 projects/* 全部 404。
+  const saved = process.env.HOME
+  delete process.env.HOME
+  t.after(() => {
+    if (saved !== undefined) process.env.HOME = saved
+  })
+  assert.equal(resolveDshHome({}), join(homedir(), '.dsh'))
 })
 
 test('换 leader 后只改未投递通知的接收者', async () => {
