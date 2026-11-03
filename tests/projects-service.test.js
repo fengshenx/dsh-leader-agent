@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { mkdir, realpath, rm, symlink } from 'node:fs/promises'
+import { mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createProjectStore } from '../src/host/projects/store.js'
 import {
@@ -8,6 +8,7 @@ import {
   createProjectService,
   isSessionAttachedToWorkspace,
 } from '../src/host/projects/service.js'
+import { LEADER_UNUSABLE_TOOLS, deniedToolsFor } from '../src/host/tools/gate.js'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 
 after(cleanupTempDirs)
@@ -145,6 +146,42 @@ test('建 leader 会话那一刻，注册表里已经有它（工具面按 leade
 
   await service.create({ directory: workspace, name: 'alpha' })
   assert.deepEqual(seenAtCreation, [true])
+})
+
+test('旧字段名的注册表仍能恢复 leader 身份与工具面', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await writeFile(store.file, `${JSON.stringify({
+    version: 1,
+    projects: [{
+      id: 'project-legacy',
+      name: 'alpha',
+      directory: workspace,
+      coordinatorSessionId: 'session-legacy',
+      retiredCoordinatorSessionIds: ['session-retired'],
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+  }, null, 2)}\n`, 'utf8')
+
+  const service = makeService({ store, ctx: createContext() })
+  await service.loadIndex()
+
+  assert.equal(service.isLeaderSession('session-legacy'), true)
+  assert.equal(service.directoryOfLeader('session-legacy'), workspace)
+  // 退役会话是项目里的普通会话，不是现任 leader。
+  assert.equal(service.isLeaderSession('session-retired'), false)
+
+  // 身份恢复之后工具面才按 leader 裁剪：缺这一步，老 leader 会被当成普通会话，
+  // 派工、发消息、写卡整条动作链都会被 deny 掉。
+  const denied = deniedToolsFor({
+    agent: { id: 'session-legacy' },
+    isLeaderSession: (id) => service.isLeaderSession(id),
+    isWorkerSession: () => false,
+  })
+  assert.deepEqual(denied, [...LEADER_UNUSABLE_TOOLS])
+  assert.equal(denied.includes('spawn_worker'), false)
 })
 
 test('项目名缺省取目录末段', async () => {

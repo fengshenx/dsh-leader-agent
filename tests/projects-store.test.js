@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { createProjectStore } from '../src/host/projects/store.js'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 
@@ -57,6 +58,61 @@ test('退役 leader 列表可写，落盘后可读回', async () => {
   // 重开一个 store 实例读盘：写在内存里不算数
   const stored = await createProjectStore({ home }).get(draft.id)
   assert.deepEqual(stored.retiredLeaderSessionIds, ['session-1'])
+})
+
+test('旧字段名的注册表仍能读出 leader 与退役列表，写回只留新字段', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await writeFile(store.file, `${JSON.stringify({
+    version: 1,
+    projects: [{
+      id: 'project-legacy',
+      name: 'alpha',
+      directory: '/work/alpha',
+      coordinatorSessionId: 'session-legacy',
+      retiredCoordinatorSessionIds: ['session-retired'],
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+  }, null, 2)}\n`, 'utf8')
+
+  const [listed] = await store.list()
+  assert.equal(listed.leaderSessionId, 'session-legacy')
+  assert.deepEqual(listed.retiredLeaderSessionIds, ['session-retired'])
+  assert.equal(Object.hasOwn(listed, 'coordinatorSessionId'), false)
+  assert.equal(Object.hasOwn(listed, 'retiredCoordinatorSessionIds'), false)
+  // 身份反查是工具面按 leader 裁剪的入口：旧键读不出来，leader 会丢掉整条动作链。
+  assert.equal((await store.getByLeader('session-legacy'))?.id, 'project-legacy')
+
+  // 任何一次写回都只写新字段，旧键不会跟着回到磁盘。
+  await store.update('project-legacy', { name: 'beta' })
+  const raw = JSON.parse(await readFile(store.file, 'utf8'))
+  assert.equal(raw.projects[0].leaderSessionId, 'session-legacy')
+  assert.deepEqual(raw.projects[0].retiredLeaderSessionIds, ['session-retired'])
+  assert.equal(Object.hasOwn(raw.projects[0], 'coordinatorSessionId'), false)
+  assert.equal(Object.hasOwn(raw.projects[0], 'retiredCoordinatorSessionIds'), false)
+})
+
+test('新旧字段同时存在时以新字段为准', async () => {
+  const home = await makeHome()
+  const store = createProjectStore({ home })
+  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await writeFile(store.file, `${JSON.stringify({
+    version: 1,
+    projects: [{
+      id: 'project-both',
+      name: 'alpha',
+      directory: '/work/alpha',
+      leaderSessionId: 'session-new',
+      coordinatorSessionId: 'session-old',
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+  }, null, 2)}\n`, 'utf8')
+
+  assert.equal((await store.getByLeader('session-new'))?.id, 'project-both')
+  assert.equal(await store.getByLeader('session-old'), undefined)
 })
 
 test('update 传函数时按磁盘当前值算字段，并发追加不互相覆盖', async () => {

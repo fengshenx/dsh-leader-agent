@@ -7,6 +7,7 @@ import {
   LEADER_CONTEXT_FILE,
   LEADER_CONTEXT_NAME,
   LEADER_CONTEXT_ORDER,
+  LEGACY_LEADER_CONTEXT_FILE,
   applyLeaderContext,
   loadLeaderManual,
 } from '../src/host/leader-context.js'
@@ -118,6 +119,40 @@ test('手册缺失时按没有手册处理，且不记日志', async () => {
     assert.deepEqual(logged, [])
   } finally {
     await missing.cleanup()
+  }
+})
+
+test('手册文件名写死为 LEADER.md，旧名只作读取退回', () => {
+  assert.equal(LEADER_CONTEXT_FILE, 'LEADER.md')
+  assert.equal(LEGACY_LEADER_CONTEXT_FILE, 'COORDINATOR.md')
+})
+
+test('两版手册都在时以 LEADER.md 为准', async () => {
+  const project = await createProject('新版正文。')
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '旧版正文。', 'utf8')
+    assert.equal(loadLeaderManual(project.directory), '新版正文。')
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('只有旧名 COORDINATOR.md 时退回读取，并提示改名', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-'))
+  try {
+    await writeFile(join(directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。', 'utf8')
+    const logged = []
+    assert.equal(loadLeaderManual(directory, (message) => logged.push(message)), '旧名时代的手册。')
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], /COORDINATOR\.md/)
+    assert.match(logged[0], /LEADER\.md/)
+
+    // 注入路径也拿到正文：升级不会静默丢掉既有项目的手册。
+    const { ctx, holder } = createFakeCtx()
+    applyLeaderContext({ ctx, resolveDirectory: () => directory })
+    assert.match(holder.registered.text({ agent: { id: 'session-a' } }), /旧名时代的手册。/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
   }
 })
 

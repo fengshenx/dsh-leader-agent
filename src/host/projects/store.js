@@ -31,6 +31,20 @@ import { MAX_PROJECT_NAME_LENGTH } from '../../shared/projects.js'
 const STORE_VERSION = 1
 
 /**
+ * 改名前的字段名 → 现行字段名。
+ *
+ * 项目注册表是已落盘的运行时数据：旧版本写下的 `coordinatorSessionId` 不退回的话，
+ * 升级后 `getByLeader()` 查不到项目，leader 会话会被当成普通会话——工具面按身份
+ * 裁剪，它连 `spawn_worker` / `create_card` 都拿不到，且没有任何报错。读的时候
+ * 退回旧键，写的时候只写新键（归一化发生在 `readStore()`，`update()` 的
+ * `{ ...current }` 与白名单都在其后，旧键不会回写）。
+ */
+const LEGACY_FIELDS = Object.freeze({
+  coordinatorSessionId: 'leaderSessionId',
+  retiredCoordinatorSessionIds: 'retiredLeaderSessionIds',
+})
+
+/**
  * 项目记录里允许被修改的字段。
  *
  * 白名单而非黑名单：展开 `updates` 会让 `{id}`、`{directory}` 之类字段绕过校验
@@ -74,6 +88,26 @@ export function uniqueProjectName(existingProjects, name) {
 }
 
 /**
+ * 把一条记录里的旧字段名换成现行字段名。
+ *
+ * 新键已有值时以新键为准（同一个文件被两个版本交替写过）；旧键一律删掉，
+ * 否则归一化后的记录再写回磁盘时会带着两份。
+ *
+ * @param {object} record - 注册表里的一条项目记录
+ * @returns {object} 归一化后的记录；没有旧字段时原样返回
+ */
+function adoptLegacyFields(record) {
+  let next = record
+  for (const [legacy, current] of Object.entries(LEGACY_FIELDS)) {
+    if (!Object.hasOwn(next, legacy)) continue
+    if (next === record) next = { ...record }
+    if (next[current] === undefined) next[current] = next[legacy]
+    delete next[legacy]
+  }
+  return next
+}
+
+/**
  * 读取项目注册表；文件缺失返回空表。
  * @param {string} file - 注册表文件路径
  * @param {() => Promise<void>} [onCorrupt] - 表损坏且已备份后的补救动作
@@ -87,7 +121,10 @@ async function readStore(file, onCorrupt) {
     if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.projects)) {
       throw new Error('项目注册表结构非法：缺少 projects 数组')
     }
-    return { version: STORE_VERSION, projects: parsed.projects.filter(isProjectRecord) }
+    return {
+      version: STORE_VERSION,
+      projects: parsed.projects.filter(isProjectRecord).map(adoptLegacyFields),
+    }
   } catch {
     const backup = `${file}.corrupt-${Date.now()}`
     await rename(file, backup).catch(() => undefined)

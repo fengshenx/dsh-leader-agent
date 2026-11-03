@@ -18,6 +18,14 @@ import { join } from 'node:path'
 /** leader 手册文件名，位于项目目录下。 */
 export const LEADER_CONTEXT_FILE = 'LEADER.md'
 
+/**
+ * 旧名手册文件，位于项目目录下。
+ *
+ * `LEADER.md` 还不存在时读它：按旧名初始化过的项目（含本仓自己）只有
+ * `COORDINATOR.md`，不退回就等于升级即静默失去手册注入。
+ */
+export const LEGACY_LEADER_CONTEXT_FILE = 'COORDINATOR.md'
+
 /** 注入项的上下文名。 */
 export const LEADER_CONTEXT_NAME = 'dsh-leader-kit:leader'
 
@@ -30,11 +38,30 @@ export const LEADER_CONTEXT_NAME = 'dsh-leader-kit:leader'
 export const LEADER_CONTEXT_ORDER = 104
 
 /**
+ * 读一个手册文件。
+ *
+ * @param {string} file - 文件路径
+ * @returns {{ body: string } | { missing: true } | { error: unknown }} 读取结果
+ */
+function readManual(file) {
+  try {
+    return { body: readFileSync(file, 'utf8') }
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { missing: true }
+    return { error }
+  }
+}
+
+/**
  * 读项目目录下的 leader 手册。
  *
  * 返回空串，不让整个插件报错，也不注入一段空壳标题——手册是增量信息，不是必需品。
  * 但两种空要分开：文件缺失（ENOENT）是常态，静默；其他读失败（EISDIR、EACCES、
  * 磁盘 I/O）要留日志，否则用户改了手册却看不到生效时无从排查。
+ *
+ * 文件名按 `LEADER.md` → `COORDINATOR.md` 的顺序找：旧名是升级前初始化过的项目
+ * 唯一有的那个文件，退回时记一条日志提醒改名——否则用户既看不到手册换名了，
+ * 也不知道为什么新加的 `COORDINATOR.md` 还在生效。
  *
  * @param {string | undefined} directory - 项目目录绝对路径
  * @param {(message: string) => void} [logger] - 日志输出
@@ -42,17 +69,23 @@ export const LEADER_CONTEXT_ORDER = 104
  */
 export function loadLeaderManual(directory, logger = () => {}) {
   if (typeof directory !== 'string' || directory === '') return ''
-  const file = join(directory, LEADER_CONTEXT_FILE)
-  let content
-  try {
-    content = readFileSync(file, 'utf8')
-  } catch (error) {
-    if (error?.code !== 'ENOENT') {
-      logger(`dsh-leader-kit: 读取 leader 手册失败（${file}）：${error instanceof Error ? error.message : String(error)}`)
-    }
+  const primary = join(directory, LEADER_CONTEXT_FILE)
+  const first = readManual(primary)
+  if (first.body !== undefined) return first.body.trim()
+  if (first.error !== undefined) {
+    logger(`dsh-leader-kit: 读取 leader 手册失败（${primary}）：${first.error instanceof Error ? first.error.message : String(first.error)}`)
     return ''
   }
-  return content.trim()
+  const legacy = join(directory, LEGACY_LEADER_CONTEXT_FILE)
+  const second = readManual(legacy)
+  if (second.body !== undefined) {
+    logger(`dsh-leader-kit: ${directory} 仍在使用旧名 ${LEGACY_LEADER_CONTEXT_FILE}；请改名为 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
+    return second.body.trim()
+  }
+  if (second.error !== undefined) {
+    logger(`dsh-leader-kit: 读取 leader 手册失败（${legacy}）：${second.error instanceof Error ? second.error.message : String(second.error)}`)
+  }
+  return ''
 }
 
 /**
