@@ -41,9 +41,11 @@ PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID
 ## 验证
 
 - 新增 `tests/home-paths.test.js` 8 条用例，覆盖上表每一行；`tests/notification-store.test.js` 删掉 `DSH_HOME 优先于默认家目录`（它断言的「原样返回」正是被修掉的行为）。
+- 与宿主实现逐值对照：一次性脚本 import 本机 rc.5 的 `dsh-home-paths` 与本仓 `home-paths.js`，喂 18 个取值（`undefined`、`''`、`'   '`、`~`、`~/x`、`~\x`、`~user/x`、`rel/x`、`rel/../x`、`/x/`、`/x/./y/..`、`' /x '`、`C:\x`、`C:x`、`.`、`..`、`~/`、`~//x`），**逐条 SAME，diff=0**。脚本不入库。
 - 双向验证（Windows）：
   - 撤销归一化（`return configured`）：4 条红——绝对路径归一化、`~` 系列、`~user`、首尾空白。盘符用例在 Windows 上原值即正确，故未红（POSIX 上会红）。
   - 撤销空白判空（`configured === ''`）：1 条红（空白回落）。
   - 还原后 8 条全绿。
-- `npm run check`：笔记格式、工具名、文档预算、语法检查通过；覆盖率门禁因存量单测失败未执行（见下）。
-- 单测 1036 / 通过 1027 / 失败 6，失败集合与干净 `origin/main` 基线（1029 / 1020 / 6）逐条相同：4 条是 Windows 下 POSIX 路径断言的 desktop-plan 存量失败，2 条是 CRLF 与扫描面环境相关。本机走不到覆盖率判定，`home-paths.js` 的 per-file 100% 要在 CI（Linux）上取读数。
+- `npm run check`（本机）：笔记格式、工具名、文档预算、语法检查通过；覆盖率门禁因存量单测失败未执行。
+- 单测 1036 / 通过 1027 / 失败 6，失败集合与干净 `origin/main` 基线（1029 / 1020 / 6）逐条相同：4 条是 Windows 下 POSIX 路径断言的 desktop-plan 存量失败，2 条是 CRLF 与扫描面环境相关。
+- CI（Linux，Node 24 与 24.9 两个矩阵）两轮 `check` 全过，覆盖率门禁在那边跑到 100%；本机 `home-paths.js` 单跑 `--experimental-test-coverage` 是行覆盖 100%、分支 92.31%。
