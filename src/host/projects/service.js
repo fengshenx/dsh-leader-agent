@@ -494,7 +494,8 @@ export function createProjectService({
      * 代价是宿主把「工作区里第一个空白会话」当作可复用的新建草稿
      * （`ui-workspace` 的 `createInWorkspace`），而 leader 恰好一直空着——用户在
      * 工作区里新建会话会打开 leader 本身。项目与会话不再使用工作区之后，这里把
-     * 历史挂载一次性摘掉：`detachSession` 幂等，重跑是空操作。
+     * 历史挂载一次性摘掉：`detachSession` 幂等，重跑是空操作（取舍见
+     * `.agents/notes/implemented/architecture/2026-11-03-project-workspace-decoupled.md`）。
      *
      * 不遍历工作区的 `sessionIds`：那个 getter 只列已进会话 cwd 索引的会话，刚重启
      * 时可能还没索引到——偏偏要摘的就是这类历史记录。直接对每个已知的项目会话调
