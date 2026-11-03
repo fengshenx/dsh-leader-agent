@@ -47,7 +47,7 @@ docs/               长期文档（架构地图、已知限制、宿主能力边
 .agents/notes/      非平凡改动的决策记忆
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
 COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（Telov 等外部工具用）
-SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / dev / review）
+SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review）
 ```
 
 ## 常用命令
