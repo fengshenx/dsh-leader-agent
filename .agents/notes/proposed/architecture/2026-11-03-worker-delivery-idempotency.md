@@ -99,12 +99,12 @@
 - 在飞覆盖：`inflight after 2nd message: 1`、`worker 收到消息数: 2`、`第一轮结算: true delivered: 1`、`第二轮结算: false delivered: 1`、`pending in queue: 0`——第二轮的回报既没送达也没留在队列里。
 - 补投重复：`markDelivered` 失败一次 → `首投 delivered: 1, pending: 1`；调 `redeliverPending` → `补投成功条数: 1, delivered: 2`。
 - 结算重试吃轮次（审查补测）：在飞两条 + 首次 `enqueue` 失败 → leader 只收到一条回报，另一条滞留。
-- 在飞记录残留（审查补测）：`interrupt` 之后不走 `turn/end` 的路径上，`describeRoster` 仍判该 worker 在跑。
+- 在飞记录残留（审查补测）：归档或销毁之后不会再走 `turn/end` 的路径上，`describeRoster` 仍判该 worker 在跑。
 
 **落地时必须有的回归用例，每条都做「撤销修复 → 用例变红 → 还原 → 全绿」**：
 
 1. 在飞续投两轮各自结算一条：第二次 `message_worker` 后两条 `turn/end` 各送出一条回报，`delivered` 累计 2。
-2. 队列内摘要不串轮：两轮 assistant 文本不同，两条通知的正文各自对应自己的轮次（钉 `turnText` 按记录绑定）。
+2. 队列内摘要不串轮：两轮 assistant 文本不同时，两条通知的正文各自对应本轮产出（钉 `turnText` 在冻结 `summary` 之后、`emitNotification` 之前清空，保持 `Map<sessionId, string>` 单键）。
 3. 落盘失败重试不占后续轮次：队首 `enqueue` 失败 + 其后两轮 `turn/end`，三条通知都在、正文各归其轮。
 4. `reassignParent` 迁移队列：在飞两条时接管父会话，`moved` 返回 2，两条通知都投给新父会话。
 5. 归档 / 销毁清队列：清理后 `describeRoster` 不再判该 worker 在跑，`inflightCount()` 归零；另有一条反向用例——中断（`keepInbox: true`）后队列**不**被清，后续 `followup` 的回报照常送达。
