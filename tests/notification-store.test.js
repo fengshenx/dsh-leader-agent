@@ -118,6 +118,8 @@ test('落盘内容是可读 JSON，便于人工排查', async () => {
 test('DSH_HOME 优先于默认家目录', () => {
   assert.equal(resolveDshHome({ DSH_HOME: '/custom/dsh' }, () => '/home/user'), '/custom/dsh')
   assert.equal(resolveDshHome({}, () => '/home/user'), join('/home/user', '.dsh'))
+  // env 只用来读 DSH_HOME：env.HOME 不参与默认家目录，家目录一律交给解析器。
+  assert.equal(resolveDshHome({ HOME: '/fake' }, () => '/home/user'), join('/home/user', '.dsh'))
 })
 
 test('进程环境没有 HOME 时回落到 os.homedir()', (t) => {
