@@ -168,7 +168,7 @@ npm run worktree:spawn <task>     # create .worktrees/<task> and feature/<task>
 cd .worktrees/<task>
 npm run dev                       # dsh instance mounting this worktree's plugin
 npm start                         # daily instance (the ~/.dsh data root and profile)
-npm run check                     # Agent Note gate, doc tool-name gate, doc budget gate, syntax check, all tests
+npm run check                     # Agent Note gate, doc tool-name gate, doc budget gate, syntax check, tests with per-file coverage
 npm run e2e                       # build the client bundle + browser e2e (real host, local mock, no keys)
 ```
 

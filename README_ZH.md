@@ -168,7 +168,7 @@ npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任
 cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile）
-npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
+npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 文档预算 + 语法检查 + 覆盖率门禁（含全部单测）
 npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
 ```
 

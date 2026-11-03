@@ -88,6 +88,21 @@ test('队列文件损坏时备份并以空队列继续', async () => {
   }
 })
 
+test('队列结构非法时按损坏处理：合法 JSON 但缺 pending 数组', async () => {
+  const { home } = await createStore()
+  const logs = []
+  const noisy = createNotificationStore({ home, logger: (message) => logs.push(message) })
+  try {
+    await mkdir(noisy.directory, { recursive: true })
+    await writeFile(noisy.file, JSON.stringify({ version: 1 }), 'utf8')
+    assert.deepEqual(await noisy.listPending(), [])
+    assert.equal(logs.length, 1)
+    assert.match(logs[0], /损坏/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('落盘内容是可读 JSON，便于人工排查', async () => {
   const { store, home } = await createStore()
   try {
