@@ -9,11 +9,9 @@
  * 两条领域规则：
  *
  * - **目录不可改**：项目目录是项目身份的一部分，改目录等于换项目。存储层只接受
- *   `name`、`leaderSessionId`、`retiredLeaderSessionIds` 与 `workspaceId`
- *   四个可变字段，其余字段原样保留。`workspaceId` 是插件自己注册的工作区 id——它
- *   标明了「这个工作区是我们的」，用户自己加的同目录工作区不会写进来。
- *   `retiredLeaderSessionIds` 是被换下的 leader 会话，换下后它们作为项目里的
- *   普通会话保留，项目列表按它把它们和 worker 列在一起。
+ *   `name`、`leaderSessionId` 与 `retiredLeaderSessionIds` 三个可变字段，其余字段
+ *   原样保留。`retiredLeaderSessionIds` 是被换下的 leader 会话，换下后它们作为
+ *   项目里的普通会话保留，项目列表按它把它们和 worker 列在一起。
  * - **leader 会话硬绑定**：项目与它的 leader 会话是显式指针，不是「目录里最新的那个
  *   会话」这类软约定。
  *
@@ -54,7 +52,6 @@ const MUTABLE_FIELDS = Object.freeze([
   'name',
   'leaderSessionId',
   'retiredLeaderSessionIds',
-  'workspaceId',
 ])
 
 /**
@@ -209,14 +206,13 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      * @param {string} [input.leaderSessionId] - leader 会话 id
      * @returns {object} 项目记录
      */
-    draft({ name, directory, leaderSessionId, workspaceId }) {
+    draft({ name, directory, leaderSessionId }) {
       const now = Date.now()
       return {
         id: randomUUID(),
         name,
         directory,
         ...leaderSessionId === undefined ? {} : { leaderSessionId },
-        ...workspaceId === undefined ? {} : { workspaceId },
         createdAt: now,
         updatedAt: now,
       }
@@ -306,7 +302,7 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
     /**
      * 改项目的可变字段。
      *
-     * 传 `undefined` 表示清除该字段（`workspaceId` 移除工作区后要清空）。
+     * 传 `undefined` 表示清除该字段。
      *
      * `updates` 也可以是一个函数，参数是**磁盘上的当前记录**，返回要改的字段。
      * 调用方需要「按现值增量改」（如往退役列表里追加）时必须用它：先 `get()` 再
@@ -316,7 +312,7 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      * 落盘等于没改。
      *
      * @param {string} id - 项目 id
-     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、leaderSessionId、retiredLeaderSessionIds 与 workspaceId；或按当前记录算出待改字段的函数
+     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、leaderSessionId 与 retiredLeaderSessionIds；或按当前记录算出待改字段的函数
      * @returns {Promise<object>} 更新后的项目
      */
     async update(id, updates) {

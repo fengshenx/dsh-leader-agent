@@ -216,11 +216,11 @@ test('更新时传 undefined 会清掉该字段', async () => {
   const store = createProjectStore({ home })
   const draft = store.draft({ name: 'alpha', directory: '/work/alpha' })
   await store.insert(draft)
-  await store.update(draft.id, { workspaceId: 'ws-1' })
-  assert.equal((await store.get(draft.id)).workspaceId, 'ws-1')
+  await store.update(draft.id, { leaderSessionId: 'session-1' })
+  assert.equal((await store.get(draft.id)).leaderSessionId, 'session-1')
 
-  await store.update(draft.id, { workspaceId: undefined })
-  assert.equal((await store.get(draft.id)).workspaceId, undefined)
+  await store.update(draft.id, { leaderSessionId: undefined })
+  assert.equal((await store.get(draft.id)).leaderSessionId, undefined)
 })
 
 test('并发写不丢项目', async () => {

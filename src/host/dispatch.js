@@ -115,7 +115,6 @@ export function buildWorkerReport(outcome) {
  * @param {number} [options.autoResumeLimit] - 连续自动续行上限
  * @param {number} [options.activeWorkerLimit] - 未归档 worker 数量上限
  * @param {(parentSessionId: string) => string | undefined} [options.resolveWorkerCwd] - 取 worker 的工作目录
- * @param {(parentSessionId: string) => Promise<string | undefined>} [options.resolveWorkerWorkspaceId] - 取 worker 该挂的工作区
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
  * @param {() => Promise<Map<string, { cardId: string, number: number, title: string, status: string, slot: string }[]>>} [options.cardBindingsBySession] - 一次读盘取全部会话的绑定；名册用它避免逐 worker 读卡
@@ -134,7 +133,6 @@ export function createDispatcher({
   autoResumeLimit = DEFAULT_AUTO_RESUME_LIMIT,
   activeWorkerLimit = DEFAULT_ACTIVE_WORKER_LIMIT,
   resolveWorkerCwd,
-  resolveWorkerWorkspaceId,
   archivedSessionIds,
   listCardBindings,
   cardBindingsBySession,
@@ -772,17 +770,13 @@ export function createDispatcher({
     // worker 的工作目录由项目决定：leader 不能指定 worker 跑在哪，也不该让
     // worker 跑到项目外面去。项目目录是绝对路径，worker 会话直接采用。
     const cwd = resolveWorkerCwd?.(parent.id)
-    // worker 与 leader 同属项目工作区：不挂就落官方树的「未分组」，而它由项目区块
-    // 呈现，两处都在就是重复。
-    const workspaceId = await resolveWorkerWorkspaceId?.(parent.id)
-    // 「呈现」（改名、挂工作区）推到绑定成功之后：改名会追加 `session/title`
-    // 事件、让会话在磁盘上 materialize，先做就没有东西可回滚了。
+    // 「呈现」（改名）推到绑定成功之后：改名会追加 `session/title` 事件、让会话
+    // 在磁盘上 materialize，先做就没有东西可回滚了。
     //
     // 权限跟着会话一起交下去：宿主的默认 preset 不一定是 leader 当前那套，而
     // worker 在后台跑，需要审批的调用没人应答。
     const { sessionId: childId, permission } = await workerSessions.spawn({
       cwd,
-      workspaceId,
       name,
       signal,
       permissionFrom: parent.session,
@@ -802,7 +796,7 @@ export function createDispatcher({
         throw error
       }
     }
-    workerSessions.present(childId, { name, workspaceId })
+    workerSessions.present(childId, { name })
     const record = {
       childId,
       parentSessionId: parent.id,

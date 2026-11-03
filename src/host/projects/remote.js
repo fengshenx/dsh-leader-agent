@@ -103,34 +103,21 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     }
 
     /**
-     * 删除项目：先移除插件为它注册的工作区，再删项目记录。
+     * 删除项目记录。
      *
-     * 工作区删除只删注册，目录与全部会话日志保留，会话因此落到宿主工作区树的
-     * 「未分组」下；leader 会话本身也保留。
-     *
-     * 「没有工作区可移除」（`skipped`：宿主没有工作区服务、项目没有插件注册的
-     * 工作区、工作区已不在宿主里）不带 `reason`——那不是故障，客户端据此落到
-     * 「文件夹与会话记录保留」那一支提示。宿主工作区服务不支持删除是真失败，
-     * `reason` 带回原因，项目照删。
+     * 只删项目：目录、会话日志与用户在 dsh 里加的工作区都原样保留。
      *
      * 项目已经不在了时报 `notFound`：删除是幂等的，客户端据此按成功收尾而不是
      * 把「项目不存在」报成删除失败。
      *
      * @param {string} id - 项目 id
-     * @returns {Promise<{removed: boolean, workspaceRemoved: boolean, notFound?: boolean, skipped?: boolean, reason?: string}>} 删除结果
+     * @returns {Promise<{removed: boolean, notFound?: boolean, reason?: string}>} 删除结果
      */
     async deleteProject(id) {
       const result = await this.projects.remove(id)
-      if (result === undefined) {
-        return { removed: false, workspaceRemoved: false, notFound: true, reason: '项目不存在。' }
-      }
-      const workspaceRemoved = result.workspace.removed === true
-      if (result.workspace.reason !== undefined) {
-        return { removed: true, workspaceRemoved, reason: result.workspace.reason }
-      }
-      return result.workspace.skipped === true
-        ? { removed: true, workspaceRemoved, skipped: true }
-        : { removed: true, workspaceRemoved }
+      return result === undefined
+        ? { removed: false, notFound: true, reason: '项目不存在。' }
+        : { removed: true }
     }
 
     /**
@@ -160,19 +147,6 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
      */
     async replaceLeader(id) {
       return this.projects.replaceLeader(id)
-    }
-
-    /**
-     * 确保 leader 会话挂在项目目录对应的工作区上。
-     *
-     * 归属是为了分组：不归属就落官方左栏的「未分组」，而本仓把项目会话行藏了，
-     * 那里只剩一棵空组头。目录还不是工作区时顺带注册一个（幂等）。
-     *
-     * @param {string} id - 项目 id
-     * @returns {Promise<{attached: boolean, workspaceId?: string, reason?: string}>} 挂载结果
-     */
-    async attachLeader(id) {
-      return this.projects.attachLeader(id)
     }
 
     /**

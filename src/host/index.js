@@ -183,10 +183,24 @@ export function apply(ctx) {
   const workers = createWorkerRegistry({ home: resolveDshHome(), logger })
   // 启动时按登记表收编既有 worker 会话 id：工具面裁剪是同步判定，登记表是异步的，
   // 需要一份内存集合；不灌入的话重启后老 worker 会被当成普通会话，拿到 leader 工具。
-  void workers.list().then((records) => {
+  const adoptedWorkers = workers.list().then((records) => {
     for (const record of records) workerSessions.adopt(record.childId)
+    return records.map((record) => record.childId)
   }).catch((error) => {
     logger(`dsh-leader-kit: 读取 worker 登记表失败，重启后的老 worker 工具面可能偏宽：${error instanceof Error ? error.message : String(error)}`)
+    return []
+  })
+  // 旧版本把项目会话挂进了 dsh 工作区，宿主会把空白的 leader 当作可复用的新建草稿
+  // （`ui-workspace` 的 `createInWorkspace`），用户在工作区新建会话会打开 leader。
+  // 工作区服务要到宿主装配完才出现（`apply` 期间 `ctx.get` 还是 undefined），所以用
+  // 注入等它就绪；没有工作区服务的组合里这段不会执行，也没东西可摘。
+  ctx.inject(['workspaceRegistry'], (scope) => {
+    void adoptedWorkers.then((workerIds) => projectService.detachFromWorkspaces({
+      workerIds,
+      registry: scope.get('workspaceRegistry'),
+    })).catch((error) => {
+      logger(`dsh-leader-kit: 摘除项目会话的历史工作区挂载失败：${error instanceof Error ? error.message : String(error)}`)
+    })
   })
   // 归档会话后的收尾（摘卡 + 摘派工登记）也走这条通道：归档本身由宿主的
   // `workspaces` 服务执行，浏览器侧只负责按顺序调用。
@@ -201,8 +215,6 @@ export function apply(ctx) {
     workerSessions,
     // worker 跑在项目目录里：leader 不能指定 worker 的工作目录。
     resolveWorkerCwd: (sessionId) => projectService.directoryOfLeader(sessionId),
-    // worker 与 leader 同属项目工作区：不挂就落官方树的「未分组」。
-    resolveWorkerWorkspaceId: (sessionId) => projectService.workspaceIdOfLeader(sessionId),
     // 派工前要确认调用方是 leader，且索引真的读出来了，不能靠工具面的宽松放行。
     leaderIndex: projectService,
     // 名册上限与投递卡门禁都读宿主现状：归档集合来自工作区注册表，卡绑定来自
