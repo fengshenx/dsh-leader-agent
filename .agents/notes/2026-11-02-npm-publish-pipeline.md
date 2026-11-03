@@ -92,9 +92,9 @@
 
 ## 验证
 
-`npm run check` 925 用例（909 通过、16 条 Windows 相关在非 Windows 上 skip）全绿，`tests/pack-manifest.test.js` 11 条（必需集从 manifest 推导、`files` 固定路径并进必需集、改入口即改门禁、通配子路径不进必需集、缺件逐个报、开发残留逐个拦、白名单放宽后仓内文档与决策笔记仍被拦、`.agents` 只放行 skills 子树、`files` 放宽到 `.agents/**` 时 notes 与新增目录仍被拦、发布路径不被误判）；`tests/client-build.test.js` 断言产物含 minidenticons 的版权行。
+`npm run check` 991 用例（975 通过、16 条 Windows 相关在非 Windows 上 skip）全绿，`tests/pack-manifest.test.js` 11 条（必需集从 manifest 推导、`files` 固定路径并进必需集、改入口即改门禁、通配子路径不进必需集、缺件逐个报、开发残留逐个拦、白名单放宽后仓内文档与决策笔记仍被拦、`.agents` 只放行 skills 子树、`files` 放宽到 `.agents/**` 时 notes 与新增目录仍被拦、发布路径不被误判）；`tests/client-build.test.js` 断言产物含 minidenticons 的版权行。
 
-`npm run release:check` 全链路通过：`verify-agent-note-format: 61 篇笔记格式合规`、`verify-doc-tool-names: 11 篇文档的工具名全部存在`、11 篇 standing docs 都在天花板内、`check-syntax: 92 个文件通过`、925 用例、`verify-pack: 86 个文件（未压缩 986 kB），必需项齐全、无开发残留，装机 smoke 通过`。
+`npm run release:check` 全链路通过：`verify-agent-note-format: 64 篇笔记格式合规`、`verify-doc-tool-names: 11 篇文档的工具名全部存在`、13 篇 standing docs 都在天花板内、`check-syntax: 96 个文件通过`、975 用例通过（991 总数、16 skip）、`verify-pack: 86 个文件（未压缩 994 kB），必需项齐全、无开发残留，装机 smoke 通过`。
 
 双向验证（每次还原后重跑均全绿）：
 
@@ -106,11 +106,11 @@
 - 把 `lib/client.js` 挪走 → 退 1，报 `缺 lib/client.js（先跑 npm run build:client）`。
 - 临时加一个 `"prepack": "node -e \"console.log('noise-from-prepack')\""` → 退 1，报 `解析 npm pack --json 的输出失败（Unexpected token 'o', "noise-from-p"...）` 并打出「先查 prepare / prepack / postpack」与 stdout 前 200 字符，不再是裸的 `SyntaxError`。
 
-`npm publish --dry-run`：`prepublishOnly` 自动跑完 `release:check` 后完成打包（86 个文件、压缩后 317.2 kB、`Publishing to https://registry.npmjs.org with tag latest and public access (dry-run)`、`+ dsh-leader-kit@0.1.0`），确认嵌套的 `npm pack`（含 smoke 的安装）与外层发布流程不冲突。
+`npm publish --dry-run`：`prepublishOnly` 自动跑完 `release:check` 后完成打包（86 个文件、压缩后 319.9 kB、`Publishing to https://registry.npmjs.org with tag latest and public access (dry-run)`、`+ dsh-leader-kit@0.1.0`），确认嵌套的 `npm pack`（含 smoke 的安装）与外层发布流程不冲突。
 
 `npm view dsh-leader-kit version` 返回 `E404`——包名未被占用。
 
-`nvm exec 24.9.0 npm run check` 与同一版本上的 `verify:pack` 都全绿（925 / 909 pass / 16 skip、86 个文件）。`ci.yml` 的 matrix 档位就是这个版本。
+`nvm exec 24.9.0 npm run check` 与同一版本上的 `verify:pack` 都全绿（975 pass / 991 总数 / 16 skip、86 个文件）。`ci.yml` 的 matrix 档位就是这个版本。
 
 `git ls-remote --tags` 核实 pin 的 SHA 就是 v7 tag 当前指向：`actions/checkout@3d3c42e5…`（= v7.0.1）、`actions/setup-node@949feb24…`（= v7.1.0）。
 
