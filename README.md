@@ -34,6 +34,41 @@
 5. **The `leader-mode` skill: an orchestration protocol for the Leader** — Not "you are a tech lead". Staged playbooks across discussion → design → implementation and delivery → review → merge, plus guidance on parallel collaboration and handoff.
 6. **Read back what a worker did, without waking it** — `read_worker_session` reads a worker's session log directly and returns each turn's task, body, the tools it called and why anything failed. Read-only: it does not wake the worker and triggers no model call. The completion notice tells you what came out; this tells you how it got there, so debugging does not need another round.
 
+## Install
+
+### Desktop install (DeepSeek Harness Desktop)
+
+Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`.
+
+**GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-kit` and click **Install**:
+
+<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-kit" width="880">
+
+**CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
+
+```sh
+# quit the app completely first (closing the window only hides it)
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add dsh-leader-kit
+```
+
+On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
+
+For development inside this repository, `npm run desktop` mounts the current worktree, rebuilds the bundle and launches the app; `-- --remove` unmounts it.
+
+### Web install
+
+Install from npm (package name `dsh-leader-kit`):
+
+```sh
+dsh plugin --profile web add dsh-leader-kit
+dsh web
+```
+
+The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES`, so the install lacks the web-app bundle and the client half never loads. Requires dsh `>=0.2.1-rc.2 <0.3.0`.
+
+For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
+
 ## Preview
 
 <div align="center">
@@ -74,46 +109,7 @@ Three mechanisms make this more than "a smarter prompt":
 - Initialization is still manual: in your own project you write `LEADER.md` (the Leader's persona prompt and orchestration flow) and `SLOTS.md` (the role split and each role's persona prompt).
 - The Leader leads and workers never talk to each other; the tool surface rules it out. Today's agents are trained for strict instruction-following, and one noisy message between two agents can derail the entire conversation.
 
-## Quick Start
-
-### Install
-
-Install from npm (package name `dsh-leader-kit`):
-
-```sh
-dsh plugin --profile web add dsh-leader-kit
-dsh web
-```
-
-The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES`, so the install lacks the web-app bundle and the client half never loads. Requires dsh `>=0.2.1-rc.2 <0.3.0`.
-
-For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
-
-The profile must be named `web`. The plugin manifest declares `platform: web`, and custom names such as `dev` are absent from dsh's `PROFILE_TEMPLATES`: `dsh plugin` would build that profile from the default template with only `@deepseek-ai/dsh-base` installed, so there is no web-app bundle and the client half of the plugin never loads.
-
-`engines.dsh` declares the supported range (currently `>=0.2.1-rc.2 <0.3.0`); install and startup are refused outside it. dsh is in developer preview, so this range has to track it. Inside this repository you can run `npm start`: it builds `lib/client.js` first (the file is not committed, and a missed build still starts the instance with an empty right panel), then starts `dsh web` after checking that dsh is available and the daily profile has this plugin installed.
-
-### Desktop (DeepSeek Harness Desktop)
-
-Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`.
-
-**GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-kit` and click **Install**:
-
-<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-kit" width="880">
-
-**CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
-
-```sh
-# quit the app completely first (closing the window only hides it)
-"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add dsh-leader-kit
-```
-
-On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
-
-For development inside this repository, `npm run desktop` mounts the current worktree, rebuilds the bundle and launches the app; `-- --remove` unmounts it.
-
-### Five steps
+## Five steps
 
 1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is created immediately and bound to a leader session; clicking the project row opens that Leader (a workspace the plugin registered and you deleted is recreated on the click, with the sessions put back). Selection comes in two layers: the whole row only lights up for the current Leader session, while opening a worker lights the folder at the row start and puts the row highlight on that worker's own session row. The slot at the row start is a folder icon by default: while the Leader is running it becomes a spinner (the Leader has no row of its own, so this holds whether the project is expanded or collapsed), and when the project is collapsed with a worker running under it, it becomes a spinner too — once expanded, each worker carries its own spinner.
 2. **Load the protocol.** In the leader session, have the model load `leader-mode`. It reads `playbooks/program.md` first, then the playbook for the current stage.

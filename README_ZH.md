@@ -34,6 +34,41 @@
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
 6. **回看 worker 的会话过程，不必唤醒它** — `read_worker_session` 直读 worker 的会话日志，给出每轮的任务、正文、调过哪些工具与失败原因。只读：不唤醒 worker、不产生模型调用。完成通知负责「产物是什么」，它负责「过程是怎样的」，排查不必再开一轮。
 
+## 安装
+
+### 桌面版安装（DeepSeek Harness Desktop）
+
+桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。
+
+**图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-kit` 后点「安装」：
+
+<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-kit" width="880">
+
+**命令行安装**：系统 `dsh` 拒绝管理 desktop profile，要用桌面安装自带的 CLI：
+
+```sh
+# 先完全退出应用（关窗口只是隐藏）
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add dsh-leader-kit
+```
+
+Windows / Linux 换成安装目录里对应的 `runtime/cli/bin/dsh`。应用只在启动时读 profile，同一时刻只能挂一个版本；`DSH_HOME` 要用绝对路径或 `~/` 写法。会话、项目与卡片数据与 `web` 共享，插件包与激活状态各自一份。
+
+在本仓库里开发时改用 `npm run desktop`：挂当前工作树、重建产物并拉起应用，`-- --remove` 摘除。
+
+### Web 版安装
+
+从 npm 安装（包名 `dsh-leader-kit`）：
+
+```sh
+dsh plugin --profile web add dsh-leader-kit
+dsh web
+```
+
+profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出来缺 web-app bundle，客户端半边不加载。需要 dsh `>=0.2.1-rc.2 <0.3.0`。
+
+指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
+
 ## 预览
 
 <div align="center">
@@ -74,46 +109,7 @@
 - 项目还缺少一些初始化机制，实际使用时你需要在你的项目内初始化 `LEADER.md`（Leader 的人设 Prompt 以及编排流）和 `SLOTS.md`（任务的角色分工以及对应的人设 Prompt）。
 - 项目设计成了 Leader 领导 Worker，Worker 之间绝不通信（Tool Use 层就杜绝了），因为当前的 Agent 被训练成了强指令遵循，两个 Agent 对话一旦出现一个错误的噪音，会把整个对话带偏。
 
-## 快速开始
-
-### 安装
-
-从 npm 安装（包名 `dsh-leader-kit`）：
-
-```sh
-dsh plugin --profile web add dsh-leader-kit
-dsh web
-```
-
-profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出来缺 web-app bundle，客户端半边不加载。需要 dsh `>=0.2.1-rc.2 <0.3.0`。
-
-指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
-
-profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类自定义名字不在 dsh 的 `PROFILE_TEMPLATES` 里，`dsh plugin` 会按默认模板只装 `@deepseek-ai/dsh-base`——没有 web-app bundle，插件客户端半边根本不加载。
-
-`engines.dsh` 声明支持范围（当前 `>=0.2.1-rc.2 <0.3.0`），不满足时安装与启动会被拒绝；dsh 处于 developer preview，版本范围需随它跟进。在本仓库里可以直接 `npm start`：它先构建 `lib/client.js`（不入库，漏构建时实例照常起来、右栏却没有看板），再起 `dsh web`，起之前检查 dsh 是否可用、日常 profile 是否装了本插件。
-
-### 桌面版（DeepSeek Harness Desktop）
-
-桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。
-
-**图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-kit` 后点「安装」：
-
-<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-kit" width="880">
-
-**命令行安装**：系统 `dsh` 拒绝管理 desktop profile，要用桌面安装自带的 CLI：
-
-```sh
-# 先完全退出应用（关窗口只是隐藏）
-"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add dsh-leader-kit
-```
-
-Windows / Linux 换成安装目录里对应的 `runtime/cli/bin/dsh`。应用只在启动时读 profile，同一时刻只能挂一个版本；`DSH_HOME` 要用绝对路径或 `~/` 写法。会话、项目与卡片数据与 `web` 共享，插件包与激活状态各自一份。
-
-在本仓库里开发时改用 `npm run desktop`：挂当前工作树、重建产物并拉起应用，`-- --remove` 摘除。
-
-### 五步上手
+## 五步上手
 
 1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个 leader 会话；点项目行就是打开这个 Leader（注册的工作区被删过的话会顺手重建并归位会话）。当前会话属于该项目时左栏按两层回执：打开的是 leader 会话则项目行整行亮，打开的是它派出的 worker 则项目行只点亮行首文件夹、选中态落在那个 worker 自己的会话行上。行首槽位平时是目录图标，活动提示看 leader：它在跑就换成加载圈（leader 没有自己的行，项目展开着也照换），项目收起时名下有 worker 在跑也换成加载圈，展开后 worker 由会话行自己带加载圈。
 2. **加载协议**：leader 会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
