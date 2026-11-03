@@ -183,6 +183,7 @@ npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真�
 | 文档 | 内容 |
 |---|---|
 | [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
+| [docs/getting-started.md](docs/getting-started.md) | 上手路线：使用前提、加项目与 Leader、两份项目文件、一张卡从创建到下钻 |
 | [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
 | [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、宿主契约落点 |
 | [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |

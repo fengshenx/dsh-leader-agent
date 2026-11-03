@@ -183,6 +183,7 @@ Dev instance overrides and credentials handling, worktree cleanup guards, build 
 | Document | Contents |
 |---|---|
 | [AGENTS.md](AGENTS.md) | Repository rules and the task-routed reading index |
+| [docs/getting-started.md](docs/getting-started.md) | Walkthrough (Chinese): prerequisites, adding a project and its Leader, the two project files, one card from creation to drill-down |
 | [docs/usage.md](docs/usage.md) | Full interaction for dispatch, follow-ups, cards, board, project management, slots and manuals |
 | [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, host-contract landing spots |
 | [docs/limitations.md](docs/limitations.md) | Full known limitations and trade-offs |
