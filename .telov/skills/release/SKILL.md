@@ -12,7 +12,7 @@ whenToUse: 需要把 dsh-leader-kit 的新版本发布到 npm，或排查发版�
 
 - 改动在 worktree 里（`npm run worktree:spawn <任务名>`），主 checkout 保持干净。
 - `gh` 已登录、对 `fengshenx/dsh-leader-kit` 有推 tag 权限；`main` 上的 CI 是绿的。
-- 仅首次发布需要本机发布：`npm login` 完成、账号已开 2FA。
+- 日常发版不需要本机 `npm login` 或 OTP：认证由 CI 的 OIDC 完成。只有首次发布（包尚不存在）需要本机发布，要求账号已开 2FA。
 
 ## 一、定版本号
 
@@ -70,6 +70,7 @@ tag 必须指向 `main` 上的提交。`publish.yml` 会校验 tag 与 `package.
 gh run watch
 gh release view v<version>
 npm view dsh-leader-kit@<version> version
+npm view dsh-leader-kit@<version> dist.attestations   # 非空 = OIDC 发布并生成 provenance
 ```
 
 CI 依次：校验 → `npm ci` → OIDC 发布 → 建 Release。发布步骤幂等：版本已存在就跳过，所以 Release 失败可以直接重跑 workflow。
@@ -88,7 +89,7 @@ trusted publisher 要求包已存在，所以首个版本必须绕开 CI；但**
    - Allowed actions: `npm publish`（预发布再勾 `npm dist-tag`）
 5. **bump 到一个未发布的版本**（如 0.1.1），按第一到五节走完整流程：PR 合并后从 `main` 打 `v0.1.1` tag。这一步才是首次 OIDC 发布。
 6. 看 `gh run view` 的发布步骤：必须是 `npm notice Publishing ...`，不能是「已发布，跳过 npm publish」。
-7. 包设置 → Publishing access → 「Require two-factor authentication and disallow tokens」。
+7. 包设置 → Publishing access → 选带 (recommended) 的「Require two-factor authentication and disallow bypass 2fa tokens」；界面若同时提供更严格的「disallow tokens」，选它。该设置不影响 OIDC 发布。
 
 **为什么不能直接推 `v0.1.0`**：第 2 步已经把它发到 registry，`publish.yml` 的「版本已存在就跳过」守卫会打印「已发布，跳过 npm publish」并 exit 0——workflow 整体绿色，但 OIDC 一次都没跑，trusted publisher 配置 2 天后静默过期，而 CI 读数看不出区别。首发版本天然「已存在」，所以首发之后必须有一个新版本真走一遍 OIDC。
 
