@@ -4,13 +4,15 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { dirname, join } from 'node:path'
 import {
-  DESKTOP_PROFILE, desktopLinkSpec, pgrepNameOf, planDesktopDisable, planDesktopEnable, planLinkAction, resolveDesktopPaths,
+  DESKTOP_PROFILE, desktopLinkSpec, expandHomePath, parseBundleExecutable, planDesktopDisable,
+  planDesktopEnable, planLinkAction, resolveDesktopPaths,
 } from '../scripts/desktop-plan.mjs'
 import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
 const WORKTREE = '/work/repo/.worktrees/desktop-launcher'
 const OTHER_WORKTREE = '/work/repo/.worktrees/feature-a'
 const HOME = '/home/user'
+const SCRIPT_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts/desktop.mjs')
 
 /** 造一份桌面 profile 的 package.json（桌面应用自己写的形状）。 */
 function desktopPackage(overrides = {}) {
@@ -86,7 +88,7 @@ test('profile 缺 bundles 列表时拒绝，并指向重建路径', () => {
 
 test('摘除只动本插件，其余 bundle 顺序保留', () => {
   const installed = planDesktopEnable({ manifest: desktopPackage(), worktree: WORKTREE }).manifest
-  const { manifest, changed } = planDesktopDisable({ manifest: installed })
+  const { manifest, changed } = planDesktopDisable({ manifest: installed, worktree: WORKTREE })
   assert.equal(changed, true)
   assert.equal(LEADER_KIT_PACKAGE in manifest.dependencies, false)
   assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, 'dsh-session-file-reveal'])
@@ -94,19 +96,54 @@ test('摘除只动本插件，其余 bundle 顺序保留', () => {
 })
 
 test('没装时摘除是空操作', () => {
-  const { changed } = planDesktopDisable({ manifest: desktopPackage() })
+  const { changed } = planDesktopDisable({ manifest: desktopPackage(), worktree: WORKTREE })
   assert.equal(changed, false)
 })
 
-test('pgrep 用进程名：.app 路径先取 basename 再去后缀', () => {
-  // DSH_DESKTOP_APP 允许写成 .app 路径，pgrep -x 只认进程名。
-  assert.equal(pgrepNameOf('DeepSeek Harness'), 'DeepSeek Harness')
-  assert.equal(pgrepNameOf('DeepSeek Harness.app'), 'DeepSeek Harness')
-  assert.equal(pgrepNameOf('/Applications/DeepSeek Harness.app'), 'DeepSeek Harness')
-  assert.equal(pgrepNameOf('/Applications/DeepSeek Harness.app/'), 'DeepSeek Harness')
-  assert.equal(pgrepNameOf('  Finder.app  '), 'Finder')
-  assert.equal(pgrepNameOf(''), '')
-  assert.equal(pgrepNameOf(undefined), '')
+test('摘除只摘当前工作树挂的那份：别处来源与判不出归属都拒绝', () => {
+  const other = planDesktopEnable({ manifest: desktopPackage(), worktree: OTHER_WORKTREE }).manifest
+  assert.throws(
+    () => planDesktopDisable({ manifest: other, worktree: WORKTREE }),
+    /不是当前目录/,
+  )
+  // 插件管理装的版本同样不摘。
+  const versioned = desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: '^0.1.0' } })
+  assert.throws(() => planDesktopDisable({ manifest: versioned, worktree: WORKTREE }), /不是当前目录/)
+  // 只出现在 bundles 里：判不出是谁挂的，不猜。
+  const orphan = desktopPackage({ bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE] })
+  assert.throws(() => planDesktopDisable({ manifest: orphan, worktree: WORKTREE }), /判不出是谁挂上去的/)
+})
+
+test('进程名取自 Info.plist 的 CFBundleExecutable，不按包文件名猜', () => {
+  // Lark.app 的进程是 Feishu：包名与进程名可以完全不同。
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>Lark</string>
+  <key>CFBundleExecutable</key><string>Feishu</string>
+</dict></plist>`
+  assert.equal(parseBundleExecutable(plist), 'Feishu')
+  assert.equal(parseBundleExecutable('<dict><key>CFBundleExecutable</key><string>  DeepSeek Harness  </string></dict>'), 'DeepSeek Harness')
+  // 取不到时返回 null，由调用方 fail loud。
+  assert.equal(parseBundleExecutable('<dict><key>CFBundleName</key><string>Lark</string></dict>'), null)
+  assert.equal(parseBundleExecutable('<dict><key>CFBundleExecutable</key><string></string></dict>'), null)
+  assert.equal(parseBundleExecutable(''), null)
+})
+
+test('DSH_HOME 按宿主口径展开 ~ 与相对路径', () => {
+  assert.equal(expandHomePath('~/data', HOME, '/work'), join(HOME, 'data'))
+  assert.equal(expandHomePath('~', HOME, '/work'), HOME)
+  assert.equal(expandHomePath('rel/home', HOME, '/work'), '/work/rel/home')
+  assert.equal(expandHomePath('/abs/home', HOME, '/work'), '/abs/home')
+  // 只认开头的 ~：路径中间的 ~ 是普通字符。
+  assert.equal(expandHomePath('/work/~x', HOME, '/work'), '/work/~x')
+  assert.equal(
+    resolveDesktopPaths({ homeDir: HOME, cwd: '/work', env: { DSH_HOME: '~/dsh' } }).profileDir,
+    join(HOME, 'dsh', 'profiles', DESKTOP_PROFILE),
+  )
+  assert.equal(
+    resolveDesktopPaths({ homeDir: HOME, cwd: '/work', env: { DSH_HOME: 'data' } }).home,
+    '/work/data',
+  )
 })
 
 test('node_modules 链接只建不覆盖：别处来的安装一律拒绝', () => {
@@ -121,11 +158,19 @@ test('node_modules 链接只建不覆盖：别处来的安装一律拒绝', () =
 test('先建链接再写 manifest：链接被别人的安装挡住时不留坏状态', () => {
   // IO 层不硬测，只钉顺序：ensureLink 抛错时 writeManifest 还没执行，manifest
   // 保持原样；反过来会留下「bundles 声明了本插件、node_modules 却是别人的目录」。
-  const scriptPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts/desktop.mjs')
-  const source = readFileSync(scriptPath, 'utf8')
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
   const linkAt = source.indexOf('const action = ensureLink(')
   assert.notEqual(linkAt, -1, '找不到 ensureLink 调用')
   const writeAt = source.indexOf('writeManifest(paths.packagePath, next)', linkAt)
   assert.notEqual(writeAt, -1, '挂载分支里找不到 writeManifest 调用')
   assert.ok(writeAt > linkAt, 'ensureLink 必须在 writeManifest 之前')
+})
+
+test('探活接线：进程名来自 Info.plist，不拿包名或路径去 pgrep', () => {
+  // 包文件名不等于进程名（Lark.app → Feishu），DSH_DESKTOP_APP 还可能带路径。
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  assert.match(source, /const processName = executableNameOf\(appName, homeDir\)/)
+  assert.match(source, /args: \['-x', processName\]/)
+  assert.doesNotMatch(source, /args: \['-x', appName\]/)
+  assert.doesNotMatch(source, /pgrepNameOf/)
 })

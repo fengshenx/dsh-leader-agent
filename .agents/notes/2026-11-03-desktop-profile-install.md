@@ -20,6 +20,8 @@
 
 - 桌面应用执行包操作时用的是它自带的 pnpm 与 Electron Node 模式（`ELECTRON_RUN_AS_NODE`、私有 launcher 环境）。脚本复刻那套环境容易随宿主版本漂移而失效；而宿主启动时只按 `bundles` 列表解析包，不校验 `link:` 与磁盘链接是否一致——`npm run dev` 的派生 profile 已经用同一机制跑通。
 - 代价是 `pnpm-lock.yaml` 与 manifest 短暂不一致；link 依赖不需要网络，下次在桌面应用的插件管理里做安装/卸载时由 pnpm 自己补齐。这个代价写进 README 的一句话里。
+- `DSH_HOME` 按宿主的 `expandHomePath` 语义归一化：先展开 `~` 再 `resolve`（相对路径以当前目录为基准）。原实现直接拿字面量拼 `profiles/desktop`，`~/x` 会变成 `<cwd>/~/x`、相对路径也找错 profile。
+- **构建前置**：先 `npm run build:client`、成功后才建链接与写 manifest。原顺序是最后构建，构建失败时插件已经处于「已挂载」状态，宿主下次启动会加载一份没有客户端产物的包（右栏空白）。失败时什么都没动。
 
 ### 别人的安装不覆盖，运行中不写入
 
@@ -27,8 +29,10 @@
 - `node_modules/dsh-leader-kit` 已存在时只接受两种状态：不是符号链接（插件管理装的实体目录）拒绝；符号链接但指向别的工作树也拒绝。后一种是审查阶段补的——原实现对「指向别处」直接 `rm` 再重建，等于把别人的安装悄无声息顶掉，与上面那条 manifest 守卫的语义不一致。判定收敛成纯函数 `planLinkAction`（`create` / `keep` / `refuse`），IO 只执行结论。
 - **先建链接、再写 manifest**：链接被别人的安装挡住时立刻失败，manifest 保持原样。反过来会留下「bundles 里声明了 `dsh-leader-kit`、`node_modules` 却是插件管理的实体目录」的坏状态（实测确认：拒绝时 manifest 已被改写）。链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑按 `kept` 处理，宿主也不会加载它。
 - 桌面应用运行中拒绝写入：宿主只在启动时读 profile，写入不生效，还可能和应用自己的插件管理撞上。macOS / Linux 用 `pgrep -x <进程名>` 探活；Windows 不探，脚本在启动那一步明确提示手动打开。
-- `DSH_DESKTOP_APP` 允许写成 `.app` 路径（`open -a` 两种都收），但 `pgrep -x` 只认进程名：原实现把整条路径喂给 `pgrep`，运行中的应用必然漏判。探活前先经 `pgrepNameOf` 归一化（取 basename、去 `.app`）。实测 `pgrep -x Finder` 命中、`pgrep -x /System/Library/CoreServices/Finder.app` 不命中。
-- `--remove` 只摘本插件的依赖条目、bundle 项与链接，其余条目与顺序原样保留。
+- **进程名取自 `.app` 的 `Info.plist`（`CFBundleExecutable`）**，不按包文件名猜：`Lark.app` 的进程是 `Feishu`，带版本号的快照（`DeepSeek Harness 0.2.1.app`）同理。取不到 `.app`、读不到 plist 或缺 `CFBundleExecutable` 时直接报错退出——猜一个名字会漏判运行态，进而写坏 profile。`open -a` 仍用原始 `DSH_DESKTOP_APP`（名字或路径都收）。
+- **`package.json.lock` 也算运行中的写者**：宿主的 `dsh-atomic-write` 用 `<file>.lock` 兄弟文件表达独占写，插件管理改 manifest 时它会出场；撞上会写出相互覆盖的结果。没有 `profiles/desktop/lock` 这种东西——本机 profile 目录里不存在该文件，宿主源码也只用 `withFileLock(package.json)`。
+- `--remove` 是**包级摘除**，只摘「能判定是当前工作树挂的」那份：依赖说明符不等于 `link:<当前目录>`（别的工作树、插件管理的版本）、或只在 `bundles` 里出现而没有依赖条目时，一律拒绝并说明，不摘别人的安装。实体目录占位时不动它，输出写明「不属于本脚本」而不是含糊的「本来就没有」。
+- 链接拆除走仓里既有的 `detachNodeModulesLink`：Windows junction 用 `rmdir`、其余平台 `unlink`，与 `worktree-prune` 同一约定（原实现用 `rmSync`，在 Windows 上对目录链接的语义不一致）。非 macOS 平台只完成 profile 写入并提示手动启动，不再打印「桌面应用已启动」。
 
 ### 文档归属
 
@@ -46,18 +50,21 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
 
 ## 验证
 
-- `tests/desktop-plan.test.js` 12 个用例：路径解析（默认与 `DSH_HOME` 覆盖、空串回落）、首次挂载写入依赖与 bundle 末尾、幂等、已装另一来源拒绝（工作树与版本号两种）、bundle 已含时不重复、缺 bundles 列表拒绝、摘除只动本插件、未装时摘除是空操作；审查阶段补三个：`pgrepNameOf` 的名字 / `.app` 名 / 路径 / 尾斜杠 / 空值、`planLinkAction` 的四种组合、`ensureLink` 先于 `writeManifest` 的源码顺序断言。
-- 双向验证（逐条撤销 → 变红 → 还原，每次还原 12 pass）：
-  - `planLinkAction` 的「指向别处」从 `refuse` 改回 `create`（即原来的静默替换）→ 1 fail（11 pass）。
-  - `pgrepNameOf` 改成原样返回（不归一化）→ 1 fail（11 pass）。
-  - `desktop.mjs` 里把 `writeManifest` 挪回 `ensureLink` 之前 → 顺序用例 1 fail（11 pass）。
-- 临时数据根端到端（`DSH_HOME=/tmp/dsh-desktop-probe`，`DSH_DESKTOP_APP=__no_such_app__` 避免真的拉起应用；全程不碰本机 `~/.dsh/profiles/desktop`）：
-  - 首次挂载：manifest 写入 `dsh-leader-kit: link:<当前工作树>` 与 bundles 末尾、`node_modules` 建出符号链接；再跑一次报「manifest 已是最新 / 链接 已指向当前目录」。
-  - 预置「manifest 无记录、链接指向 `/tmp/other-worktree`」：修复后报「已经指向另一份安装（/tmp/other-worktree）」并退出，manifest 命中数 0、链接仍指向原处；修复前同一场景会静默改指当前工作树。
-  - 预置「manifest 无记录、`node_modules/dsh-leader-kit` 是实体目录」：修复后拒绝且 manifest 命中数 0；修复前拒绝时 manifest 已被改写（命中 2 处 = dependencies + bundles）。
-  - `--remove`：依赖条目与 bundle 项摘掉、其余依赖与顺序不变、链接删除；再跑一次报「manifest 本来就没有 / 链接 本来就没有」。
-- 探活实证（macOS 只读）：`pgrep -x Finder` 命中、`pgrep -x /System/Library/CoreServices/Finder.app` 不命中；把后者当 `DSH_DESKTOP_APP` 跑脚本，修复后按「正在运行」拒绝且不写 profile，修复前会继续往下写。
+- `tests/desktop-plan.test.js` 15 个用例：路径解析（默认、`DSH_HOME` 覆盖、空串回落）、`expandHomePath`（`~` / `~/x` / 相对 / 绝对 / 路径中间的 `~`）、首次挂载写入依赖与 bundle 末尾、幂等、已装另一来源拒绝（工作树与版本号两种）、bundle 已含时不重复、缺 bundles 列表拒绝、摘除只动本插件、未装时摘除是空操作、摘除时别的工作树与判不出归属都拒绝、`parseBundleExecutable`（含 `Lark.app → Feishu` 与三种取不到）、`planLinkAction` 四种组合、`ensureLink` 先于 `writeManifest` 的顺序断言、探活接线断言（进程名来自 plist、`args: ['-x', processName]`）。
+- 双向验证（逐条撤销 → 变红 → 还原，每次还原 15 pass）：
+  - `planLinkAction` 的「指向别处」从 `refuse` 改回 `create`（即原来的静默替换）→ 1 fail（14 pass）。
+  - `planDesktopDisable` 删掉归属校验 → 1 fail（14 pass）。
+  - `desktop.mjs` 把 `writeManifest` 挪回 `ensureLink` 之前 → 顺序用例 1 fail（14 pass）。
+  - `pgrep` 的 `args` 从 `processName` 改回 `appName` → 接线用例 1 fail（14 pass）。
+- 临时数据根端到端（`DSH_HOME` 指向 `/tmp` 下的假 home，全程不碰本机 `~/.dsh/profiles/desktop`）：
+  - 相对 `DSH_HOME=probe-rel`（在 `/tmp` 下跑）：能定位到 `profiles/desktop`——原实现会拼成 `/tmp/<cwd>/probe-rel` 找不到。
+  - `.app` 路径探活：`/System/Library/CoreServices/Finder.app` → 报「正在运行」并拒绝，manifest 未被写；进程名经 `plutil` 转换后取自 `CFBundleExecutable`。
+  - `package.json.lock` 在场：报「插件管理正在改这个 profile」并退出，manifest 命中 0。
+  - 应用名不存在（`__no_such_app__`）：早失败「找不到应用」，manifest 与 `node_modules` 都没动（修复前会先写盘、最后才在 `open -a` 失败）。
+  - `--remove` 装的是别的工作树：报「不是当前目录」，manifest 保持原样。
+  - `--remove` 遇到实体目录：manifest 正常摘除，链接输出「是实体目录（不属于本脚本），未动」，目录仍在。
+- 探活实证（macOS 只读）：`pgrep -x Finder` 命中、`pgrep -x /System/Library/CoreServices/Finder.app` 不命中；`Lark.app` 的 `CFBundleExecutable` 是 `Feishu`（按包名推进程名必漏判）。
 - 实机（macOS，桌面版 0.2.1-rc.5）：`npm run desktop` 写入 `~/.dsh/profiles/desktop/package.json`（依赖 `link:/…/.worktrees/desktop-launcher`、bundles 末尾 `dsh-leader-kit`）并建链接；应用正常启动，Host 进程以 `profiles/desktop` 为参数加载，无致命错误。
 - 应用运行中重跑 `npm run desktop` 被拒绝（`DeepSeek Harness 正在运行，profile 只在启动时读入`），profile 未被改动。
 - `dsh --profile desktop --help` 返回 `profile "desktop" is managed exclusively by the Electron application`，确认无法用 CLI 形态替代验证。
-- 摘除与冲突在临时数据根上验证，不打扰运行中的实例：`--remove` 后 manifest 回到挂载前（只剩 `dsh-session-file-reveal`，bundles 顺序不变）、链接删除；把依赖改成别的工作树后 `npm run desktop` 报「已经装了一份 dsh-leader-kit（link:/tmp/other-checkout）」并退出，manifest 未被改写。
+- 未验证：非 macOS 平台的 junction 拆除与「请手动启动」分支（脚本按 `process.platform` 分支，本轮只在 macOS 上跑；`detachNodeModulesLink` 的两种方式由 `worktree-prune` 的既有用例覆盖）。

@@ -26,7 +26,7 @@
  */
 
 import {
-  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync,
+  existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, statSync, symlinkSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
@@ -34,9 +34,11 @@ import { fileURLToPath } from 'node:url'
 import { writeFileAtomicSync } from './atomic-write.mjs'
 import { LEADER_KIT_PACKAGE, assertWebBundle } from './dev-plan.mjs'
 import {
-  DESKTOP_APP_NAME, pgrepNameOf, planDesktopDisable, planDesktopEnable, planLinkAction, resolveDesktopPaths,
+  DESKTOP_APP_NAME, expandHomePath, parseBundleExecutable, planDesktopDisable, planDesktopEnable,
+  planLinkAction, resolveDesktopPaths,
 } from './desktop-plan.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
+import { detachNodeModulesLink } from './worktree-common.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -102,20 +104,77 @@ function writeManifest(path, manifest) {
 }
 
 /**
+ * 找到 `DSH_DESKTOP_APP` 指向的 `.app`。
+ *
+ * 名字形态按常见安装位置探测；路径形态直接取。找不到返回 null，由调用方决定
+ * 怎么说——脚本不猜一个包名去启动。
+ *
+ * @param {string} appName - 应用名或 `.app` 路径
+ * @param {string} homeDir - 用户主目录
+ * @returns {string | null} `.app` 绝对路径
+ */
+function appBundlePath(appName, homeDir) {
+  const trimmed = appName.trim()
+  if (trimmed === '') return null
+  if (trimmed.endsWith('.app') || trimmed.includes('/')) {
+    const resolved = expandHomePath(trimmed, homeDir)
+    return existsSync(resolved) ? resolved : null
+  }
+  const dirs = ['/Applications', join(homeDir, 'Applications'), '/System/Applications', '/Applications/Utilities']
+  for (const dir of dirs) {
+    const candidate = join(dir, `${trimmed}.app`)
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * 从 `.app` 的 `Info.plist` 取进程名。
+ *
+ * 包文件名不等于进程名（`Lark.app` 的进程是 `Feishu`），按文件名推进程名会漏判。
+ * 取不到就报错——猜一个名字比拒绝更糟：漏判运行态会写坏 profile。
+ *
+ * @param {string} appName - 应用名或 `.app` 路径
+ * @param {string} homeDir - 用户主目录
+ * @returns {string} `CFBundleExecutable`
+ */
+function executableNameOf(appName, homeDir) {
+  const bundle = appBundlePath(appName, homeDir)
+  if (bundle === null) {
+    throw new Error(
+      `找不到应用 ${appName}。用 DSH_DESKTOP_APP 指定 .app 的完整路径，`
+      + '例如 DSH_DESKTOP_APP="/Applications/DeepSeek Harness.app" npm run desktop。',
+    )
+  }
+  const plistPath = join(bundle, 'Contents', 'Info.plist')
+  if (!existsSync(plistPath)) {
+    throw new Error(`${plistPath} 不存在，无法判断应用是否在运行。确认路径指向一个完整的 .app。`)
+  }
+  const converted = spawnCommandSync({ command: 'plutil', args: ['-convert', 'xml1', '-o', '-', plistPath], encoding: 'utf8' })
+  const executable = converted.status === 0 ? parseBundleExecutable(converted.stdout) : null
+  if (executable === null) {
+    throw new Error(
+      `读不到 ${plistPath} 的 CFBundleExecutable，无法判断 ${appName} 是否在运行。`
+      + '\n先确认应用已完全退出（macOS 用 ⌘Q，关窗口只是隐藏）再重跑。',
+    )
+  }
+  return executable
+}
+
+/**
  * 桌面应用是否正在运行。
  *
  * 运行中写 profile 不会生效（宿主只在启动时读），而且可能和应用自己的插件管理撞上，
  * 所以先探再写。Windows 上不探：脚本会在启动那一步明确提示手动打开。
  *
- * `DSH_DESKTOP_APP` 可能是 `.app` 路径，`pgrep -x` 只认进程名，要先归一化。
- *
  * @param {string} appName - 应用名或 `.app` 路径
+ * @param {string} homeDir - 用户主目录
  * @returns {boolean | null} 运行中为 true，未运行为 false，探不了为 null
+ * @throws 找不到应用或读不到 CFBundleExecutable 时
  */
-function desktopAppRunning(appName) {
+function desktopAppRunning(appName, homeDir) {
   if (process.platform === 'win32') return null
-  const processName = pgrepNameOf(appName)
-  if (processName === '') return null
+  const processName = executableNameOf(appName, homeDir)
   try {
     const probe = spawnCommandSync({ command: 'pgrep', args: ['-x', processName], encoding: 'utf8' })
     return probe.status === 0
@@ -127,15 +186,33 @@ function desktopAppRunning(appName) {
 }
 
 /**
+ * profile 是否正被桌面应用写入。
+ *
+ * 宿主的 `dsh-atomic-write` 用 `<file>.lock` 兄弟文件表达独占写：插件管理改
+ * manifest 时 `package.json.lock` 在场。撞上它会写出相互覆盖的结果。
+ *
+ * @param {string} lockPath - 锁文件路径
+ * @returns {void} 无返回
+ * @throws 锁在场时
+ */
+function assertProfileUnlocked(lockPath) {
+  if (!existsSync(lockPath)) return
+  throw new Error(
+    `${lockPath} 存在：桌面 App 的插件管理正在改这个 profile（宿主用 <file>.lock 表示写入中）。`
+    + '\n等它结束再重跑；确认没有任何操作时可以删掉这个锁文件。',
+  )
+}
+
+/**
  * 拉起桌面应用。
  *
  * @param {string} appName - 应用名或 `.app` 路径
- * @returns {void} 无返回
+ * @returns {boolean} 是否由本脚本启动
  */
 function launchDesktopApp(appName) {
   if (process.platform !== 'darwin') {
     console.log(`请手动启动 ${appName}。`)
-    return
+    return false
   }
   const result = spawnCommandSync({ command: 'open', args: ['-a', appName], encoding: 'utf8' })
   if (result.status !== 0) {
@@ -144,6 +221,7 @@ function launchDesktopApp(appName) {
       + '\n应用名不同时用 DSH_DESKTOP_APP 指定，例如 DSH_DESKTOP_APP="/Applications/DeepSeek Harness.app" npm run desktop。',
     )
   }
+  return true
 }
 
 /**
@@ -182,17 +260,29 @@ function ensureLink({ linkPath, worktree }) {
 }
 
 /**
- * 摘掉链接；不是符号链接时不动（那是别处的安装）。
+ * 链接当前的归属：没有、是实体目录、指向别处、还是本工作树。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.linkPath - profile 里的链接路径
+ * @param {string} options.worktree - 工作树绝对路径
+ * @returns {'absent' | 'foreign' | 'other' | 'ours'} 归属
+ */
+function linkStateOf({ linkPath, worktree }) {
+  const existing = lstatSync(linkPath, { throwIfNoEntry: false })
+  if (existing === undefined) return 'absent'
+  if (!existing.isSymbolicLink()) return 'foreign'
+  return identityOf(linkPath) === identityOf(worktree) ? 'ours' : 'other'
+}
+
+/**
+ * 摘掉本工作树的链接。Windows 上的 junction 用 `rmdir` 拆，与本仓 worktree
+ * 工具的约定一致（`unlink` 对目录链接的语义在 Windows 上不一样）。
  *
  * @param {string} linkPath - profile 里的链接路径
- * @returns {boolean} 是否删掉了链接
+ * @returns {void} 无返回
  */
-function removeLink(linkPath) {
-  const existing = lstatSync(linkPath, { throwIfNoEntry: false })
-  if (existing === undefined) return false
-  if (!existing.isSymbolicLink()) return false
-  rmSync(linkPath, { force: true })
-  return true
+function detachLink(linkPath) {
+  detachNodeModulesLink(linkPath, process.platform === 'win32' ? 'rmdir' : 'unlink')
 }
 
 /**
@@ -201,7 +291,8 @@ function removeLink(linkPath) {
  * @returns {void} 无返回
  */
 function main() {
-  const paths = resolveDesktopPaths({ homeDir: homedir(), env: process.env })
+  const homeDir = homedir()
+  const paths = resolveDesktopPaths({ homeDir, cwd: process.cwd(), env: process.env })
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
   const remove = process.argv.slice(2).includes('--remove')
 
@@ -228,7 +319,7 @@ function main() {
     }
   }
 
-  const running = desktopAppRunning(appName)
+  const running = desktopAppRunning(appName, homeDir)
   if (running === true) {
     console.error(`${appName} 正在运行，profile 只在启动时读入。`)
     console.error('先完全退出桌面应用（macOS 用 ⌘Q，关窗口只是隐藏），再重跑本命令。')
@@ -236,13 +327,22 @@ function main() {
   }
 
   if (remove) {
-    const { manifest: next, changed } = planDesktopDisable({ manifest })
+    // 先判归属再动盘：manifest 与链接都只摘「确实是当前工作树挂的」那一份。
+    const { manifest: next, changed } = planDesktopDisable({ manifest, worktree })
+    const linkState = linkStateOf({ linkPath: paths.linkPath, worktree })
+    if (linkState === 'other') {
+      throw new Error(
+        `${paths.linkPath} 指向别处（${readlinkSync(paths.linkPath)}），不是当前目录 ${worktree}，`
+        + '\n不摘别人的安装：到那份来源的目录里跑 --remove，或在插件管理里卸载。',
+      )
+    }
+    assertProfileUnlocked(paths.packageLockPath)
     if (changed) writeManifest(paths.packagePath, next)
-    const unlinked = removeLink(paths.linkPath)
+    if (linkState === 'ours') detachLink(paths.linkPath)
     console.log('')
     console.log('== 已从 desktop profile 摘除 dsh-leader-kit ==')
     console.log(`  manifest  ${changed ? '已更新' : '本来就没有'}`)
-    console.log(`  链接      ${unlinked ? '已删除' : '本来就没有'}`)
+    console.log(`  链接      ${linkState === 'ours' ? '已删除' : linkState === 'foreign' ? '是实体目录（不属于本脚本），未动' : '本来就没有'}`)
     console.log(`  profile   ${paths.profileDir}`)
     console.log('')
     console.log('重新打开 DeepSeek Harness 生效。')
@@ -250,9 +350,12 @@ function main() {
   }
 
   const { manifest: next, changed } = planDesktopEnable({ manifest, worktree })
-  // 先建链接再写 manifest：链接建不起来（别人的安装占着位置）时 manifest 保持
-  // 原样，不会留下「声明了依赖、磁盘上没有对应链接」的坏状态。反过来链接成功、
-  // 写 manifest 失败，只是一个没人引用的链接，下次重跑会当成「已指向当前目录」。
+  // 先构建、再建链接、最后写 manifest：构建失败时 profile 一点没动；链接被别人的
+  // 安装挡住时 manifest 也保持原样，不会留下「声明了依赖、磁盘上没有对应链接」的
+  // 坏状态。反过来链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑
+  // 会当成「已指向当前目录」。
+  run('npm', ['run', 'build:client'], { cwd: worktree })
+  assertProfileUnlocked(paths.packageLockPath)
   const action = ensureLink({ linkPath: paths.linkPath, worktree })
   if (changed) writeManifest(paths.packagePath, next)
 
@@ -265,11 +368,13 @@ function main() {
   console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
   console.log('')
 
-  run('npm', ['run', 'build:client'], { cwd: worktree })
-
-  launchDesktopApp(appName)
+  const launched = launchDesktopApp(appName)
   console.log('')
-  console.log('桌面应用已启动。右栏出现「看板」Tab、左栏出现「项目」区块即生效。')
+  if (launched) {
+    console.log('桌面应用已启动。右栏出现「看板」Tab、左栏出现「项目」区块即生效。')
+  } else {
+    console.log('profile 已挂好，启动应用后生效：右栏出现「看板」Tab、左栏出现「项目」区块。')
+  }
   console.log('摘除：npm run desktop -- --remove')
 }
 
