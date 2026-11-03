@@ -20,8 +20,8 @@
 
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
+import { resolveDshHome } from '../src/host/home-paths.js'
 import {
   LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, corruptProfilePackageMessage,
   startWebBundleHint,
@@ -119,7 +119,9 @@ function main() {
   }
   const dshVersion = probe.stdout.trim() || '未知版本'
 
-  const home = process.env.DSH_HOME || join(homedir(), '.dsh')
+  // 预检路径必须与宿主实际用的数据根一致：`DSH_HOME=~/alt` 直接拼会找成
+  // `<cwd>/~/alt`，预检报「找不到日常 profile」，而宿主会去 `~/alt`。
+  const home = resolveDshHome()
   const profileDir = join(home, 'profiles', PROFILE_NAME)
   const packagePath = join(profileDir, 'package.json')
 

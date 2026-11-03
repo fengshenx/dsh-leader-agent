@@ -23,7 +23,7 @@
       "reason": "轮询与宿主事件回调的分支只在真实实例里走到，逐步补"
     },
     "src/client/workspace-exclusion.js": {
-      "lines": 79,
+      "lines": 84,
       "reason": "路径匹配分支多，逐步补"
     },
     "src/host/dispatch.js": {
@@ -39,7 +39,7 @@
       "reason": "宿主权限快照的异常形态，逐步补"
     },
     "src/host/projects/service.js": {
-      "lines": 95,
+      "lines": 97,
       "reason": "项目服务里失败与并发分支，逐步补"
     },
     "src/host/tools/cards.js": {

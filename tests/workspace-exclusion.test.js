@@ -6,7 +6,9 @@ import {
   excludedSessionCountsByWorkspace,
   markRows,
   markSessionRow,
-  markWorkspaceRow,
+  markUngroupedHeader,
+  restoreExpandButton,
+  ungroupedExcludedCount,
 } from '../src/client/workspace-exclusion.js'
 
 /**
@@ -16,7 +18,7 @@ import {
  */
 function fakeRow(rowKey) {
   const classes = new Set()
-  return {
+  const row = {
     rowKey,
     classes,
     children: [],
@@ -24,6 +26,19 @@ function fakeRow(rowKey) {
     parentElement: undefined,
     textContent: '',
     getAttribute: (name) => (name === 'data-row-key' ? rowKey : null),
+    querySelectorAll: (selector) => {
+      const prefix = /\[data-row-key\^="([^"]*)"\]/.exec(selector)?.[1]
+      if (prefix === undefined) return []
+      const found = []
+      const walk = (node) => {
+        for (const child of node.children ?? []) {
+          if (child.getAttribute('data-row-key')?.startsWith(prefix) === true) found.push(child)
+          walk(child)
+        }
+      }
+      walk(row)
+      return found
+    },
     classList: {
       toggle: (name, force) => {
         if (force === true) classes.add(name)
@@ -36,6 +51,7 @@ function fakeRow(rowKey) {
       remove: (...names) => { for (const name of names) classes.delete(name) },
     },
   }
+  return row
 }
 
 test('命中排除集的会话行被标记为隐藏', () => {
@@ -60,45 +76,6 @@ test('不是会话行的标识不参与排除', () => {
 })
 
 /**
- * 造一份工作区标记状态。
- *
- * @param {object} [state] - 覆盖项
- * @param {string[]} [state.quieted] - 压灰集
- * @returns {{ quieted: Set<string> }} 状态
- */
-function markState({ quieted = [] } = {}) {
-  return { quieted: new Set(quieted) }
-}
-
-test('命中压灰集的工作区行被标记为不激活', () => {
-  const row = fakeRow('workspace:w1')
-  const quiet = markWorkspaceRow(row, markState({ quieted: ['w1'] }))
-  assert.equal(quiet, true)
-  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), true)
-})
-
-test('不在压灰集里的工作区行保持激活态', () => {
-  const row = fakeRow('workspace:w2')
-  const quiet = markWorkspaceRow(row, markState({ quieted: ['w1'] }))
-  assert.equal(quiet, false)
-  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), false)
-})
-
-test('压灰集变化后重新标记能恢复激活态', () => {
-  const row = fakeRow('workspace:w1')
-  markWorkspaceRow(row, markState({ quieted: ['w1'] }))
-  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), true)
-  markWorkspaceRow(row, markState())
-  assert.equal(row.classes.has('dsh-leader-kit-quiet-workspace'), false)
-})
-
-test('工作区行不被整行隐藏：项目目录也照常出现在树里', () => {
-  const row = fakeRow('workspace:w1')
-  assert.equal(markWorkspaceRow(row, markState()), false)
-  assert.equal(row.classes.size, 0)
-})
-
-/**
  * 造一个假的查询根：按 `data-row-key` 前缀查后代，形状照 `markRows` 用到的
  * `querySelectorAll`（只认选择器里的 `^="…"` 前缀）。
  *
@@ -107,37 +84,39 @@ test('工作区行不被整行隐藏：项目目录也照常出现在树里', ()
  */
 function fakeRoot(rows) {
   return {
+    querySelector: (selector) => {
+      const exact = /\[data-row-key="([^"]*)"\]/.exec(selector)?.[1]
+      if (exact !== undefined) {
+        return rows.find((row) => row.getAttribute('data-row-key') === exact)
+      }
+      const prefix = /\[data-row-key\^="([^"]*)"\]/.exec(selector)?.[1] ?? ''
+      return rows.find((row) => row.getAttribute('data-row-key')?.startsWith(prefix))
+    },
     querySelectorAll: (selector) => {
+      const exact = /\[data-row-key="([^"]*)"\]/.exec(selector)?.[1]
+      if (exact !== undefined) {
+        return rows.filter((row) => row.getAttribute('data-row-key') === exact)
+      }
       const prefix = /\[data-row-key\^="([^"]*)"\]/.exec(selector)?.[1] ?? ''
       return rows.filter((row) => row.getAttribute('data-row-key')?.startsWith(prefix))
     },
   }
 }
 
-test('真实标记路径下工作区行只带压灰类，不会被整行隐藏', () => {
-  // 与 createWorkspaceExclusion 的 update → markAll 同一条路径：真正落类的是 markRows。
-  const quietRow = fakeRow('workspace:w1')
-  const plainRow = fakeRow('workspace:w2')
-  // 工作区 id 恰好也出现在会话排除集里：那也不该让它整行消失。
-  const collidedRow = fakeRow('workspace:s9')
+test('工作区行不被整行隐藏：项目目录也照常出现在树里', () => {
+  const workspaceRow = fakeRow('workspace:w1')
   const sessionRow = fakeRow('session:s9')
-  const root = fakeRoot([quietRow, plainRow, collidedRow, sessionRow])
+  const root = fakeRoot([workspaceRow, sessionRow])
 
-  markRows(root, { excluded: new Set(['s9']), quieted: new Set(['w1']) })
+  markRows(root, { excluded: new Set(['s9']) })
 
-  // 会话行按排除集隐藏——排除机制本身仍在。
   assert.deepEqual([...sessionRow.classes], ['dsh-leader-kit-excluded-session'])
-  // 工作区行只认压灰：没命中的一行类都没有，命中的只有压灰类。
-  assert.deepEqual([...quietRow.classes], ['dsh-leader-kit-quiet-workspace'])
-  assert.deepEqual([...plainRow.classes], [])
-  assert.deepEqual([...collidedRow.classes], [])
+  assert.deepEqual([...workspaceRow.classes], [])
 })
 
-test('会话行与工作区行各认各的前缀', () => {
-  const sessionRow = fakeRow('session:s1')
+test('会话行只认 session: 前缀', () => {
   const workspaceRow = fakeRow('workspace:session:junk')
   assert.equal(markSessionRow(workspaceRow, new Set(['session:junk'])), false)
-  assert.equal(markWorkspaceRow(sessionRow, markState({ quieted: ['s1'] })), false)
 })
 
 test('排除集变化后重新标记能改回可见', () => {
@@ -255,7 +234,6 @@ test('展开按钮的剩余数扣掉藏在未渲染部分里的项目会话', ()
 
   markRows(group.root, {
     excluded: new Set(['w1s', 'w2s', 'w3s']),
-    quieted: new Set(),
     excludedByGroup: new Map([['w1', 3]]),
   })
 
@@ -270,7 +248,6 @@ test('剩余全是项目会话时把展开按钮收起', () => {
 
   markRows(group.root, {
     excluded: new Set(['w1s', 'w2s']),
-    quieted: new Set(),
     excludedByGroup: new Map([['w1', 2]]),
   })
 
@@ -281,7 +258,6 @@ test('反复标记不会把改过的数字再减一次', () => {
   const group = fakeGroup({ key: 'w1', rendered: ['a', 'w1s'] })
   const state = {
     excluded: new Set(['w1s', 'w2s']),
-    quieted: new Set(),
     excludedByGroup: new Map([['w1', 2]]),
   }
 
@@ -295,7 +271,6 @@ test('宿主重写文案后按宿主的新数字重算', () => {
   const group = fakeGroup({ key: 'w1', rendered: ['a', 'w1s'] })
   const state = {
     excluded: new Set(['w1s', 'w2s']),
-    quieted: new Set(),
     excludedByGroup: new Map([['w1', 2]]),
   }
   markRows(group.root, state)
@@ -310,7 +285,7 @@ test('宿主重写文案后按宿主的新数字重算', () => {
 
 test('没有分组统计时不碰展开按钮', () => {
   const group = fakeGroup({ key: 'w1', rendered: ['w1s'] })
-  markRows(group.root, { excluded: new Set(['w1s']), quieted: new Set() })
+  markRows(group.root, { excluded: new Set(['w1s']) })
   assert.equal(group.button.textContent, '展开其余 3 个会话')
   assert.equal(group.button.classes.size, 0)
 })
@@ -319,7 +294,6 @@ test('文案里没有数字（收起）时原样不动', () => {
   const group = fakeGroup({ key: 'w1', rendered: ['a'], buttonText: '收起' })
   markRows(group.root, {
     excluded: new Set(['w1s']),
-    quieted: new Set(),
     excludedByGroup: new Map([['w1', 1]]),
   })
   assert.equal(group.button.textContent, '收起')
@@ -379,7 +353,6 @@ test('子工作区的隐藏会话不算进父组的剩余数', () => {
   const root = fakeRoot([childRow, parentButton, childButton, ...children, ...childChildren])
   markRows(root, {
     excluded: new Set(['child-hidden', 'parent-hidden']),
-    quieted: new Set(),
     excludedByGroup: new Map([['parent', 1], ['child', 1]]),
   })
 
@@ -388,4 +361,162 @@ test('子工作区的隐藏会话不算进父组的剩余数', () => {
   // 子组自身那一条已渲染且隐藏：2 - (1 - 1) = 2。
   assert.equal(childButton.textContent, '展开其余 2 个会话')
   assert.equal(childRow.classes.has('dsh-leader-kit-excluded-session'), true)
+})
+
+/**
+ * 造一个「未分组」分组：组头 + 已渲染的会话行，结构照宿主的分组容器。
+ *
+ * @param {object} options - 选项
+ * @param {string[]} options.rendered - 已渲染的会话 id
+ * @param {boolean} [options.withOverflow] - 是否带「展开其余 N 个会话」按钮
+ * @returns {{ root: object, header: object, sessions: Map<string, object>, button?: object }} 假树
+ */
+function fakeUngrouped({ rendered, withOverflow = false }) {
+  const section = fakeRow('section:ungrouped')
+  const header = fakeRow('workspace:')
+  header.parentElement = section
+  const children = [header]
+  const sessions = new Map()
+  for (const id of rendered) {
+    const row = fakeRow(`session:${id}`)
+    wrapRow(section, children, row)
+    sessions.set(id, row)
+  }
+  let button
+  if (withOverflow) {
+    button = fakeRow('overflow:')
+    button.textContent = '展开其余 2 个会话'
+    button.parentElement = section
+    children.push(button)
+  }
+  section.children = children
+  return { root: fakeRoot([header, ...sessions.values(), ...(button === undefined ? [] : [button])]), header, sessions, button }
+}
+
+test('未分组里的项目会话全被排除时，组头也藏起来', () => {
+  const group = fakeUngrouped({ rendered: ['w1', 'w2'] })
+
+  markRows(group.root, { excluded: new Set(['w1', 'w2']) })
+
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
+})
+
+test('未分组里还有可见会话时组头保留', () => {
+  const group = fakeUngrouped({ rendered: ['w1', 'mine'] })
+
+  markRows(group.root, { excluded: new Set(['w1']) })
+
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
+test('还有展开按钮时不藏组头：未渲染的会话可能不属于排除集', () => {
+  const group = fakeUngrouped({ rendered: ['w1'], withOverflow: true })
+
+  markUngroupedHeader(group.root)
+
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
+test('展开按钮被收起后组头跟着藏起来', () => {
+  // 未分组里 6 条全是项目会话：宿主渲染 5 条、剩 1 条要展开；排除集也是 6，
+  // 5 条已渲染的都藏了，剩下那条同样看不见，按钮该收起，组头也随之消失。
+  const group = fakeUngrouped({
+    rendered: ['w1', 'w2', 'w3', 'w4', 'w5'],
+    withOverflow: true,
+  })
+  group.button.textContent = '展开其余 1 个会话'
+
+  markRows(group.root, {
+    excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5', 'w6']),
+    excludedByGroup: new Map([['', 6]]),
+  })
+
+  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), true)
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
+})
+
+test('未分组超过一屏且混着用户会话：按钮数字不动，组头保留', () => {
+  // 未分组 7 条：5 条项目会话（都渲染出来了）+ 2 条用户会话（还在「展开其余 2 个」里）。
+  // 已渲染的 5 条全藏，剩余数仍是 2，不能把用户会话一起折掉。
+  const group = fakeUngrouped({
+    rendered: ['w1', 'w2', 'w3', 'w4', 'w5'],
+    withOverflow: true,
+  })
+
+  markRows(group.root, {
+    excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5']),
+    excludedByGroup: new Map([['', 5]]),
+  })
+
+  assert.equal(group.button.textContent, '展开其余 2 个会话')
+  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), false)
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
+test('还原展开按钮：文本仍是我们写的那句时换回宿主原数', () => {
+  const button = fakeRow('overflow:')
+  button.textContent = '展开其余 3 个会话'
+  // 真实调用链里 origin 由 `hostExpandCount` 在改数字之前记下。
+  button.dataset.expandOrigin = '3'
+  adjustExpandButton(button, 1)
+  assert.equal(button.textContent, '展开其余 1 个会话')
+
+  restoreExpandButton(button)
+
+  assert.equal(button.textContent, '展开其余 3 个会话')
+  assert.equal(button.dataset.expandOrigin, undefined)
+  assert.equal(button.dataset.expandWritten, undefined)
+})
+
+test('还原展开按钮：宿主重写过文案时不碰文本，只清掉记下的数字', () => {
+  const button = fakeRow('overflow:')
+  // 宿主在一次重渲染里自己算了一遍：它的数字是新的，我们记的那份已经过期。
+  button.textContent = '展开其余 5 个会话'
+  button.dataset.expandOrigin = '3'
+  button.dataset.expandWritten = '展开其余 1 个会话'
+
+  restoreExpandButton(button)
+
+  assert.equal(button.textContent, '展开其余 5 个会话')
+  assert.equal(button.dataset.expandOrigin, undefined)
+  assert.equal(button.dataset.expandWritten, undefined)
+})
+
+test('还原展开按钮：没有 dataset 的节点只去掉隐藏类', () => {
+  const button = fakeRow('overflow:')
+  button.textContent = '展开其余 2 个会话'
+  delete button.dataset
+  button.classList.add('dsh-leader-kit-excluded-expand')
+
+  restoreExpandButton(button)
+
+  assert.equal(button.textContent, '展开其余 2 个会话')
+  assert.equal(button.classes.has('dsh-leader-kit-excluded-expand'), false)
+})
+
+test('没有未分组组头时不做任何标记', () => {
+  const root = fakeRoot([fakeRow('session:s1')])
+  assert.equal(markUngroupedHeader(root), false)
+})
+
+test('未分组排除数按宿主可见性口径算：空白、归档、子代理与已归属的都不计', () => {
+  const count = ungroupedExcludedCount({
+    sessionRows: {
+      'w1': { id: 'w1', blank: false },
+      'w2': { id: 'w2', blank: false },
+      'w3': { id: 'w3', blank: false },
+      'leader-blank': { id: 'leader-blank', blank: true },
+      'other-blank': { id: 'other-blank', blank: true },
+      'sub': { id: 'sub', origin: 'subagent' },
+      'in-workspace': { id: 'in-workspace', blank: false },
+    },
+    workspaceItems: [{ workspaceId: 'w1', sessionIds: ['in-workspace'] }],
+    excluded: new Set(['w1', 'w2', 'w3', 'leader-blank', 'other-blank', 'sub', 'in-workspace']),
+    archivedSessionIds: new Set(['w3']),
+    currentSessionId: 'leader-blank',
+  })
+
+  // w1、w2 与「当前会话是 blank」的 leader-blank 计入；归档、子代理、
+  // 非当前空白会话与已归属工作区的都不计。
+  assert.equal(count, 3)
 })
