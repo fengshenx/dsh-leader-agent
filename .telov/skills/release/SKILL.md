@@ -76,20 +76,23 @@ CI 依次：校验 → `npm ci` → OIDC 发布 → 建 Release。发布步骤�
 
 ## 首次发布（包在 npm 上还不存在）
 
-trusted publisher 要求包已存在，所以首个版本必须绕开 CI：
+trusted publisher 要求包已存在，所以首个版本必须绕开 CI；但**登记完必须再发一个未发布过的版本**，否则 OIDC 一次都不会跑：
 
 1. 本机确认 `npm run release:check` 通过。
-2. `npm login`，然后 `npm publish`（不要带路径参数，否则跳过 `prepublishOnly`）。
+2. `npm login`，然后 `npm publish`（不要带路径参数，否则跳过 `prepublishOnly`）。这一步发出 `package.json` 里的当前版本（如 0.1.0），没有 provenance。
 3. `npm view dsh-leader-kit version` 确认版本上线。
 4. npmjs.com → 包 → Settings → Trusted Publisher → GitHub Actions：
    - Organization or user: `fengshenx`
    - Repository: `dsh-leader-kit`
    - Workflow filename: `publish.yml`
    - Allowed actions: `npm publish`（预发布再勾 `npm dist-tag`）
-5. **2 天内**推一个 `v*` tag 完成首次 OIDC 发布，否则配置过期要删掉重配。
-6. 包设置 → Publishing access → 「Require two-factor authentication and disallow tokens」。
+5. **bump 到一个未发布的版本**（如 0.1.1），按第一到五节走完整流程：PR 合并后从 `main` 打 `v0.1.1` tag。这一步才是首次 OIDC 发布。
+6. 看 `gh run view` 的发布步骤：必须是 `npm notice Publishing ...`，不能是「已发布，跳过 npm publish」。
+7. 包设置 → Publishing access → 「Require two-factor authentication and disallow tokens」。
 
-备选（不想在维护者机器上登录）：建 `Read and write (stage only)` granular token，`npm stage publish` 后由维护者 `npm stage approve`（要 OTP）；它先注册 `0.0.0-stage` 占位包。
+**为什么不能直接推 `v0.1.0`**：第 2 步已经把它发到 registry，`publish.yml` 的「版本已存在就跳过」守卫会打印「已发布，跳过 npm publish」并 exit 0——workflow 整体绿色，但 OIDC 一次都没跑，trusted publisher 配置 2 天后静默过期，而 CI 读数看不出区别。首发版本天然「已存在」，所以首发之后必须有一个新版本真走一遍 OIDC。
+
+备选（不想在维护者机器上登录）：建 `Read and write (stage only)` granular token，`npm stage publish` 后由维护者 `npm stage approve`（要 OTP）；它先注册 `0.0.0-stage` 占位包。同样要在登记 trusted publisher 后发一个新版本验证 OIDC。
 
 ## 失败处理
 

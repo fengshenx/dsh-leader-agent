@@ -11,9 +11,17 @@
 
 const INLINE_CODE = /`([^`\n]+)`/g
 
-/** 会进会话提示词的文档：根目录两篇，加上 `PROMPT_SKILLS_DIR` 下全部 Markdown。 */
+/** 会进会话提示词的文档：根目录两篇，加上 `PROMPT_SKILLS_DIRS` 下全部 Markdown。 */
 export const PROMPT_DOCS = Object.freeze(['SLOTS.md', 'LEADER.md'])
-export const PROMPT_SKILLS_DIR = '.agents/skills'
+
+/**
+ * 会进会话提示词的 skill 目录。
+ *
+ * `.agents/skills/` 是随包发布的协议层 skill，`.telov/skills/` 是工作区运维 skill
+ * （发版手册之类）。两者都会被会话加载、都会让模型去调工具，所以工具名都要校验：
+ * 只扫前者时，新 skill 里写错工具名没有任何门禁会红。
+ */
+export const PROMPT_SKILLS_DIRS = Object.freeze(['.agents/skills', '.telov/skills'])
 
 /** 至少一个下划线，才可能是工具名；文件名、命令与 camelCase 字段都不命中。 */
 const SNAKE_CASE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/

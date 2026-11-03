@@ -21,8 +21,9 @@ export const AGENTS_SKILLS_PREFIX = '.agents/skills/'
  * 不该出现在发布包里的路径。
  *
  * 每条都对应一个具体的漂移风险：测试把仓内上下文带进用户的 node_modules；`scripts/`
- * 与 `build/` 是开发工具，装了也用不上；`.dev/`、`.worktrees/` 是本地运行态；`.tgz` 与
- * `.DS_Store` 是打包过程与 macOS 的残留。
+ * 与 `build/` 是开发工具，装了也用不上；`.dev/`、`.worktrees/`、`.telov/` 是本地运行态
+ * 与工作区运维资产（发版 skill 之类，只服务本仓维护者）；`.tgz` 与 `.DS_Store` 是打包
+ * 过程与 macOS 的残留。
  *
  * 这份名单是 `files` 白名单的补集，不是它的复述：白名单一旦放宽（比如有人写
  * `"docs/**"`、`"*.md"`），这里负责把不该发的东西拦下来。`.agents/` 例外，走
@@ -33,6 +34,7 @@ export const FORBIDDEN_PATTERNS = Object.freeze([
   /(^|\/)tests\//,
   /^\.dev\//,
   /^\.worktrees\//,
+  /^\.telov\//,
   /^\.github\//,
   /^AGENTS\.md$/,
   /^CLAUDE\.md$/,

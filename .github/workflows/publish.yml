@@ -57,8 +57,9 @@ jobs:
           cache: npm
 
       # OIDC 发布要求 npm CLI ≥ 11.5.1；OIDC 下切 dist-tag 要求 ≥ 11.21 / 12.2。
-      # 不依赖 setup-node 附带的那一版。
-      - run: npm install -g npm@latest --no-fund --no-audit
+      # 钉具体版本而不是 @latest：与 actions 钉 SHA 同一条理由——发布前不该从浮动
+      # tag 拉到一份没人审阅过的代码，而 npm 版本不可回收。11.21.0 同时满足两个门槛。
+      - run: npm install -g npm@11.21.0 --no-fund --no-audit
 
       - run: npm ci
 
