@@ -133,7 +133,7 @@ The plugin only reads `LEADER.md`. A `COORDINATOR.md` that merely points at it i
 
 Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default three roles `discuss` / `dev` / `review`.
 
-The `init-project` skill does something else: it merges the repository's engineering conventions (worktree discipline, verification requirements, documentation rules) into a managed block of the target project's `AGENTS.md`. The write takes effect for later sessions immediately, re-running only replaces the managed block, and it never overwrites the project's own content.
+The `init-leader-kit` skill handles project setup: it merges the repository's engineering conventions into a managed block of the target project's `AGENTS.md`, then writes `LEADER.md` (how the Leader drives this project) and `SLOTS.md` (executor roles) from the bundled skeletons. Re-running only replaces the managed block, and both manuals are read before editing. An empty directory gets the TODO skeleton plus the three questions still unanswered — project facts are never invented.
 
 For the full interaction — slot frontmatter details, archiving, swapping the Leader, how board status lights are derived — see the [usage manual](docs/usage.md) (Chinese).
 

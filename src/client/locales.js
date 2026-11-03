@@ -38,9 +38,9 @@ export const zh = Object.freeze({
   'slot.review': '审核',
   'guide.title': '这个目录有一个 Leader 了',
   'guide.steps': '你可以让它建任务卡、给 Agent 派活，在右栏看板跟进',
-  'guide.action.intro': '让它介绍一下自己',
+  'guide.action.intro': '了解怎么用',
   'guide.action.dismiss': '知道了',
-  'guide.intro.prompt': '介绍一下你自己：你能帮我做什么，我该怎么用你？',
+  'guide.intro.prompt': '这个项目还没配置，先讲讲 dsh-leader-kit 怎么用。',
 })
 
 /** 英文字典，键与中文字典一致。 */
@@ -50,9 +50,9 @@ export const en = Object.freeze({
   'slot.review': 'Review',
   'guide.title': 'This directory has a Leader',
   'guide.steps': 'Open task cards, hand work to Agents, track progress in the board',
-  'guide.action.intro': 'Ask it to introduce itself',
+  'guide.action.intro': 'Show me how to use it',
   'guide.action.dismiss': 'Got it',
-  'guide.intro.prompt': 'Introduce yourself: what can you do for me, and how should I use you?',
+  'guide.intro.prompt': "This project isn't set up yet — show me how dsh-leader-kit works.",
 })
 
 /**

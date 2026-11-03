@@ -10,6 +10,7 @@ import {
   sendIntroPrompt,
   shouldShowGuide,
 } from '../src/client/guide-card-logic.js'
+import { en, zh } from '../src/client/locales.js'
 
 /**
  * 造一个够用的存储桩。
@@ -105,26 +106,37 @@ test('取 localStorage：属性访问抛错时当作没有存储', () => {
   assert.equal(readLocalStorage({ localStorage: storage }), storage)
 })
 
-test('让它自我介绍：填进输入框并当场提交', () => {
+test('了解怎么用：填进输入框并当场提交', () => {
   const calls = []
   const actions = {
     setDraft: (text) => calls.push(['setDraft', text]),
     submit: () => calls.push(['submit']),
   }
-  assert.equal(sendIntroPrompt(actions, '介绍一下你自己'), true)
-  assert.deepEqual(calls, [['setDraft', '介绍一下你自己'], ['submit']])
+  assert.equal(sendIntroPrompt(actions, '了解怎么用'), true)
+  assert.deepEqual(calls, [['setDraft', '了解怎么用'], ['submit']])
+})
+
+test('开场正文只发一句触发语，作答要求交给运行时上下文', () => {
+  // 引导卡发的是用户消息，会显示在对话里：保持一句话，长约束（怎么解释、
+  // 确认前不写文件、空目录写骨架）放在 leader 上下文注入里，见
+  // `renderInitializationHint`。
+  for (const dict of [zh, en]) {
+    assert.match(dict['guide.intro.prompt'], /dsh-leader-kit/)
+    assert.doesNotMatch(dict['guide.intro.prompt'], /LEADER\.md/)
+    assert.ok(dict['guide.intro.prompt'].length < 80, '引导语应是一句话')
+  }
 })
 
 test('只给 submit 缺 setDraft：判定不发，按钮层也不渲染', () => {
   const submitOnly = { submit: () => {} }
   assert.equal(canSendIntro(submitOnly), false)
-  assert.equal(sendIntroPrompt(submitOnly, '介绍一下你自己'), false)
+  assert.equal(sendIntroPrompt(submitOnly, '了解怎么用'), false)
 })
 
 test('只给 setDraft 缺 submit：同样判定不发', () => {
   const draftOnly = { setDraft: () => {} }
   assert.equal(canSendIntro(draftOnly), false)
-  assert.equal(sendIntroPrompt(draftOnly, '介绍一下你自己'), false)
+  assert.equal(sendIntroPrompt(draftOnly, '了解怎么用'), false)
 })
 
 test('两个动作都在：判定通过，且真的发出', () => {
@@ -134,8 +146,8 @@ test('两个动作都在：判定通过，且真的发出', () => {
     submit: () => calls.push(['submit']),
   }
   assert.equal(canSendIntro(both), true)
-  assert.equal(sendIntroPrompt(both, '介绍一下你自己'), true)
-  assert.deepEqual(calls, [['setDraft', '介绍一下你自己'], ['submit']])
+  assert.equal(sendIntroPrompt(both, '了解怎么用'), true)
+  assert.deepEqual(calls, [['setDraft', '了解怎么用'], ['submit']])
 })
 
 test('渲染守卫与发送路径共用同一个判定：只查一半就会画出假按钮', () => {
@@ -155,5 +167,5 @@ test('渲染守卫与发送路径共用同一个判定：只查一半就会画�
 test('输入机整个缺失时判定为假', () => {
   assert.equal(canSendIntro(undefined), false)
   assert.equal(canSendIntro({}), false)
-  assert.equal(sendIntroPrompt(undefined, '介绍一下你自己'), false)
+  assert.equal(sendIntroPrompt(undefined, '了解怎么用'), false)
 })

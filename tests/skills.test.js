@@ -14,7 +14,7 @@ test('发现 bundle 内全部 skill', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const candidates = await provider.list()
   const names = candidates.map(candidate => candidate.name).sort()
-  assert.deepEqual(names, ['init-project', 'leader-mode'])
+  assert.deepEqual(names, ['init-leader-kit', 'leader-mode'])
 })
 
 test('候选带可加载的正文与目录资源基址', async () => {

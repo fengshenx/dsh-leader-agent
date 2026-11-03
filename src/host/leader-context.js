@@ -14,6 +14,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { SLOT_TEMPLATE_FILE } from './slots/slot-templates.js'
 
 /** leader 手册文件名，位于项目目录下。 */
 export const LEADER_CONTEXT_FILE = 'LEADER.md'
@@ -117,6 +118,43 @@ export function loadLeaderManual(directory, logger = () => {}) {
 }
 
 /**
+ * 项目还没有 leader 手册时的初始化提示。
+ *
+ * 引导卡只发一句自然的话（「这个项目还没配置，先讲讲怎么用」），作答要求放在
+ * 运行时上下文里：长文本进提示词，对话里就只留一句用户可见的消息；文件建好后
+ * 手册正文取代这段提示，不需要任何状态标记。
+ *
+ * 触发面限定在「用户问用法」：用户直接派活时不该被打断，所以提示里写清了
+ * 只在被问到时按它回答。
+ *
+ * @param {string} directory - 项目目录绝对路径
+ * @returns {string} 提示正文；手册读失败（文件存在但读不了）时为空串
+ */
+export function renderInitializationHint(directory) {
+  const leader = readManual(join(directory, LEADER_CONTEXT_FILE))
+  // 文件存在但读不了不是「没初始化」：loadLeaderManual 已经记过日志，这里再提示
+  // 会让用户去建一个已经存在的文件。
+  if (leader.error !== undefined) return ''
+  const slots = readManual(join(directory, SLOT_TEMPLATE_FILE))
+  const hasSlots = slots.body !== undefined && slots.body.trim() !== ''
+  return [
+    '## 项目待初始化',
+    '',
+    hasSlots
+      ? `这个项目还没有 \`${LEADER_CONTEXT_FILE}\`（leader 工作方法）。`
+      : `这个项目还没有 \`${LEADER_CONTEXT_FILE}\`（leader 工作方法）与 \`${SLOT_TEMPLATE_FILE}\`（执行者角色手册）。`,
+    '',
+    '用户第一次问这个项目怎么用、怎么开始，或问 dsh-leader-kit 是什么时，按这个顺序回答：',
+    '',
+    '1. 说明 dsh-leader-kit 怎么工作：你负责拆解目标、建任务卡、派工；worker 在各自的工作区干活并回报；用户在看板上跟进进度、审核与验收。一个任务一张卡，卡上标出执行者。',
+    '2. 说明两份文件各解决什么，然后问用户是否现在初始化。',
+    '3. 用户明确同意后，加载 `init-leader-kit` skill 并按它执行：目录里已有的文档先读，目录是空的就写带 TODO 的骨架，不要编造项目内容。',
+    '',
+    '用户没同意前不要创建或修改任何文件；已经问过、用户还没回答时不要重复追问。用户直接派活时不要打断，按正常流程干活。',
+  ].join('\n')
+}
+
+/**
  * 渲染 leader 的手册上下文。
  *
  * @param {object} options - 选项
@@ -124,13 +162,14 @@ export function loadLeaderManual(directory, logger = () => {}) {
  * @param {(sessionId: string) => string | undefined} options.resolveDirectory - 取会话所属项目目录；
  *   只有该项目的 leader 会话才有值，普通会话与 worker 返回 undefined
  * @param {(message: string) => void} [options.logger] - 日志输出
- * @returns {string} 上下文文本；不是 leader、目录不可得或手册为空时为空串
+ * @returns {string} 上下文文本；不是 leader、目录不可得或手册读失败时为空串
  */
 export function renderLeaderContext({ sessionId, resolveDirectory, logger = () => {} }) {
   if (typeof sessionId !== 'string' || sessionId === '') return ''
   const directory = resolveDirectory(sessionId)
+  if (typeof directory !== 'string' || directory === '') return ''
   const body = loadLeaderManual(directory, logger)
-  if (body === '') return ''
+  if (body === '') return renderInitializationHint(directory)
   return [
     '## leader 手册',
     '',

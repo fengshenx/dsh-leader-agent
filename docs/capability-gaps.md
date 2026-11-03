@@ -436,12 +436,12 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 |---|---|---|
 | bundle 作为第三方 bundle 分发 | 通过 | `dsh plugin --profile headless add ../dsh-leader-kit` 后 `dsh.profile.bundles` 含 `dsh-leader-kit` |
 | `ctx.tools.register` | 通过 | 模型调用 `init_project` 成功，目标目录生成 `AGENTS.md`（4307 字节，含受管区块） |
-| `ctx.skills.registerProvider` | 通过 | `ctx.skills.list()` 返回 `leader-mode` 与 `init-project`，provider `dsh-leader-kit`，source `bundled` |
+| `ctx.skills.registerProvider` | 通过 | `ctx.skills.list()` 返回 `leader-mode` 与 `init-leader-kit`，provider `dsh-leader-kit`，source `bundled` |
 | 免凭据跑真实会话 | 通过 | dsh 自带 mock LLM server（`packages/test-support/llm-mock-server`）+ `DEEPSEEK_BASE_URL` 覆盖 |
 | 包名子路径解析 | 通过 | `exports` 映射 `"./src/host": "./src/host/index.js"`；ESM 不支持目录索引，必须指到文件 |
 | 后台派工（派完即返回） | 通过 | `spawn_worker` 立即返回子会话 id，父 turn 正常结束，worker 在后台继续 |
 | 完成自动唤醒 | 通过 | 父 inbox 收到完成通知（正文不带说话人前缀）后状态 `idle → running → idle`，通知队列清空 |
-| 协议层与工具对模型可见 | 通过 | 模型侧工具列表同时含 `init_project` 与 `spawn_worker`；skill catalog 含 `leader-mode` 与 `init-project` |
+| 协议层与工具对模型可见 | 通过 | 模型侧工具列表同时含 `init_project` 与 `spawn_worker`；skill catalog 含 `leader-mode` 与 `init-leader-kit` |
 | 原生工具管理子会话 | 通过（源码核验） | base bundle 启用 `tool-subagent-control` 与 `tool-subagent-control/list-agents`；`agent_id` 即子会话 id |
 | 卡片存储与领域规则 | 通过 | 49 例单测全绿；sdk profile + mock LLM 实测建卡/改卡/查卡/版本冲突 |
 | 客户端取数通道 | 通过 | `output.presentationMeta` 投影的 `meta` 随 `tool/result` 事件持久化，实测携带完整卡片对象 |

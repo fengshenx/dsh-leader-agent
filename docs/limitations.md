@@ -40,7 +40,7 @@
 
 ## 项目、树与工作区
 
-- **模型没有项目注册表工具**。`add_project` / `list_projects` / `switch_project` / `remove_project` 都不存在；仓库工程约定也没有专用工具，初始化走 `init-project` skill 的文件写入。宿主注册工作区不校验目录：挂在已删目录上会抛一句英文技术错（本仓的前置检查见[项目与会话归属](architecture.md#项目与会话归属)）。目录选择器不可用时（宿主缺 web-app 的导航服务）无法建项目，需要换用 web profile。
+- **模型没有项目注册表工具**。`add_project` / `list_projects` / `switch_project` / `remove_project` 都不存在；仓库工程约定也没有专用工具，初始化走 `init-leader-kit` skill 的文件写入。宿主注册工作区不校验目录：挂在已删目录上会抛一句英文技术错（本仓的前置检查见[项目与会话归属](architecture.md#项目与会话归属)）。目录选择器不可用时（宿主缺 web-app 的导航服务）无法建项目，需要换用 web profile。
 - **项目树是自建的，与官方工作区树并存**。官方只有按工作区分组的会话树，没有「项目」维度。本仓的项目树列出该项目的 worker 与退役 leader，判据分开：worker 看登记表（「登记表说它是本 bundle 派出的 worker」）加 cwd 与项目目录的 realpath 精确相等（worker 是普通根会话，会话头没有身份标记，只能按登记判）；退役 leader 看项目记录的 `retiredLeaderSessionIds`。当前 leader（入口在项目行上）与用户在项目目录里手动开的会话都不算：前者由项目入口打开，后者留在官方工作区树里。
 - **「项目会话不出现在官方工作区树」是渲染层排除，不是数据层**。官方没有按外部集合排除行的扩展点，本仓认 `data-row-key="session:<id>"` 给命中排除集的行加隐藏类。排除集含项目的 leader 会话与全部 worker 会话（worker 是普通根会话，官方树不会自己滤掉，不排除就会同时出现在两棵树里）。代价：官方分组行上的会话计数仍包含被隐藏的会话；被隐藏的行仍在 DOM 里，官方搜索仍能命中。
 - **子目录里的 worker 不算项目下的 worker**（判据与名单来源见[项目的服务层语义](architecture.md#项目与会话归属)）。

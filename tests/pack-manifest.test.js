@@ -51,11 +51,11 @@ test('exports 的通配子路径不作为必需文件，覆盖面交给磁盘枚
 test('skill 与 locale 的文件逐个并入必需集，并规整成包内路径', () => {
   const files = requiredPackFiles({
     manifest,
-    skillFiles: ['.agents/skills/leader-mode/SKILL.md', './.agents/skills/init-project/SKILL.md'],
+    skillFiles: ['.agents/skills/leader-mode/SKILL.md', './.agents/skills/init-leader-kit/SKILL.md'],
     localeFiles: ['zh.json', 'en.json'],
   })
   assert.ok(files.includes('.agents/skills/leader-mode/SKILL.md'))
-  assert.ok(files.includes('.agents/skills/init-project/SKILL.md'))
+  assert.ok(files.includes('.agents/skills/init-leader-kit/SKILL.md'))
   assert.ok(files.includes('locale/zh.json'))
   assert.ok(files.includes('locale/en.json'))
 })
@@ -128,7 +128,7 @@ test('.agents 只放行 skills 子树：新增目录默认被拦', () => {
   const published = [
     '.agents/skills/leader-mode/SKILL.md',
     '.agents/skills/leader-mode/playbooks/delivery.md',
-    '.agents/skills/init-project/references/conventions.md',
+    '.agents/skills/init-leader-kit/references/conventions.md',
   ]
   for (const path of published) assert.equal(isForbiddenPath(path), false, `${path} 是发布文件`)
 })
