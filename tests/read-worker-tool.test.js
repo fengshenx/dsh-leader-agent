@@ -417,3 +417,18 @@ test('工具 schema 只用宿主执行子集里的关键字', () => {
   collectSchemaViolations(tool.output.schema, 'output.schema', violations)
   assert.deepEqual(violations, [])
 })
+
+test('output.render 只输出正文，不回显排障字段', () => {
+  const tool = createReadWorkerTool({ dispatcher: {} })
+  assert.deepEqual(tool.output.render({}, { text: '第一轮：调 tool_a 失败' }), [
+    { type: 'text', text: '第一轮：调 tool_a 失败' },
+  ])
+})
+
+test('没有调用方 agent 时明确报错，不静默读到空会话', async () => {
+  const tool = createReadWorkerTool({ dispatcher: {} })
+  await assert.rejects(
+    () => tool.execute({ sessionId: 'child-1' }, {}),
+    /需要调用方 agent/,
+  )
+})

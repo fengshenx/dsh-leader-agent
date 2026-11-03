@@ -40,7 +40,7 @@ src/shared/         两端共用的纯函数与消息来源约定
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
-scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名、文档预算）
+scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名、文档预算、覆盖率）
 docs/               长期文档（架构地图、已知限制、宿主能力边界、开发与构建、e2e 车道与人工取证）
 .agents/notes/      非平凡改动的决策记忆
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
@@ -51,13 +51,15 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / de
 ## 常用命令
 
 ```bash
-npm run check                     # Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查（index/src/scripts/build）+ 全部单测
+npm run check                     # Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查（index/src/scripts/build）+ 覆盖率门禁（含全部单测）
 npm run test                      # 只跑单测
+npm run test:coverage             # 只跑单测 + per-file 行覆盖门禁
 npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
 npm run e2e:install               # 首次跑 e2e 前下载 chromium
 npm run build:client              # 重建客户端产物 lib/client.js（加 `-- --watch` 常驻，改 src/client/ 自动替换运行中的插件）
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
+npm run desktop                   # 挂进桌面版的 desktop profile 并拉起应用（-- --remove 摘除）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
 npm run worktree:prune            # 清已合并的 worktree（默认只打印，--apply 才删）
 ```
@@ -65,6 +67,7 @@ npm run worktree:prune            # 清已合并的 worktree（默认只打印�
 ## 测试
 
 - 只有 `node:test`，**没有 lint**：未使用的 import、死代码、拼写错误都抓不到，改完要手扫。
+- **覆盖率按 per-file 行覆盖判**：`src` 下没登记门槛的文件要求 100%，存量欠账登记在 `scripts/coverage-manifest.json`。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由，否则新增文件照样变红（机制见 [docs/development.md](docs/development.md#测试与构建)）。
 - 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——命令、场景写法、截图落点与断言纪律见 [docs/e2e-testing.md](docs/e2e-testing.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。

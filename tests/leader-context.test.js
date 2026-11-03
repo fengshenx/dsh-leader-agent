@@ -202,6 +202,21 @@ test('只有旧名 COORDINATOR.md 时退回读取，并提示改名', async () =
   }
 })
 
+test('新版缺失、旧名位置读失败时返回空串并记日志', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-error-'))
+  try {
+    // 旧名位置被目录占住：不是「文件不存在」，要留日志而不是当成没有手册。
+    await mkdir(join(directory, LEGACY_LEADER_CONTEXT_FILE))
+    const logged = []
+    assert.equal(loadLeaderManual(directory, (message) => logged.push(message)), '')
+    assert.equal(logged.length, 1)
+    assert.match(logged[0], /读取 leader 手册失败/)
+    assert.match(logged[0], /COORDINATOR\.md/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('读失败（文件位置被目录占用）时返回空串并记日志', async () => {
   const project = await createProject(undefined)
   try {

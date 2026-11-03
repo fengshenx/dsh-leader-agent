@@ -98,6 +98,17 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 `engines.dsh` 声明支持范围（当前 `>=0.2.1-rc.2 <0.3.0`），不满足时安装与启动会被拒绝；dsh 处于 developer preview，版本范围需随它跟进。在本仓库里可以直接 `npm start`：它先构建 `lib/client.js`（不入库，漏构建时实例照常起来、右栏却没有看板），再起 `dsh web`，起之前检查 dsh 是否可用、日常 profile 是否装了本插件。
 
+### 桌面版（DeepSeek Harness Desktop）
+
+桌面版是 Electron 壳 + 完整 Web 应用，profile 固定为 `$DSH_HOME/profiles/desktop`，包与激活状态和上面的 `web` profile 各一份——装进 `web` 的插件它看不到。在本仓库里一条命令挂进去并启动：
+
+```sh
+npm run desktop              # 写入 desktop profile、重建客户端产物、拉起桌面应用
+npm run desktop -- --remove  # 摘除
+```
+
+脚本写 `dsh-leader-kit: link:<当前目录>`，改代码即生效。桌面应用只在启动时读 profile：跑之前先完全退出（关窗口只是隐藏），同一时刻只能挂一个工作树版本；`--remove` 只摘本工作树挂的那份，遇到别的工作树或插件管理装的版本会拒绝并说明。不用脚本也可以在桌面应用的插件管理里「添加插件」填本仓库绝对路径。两端共享 `~/.dsh` 下的会话、项目与卡片数据，插件包与激活状态各自一份。`DSH_HOME` 要用绝对路径或 `~/` 写法——应用由 `open` 启动、按自己的目录解析相对路径；脚本启动应用时会用 `open --env` 把绝对数据根传过去，默认 `~/.dsh` 之外的根也能生效。
+
 ### 五步上手
 
 1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个 leader 会话；点项目行就是打开这个 Leader（注册的工作区被删过的话会顺手重建并归位会话）。当前会话属于该项目时左栏按两层回执：打开的是 leader 会话则项目行整行亮，打开的是它派出的 worker 则项目行只点亮行首文件夹、选中态落在那个 worker 自己的会话行上。行首槽位平时是目录图标，活动提示看 leader：它在跑就换成加载圈（leader 没有自己的行，项目展开着也照换），项目收起时名下有 worker 在跑也换成加载圈，展开后 worker 由会话行自己带加载圈。
@@ -118,7 +129,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 `LEADER.md` 与 `SLOTS.md` 在每次模型请求前求值、正文变化才追加：改动在下一个请求生效，没变的轮次不重复注入。`leader-mode` skill 走的是另一条路——模型按需调 `skill` 工具加载，所以上面第 2 步写的是「加载」而不是「配置」。目标项目自己的 `AGENTS.md` 由宿主的 agent-instructions 读成系统提示段落。卡片转为 `done` / `archived` 即释放执行者——槽位绑定与卡片事实一起停止注入。
 
-插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给 Telov 等仍按旧文件名找协调者手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
+插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给 Telov 等仍按旧文件名找 leader 手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
 
 槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`。
 
@@ -159,7 +170,7 @@ npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任
 cd .worktrees/<任务名>
 npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile）
-npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 语法检查 + 全部单测
+npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 文档预算 + 语法检查 + 覆盖率门禁（含全部单测）
 npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
 ```
 
@@ -174,6 +185,7 @@ npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真�
 | 文档 | 内容 |
 |---|---|
 | [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
+| [docs/getting-started.md](docs/getting-started.md) | 上手路线：使用前提、加项目与 Leader、两份项目文件、一张卡从创建到下钻 |
 | [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
 | [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、宿主契约落点 |
 | [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |

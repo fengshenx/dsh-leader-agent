@@ -14,9 +14,10 @@ const flush = () => new Promise((resolve) => { setTimeout(resolve, 0) })
  * 成「清理成功了」。
  *
  * @param {object[]} projects - 项目列表真源；测试里改它模拟宿主侧增删项目
- * @returns {object} 假 ctx、RPC 计数与卸载入口
+ * @param {{ listError?: Error }} [options] - 让 `projects/list` 抛错，覆盖告警分支
+ * @returns {object} 假 ctx、RPC 计数、告警与卸载入口
  */
-function setup(projects) {
+function setup(projects, { listError } = {}) {
   /** @type {Map<string, Set<Function>>} */
   const windowListeners = new Map()
   globalThis.window = {
@@ -30,6 +31,7 @@ function setup(projects) {
     },
   }
   let listCalls = 0
+  const warnings = []
   const disposals = []
   const ctx = {
     get(name) {
@@ -38,6 +40,7 @@ function setup(projects) {
         return {
           list: async () => {
             listCalls += 1
+            if (listError !== undefined) throw listError
             return { ok: true, value: projects }
           },
         }
@@ -49,10 +52,11 @@ function setup(projects) {
       if (typeof dispose === 'function') disposals.push(dispose)
       return dispose ?? (() => {})
     },
-    logger: { warn() {} },
+    logger: { warn(message) { warnings.push(message) } },
   }
   return {
     ctx,
+    warnings,
     listCalls: () => listCalls,
     focusListeners: () => windowListeners.get('focus')?.size ?? 0,
     dispose: () => { for (const dispose of disposals) dispose() },
@@ -102,4 +106,17 @@ test('卸载后三条订阅都退订：通道就绪与项目广播不再触发�
   await mountProjectRemote(env.ctx)
   await flush()
   assert.equal(env.listCalls(), calls)
+})
+
+test('拉名单失败时只告警：未处理的 rejection 会打穿插件的订阅链', async () => {
+  const env = setup([], { listError: new Error('gateway/internal') })
+  leaderSessionIndex.update([])
+  await mountProjectRemote(env.ctx)
+  watchLeaderSessions(env.ctx)
+  await flush()
+
+  assert.equal(env.warnings.length, 1)
+  assert.match(env.warnings[0], /读取 leader 会话名单失败/)
+  assert.match(env.warnings[0], /gateway\/internal/)
+  env.dispose()
 })
