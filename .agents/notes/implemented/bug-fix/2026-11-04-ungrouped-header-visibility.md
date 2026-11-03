@@ -28,7 +28,7 @@
 
 ### 项目目录失效时放行它的会话
 
-项目服务层新增 `isDirectoryUsable`（`stat` 判存在且是目录，失败返回 `false` 而不抛），`summarizeProject` 与 `list` 多带一个 `directoryUsable`；客户端先用 `depth === 0 && directoryUsable !== false` 过滤出「还能打开的项目」，只排除这些项目的会话。用 `!== false` 判是为了旧版宿主不带这个字段时保持原行为。
+项目服务层新增 `isDirectoryUsable`（`stat` 判存在且是目录，失败返回 `false` 而不抛），`summarizeProject` 与 `list` 多带一个 `directoryUsable`；客户端的 `collectExcludedSessionIds` 先按 `directoryUsable !== false` 过滤出「还能打开的项目」，只排除这些项目的 leader 与 worker。用 `!== false` 判是为了旧版宿主不带这个字段时保持原行为。
 
 ### 不做的
 
