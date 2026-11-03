@@ -56,7 +56,7 @@ import {
   createWorkspaceExclusion,
   excludedSessionCountsByWorkspace,
   ungroupedExcludedCount,
-  ungroupedVisibleCount,
+  shouldHideUngroupedHeader,
 } from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
 
@@ -303,13 +303,12 @@ export function ProjectPanel(props) {
 
   // 组头要不要藏，只能按会话快照判：宿主把未分组的组头与会话行分在不同层，DOM 上
   // 从组头查不到自己的行，早先按 DOM 判空等于无条件藏组头（未分组整组消失）。
-  const ungroupedVisible = useMemo(() => ungroupedVisibleCount({
+  const hideUngrouped = useMemo(() => shouldHideUngroupedHeader({
     sessionRows,
     workspaceItems,
     excluded: excludedSessionIds,
     archivedSessionIds,
-    currentSessionId,
-  }), [sessionRows, workspaceItems, excludedSessionIds, archivedSessionIds, currentSessionId])
+  }), [sessionRows, workspaceItems, excludedSessionIds, archivedSessionIds])
 
   // 项目的 leader 与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
   // worker 是普通根会话（不是 subagent），官方树不会自己滤掉，只能按会话 id 排除。
@@ -320,10 +319,10 @@ export function ProjectPanel(props) {
     exclusion.update({
       sessionIds: excludedSessionIds,
       excludedByGroup: excludedCountsByGroup,
-      ungroupedVisibleCount: ungroupedVisible,
+      hideUngrouped,
     })
     return () => exclusion.dispose()
-  }, [excludedSessionIds, excludedCountsByGroup, ungroupedVisible])
+  }, [excludedSessionIds, excludedCountsByGroup, hideUngrouped])
 
   const startAdd = useCallback(async () => {
     if (busy) return

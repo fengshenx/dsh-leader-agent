@@ -9,7 +9,7 @@ import {
   markUngroupedHeader,
   restoreExpandButton,
   ungroupedExcludedCount,
-  ungroupedVisibleCount,
+  shouldHideUngroupedHeader,
 } from '../src/client/workspace-exclusion.js'
 
 /**
@@ -397,7 +397,7 @@ function fakeUngrouped({ rendered, withOverflow = false }) {
 test('未分组里的项目会话全被排除时，组头也藏起来', () => {
   const group = fakeUngrouped({ rendered: ['w1', 'w2'] })
 
-  markRows(group.root, { excluded: new Set(['w1', 'w2']) })
+  markRows(group.root, { excluded: new Set(['w1', 'w2']), hideUngrouped: true })
 
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
 })
@@ -405,7 +405,7 @@ test('未分组里的项目会话全被排除时，组头也藏起来', () => {
 test('未分组里还有可见会话时组头保留', () => {
   const group = fakeUngrouped({ rendered: ['w1', 'mine'] })
 
-  markRows(group.root, { excluded: new Set(['w1']), ungroupedVisibleCount: 1 })
+  markRows(group.root, { excluded: new Set(['w1']), hideUngrouped: false })
 
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
 })
@@ -415,7 +415,7 @@ test('组头容器里查不到行也按会话快照保留组头', () => {
   // 早先按 DOM 判空等于无条件藏组头——用户看到的是未分组整组消失。
   const group = fakeUngrouped({ rendered: [] })
 
-  markUngroupedHeader(group.root, { visibleCount: 1 })
+  markUngroupedHeader(group.root, { hide: false })
 
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
 })
@@ -440,6 +440,7 @@ test('展开按钮被收起后组头跟着藏起来', () => {
   markRows(group.root, {
     excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5', 'w6']),
     excludedByGroup: new Map([['', 6]]),
+    hideUngrouped: true,
   })
 
   assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), true)
@@ -457,7 +458,7 @@ test('未分组超过一屏且混着用户会话：按钮数字不动，组头�
   markRows(group.root, {
     excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5']),
     excludedByGroup: new Map([['', 5]]),
-    ungroupedVisibleCount: 2,
+    hideUngrouped: false,
   })
 
   assert.equal(group.button.textContent, '展开其余 2 个会话')
@@ -533,32 +534,60 @@ test('未分组排除数按宿主可见性口径算：空白、归档、子代�
   assert.equal(count, 3)
 })
 
-test('未分组可见数只数没被排除的会话：组头能不能藏靠它', () => {
-  const count = ungroupedVisibleCount({
-    sessionRows: {
-      kept: { id: 'kept', blank: false },
-      alsoKept: { id: 'alsoKept', blank: false },
-      hidden: { id: 'hidden', blank: false },
-      'other-blank': { id: 'other-blank', blank: true },
-      sub: { id: 'sub', origin: 'subagent' },
-      archived: { id: 'archived', blank: false },
-      'in-workspace': { id: 'in-workspace', blank: false },
-    },
+test('未分组里剩下的会话全在排除集里才藏组头', () => {
+  const base = {
     workspaceItems: [{ workspaceId: 'w1', sessionIds: ['in-workspace'] }],
     excluded: new Set(['hidden', 'in-workspace']),
     archivedSessionIds: new Set(['archived']),
-    currentSessionId: 'kept',
-  })
+  }
 
-  assert.equal(count, 2)
+  assert.equal(shouldHideUngroupedHeader({
+    ...base,
+    sessionRows: {
+      hidden: { id: 'hidden', blank: false },
+      'in-workspace': { id: 'in-workspace', blank: false },
+    },
+  }), true)
+
+  // 组里还有一条用户自己的会话：不藏。
+  assert.equal(shouldHideUngroupedHeader({
+    ...base,
+    sessionRows: { hidden: { id: 'hidden', blank: false }, mine: { id: 'mine', blank: false } },
+  }), false)
+
+  // 空会话也不当「可以藏」的理由：它可能正在成为当前会话。
+  assert.equal(shouldHideUngroupedHeader({
+    ...base,
+    sessionRows: { hidden: { id: 'hidden', blank: false }, fresh: { id: 'fresh', blank: true } },
+  }), false)
 })
 
-test('未分组只剩被排除的会话时可见数为 0', () => {
-  const count = ungroupedVisibleCount({
-    sessionRows: { hidden: { id: 'hidden', blank: false } },
+test('未分组里没有会话、或快照还没到时都不藏组头', () => {
+  // 宿主压根不渲染这一组时藏不藏都无所谓，不藏更安全。
+  assert.equal(shouldHideUngroupedHeader({
+    sessionRows: { 'in-workspace': { id: 'in-workspace', blank: false } },
+    workspaceItems: [{ workspaceId: 'w1', sessionIds: ['in-workspace'] }],
+    excluded: new Set(['in-workspace']),
+  }), false)
+
+  // 快照没到时不能当成「0 条」——那会退化成恒藏。
+  assert.equal(shouldHideUngroupedHeader({
+    sessionRows: {},
+    workspaceItems: [],
+    excluded: new Set(),
+  }), false)
+})
+
+test('子代理与已归档的会话不参与组头判定', () => {
+  // 这两类宿主一定不渲染它们的行，算进来只会让空组头常驻。
+  assert.equal(shouldHideUngroupedHeader({
+    sessionRows: {
+      hidden: { id: 'hidden', blank: false },
+      sub: { id: 'sub', origin: 'subagent' },
+      archived: { id: 'archived', blank: false },
+    },
     workspaceItems: [],
     excluded: new Set(['hidden']),
-  })
-
-  assert.equal(count, 0)
+    archivedSessionIds: new Set(['archived']),
+  }), true)
 })

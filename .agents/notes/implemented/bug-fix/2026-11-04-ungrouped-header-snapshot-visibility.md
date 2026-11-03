@@ -12,9 +12,11 @@
 
 ### 判据搬到会话快照
 
-`ungroupedVisibleCount` 用 `sessionRows`（宿主 `sessions.list` 快照）+ `workspaceItems` + `excluded` + `archivedSessionIds` + `currentSessionId` 数「未分组里还剩几个没被排除、宿主会渲染的会话」，经 `exclusion.update` 传给渲染层；`markUngroupedHeader` 只看 `visibleCount === 0 && !anyVisibleOverflow`。
+`shouldHideUngroupedHeader` 只问一件事：**未分组里剩下的会话是不是全在排除集里**。这个问题的答案只取决于会话 id 与工作区归属，既不读 DOM，也不复刻宿主的 `sessionVisible`——宿主换一版渲染实现、加一条可见性过滤，都不会让判据失效。
 
-口径照宿主 `sessionVisible`：不在任何工作区、`origin !== 'subagent'`、未归档、不是「非当前的空会话」。`ungroupedExcludedCount`（折叠按钮的数字修正）与 `ungroupedVisibleCount` 共用 `ungroupedSessionIds`，两个数同源，否则按钮数字与组头显隐会各算一套。
+第一版实现曾经是「数还剩几个宿主会渲染的会话，为 0 就藏」，复刻了 `sessionVisible` 的口径。两处不够稳：宿主口径一变，算少了就会把有内容的组藏掉；`sessionRows` 还没到时 `sessionRows` 是空对象，计数恒为 0，又退化成「恒藏」。现在把失败方向固定成多显示——快照未到、组里一条会话都没有、或组里还有空会话时都不藏；只有 subagent 与已归档不参与判定（这两类宿主一定不渲染它们的行）。
+
+`ungroupedExcludedCount`（折叠按钮的数字修正）仍按宿主可见性口径算，与组头判据分开：前者要跟宿主的折叠数字对齐，后者要保证不误藏。
 
 DOM 上只留一条保护：还有可见的「展开其余 N 个会话」就不藏。宁可留一个空组头，也不误伤用户自己的会话。
 
@@ -26,7 +28,7 @@ DOM 上只留一条保护：还有可见的「展开其余 N 个会话」就不�
 
 ### 不做的
 
-不在渲染层复刻宿主的渲染时机（折叠、虚拟滚动、分组顺序）。那等于把宿主的排版实现写进插件，每换一版都要重新对一次；快照计数与排版无关。
+不在渲染层复刻宿主的渲染时机（折叠、虚拟滚动、分组顺序），也不复刻 `sessionVisible` 的可见性口径。两者都是宿主的实现细节，换一版就要重新对一次；「剩下的会话是否都在排除集里」与两者都无关。
 
 ## 边界
 
@@ -36,7 +38,7 @@ DOM 上只留一条保护：还有可见的「展开其余 N 个会话」就不�
 
 ## 验证
 
-- 单测：`tests/workspace-exclusion.test.js` 31 条（新增「未分组可见数只数没被排除的会话」「未分组只剩被排除的会话时可见数为 0」「组头容器里查不到行也按会话快照保留组头」）、`tests/project-panel.test.js` 47 条（新增 `sameProjectList` 的等价判定，含目录失效、顺序变化与旧版宿主无字段）、`tests/projects-service.test.js` 52 条（`directoryUsable` 标注）。`npm run check`：1048 用例通过 / 17 跳过，71 个源文件、55 个被加载、47 个行覆盖 100%；`src/client/workspace-exclusion.js` 行覆盖 85.42%，门槛 84 → 85。
+- 单测：`tests/workspace-exclusion.test.js` 32 条（新增「未分组里剩下的会话全在排除集里才藏组头」「未分组里没有会话、或快照还没到时都不藏组头」「子代理与已归档的会话不参与组头判定」「组头容器里查不到行也按会话快照保留组头」）、`tests/project-panel.test.js` 47 条（新增 `sameProjectList` 的等价判定，含目录失效、顺序变化与旧版宿主无字段）、`tests/projects-service.test.js` 52 条（`directoryUsable` 标注）。`npm run check`：1049 用例通过 / 17 跳过，71 个源文件、55 个被加载、47 个行覆盖 100%；`src/client/workspace-exclusion.js` 行覆盖 85.42%，门槛 84 → 85。
 - e2e：`tests/e2e/ungrouped-header.e2e.js` 走界面删工作区造松散会话，断言未分组组头无 `dsh-leader-kit-empty-ungrouped`、`display` 不是 `none`、会话行可见。单跑 3.1 秒；全量串行 6 条全绿。
-- 双向验证：把传给渲染层的可见数固定成 0（等价于旧的 DOM 判空恒真）→ e2e 在「未分组里还有会话时不能给组头加隐藏类」变红（`true !== false`）→ 还原 → 变绿。
+- 双向验证：让 `shouldHideUngroupedHeader` 恒返回 true（等价于旧的行为）→ e2e 在「未分组里还有会话时不能给组头加隐藏类」变红（`true !== false`）→ 还原 → 变绿。
 - `project-directory-gone.e2e.js` 去掉删目录后手工派发的 `focus` 事件后仍然通过（7.6 秒），证明轮询真的兜住了这件事；把轮询间隔调到 60 秒，同一条用例 30 秒超时变红。
