@@ -28,7 +28,7 @@ npm run worktree:prune -- --apply      # 真删：worktree 目录 + 本地分支
 npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删（--remote 指定远端，默认 origin）
 ```
 
-守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝。分支是否已合并看两条判据——`merge-base --is-ancestor main`（merge 合并成立）与 PR 状态（squash 合并只有这条成立）。删 worktree 时 `.dev/home` 的数据与 `node_modules` 链接随之清掉，链接指向主 checkout，删的只是链接本身。
+守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝（合并判据：`merge-base --is-ancestor main` 或 PR 状态）。删 worktree 前先挪 `.dev` 到 `.worktrees/.dev-stash-<任务名>`、拆掉 `node_modules` 链接再 `git worktree remove`——Windows 上不先拆时 git 会跟随 junction 删掉主 checkout / 源 profile 的依赖；失败按原 target 恢复链接并把 `.dev` 挪回，git 已注销登记时只恢复 `.dev` 并提示手工清理。`--apply` 持有 `.worktrees/.prune.lock`（活 PID 不回收）。细节见[笔记](../.agents/notes/2026-11-02-win32-worktree-node-modules-teardown.md)。
 
 也可以不用脚本、手工把插件装进某个 profile：`dsh plugin --profile web add ../dsh-leader-kit`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。
 
