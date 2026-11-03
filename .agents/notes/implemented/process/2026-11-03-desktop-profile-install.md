@@ -1,6 +1,5 @@
 # 桌面版挂载：npm run desktop 直接改 desktop profile
 
-**状态**：implemented（2026-11-03）
 **范围**：`scripts/{desktop,desktop-plan}.mjs`、`package.json`、`README{,_ZH}.md`、`docs/development.md`、`AGENTS.md`、`tests/desktop-plan.test.js`
 
 ## 背景

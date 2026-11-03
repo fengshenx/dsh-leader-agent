@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { auditNotes } from '../scripts/agent-note-audit.mjs'
 import { checkLinks, checkNote } from '../scripts/agent-note-format.mjs'
 
 const PATH = 'implemented/feature/2026-11-02-sample-note.md'
@@ -12,6 +15,21 @@ const IMPLEMENTED_TEXT =
 /** 一份合规模板；用例只改要测的那一处。 */
 function violationsOf({ path = PATH, text = IMPLEMENTED_TEXT } = {}) {
   return checkNote(path, text)
+}
+
+/** 造一份临时语料跑整条门禁，用于证明脚本确实调了判定。 */
+function withCorpus(corpus, run) {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-notes-'))
+  try {
+    for (const [relPath, text] of Object.entries(corpus)) {
+      const file = join(dir, relPath)
+      mkdirSync(dirname(file), { recursive: true })
+      writeFileSync(file, text)
+    }
+    return run(dir)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 test('合规模板不报违规', () => {
@@ -104,6 +122,23 @@ test('围栏里的 # 是示例，不算结构', () => {
   assert.deepEqual(violationsOf({ text }), [])
 })
 
+test('波浪线与缩进围栏里的 # 也是示例', () => {
+  const tilde = '# 甲\n\n## 背景\n\n~~~markdown\n# 不是标题\n## 也不是节\n~~~\n\n## 决策\n'
+  assert.deepEqual(violationsOf({ text: tilde }), [])
+  const indented = '# 甲\n\n## 背景\n\n- 示例：\n\n  ~~~markdown\n  ## 决策\n  ~~~\n\n## 决策\n'
+  assert.deepEqual(violationsOf({ text: indented }), [])
+})
+
+test('只有围栏里的决策节算缺节', () => {
+  const text = '# 甲\n\n## 背景\n\n~~~markdown\n## 决策\n~~~\n'
+  assert.match(violationsOf({ text }).join('\n'), /缺少 `## 决策` 节/)
+})
+
+test('围栏里的同名节不算重复', () => {
+  const text = '# 甲\n\n## 背景\n\n## 决策\n\n~~~markdown\n## 决策\n~~~\n'
+  assert.deepEqual(violationsOf({ text }), [])
+})
+
 test('笔记间链接必须可达', () => {
   const text = '# 甲\n\n## 背景\n\n见[另一篇](../architecture/2026-11-02-other.md)。\n\n## 决策\n'
   assert.deepEqual(checkLinks(text, () => true), [])
@@ -120,18 +155,33 @@ test('围栏里的链接示例不算', () => {
   assert.deepEqual(checkLinks(text, () => false), [])
 })
 
-test('仓库现有笔记全部合规（含链接可达）', () => {
-  const dir = new URL('../.agents/notes/', import.meta.url)
-  const paths = readdirSync(dir, { recursive: true })
-    .map(entry => String(entry).split('\\').join('/'))
-    .filter(path => path.endsWith('.md') && path !== 'README.md' && path !== 'AGENTS.md')
-    .sort()
-  assert.ok(paths.length > 0, '.agents/notes 下没有笔记')
-  const bad = paths.flatMap(path => {
-    const file = join(dir.pathname, path)
-    const text = readFileSync(file, 'utf8')
-    const isReachable = url => existsSync(resolve(dirname(file), url.split('#')[0]))
-    return [...checkNote(path, text), ...checkLinks(text, isReachable)].map(violation => `${path}: ${violation}`)
+test('缩进与波浪线围栏里的链接示例不算', () => {
+  const text = '# 甲\n\n## 背景\n\n- 示例：\n\n  ~~~markdown\n  [示例](./missing.md)\n  ~~~\n\n## 决策\n'
+  assert.deepEqual(checkLinks(text, () => false), [])
+})
+
+test('语料里有断链就报——门禁确实调了链接判定', () => {
+  withCorpus(
+    {
+      'implemented/feature/2026-11-02-a.md': '# 甲\n\n## 背景\n\n见[乙](2026-11-02-b.md)。\n\n## 决策\n',
+      'implemented/feature/2026-11-02-b.md': '# 乙\n\n## 背景\n\n## 决策\n\n见[不存在](2026-11-02-missing.md)。\n',
+    },
+    (dir) => {
+      const { violations } = auditNotes(dir)
+      assert.equal(violations.length, 1, violations.join('\n'))
+      assert.match(violations[0], /^implemented\/feature\/2026-11-02-b\.md — 链接目标不存在/)
+    },
+  )
+})
+
+test('语料里缺节就报——门禁确实调了结构判定', () => {
+  withCorpus({ 'implemented/feature/2026-11-02-a.md': '# 甲\n\n## 背景\n\n没有决策节。\n' }, (dir) => {
+    assert.match(auditNotes(dir).violations.join('\n'), /缺少 `## 决策` 节/)
   })
-  assert.deepEqual(bad, [])
+})
+
+test('仓库现有笔记全部合规（含链接可达）', () => {
+  const { notes, violations } = auditNotes(fileURLToPath(new URL('../.agents/notes/', import.meta.url)))
+  assert.ok(notes.length > 0, '.agents/notes 下没有笔记')
+  assert.deepEqual(violations, [])
 })

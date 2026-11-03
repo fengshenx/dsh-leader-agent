@@ -1,6 +1,5 @@
 # worker 回报的投递边界与时机
 
-**状态**：implemented（2026-10-27）
 **范围**：`src/host/dispatch.js`、`src/host/index.js`、`src/shared/worker-report.js`、`tests/dispatch.test.js`
 
 ## 背景

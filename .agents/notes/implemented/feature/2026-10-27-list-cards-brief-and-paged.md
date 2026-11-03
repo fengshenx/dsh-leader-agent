@@ -1,6 +1,5 @@
 # 查卡工具的列表摘要与分页口径
 
-**状态**：implemented（P5，2026-10-27）
 **范围**：`src/host/cards/card-list-view.js`、`src/host/tools/cards.js`、`tests/card-list-view.test.js`、`tests/cards-tools.test.js`
 
 ## 背景

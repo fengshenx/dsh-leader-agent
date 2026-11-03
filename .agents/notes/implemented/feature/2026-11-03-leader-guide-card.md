@@ -1,6 +1,5 @@
 # leader 会话的一次性引导卡
 
-**状态**：implemented（2026-11-03）
 **范围**：`src/client/{guide-card,guide-card-logic}.js`、`src/client/index.js`、`src/client/{locales,board-styles}.js`、`tests/guide-card-logic.test.js`、`tests/e2e/{guide-card.e2e.js,instance.mjs}`、`docs/`
 
 ## 背景

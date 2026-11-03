@@ -1,6 +1,5 @@
 # worker 回报气泡的呈现
 
-**状态**：implemented（2026-10-27）
 **范围**：`src/shared/worker-report.js`、`src/host/message.js`、`src/host/dispatch.js`、`src/client/worker-report-*.js`、`src/client/index.js`、`tests/worker-report.test.js`
 
 ## 背景

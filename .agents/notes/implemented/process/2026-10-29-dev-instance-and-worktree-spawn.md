@@ -1,6 +1,5 @@
 # 开发实例与 worktree 封装
 
-**状态**：implemented（2026-10-29）
 **范围**：`scripts/dev.mjs`、`scripts/dev-plan.mjs`、`scripts/worktree-spawn.mjs`、`scripts/worktree-prune.mjs`、`scripts/worktree-common.mjs`、`package.json`、`.gitignore`、`README.md`、`AGENTS.md`
 
 ## 背景

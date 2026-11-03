@@ -1,6 +1,5 @@
 # 派工与唤醒机制
 
-**状态**：implemented（P1，2026-10-23）
 **范围**：`src/host/dispatch.js`、`src/host/notification-store.js`、`src/host/tools/spawn-worker.js`
 
 ## 背景

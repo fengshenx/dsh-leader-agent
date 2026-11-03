@@ -1,6 +1,5 @@
 # README 改成亮点优先：英文默认、中文对照与顶栏视觉层
 
-**状态**：implemented（2026-11-02）
 **范围**：`README.md`、`README_ZH.md`、`docs/assets/readme/logo-{en,zh}{,-dark}.svg`、`AGENTS.md`、`docs/architecture.md`、`package.json`（`files` 加中文版）
 
 ## 背景

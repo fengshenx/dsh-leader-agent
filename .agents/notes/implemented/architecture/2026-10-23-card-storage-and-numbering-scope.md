@@ -1,6 +1,5 @@
 # 卡片存储与编号作用域
 
-**状态**：implemented（P2，2026-10-23）
 **范围**：`src/host/cards/store.js`、`src/host/tools/cards.js`
 
 ## 背景

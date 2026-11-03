@@ -1,6 +1,5 @@
 # 派工两段化与卡片上下文
 
-**状态**：implemented（2026-11-02）
 **范围**：`src/host/{dispatch,worker-sessions,index}.js`、`src/host/tools/{spawn-worker,cards}.js`、`src/host/cards/{store,card-context}.js`、`.agents/skills/leader-mode/`、`docs/architecture.md`、`tests/`
 
 ## 背景

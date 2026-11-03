@@ -1,6 +1,5 @@
 # 项目树只列 worker 会话
 
-**状态**：implemented（2026-10-27）
 **范围**：`src/host/projects/session-index.js`、`src/host/projects/service.js`、`src/client/project-panel.js`、`src/client/project-section.js`、`tests/project-session-index.test.js`（删除 `src/client/workspace-hiding.js` 与 `tests/workspace-hiding.test.js`）
 
 > **2026-10-29 取代**：worker 身份判据已从「会话头 `origin: 'subagent'`」换成「登记表说它是本 bundle 派出的 worker」——worker 改成了普通根会话，会话头没有这个标记；官方树也因此不再自动滤掉 worker，排除集要显式包含它们。本文件保留当时的选择理由，现行机制见 [worker 常驻化与交作业](../architecture/2026-10-29-worker-as-root-session.md)。

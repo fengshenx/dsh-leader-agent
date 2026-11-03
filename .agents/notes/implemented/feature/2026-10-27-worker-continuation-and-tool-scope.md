@@ -1,6 +1,5 @@
 # worker 续聊、工具面分配与会话折叠
 
-**状态**：implemented（2026-10-27）
 **范围**：`src/host/dispatch.js`、`src/host/worker-registry.js`、`src/host/tools/message-worker.js`、`src/host/tools/gate.js`、`src/host/projects/service.js`、`src/host/index.js`、`src/client/session-watermark.js`、`src/client/project-section.js`
 
 ## 背景

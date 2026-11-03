@@ -1,6 +1,5 @@
 # 看板卡片视觉与交互
 
-**状态**：implemented（P4，2026-10-27）
 **范围**：`src/client/board.js`、`src/client/board-card.js`、`src/client/board-styles.js`、`src/client/card-detail.js`、`src/client/modal-shell.js`、`src/client/board-projection.js`、`src/client/slot-retain.js`、`src/client/link-row.js`、`src/client/modal-focus.js`、`src/client/card-detail-view.js`、`src/client/confirm-dialog.js`、`src/client/icons.js`
 
 ## 背景

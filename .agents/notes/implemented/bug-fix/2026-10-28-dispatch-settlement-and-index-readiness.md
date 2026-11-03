@@ -1,6 +1,5 @@
 # 派工结算的挂载顺序、索引就绪与看板容错
 
-**状态**：implemented（2026-10-28）
 **范围**：`src/host/dispatch.js`、`src/host/projects/service.js`、`src/host/index.js`、`src/host/worker-registry.js`、`src/client/board.js`、`src/client/project-board-monitor.js`、`tests/dispatch.test.js`、`tests/dispatch-continuation.test.js`、`tests/worker-registry.test.js`
 
 ## 背景

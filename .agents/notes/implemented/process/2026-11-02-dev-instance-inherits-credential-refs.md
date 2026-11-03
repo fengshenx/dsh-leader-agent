@@ -1,6 +1,5 @@
 # 开发实例从源 HOME 继承凭据 refs
 
-**状态**：implemented（2026-11-02）
 **范围**：`scripts/dev-plan.mjs`、`scripts/dev.mjs`、`scripts/atomic-write.mjs`、`tests/dev-plan.test.js`、`tests/atomic-write.test.js`、`README.md`、`docs/architecture.md`
 
 ## 背景

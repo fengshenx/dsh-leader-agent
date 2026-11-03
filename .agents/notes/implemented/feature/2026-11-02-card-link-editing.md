@@ -1,6 +1,5 @@
 # 卡片详情支持编辑链接
 
-**状态**：current（2026-11-02）
 
 **范围**：`src/shared/card-links.js`、`src/shared/projects.js`、`src/host/projects/remote.js`、`src/host/tools/cards.js`、`src/client/project-remote.js`、`src/client/card-links-editor.js`、`src/client/card-detail.js`、`src/client/card-detail-view.js`、`src/client/board.js`、`src/client/board-projection.js`、`src/client/board-styles.js`、`src/client/link-row.js`、`tests/card-links.test.js`、`tests/cards-tools.test.js`、`tests/project-remote*.test.js`、`tests/board-projection.test.js`、`tests/card-detail-view.test.js`、`README.md`、`docs/`
 

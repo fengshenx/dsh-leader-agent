@@ -1,6 +1,5 @@
 # 客户端半边的发现与构建约束
 
-**状态**：implemented（P2，2026-10-23；2026-10-26 补记并行开发的 worktree 约定）
 **范围**：`cordis.patch.yml`、`index.js`、`src/client/`、`build/client.mjs`、`package.json`
 
 ## 背景

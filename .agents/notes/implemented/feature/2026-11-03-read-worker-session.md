@@ -1,6 +1,5 @@
 # 协调者回看 worker 会话：read_worker_session
 
-**状态**：implemented（2026-11-03）
 **范围**：`src/host/tools/read-worker.js`、`src/host/worker-transcript.js`、`src/host/dispatch.js`、`src/host/index.js`、`src/host/tools/gate.js`、`tests/read-worker-tool.test.js`、`tests/worker-transcript.test.js`、`tests/tool-gate.test.js`、`README.md`、`docs/`
 
 ## 背景

@@ -1,6 +1,5 @@
 # 测试临时目录用后即删
 
-**状态**：implemented（2026-10-27）
 **范围**：`tests/helpers/temp-dir.js`、`tests/projects-store.test.js`、`tests/projects-service.test.js`、`tests/project-session-index.test.js`
 
 ## 背景

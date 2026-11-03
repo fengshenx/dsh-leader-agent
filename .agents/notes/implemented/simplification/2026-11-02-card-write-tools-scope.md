@@ -1,6 +1,5 @@
 # 卡片写入只给协调者与 worker
 
-**状态**：implemented（2026-11-02）
 **范围**：`src/host/tools/{gate,cards}.js`、`src/host/{index,worker-sessions}.js`、`docs/architecture.md`、`docs/usage.md`、`README.md`、`.agents/skills/leader-mode/SKILL.md`、`tests/`
 
 ## 背景

@@ -1,6 +1,5 @@
 # 建项目成功不再弹提示
 
-**状态**：implemented（2026-10-29）
 **范围**：`src/client/project-panel.js`、`README.md`
 
 ## 背景

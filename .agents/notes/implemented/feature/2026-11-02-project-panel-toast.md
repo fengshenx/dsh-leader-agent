@@ -1,6 +1,5 @@
 # 项目区块的提示改为一次性 toast
 
-**状态**：current（2026-11-02）
 **范围**：`src/client/toast.js`、`src/client/toast-view.js`、`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`src/client/project-section.js`、`src/client/index.js`、`tests/project-panel.test.js`、`README.md`
 
 ## 背景

@@ -1,6 +1,5 @@
 # worker 继承协调者的权限
 
-**状态**：implemented（2026-11-02）
 **范围**：`src/host/{permission-inherit,worker-sessions,dispatch}.js`、`src/host/tools/spawn-worker.js`、`docs/{architecture,capability-gaps}.md`、`tests/`
 
 ## 背景

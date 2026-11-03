@@ -1,6 +1,5 @@
 # 项目删除合并为一个入口
 
-**状态**：current（2026-10-30）
 **范围**：`src/shared/projects.js`、`src/host/projects/service.js`、`src/host/projects/remote.js`、`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`src/client/project-section.js`
 
 ## 背景

@@ -1,6 +1,5 @@
 # 看板按项目组织
 
-**状态**：implemented（2026-10-27）
 **范围**：`src/host/cards/store.js`、`src/host/tools/cards.js`、`src/host/projects/service.js`、`src/host/projects/remote.js`、`src/shared/projects.js`、`src/client/board.js`、`src/client/board-projection.js`、`src/client/project-board-data.js`、`src/client/project-board-monitor.js`、`src/client/index.js`、`src/host/cards/card-list-view.js`
 
 ## 背景

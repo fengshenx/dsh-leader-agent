@@ -1,6 +1,5 @@
 # 看板卡面改用宿主卡片材质
 
-**状态**：implemented（P6，2026-10-30）
 **范围**：`src/client/board-styles.js`、`tests/board-styles.test.js`
 
 ## 背景

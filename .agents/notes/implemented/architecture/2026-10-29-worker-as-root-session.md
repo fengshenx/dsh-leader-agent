@@ -1,6 +1,5 @@
 # worker 改成常驻根会话
 
-**状态**：implemented（2026-10-29）
 **范围**：`src/host/worker-sessions.js`（新）、`src/host/tools/worker-done.js`（新）、`src/host/dispatch.js`、`src/host/tools/gate.js`、`src/host/index.js`、`src/host/projects/session-index.js`、`src/host/projects/service.js`、`src/host/projects/remote.js`、`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`README.md`、`skills/leader-mode/`、测试
 
 ## 背景

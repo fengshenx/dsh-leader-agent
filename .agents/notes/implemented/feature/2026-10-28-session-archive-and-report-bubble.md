@@ -1,6 +1,5 @@
 # 会话归档与回报气泡
 
-**状态**：implemented（2026-10-28）
 **范围**：`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`src/client/project-section.js`、`src/client/icons.js`、`src/client/index.js`、`src/client/worker-report-view.js`、`src/client/worker-report-styles.js`、`src/host/cards/store.js`、`src/host/worker-registry.js`、`src/host/projects/remote.js`、`src/shared/projects.js`、`tests/project-panel.test.js`、`tests/cards-store.test.js`、`tests/worker-registry.test.js`、`tests/projects-remote.test.js`、`README.md`、`docs/e2e-testing.md`
 
 ## 背景

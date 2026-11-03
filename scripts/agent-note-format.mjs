@@ -22,16 +22,21 @@ const REQUIRED_SECTIONS = {
   archived: ['决策'],
 }
 
-/** 围栏里的 `#` 是示例，不是文档结构。 */
+/** 围栏里的 `#` 是示例，不是文档结构。缩进三格以内都算围栏——列表项里也常写。 */
+const FENCE = /^ {0,3}(```|~~~)/
+
 function proseLines(text) {
-  let inFence = false
+  let fence = null
   const kept = []
   for (const line of text.split('\n')) {
-    if (line.startsWith('```')) {
-      inFence = !inFence
+    const matched = FENCE.exec(line)
+    if (matched !== null) {
+      // 同种围栏才成对：三反引号块里出现的波浪线只是示例内容
+      if (fence === null) fence = matched[1]
+      else if (fence === matched[1]) fence = null
       continue
     }
-    if (!inFence) kept.push(line)
+    if (fence === null) kept.push(line)
   }
   return kept
 }

@@ -1,6 +1,7 @@
 # 项目作用域与角色槽位
 
-**状态**：revised（P3 返工，2026-10-25；同日再修订：通道改走 Typert、左栏改 DOM 注入取位；2026-10-26 再修订：项目树自建、官方树排除走渲染层、点项目行打开协调者会话；2026-10-26 再修订：移除工作区加二次确认弹窗、归属同步回客户端列表、菜单支持 Escape 关闭；2026-10-26 再修订：协调者会话改用第三方会话视图目标顶进 active 形态，不再跑首轮；2026-10-27 再修订：项目树只列 worker 会话、加项目直接建好不再走注册确认、取消项目工作区的隐藏；2026-10-30 再修订：项目自建工作区的隐藏按 `workspaceId` 恢复、被隐藏会话不再点亮它的工作区）
+> **部分已被 [项目与 dsh 工作区解耦](2026-11-03-project-workspace-decoupled.md) 取代**：项目不再注册工作区、不把 leader / worker 挂进去，「协调者会话必须归属工作区」「插件工作区的归属记进项目记录」两节的前提已不成立；正文尚未按新语义重写。本文件其余内容（项目作用域、角色槽位、左栏项目区块）仍然有效。
+
 **范围**：`src/host/projects/`、`src/host/tools/projects.js`、`src/host/slots/`、`src/shared/projects.js`、`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`src/client/project-section.js`、`src/client/confirm-dialog.js`、`src/client/project-remote.js`、`src/client/coordinator-view.js`、`src/client/coordinator-view-logic.js`、`src/client/workspace-exclusion.js`、`src/client/icons.js`
 
 ## 背景

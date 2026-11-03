@@ -1,6 +1,5 @@
 # worker 的显示名与工具参数面
 
-**状态**：implemented（2026-10-29）
 **范围**：`src/host/tools/spawn-worker.js`、`src/host/tools/message-worker.js`、`src/host/dispatch.js`、`src/host/worker-registry.js`、`src/shared/worker-report.js`、`src/client/worker-report-definition.js`、`src/client/worker-report-view.js`、`skills/leader-mode/playbooks/program.md`、`README.md`、`tests/dispatch.test.js`、`tests/dispatch-continuation.test.js`、`tests/message-worker-tool.test.js`、`tests/worker-registry.test.js`、`tests/worker-report.test.js`
 
 ## 背景

@@ -1,6 +1,5 @@
 # 槽位圆点的状态来源与保留失败的处理
 
-**状态**：implemented（2026-10-28）
 **范围**：`src/client/board.js`、`src/client/slot-retain.js`、`tests/slot-retain.test.js`、`README.md`、`docs/e2e-testing.md`
 
 ## 背景

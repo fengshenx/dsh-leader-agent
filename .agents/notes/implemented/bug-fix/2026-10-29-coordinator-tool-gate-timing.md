@@ -1,6 +1,5 @@
 # 协调者工具面的裁剪时序
 
-**状态**：implemented（2026-10-29）
 **范围**：`src/host/projects/service.js`（`create` / `replaceCoordinator` / `createCoordinatorSessionWithCtx`）、`docs/capability-gaps.md` 第 37 条
 
 ## 背景

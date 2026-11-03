@@ -1,6 +1,5 @@
 # 协调者手册把 routing 边界写死
 
-**状态**：implemented（2026-11-02）
 **范围**：`COORDINATOR.md`、本笔记
 
 ## 背景

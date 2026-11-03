@@ -1,6 +1,5 @@
 # 运行中加载圈改用宿主 StateDot
 
-**状态**：implemented（2026-11-03）
 **范围**：`src/client/project-section.js`、`tests/project-panel.test.js`、`docs/architecture.md`、`docs/limitations.md`
 
 ## 背景

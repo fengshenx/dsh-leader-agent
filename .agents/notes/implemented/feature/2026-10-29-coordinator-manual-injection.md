@@ -1,6 +1,5 @@
 # 协调者手册注入
 
-**状态**：implemented（2026-10-29）
 **范围**：`src/host/coordinator-context.js`、`src/host/index.js`、`tests/coordinator-context.test.js`、本仓根的 `COORDINATOR.md` 与 `SLOTS.md`
 
 ## 背景
