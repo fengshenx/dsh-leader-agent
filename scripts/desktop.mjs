@@ -11,7 +11,8 @@
  *   包名追加进 `dsh.profile.bundles`（已装别的来源时拒绝，不覆盖人的安装）；
  * - `node_modules/dsh-leader-kit` 链到当前目录（junction，Windows 上不需要管理员）；
  * - 重建客户端产物 `lib/client.js`（不入库，漏构建时实例照常起来、右栏却没有看板）；
- * - 启动桌面应用（macOS 用 `open -a`，可用 `DSH_DESKTOP_APP` 换名字或 .app 路径）。
+ * - 启动桌面应用（macOS 用 `open --env -a`，Windows 直接起 exe 并把 `DSH_HOME` 放进
+ *   子进程环境；`DSH_DESKTOP_APP` 可换应用名、`.app`／exe 路径或安装目录）。
  *
  * 撤销：`npm run desktop -- --remove`。
  *
@@ -22,21 +23,23 @@
  *
  * 环境变量：
  * - `DSH_HOME`       桌面数据根，默认 `~/.dsh`；桌面应用也读这个变量
- * - `DSH_DESKTOP_APP` 应用名或 `.app` 路径，默认 `DeepSeek Harness`
+ * - `DSH_DESKTOP_APP` 应用名、`.app` ／ exe 路径或安装目录，默认 `DeepSeek Harness`
  */
 
+import { spawn } from 'node:child_process'
 import {
   existsSync, lstatSync, mkdirSync, readFileSync, readlinkSync, realpathSync, rmSync, statSync,
   symlinkSync, writeFileSync,
 } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
 import { LEADER_KIT_PACKAGE, assertWebBundle } from './dev-plan.mjs'
 import {
-  DESKTOP_APP_NAME, expandHomePath, looksLikeAppPath, parseBundleExecutable, planDesktopDisable,
-  planDesktopEnable, planLinkAction, planProfileLockAction, resolveHomePathsOrThrow,
+  DESKTOP_APP_NAME, expandHomePath, looksLikeAppPath, parseBundleExecutable, parseTasklistImages,
+  planDesktopDisable, planDesktopEnable, planLinkAction, planProfileLockAction, resolveHomePathsOrThrow,
+  windowsExeCandidates,
 } from './desktop-plan.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 import { detachNodeModulesLink } from './worktree-common.mjs'
@@ -133,21 +136,50 @@ function appBundlePath(appName, homeDir) {
 }
 
 /**
+ * 找到 Windows 上桌面应用的 exe。
+ *
+ * 候选由 `windowsExeCandidates` 算（纯函数），这里只挑第一个存在的：裸名按
+ * electron-builder 的每用户安装布局展开，路径形态只认给的那一处。
+ *
+ * @param {string} appName - 应用名、安装目录或 exe 路径
+ * @param {string} homeDir - 用户主目录
+ * @param {object} env - 环境变量
+ * @returns {string | null} exe 绝对路径
+ */
+function windowsExePath(appName, homeDir, env) {
+  const candidates = windowsExeCandidates({ appName, env, homeDir })
+  return candidates.find((candidate) => existsSync(candidate)) ?? null
+}
+
+/**
+ * 解析桌面应用在这台机器上的启动目标。
+ *
+ * 平台形态不同，但下游只关心两件事：路径有没有找到、探活与启动走哪条分支。macOS 是
+ * `.app` 包（LaunchServices 启动，环境变量只能经 `open --env` 送），Windows 是 exe
+ * （直接起进程，环境变量随 `spawn` 的 `env` 传入）；其余平台只挂载、不启动。
+ *
+ * @param {string} appName - `DSH_DESKTOP_APP` 或平台默认名
+ * @param {object} options - 选项
+ * @param {string} options.homeDir - 用户主目录
+ * @param {object} options.env - 环境变量
+ * @returns {{ kind: 'app' | 'exe' | 'unsupported', path: string | null }} 启动目标
+ */
+function desktopTarget(appName, { homeDir, env }) {
+  if (process.platform === 'darwin') return { kind: 'app', path: appBundlePath(appName, homeDir) }
+  if (process.platform === 'win32') return { kind: 'exe', path: windowsExePath(appName, homeDir, env) }
+  return { kind: 'unsupported', path: null }
+}
+
+/**
  * 从 `.app` 的 `Info.plist` 取进程名。
  *
  * 包文件名不等于进程名（`Lark.app` 的进程是 `Feishu`），按文件名推进程名会漏判。
  * 取不到就报错——猜一个名字比拒绝更糟：漏判运行态会写坏 profile。
  *
- * @param {string | null} bundle - `appBundlePath` 解析出的 `.app` 绝对路径
+ * @param {string} bundle - `appBundlePath` 解析出的 `.app` 绝对路径
  * @returns {string} `CFBundleExecutable`
  */
 function executableNameOf(bundle) {
-  if (bundle === null) {
-    throw new Error(
-      '找不到桌面应用。用 DSH_DESKTOP_APP 指定名字或 .app 的完整路径，'
-      + '例如 DSH_DESKTOP_APP="/Applications/DeepSeek Harness.app" npm run desktop。',
-    )
-  }
   const plistPath = join(bundle, 'Contents', 'Info.plist')
   if (!existsSync(plistPath)) {
     throw new Error(`${plistPath} 不存在，无法判断应用是否在运行。确认路径指向一个完整的 .app。`)
@@ -164,18 +196,15 @@ function executableNameOf(bundle) {
 }
 
 /**
- * 桌面应用是否正在运行。
+ * macOS 上桌面应用是否正在运行。
  *
- * 运行中写 profile 不会生效（宿主只在启动时读），而且可能和应用自己的插件管理撞上，
- * 所以先探再写。探活依赖 `plutil` + `pgrep -x`，只在 macOS 上做；其他平台返回 null，
- * 由启动那一步提示手动打开。
+ * 进程名取自 `.app` 的 `CFBundleExecutable`，不按包文件名猜。
  *
- * @param {string | null} bundle - `.app` 绝对路径
+ * @param {string} bundle - `.app` 绝对路径
  * @returns {boolean | null} 运行中为 true，未运行为 false，探不了为 null
  * @throws 读不到 `Info.plist` 的 `CFBundleExecutable` 时
  */
-function desktopAppRunning(bundle) {
-  if (process.platform !== 'darwin') return null
+function macAppRunning(bundle) {
   const processName = executableNameOf(bundle)
   try {
     const probe = spawnCommandSync({ command: 'pgrep', args: ['-x', processName], encoding: 'utf8' })
@@ -185,6 +214,49 @@ function desktopAppRunning(bundle) {
     if (error instanceof CommandNotFoundError) return null
     throw error
   }
+}
+
+/**
+ * Windows 上桌面应用是否正在运行。
+ *
+ * 用 `tasklist` 的 CSV 输出按镜像名比对：默认表格输出会把超过 25 字符的 Image Name
+ * 截断，CSV 不会；没有匹配时 tasklist 打的是本地化提示行，所以只认以引号开头的行。
+ * `tasklist.exe` 走绝对路径，不依赖 PATH 里有没有 System32。
+ *
+ * @param {string} exePath - exe 绝对路径
+ * @param {object} env - 环境变量，取 SystemRoot
+ * @returns {boolean | null} 运行中为 true，未运行为 false，探不了为 null
+ */
+function windowsAppRunning(exePath, env) {
+  const image = basename(exePath)
+  const tasklist = join(env.SystemRoot ?? 'C:\\Windows', 'system32', 'tasklist.exe')
+  let probe
+  try {
+    probe = spawnCommandSync({ command: tasklist, args: ['/FO', 'CSV', '/NH'], encoding: 'utf8' })
+  } catch (error) {
+    if (error instanceof CommandNotFoundError) return null
+    throw error
+  }
+  if (probe.status !== 0) return null
+  return parseTasklistImages(probe.stdout).some((name) => name.toLowerCase() === image.toLowerCase())
+}
+
+/**
+ * 桌面应用是否正在运行。
+ *
+ * 运行中写 profile 不会生效（宿主只在启动时读），而且可能和应用自己的插件管理撞上，
+ * 所以先探再写。探不了返回 null——那不等于「没在跑」，由启动那一步 fail closed。
+ *
+ * @param {{ kind: string, path: string | null }} target - `desktopTarget` 的结果
+ * @param {object} env - 环境变量，Windows 上取 SystemRoot
+ * @returns {boolean | null} 运行中为 true，未运行为 false，探不了为 null
+ * @throws 读不到 `Info.plist` 的 `CFBundleExecutable` 时
+ */
+function desktopAppRunning(target, env) {
+  if (target.path === null) return null
+  if (target.kind === 'app') return macAppRunning(target.path)
+  if (target.kind === 'exe') return windowsAppRunning(target.path, env)
+  return null
 }
 
 /** 进程是否还活着；没有权限探查时按活着算，不能把「不确定」当「已退出」。 */
@@ -251,22 +323,17 @@ function withProfileLock(paths, operation) {
 }
 
 /**
- * 拉起桌面应用。
+ * 用 `open` 拉起 macOS 的 `.app`。
  *
- * 两处都用绝对路径而不是原值：`open` 不做 shell 展开（`~/Foo.app` 原样传过去必然
- * 失败），而数据根必须显式交给应用——`open` 拉起的是新进程，不能指望它按本终端的
- * 目录去解析相对路径。`open --env` 是 macOS 给被启动进程注入环境变量的唯一途径。
+ * 用绝对路径而不是原值：`open` 不做 shell 展开（`~/Foo.app` 原样传过去必然失败），
+ * 而数据根必须显式交给应用——`open` 拉起的是新进程，不能指望它按本终端的目录去
+ * 解析相对路径。`open --env` 是 macOS 给被启动进程注入环境变量的唯一途径。
  *
- * @param {string | null} bundle - `.app` 绝对路径
- * @param {object} options - 选项
- * @param {string} options.dshHome - 要写进应用环境的 `DSH_HOME`（绝对路径）
- * @returns {boolean} 是否由本脚本启动
+ * @param {string} bundle - `.app` 绝对路径
+ * @param {string} dshHome - 要写进应用环境的 `DSH_HOME`（绝对路径）
+ * @returns {boolean} 恒为 true；失败时抛错
  */
-function launchDesktopApp(bundle, { dshHome }) {
-  if (process.platform !== 'darwin' || bundle === null) {
-    console.log(`请手动启动桌面应用${bundle === null ? '' : `（${bundle}，DSH_HOME=${dshHome}）`}。`)
-    return false
-  }
+function openMacApp(bundle, dshHome) {
   const result = spawnCommandSync({
     command: 'open',
     args: ['--env', `DSH_HOME=${dshHome}`, '-a', bundle],
@@ -282,6 +349,109 @@ function launchDesktopApp(bundle, { dshHome }) {
     )
   }
   return true
+}
+
+/**
+ * 直接起 Windows 的 exe。
+ *
+ * `spawn` 的 `env` 就是被启动进程的环境，不需要 macOS 那样的 `--env` 通道；但
+ * `detached` + `unref` 必须有——`npm run` 的父进程先退出，不脱离的话应用会跟着
+ * 被收走。`'spawn'` 事件只表示进程创建成功（ENOENT / EACCES 会走 `error`）——起得来
+ * 不等于活着：缺 DLL、安装损坏、单实例冲突都会让进程随后自己退出，这几种都看不出来。
+ * 单实例那条由探活拦在前面；其余靠人看到窗口没出现时重跑。
+ *
+ * @param {string} exePath - exe 绝对路径
+ * @param {string} dshHome - 要交给应用的 `DSH_HOME`（绝对路径）
+ * @returns {Promise<boolean>} 恒为 true；失败时抛错
+ */
+async function spawnWindowsApp(exePath, dshHome) {
+  const child = spawn(exePath, [], {
+    env: { ...process.env, DSH_HOME: dshHome },
+    detached: true,
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  await new Promise((resolve, reject) => {
+    child.once('spawn', resolve)
+    child.once('error', (error) => {
+      reject(new Error(
+        `起不了 ${exePath}（${error.code ?? error.message}）。`
+        + '\n确认安装完整；DSH_DESKTOP_APP 指到安装目录或 exe 时不会回退到默认安装位置。',
+      ))
+    })
+  })
+  child.unref()
+  return true
+}
+
+/**
+ * 拉起桌面应用。
+ *
+ * 两处都用解析后的绝对路径：`open` 不做 shell 展开，exe 也不该按本终端的 cwd 解析。
+ * 探不到目标（非 macOS / Windows）时只提示手动启动——profile 已经挂好，应用下次
+ * 启动就会读到。
+ *
+ * @param {{ kind: string, path: string | null }} target - `desktopTarget` 的结果
+ * @param {object} options - 选项
+ * @param {string} options.dshHome - 要交给应用的 `DSH_HOME`（绝对路径）
+ * @returns {Promise<boolean>} 是否由本脚本启动
+ */
+async function launchDesktopApp(target, { dshHome }) {
+  if (target.kind === 'app' && target.path !== null) return openMacApp(target.path, dshHome)
+  if (target.kind === 'exe' && target.path !== null) return spawnWindowsApp(target.path, dshHome)
+  console.log(`请手动启动桌面应用（数据根 ${dshHome}）。`)
+  return false
+}
+
+/**
+ * 找不到桌面应用时的报错。
+ *
+ * 两种平台给各自的写法：macOS 是 `.app` 包名或路径，Windows 是 exe 或安装目录。
+ *
+ * @returns {string} 报错正文
+ */
+function missingAppMessage() {
+  if (process.platform === 'win32') {
+    return '找不到桌面应用 exe。用 DSH_DESKTOP_APP 指定 exe 路径或安装目录，例如'
+      + " $env:DSH_DESKTOP_APP='C:\\Users\\<你>\\AppData\\Local\\Programs\\DeepSeek Harness'; npm run desktop"
+      + '（cmd 里改用 set "DSH_DESKTOP_APP=..."）。'
+  }
+  return '找不到桌面应用。用 DSH_DESKTOP_APP 指定名字或 .app 的完整路径，'
+    + '例如 DSH_DESKTOP_APP="/Applications/DeepSeek Harness.app" npm run desktop。'
+}
+
+/**
+ * 「应用正在运行、先退出再重跑」的提示。
+ *
+ * 进程名用解析出来的 exe 文件名的最后一段：`DSH_DESKTOP_APP` 换过应用名时，写死的
+ * `DeepSeek Harness.exe` 会把人指到不存在的进程上。
+ *
+ * @param {{ kind: string, path: string | null }} target - `desktopTarget` 的结果
+ * @returns {string} 提示正文
+ */
+function quitHint(target) {
+  if (process.platform === 'darwin') return '先完全退出桌面应用（macOS 用 ⌘Q，关窗口只是隐藏），再重跑本命令。'
+  if (process.platform === 'win32') {
+    return `先完全退出桌面应用（托盘图标右键退出，或在任务管理器里结束 ${basename(target.path)}），再重跑本命令。`
+  }
+  return '先完全退出桌面应用，再重跑本命令。'
+}
+
+/**
+ * 探不到运行态时给人手动启动的命令。
+ *
+ * 数据根要显式带上：自定义 `DSH_HOME` 时应用按自己的默认值启动会读另一个 profile。
+ * Windows 给两种 shell 的写法——`set "X=Y"` 在 PowerShell 里不是对的命令，而这条
+ * 提示是 fail closed 时唯一的补救手段。
+ *
+ * @param {{ kind: string, path: string | null }} target - `desktopTarget` 的结果
+ * @param {string} dshHome - `DSH_HOME` 绝对路径
+ * @returns {string} 可粘贴的命令
+ */
+function manualLaunchHint(target, dshHome) {
+  // 调用处已排除 unsupported（那条分支不启动），这里只会是 app 或 exe。
+  if (target.kind === 'app') return `DSH_HOME="${dshHome}" open -a "${target.path}"`
+  return `$env:DSH_HOME='${dshHome}'; & '${target.path}'（cmd: set "DSH_HOME=${dshHome}" && "${target.path}"）`
 }
 
 /**
@@ -348,9 +518,9 @@ function detachLink(linkPath) {
 /**
  * 校验环境并执行。
  *
- * @returns {void} 无返回
+ * @returns {Promise<void>} 无返回
  */
-function main() {
+async function main() {
   const homeDir = homedir()
   const paths = resolveHomePathsOrThrow({
     rawHome: process.env.DSH_HOME ?? '',
@@ -358,7 +528,7 @@ function main() {
     cwd: process.cwd(),
   })
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
-  const appBundle = appBundlePath(appName, homeDir)
+  const target = desktopTarget(appName, { homeDir, env: process.env })
   const remove = process.argv.slice(2).includes('--remove')
 
   if (!existsSync(paths.packagePath)) {
@@ -420,10 +590,12 @@ function main() {
     return
   }
 
-  const running = desktopAppRunning(appBundle)
+  // 支持的平台上找不到应用是硬错误：再往下走只会把 profile 挂好、然后无声地不启动。
+  if (target.kind !== 'unsupported' && target.path === null) throw new Error(missingAppMessage())
+  const running = desktopAppRunning(target, process.env)
   if (running === true) {
-    console.error(`${appBundle} 正在运行，profile 只在启动时读入。`)
-    console.error('先完全退出桌面应用（macOS 用 ⌘Q，关窗口只是隐藏），再重跑本命令。')
+    console.error(`${target.path} 正在运行，profile 只在启动时读入。`)
+    console.error(quitHint(target))
     process.exit(1)
   }
 
@@ -455,13 +627,14 @@ function main() {
   console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
   console.log('')
 
-  if (process.platform === 'darwin' && running === null) {
-    // open --env 对已运行实例不生效（rc 仍是 0，环境被丢掉），探不到就不能赌。
-    console.log('探不到桌面应用是否在运行（pgrep 不可用），不自动启动。')
-    console.log(`自己启动：DSH_HOME="${paths.home}" open -a "${appBundle ?? appName}"`)
+  if (target.kind !== 'unsupported' && running === null) {
+    // 两端都是 fail closed：macOS 的 open --env 对已运行实例静默失效（rc 仍是 0），
+    // Windows 的单实例冲突会让新进程自己退出——探不到就不能赌。
+    console.log(`探不到桌面应用是否在运行（${target.kind === 'exe' ? 'tasklist' : 'pgrep'} 不可用），不自动启动。`)
+    console.log(`自己启动：${manualLaunchHint(target, paths.home)}`)
     return
   }
-  const launched = launchDesktopApp(appBundle, { dshHome: paths.home })
+  const launched = await launchDesktopApp(target, { dshHome: paths.home })
   console.log('')
   if (launched) {
     console.log('桌面应用已启动。右栏出现「看板」Tab、左栏出现「项目」区块即生效。')
@@ -472,7 +645,7 @@ function main() {
 }
 
 try {
-  main()
+  await main()
 } catch (error) {
   const detail = error instanceof Error ? error.message : String(error)
   console.error(`错误: ${detail}`)

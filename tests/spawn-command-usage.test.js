@@ -35,6 +35,7 @@ const ALLOWED = new Map([
   ['scripts/check-syntax.mjs', '只用于起 process.execPath 做 --check'],
   ['scripts/worktree-spawn.mjs', '只用于起 git：Windows 上有 git.exe，不经 shim'],
   ['scripts/worktree-prune.mjs', '只用于起 git / gh：Windows 上都是 .exe，不经 shim'],
+  ['scripts/desktop.mjs', '只用于以 detached + unref 起桌面应用 exe（GUI 进程，需要脱离 npm 的父进程）；不启 npm / dsh'],
 ])
 
 /** 会被检查的源码：开发脚本与 e2e 夹具（两者都会起 npm / dsh）。 */

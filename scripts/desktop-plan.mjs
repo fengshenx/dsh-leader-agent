@@ -12,6 +12,9 @@
 import { isAbsolute, join, resolve } from 'node:path'
 import { LEADER_KIT_PACKAGE } from './dev-plan.mjs'
 
+/** 桌面应用在 Windows 上的可执行文件名后缀（Electron/electron-builder 的产物形态）。 */
+const WINDOWS_EXE_EXTENSION = '.exe'
+
 /** 桌面应用自己拥有的 profile 名；`apps/desktop/src/paths.ts` 里写死的那个。 */
 export const DESKTOP_PROFILE = 'desktop'
 
@@ -65,6 +68,83 @@ export function parseBundleExecutable(xml) {
 export function looksLikeAppPath(input) {
   const raw = String(input ?? '').trim()
   return raw.includes('/') || raw.includes('\\') || raw.startsWith('~')
+}
+
+/**
+ * 取路径的最后一段，`/` 与 `\` 都当分隔符。
+ *
+ * 不能用 `node:path` 的 `basename`：它只认当前平台的分隔符，在 POSIX 上把
+ * `C:\Apps\Probe\Probe.exe` 整串当一个文件名。Windows 路径在别的平台上被解析
+ * 时（测试、跨平台包装脚本）仍要取到 `Probe.exe`。
+ *
+ * @param {string} path - 路径
+ * @returns {string} 最后一段
+ */
+function pathLeaf(path) {
+  const parts = String(path).split(/[\\/]/)
+  return parts[parts.length - 1] ?? ''
+}
+
+/**
+ * Windows 上桌面应用 exe 的候选路径，按优先级排列。
+ *
+ * 只算候选、不碰文件系统：`DSH_DESKTOP_APP` 的三种写法（exe 路径、安装目录、裸名）
+ * 都归一到同一组候选，由调用方挑第一个存在的。裸名按 electron-builder 的 NSIS 默认
+ * 布局展开——`perMachine: false`（当前宿主的配置）装到 `%LOCALAPPDATA%\Programs\<名>`；
+ * 全机安装再兜 `%ProgramFiles%` 与 `%ProgramFiles(x86)%`，宿主改了安装范围时不至于
+ * 找不到应用。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.appName - 应用名、安装目录或 exe 路径
+ * @param {object} [options.env] - 环境变量，读 LOCALAPPDATA / ProgramFiles / ProgramFiles(x86)
+ * @param {string} options.homeDir - 用户主目录，展开 `~` 用
+ * @param {string} [options.cwd] - 当前工作目录，相对路径的基准
+ * @returns {string[]} 候选 exe 绝对路径
+ */
+export function windowsExeCandidates({ appName, env = {}, homeDir, cwd = process.cwd() }) {
+  const raw = String(appName ?? '').trim()
+  if (raw === '') return []
+  if (looksLikeAppPath(raw)) {
+    const resolved = expandHomePath(raw, homeDir, cwd)
+    if (/\.exe$/i.test(resolved)) return [resolved]
+    return [join(resolved, `${pathLeaf(resolved)}${WINDOWS_EXE_EXTENSION}`)]
+  }
+  const name = raw.replace(/\.exe$/i, '')
+  // 先 trim 原值再拼：`join('', 'Programs')` 得到相对路径 `Programs`，按 cwd 解析会
+  // 指到别的树形上——候选列表承诺的是绝对路径。
+  const nonEmpty = (value) => {
+    const text = String(value ?? '').trim()
+    return text === '' ? null : text
+  }
+  const localAppData = nonEmpty(env.LOCALAPPDATA)
+  const roots = [
+    localAppData === null ? null : join(localAppData, 'Programs'),
+    nonEmpty(env.ProgramFiles),
+    nonEmpty(env['ProgramFiles(x86)']),
+  ]
+  return roots
+    .filter((entry) => entry !== null)
+    .map((entry) => join(entry, name, `${name}${WINDOWS_EXE_EXTENSION}`))
+}
+
+/**
+ * 从 `tasklist /FO CSV` 的输出里取进程名。
+ *
+ * 只认以引号开头的行：没有匹配时 tasklist 输出的是本地化的提示行（英文
+ * `INFO: No tasks are running…`、中文「信息: 没有运行的任务匹配指定标准。」），
+ * 按文本比对会随系统语言失效。CSV 形态下 Image Name 是完整名字（默认表格模式
+ * 才有 25 字符截断），这也是一律用 CSV 的原因。
+ *
+ * @param {string} text - tasklist 的 stdout
+ * @returns {string[]} 进程名，按输出顺序
+ */
+export function parseTasklistImages(text) {
+  return String(text ?? '')
+    .split(/\r?\n/)
+    .map((line) => /^"([^"]*)"/.exec(line))
+    .filter((match) => match !== null)
+    .map((match) => match[1].trim())
+    .filter((name) => name !== '')
 }
 
 /**
