@@ -10,9 +10,13 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
   <img alt="dsh 版本要求" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
   <img alt="状态" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
+  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-kit/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
 </p>
 
 # dsh-leader-kit
@@ -74,25 +78,16 @@
 
 ### 安装
 
-开发期用 profile link 安装（改代码即生效）：
-
-```sh
-dsh plugin --profile web add ../dsh-leader-kit
-dsh web
-```
-
-不装进 profile 直接试跑：
-
-```sh
-cd /path/to/deepseek-harness
-pnpm dsh web --patch ../dsh-leader-kit/cordis.patch.yml
-```
-
-发布到 npm 之后，按包名安装即可：
+从 npm 安装（包名 `dsh-leader-kit`）：
 
 ```sh
 dsh plugin --profile web add dsh-leader-kit
+dsh web
 ```
+
+profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出来缺 web-app bundle，客户端半边不加载。需要 dsh `>=0.2.1-rc.2 <0.3.0`。
+
+指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
 
 profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 这类自定义名字不在 dsh 的 `PROFILE_TEMPLATES` 里，`dsh plugin` 会按默认模板只装 `@deepseek-ai/dsh-base`——没有 web-app bundle，插件客户端半边根本不加载。
 
@@ -100,14 +95,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 ### 桌面版（DeepSeek Harness Desktop）
 
-桌面版是 Electron 壳 + 完整 Web 应用，profile 固定为 `$DSH_HOME/profiles/desktop`，包与激活状态和上面的 `web` profile 各一份——装进 `web` 的插件它看不到。在本仓库里一条命令挂进去并启动：
-
-```sh
-npm run desktop              # 写入 desktop profile、重建客户端产物、拉起桌面应用
-npm run desktop -- --remove  # 摘除
-```
-
-脚本写 `dsh-leader-kit: link:<当前目录>`，改代码即生效。桌面应用只在启动时读 profile：跑之前先完全退出（关窗口只是隐藏），同一时刻只能挂一个工作树版本；`--remove` 只摘本工作树挂的那份，遇到别的工作树或插件管理装的版本会拒绝并说明。不用脚本也可以在桌面应用的插件管理里「添加插件」填本仓库绝对路径。两端共享 `~/.dsh` 下的会话、项目与卡片数据，插件包与激活状态各自一份。`DSH_HOME` 要用绝对路径或 `~/` 写法——应用由 `open` 启动、按自己的目录解析相对路径；脚本启动应用时会用 `open --env` 把绝对数据根传过去，默认 `~/.dsh` 之外的根也能生效。
+桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通；`DSH_HOME` 要用绝对路径或 `~/` 写法。在本仓库里 `npm run desktop` 挂当前工作树并启动，`-- --remove` 摘除；profile 规则与多工作树限制见[开发](docs/development.md#日常实例)。
 
 ### 五步上手
 
@@ -139,16 +127,7 @@ npm run desktop -- --remove  # 摘除
 
 ## 前提：先跑通多 worktree 并发
 
-并行 10 个 feature，前提是任务之间真的隔离：每个任务一个 worktree、一个独立 dsh 实例、一份独立数据根，互不覆盖插件版本、不抢会话与数据。没有这一层，Leader 派出去的活会在同一个 checkout 上互相踩，看板上的项目也只是一堆共享工作区的会话。本仓的 `scripts/worktree-*.mjs` 与 `scripts/dev.mjs` 就是为这件事准备的（见[开发](#开发)）。
-
-建议直接蒸馏 DeepSeek Harness 团队的四项工程实践，本 bundle 与它们是同一套思路：
-
-- **worktree 并发**：任务隔离在独立 checkout，开发实例的数据根也隔离，合并前不动主干。
-- **Agent Note 机制**：非平凡改动同 PR 携带决策笔记，只记永久决策与边界，不写流水账。
-- **AGENTS.md 渐进式披露**：根文件只放每个任务都适用的规则与「按任务查阅」入口，细节进归属文档。
-- **文档防腐化**：能机械判的交给 `npm run check`，行为变更同 PR 同步文档，临时证据不入库。
-
-机制与各自落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。把这套玩法搬进自己的项目时，也建议先搬这四条——编排能不能长期跑住，取决于项目自己的隔离与文档机制。本仓已按这四条落地，分层归属与编辑纪律见 [AGENTS.md 的编辑本文件与文档分层](AGENTS.md#编辑本文件与文档分层)。
+并行 10 个 feature 的前提是任务隔离：每个任务一个 worktree、一个独立 dsh 实例、一份独立数据根，互不覆盖插件版本、不抢会话与数据。本仓的 `scripts/worktree-*.mjs` 与 `scripts/dev.mjs` 就是为这件事准备的（见[开发](docs/development.md)），机制与落点见[架构文档的协作与文档机制](docs/architecture.md#协作与文档机制)。
 
 ## 当前限制
 
@@ -166,19 +145,18 @@ npm run desktop -- --remove  # 摘除
 ## 开发
 
 ```sh
-npm run worktree:spawn <任务名>   # 建 .worktrees/<任务名> + feature/<任务名>
+npm run worktree:spawn <任务名>   # 建 worktree + feature 分支
 cd .worktrees/<任务名>
-npm run dev                       # 起挂当前工作树插件版本的 dsh 实例
-npm start                         # 起日常实例（~/.dsh 的数据与 profile）
-npm run check                     # Agent Note 门禁 + 文档工具名门禁 + 文档预算 + 语法检查 + 覆盖率门禁（含全部单测）
-npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
+npm run dev                       # 起挂当前工作树的 dsh 实例
+npm run check                     # 全量门禁
+npm run e2e                       # 浏览器 e2e
 ```
 
-其余命令见 [AGENTS.md 的常用命令](AGENTS.md#常用命令)。
+数据根、实例覆盖项、构建契约与测试口径见[开发](docs/development.md)；常用命令见 [AGENTS.md](AGENTS.md#常用命令)。`npm start` 起日常实例。
 
-`npm run dev` 的数据根在工作树内的 `.dev/home`，不碰日常 `~/.dsh`，几个工作树可以同时跑；客户端产物由常驻 watch 重建，宿主侧代码重启实例即可。`npm start` 走日常那套，起之前逐项检查并给出可复制的修复命令。
+## 贡献
 
-开发实例的覆盖项与凭据处理、worktree 清理守卫、构建契约与测试口径见[开发](docs/development.md)；浏览器侧取证跑 `npm run e2e`（首次先 `npm run e2e:install`），场景与断言纪律见 [docs/e2e-testing.md](docs/e2e-testing.md)。
+改代码前先读 [AGENTS.md](AGENTS.md)：worktree 纪律、验证要求与文档机制都在那里。最短路径是 `npm install` → `npm run check` → 开 PR；提交信息用中文，非平凡改动同 PR 带 `.agents/notes/` 决策笔记。
 
 ## 文档
 
@@ -200,3 +178,7 @@ npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真�
 本方案在设计时参考过 **Cursor 的 Project 实现**与 **PStack 的编排机制**：把项目当成一等实体、按项目聚合会话与交付物，以及「leader 派工 / 执行者回报 / 交付看板」这条主线。
 
 也感谢 **DeepSeek Harness 团队**：宿主的插件契约，以及 worktree 并发、Agent Note、AGENTS.md 渐进式披露、文档防腐化这套工程实践，是本仓直接对照的来源。
+
+## 许可证
+
+[MIT](LICENSE)

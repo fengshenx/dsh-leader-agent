@@ -32,7 +32,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝（合并判据：`merge-base --is-ancestor main` 或 PR 状态）。删 worktree 前先挪 `.dev` 到 `.worktrees/.dev-stash-<任务名>`、拆掉 `node_modules` 链接再 `git worktree remove`——Windows 上不先拆时 git 会跟随 junction 删掉主 checkout / 源 profile 的依赖；失败按原 target 恢复链接并把 `.dev` 挪回，git 已注销登记时只恢复 `.dev` 并提示手工清理。`--apply` 持有 `.worktrees/.prune.lock`（活 PID 不回收）。细节见[笔记](../.agents/notes/2026-11-02-win32-worktree-node-modules-teardown.md)。
 
-也可以不用脚本、手工把插件装进某个 profile：`dsh plugin --profile web add ../dsh-leader-kit`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。
+手工装：`dsh plugin --profile web add ../dsh-leader-kit`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。npm 版本换成包名 `dsh-leader-kit`（可带 `@0.1.1`），卸载用 `dsh plugin --profile web remove dsh-leader-kit`；`engines.dsh` 不满足时安装与启动被拒绝。不装 profile 直接试跑：在 dsh 源码目录执行 `pnpm dsh web --patch <本仓>/cordis.patch.yml`。
 
 ## 测试与构建
 

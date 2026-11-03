@@ -10,9 +10,13 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
   <img alt="dsh version" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
   <img alt="status" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
+  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-kit/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
 </p>
 
 # dsh-leader-kit
@@ -74,25 +78,16 @@ Three mechanisms make this more than "a smarter prompt":
 
 ### Install
 
-Profile link for development (changes take effect on reload):
-
-```sh
-dsh plugin --profile web add ../dsh-leader-kit
-dsh web
-```
-
-Try it without installing into a profile:
-
-```sh
-cd /path/to/deepseek-harness
-pnpm dsh web --patch ../dsh-leader-kit/cordis.patch.yml
-```
-
-Once it is published to npm, install it by package name instead:
+Install from npm (package name `dsh-leader-kit`):
 
 ```sh
 dsh plugin --profile web add dsh-leader-kit
+dsh web
 ```
+
+The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES`, so the install lacks the web-app bundle and the client half never loads. Requires dsh `>=0.2.1-rc.2 <0.3.0`.
+
+For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
 
 The profile must be named `web`. The plugin manifest declares `platform: web`, and custom names such as `dev` are absent from dsh's `PROFILE_TEMPLATES`: `dsh plugin` would build that profile from the default template with only `@deepseek-ai/dsh-base` installed, so there is no web-app bundle and the client half of the plugin never loads.
 
@@ -100,14 +95,7 @@ The profile must be named `web`. The plugin manifest declares `platform: web`, a
 
 ### Desktop (DeepSeek Harness Desktop)
 
-Desktop is an Electron shell around the complete Web application with its own profile at `$DSH_HOME/profiles/desktop` — packages and activation are separate from the `web` profile above, so a plugin installed into `web` is invisible there. One command inside this repository mounts the current checkout and launches the app:
-
-```sh
-npm run desktop              # write the desktop profile, rebuild the client bundle, launch the app
-npm run desktop -- --remove  # unmount
-```
-
-The script writes `dsh-leader-kit: link:<current directory>`, so code changes take effect on the next launch. Desktop reads the profile only at startup: quit the app completely first (closing the window just hides it), and only one worktree version can be mounted at a time; `--remove` only unmounts what this worktree mounted, and refuses another worktree's or the plugin manager's install. Without the script, add the repository's absolute path through the app's plugin manager. Both sides share sessions, projects, and cards under `~/.dsh`, but keep their own plugin packages and activation. `DSH_HOME` must be absolute or start with `~/`: the app is launched by `open` and resolves relative paths against its own directory. The script passes the absolute data root to the app via `open --env`, so non-default roots work too.
+Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`; `DSH_HOME` must be absolute or start with `~/`. Inside this repository, `npm run desktop` mounts the current worktree and launches the app, and `-- --remove` unmounts it; profile rules and multi-worktree limits are in [development](docs/development.md#日常实例) (Chinese).
 
 ### Five steps
 
@@ -139,16 +127,7 @@ For the full interaction — slot frontmatter details, archiving, swapping the L
 
 ## Prerequisites: get multi-worktree parallelism working first
 
-Running ten features in parallel requires real isolation between tasks: one worktree per task, one dsh instance per task, one data root per task, so tasks never overwrite each other's plugin version or compete for sessions and data. Without that layer, the work the Leader dispatches tramples a single checkout, and the board is just a pile of sessions sharing one workspace. This repository's `scripts/worktree-*.mjs` and `scripts/dev.mjs` exist for exactly this ([Development](#development)).
-
-We recommend adopting the four engineering practices of the DeepSeek Harness team; this bundle is built on the same ideas:
-
-- **Worktree parallelism.** Tasks live in their own checkout, the dev instance gets its own data root, and the main branch stays untouched until merge.
-- **Agent Notes.** Non-trivial changes ship a decision note in the same PR, recording permanent decisions and boundaries only, never a play-by-play.
-- **Progressive disclosure in `AGENTS.md`.** The root file holds only rules that apply to every task plus a task-routed index; details live in their own documents.
-- **Documentation that resists rot.** Whatever can be checked mechanically runs in `npm run check`; behavior changes update the docs in the same PR; temporary evidence never enters the repository.
-
-Mechanisms and where each one lands: [collaboration and documentation](docs/architecture.md#协作与文档机制) (Chinese). When you bring this way of working to your own project, bring these four practices first — orchestration survives only as long as the project's own isolation and documentation do. This repository is already laid out that way: the tiering rules and editing discipline are in [AGENTS.md](AGENTS.md#编辑本文件与文档分层) (Chinese).
+Running ten features in parallel requires real isolation between tasks: one worktree per task, one dsh instance per task, one data root per task, so tasks never overwrite each other's plugin version or compete for sessions and data. This repository's `scripts/worktree-*.mjs` and `scripts/dev.mjs` exist for exactly this ([Development](docs/development.md)); mechanisms and where each one lands are in [collaboration and documentation](docs/architecture.md#协作与文档机制) (Chinese).
 
 ## Current limitations
 
@@ -166,19 +145,18 @@ The full list and trade-offs (status-light sources, watermark collapsing, avatar
 ## Development
 
 ```sh
-npm run worktree:spawn <task>     # create .worktrees/<task> and feature/<task>
+npm run worktree:spawn <task>     # create the worktree and feature branch
 cd .worktrees/<task>
 npm run dev                       # dsh instance mounting this worktree's plugin
-npm start                         # daily instance (the ~/.dsh data root and profile)
-npm run check                     # Agent Note gate, doc tool-name gate, doc budget gate, syntax check, tests with per-file coverage
-npm run e2e                       # build the client bundle + browser e2e (real host, local mock, no keys)
+npm run check                     # full gate
+npm run e2e                       # browser e2e
 ```
 
-The remaining commands are in [AGENTS.md](AGENTS.md#常用命令) (Chinese).
+Data roots, instance overrides, build constraints and the test policy are in [development](docs/development.md) (Chinese); the command index is in [AGENTS.md](AGENTS.md#常用命令) (Chinese). `npm start` runs the daily instance.
 
-`npm run dev` keeps its data root in the worktree's `.dev/home` and leaves the daily `~/.dsh` untouched, so several worktrees can run at once with their own plugin version and data; client changes are rebuilt by a resident watch, host-side changes need an instance restart. `npm start` runs the daily setup after checking each prerequisite and printing a copy-pasteable fix.
+## Contributing
 
-Dev instance overrides and credentials handling, worktree cleanup guards, build constraints and the test policy live in [development](docs/development.md) (Chinese); browser-side evidence is gathered with `npm run e2e` (`npm run e2e:install` once), and scenarios plus assertion rules are in [docs/e2e-testing.md](docs/e2e-testing.md) (Chinese).
+Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirements, and documentation rules live there. The short path is `npm install` → `npm run check` → open a PR. Commit messages are in Chinese, and non-trivial changes ship an `.agents/notes/` decision note in the same PR.
 
 ## Docs
 
@@ -200,3 +178,7 @@ Dev instance overrides and credentials handling, worktree cleanup guards, build 
 The design drew on **Cursor's Project implementation** and **PStack's orchestration mechanism**: treating a project as a first-class entity, aggregating sessions and deliverables per project, and the leader-dispatches / executor-reports / delivery-board line.
 
 Thanks also to the **DeepSeek Harness team**: the host plugin contract, and the worktree, Agent Note, progressive-disclosure and documentation practices this repository mirrors directly.
+
+## License
+
+[MIT](LICENSE)
