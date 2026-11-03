@@ -8,7 +8,7 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { launchE2E, waitFor } from './harness.mjs'
+import { launchE2E, waitFor, waitForLocator } from './harness.mjs'
 import { sessionLogsContain } from './session-logs.mjs'
 
 /** 场景标记：mock 用它选脚本，一个标记只表达一个场景。 */
@@ -25,12 +25,13 @@ test('一条带标记的消息走完真实宿主链，回复上屏并落盘', { 
   // 启动早期它还是 `data-phase="inert"`（aria-label「选择工作区」），等到可编辑
   // 才是真的能输入——用 contenteditable 属性让 locator 自己等这个状态。
   const composer = e2e.page.locator('div[role="textbox"][contenteditable="true"]').first()
+  await waitForLocator(composer, { description: '输入框可编辑', timeoutMs: 20_000 })
   await composer.click()
   await composer.fill(`${MARKER} 收工即可`)
   await composer.press('Enter')
 
   // 等状态而不是等时间：回复文本出现在页面上才算这一轮结束。
-  await e2e.page.getByText(REPLY).first().waitFor({ state: 'visible', timeout: 90_000 })
+  await waitForLocator(e2e.page.getByText(REPLY).first(), { description: 'mock 回复上屏', timeoutMs: 30_000 })
   await e2e.screenshot('reply')
 
   // 宿主会额外用同一模型给会话起标题（`kind: 'title'`），它不算这一轮。
@@ -47,7 +48,6 @@ test('一条带标记的消息走完真实宿主链，回复上屏并落盘', { 
   await waitFor({
     description: '会话日志里出现回复文本',
     check: () => sessionLogsContain(e2e.instance.home, REPLY),
-    timeoutMs: 30_000,
   })
 
   assert.deepEqual(e2e.problems, [], '页内不应有未处理的异常或 console 错误')
