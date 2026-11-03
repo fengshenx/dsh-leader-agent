@@ -49,7 +49,6 @@ function fakeService() {
       calls.push(['remove', id])
       return {
         project: { id, name: 'gone', directory: '/tmp/gone', leaderSessionId: 's3' },
-        workspace: { removed: true },
       }
     },
     async rename(id, name) {
@@ -62,10 +61,6 @@ function fakeService() {
     },
     async reorder(id, beforeId) {
       calls.push(['reorder', id, beforeId])
-    },
-    async attachLeader(id) {
-      calls.push(['attachLeader', id])
-      return { attached: true, workspaceId: 'w1' }
     },
     async sessionsByProject() {
       calls.push(['sessionsByProject'])
@@ -189,15 +184,13 @@ test('方法把调用转给项目服务', async () => {
   assert.deepEqual(await remote.replaceLeader('p1'), {
     id: 'p1', name: 'demo', directory: '/tmp/demo', leaderSessionId: 's4',
   })
-  // 拖拽改序与「把 leader 会话挂到项目工作区」都是纯转发，返回值形态一并守住
+  // 拖拽改序是纯转发，返回值形态一并守住
   await remote.reorder('p1', 'p2')
   assert.deepEqual(service.calls.at(-1), ['reorder', 'p1', 'p2'])
-  assert.deepEqual(await remote.attachLeader('p1'), { attached: true, workspaceId: 'w1' })
-  assert.deepEqual(service.calls.at(-1), ['attachLeader', 'p1'])
   assert.deepEqual(await remote.sessionsByProject(), [
     { projectId: 'p1', sessionIds: ['s1', 's5'] },
   ])
-  assert.deepEqual(await remote.deleteProject('p1'), { removed: true, workspaceRemoved: true })
+  assert.deepEqual(await remote.deleteProject('p1'), { removed: true })
   assert.deepEqual(service.calls.at(-1), ['remove', 'p1'])
   // 看板取数走卡片存储，按项目过滤
   assert.deepEqual(await remote.boardCards('p1'), [{ id: 'c1', number: 1, title: '任务' }])
@@ -240,52 +233,18 @@ test('项目的槽位显示名来自 SLOTS.md 的 label，未声明的槽位不�
   }
 })
 
-test('删除项目带回工作区移除结果，项目不存在时明确返回未删除', async () => {
+test('删除项目只返回是否删掉，项目不存在时明确返回未删除', async () => {
   const { ctx } = fakeCtx()
   const service = fakeService()
   const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), ctx })
 
-  assert.deepEqual(await remote.deleteProject('p1'), { removed: true, workspaceRemoved: true })
+  assert.deepEqual(await remote.deleteProject('p1'), { removed: true })
   service.remove = async () => undefined
   // `notFound` 让客户端把重复删除当幂等成功收尾，而不是报「删除失败」。
   assert.deepEqual(await remote.deleteProject('p1'), {
     removed: false,
-    workspaceRemoved: false,
     notFound: true,
     reason: '项目不存在。',
-  })
-})
-
-test('工作区没删掉时把原因带回来，项目照样算删了', async () => {
-  const { ctx } = fakeCtx()
-  const service = fakeService()
-  service.remove = async () => ({
-    project: { id: 'p1' },
-    workspace: { removed: false, reason: '当前宿主的工作区服务不支持删除。' },
-  })
-  const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), ctx })
-
-  assert.deepEqual(await remote.deleteProject('p1'), {
-    removed: true,
-    workspaceRemoved: false,
-    reason: '当前宿主的工作区服务不支持删除。',
-  })
-})
-
-test('没有工作区可移除时报 skipped 而不是失败原因', async () => {
-  const { ctx } = fakeCtx()
-  const service = fakeService()
-  service.remove = async () => ({
-    project: { id: 'p1' },
-    workspace: { removed: false, skipped: true },
-  })
-  const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), ctx })
-
-  // 带 reason 会被客户端渲染成「工作区未移除」，把正常删除说成失败。
-  assert.deepEqual(await remote.deleteProject('p1'), {
-    removed: true,
-    workspaceRemoved: false,
-    skipped: true,
   })
 })
 

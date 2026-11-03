@@ -37,7 +37,6 @@ export const PROJECT_REMOTE_METHODS = Object.freeze({
   rename: Object.freeze({ id: 'string', name: 'string' }),
   reorder: Object.freeze({ id: 'string', beforeId: 'string' }),
   replaceLeader: Object.freeze({ id: 'string' }),
-  attachLeader: Object.freeze({ id: 'string' }),
   sessionsByProject: Object.freeze({}),
   resolveProject: Object.freeze({ sessionId: 'string' }),
   boardCards: Object.freeze({ projectId: 'string' }),

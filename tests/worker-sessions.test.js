@@ -12,14 +12,12 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
 /**
  * 造一个假的宿主上下文：记录建/恢复/投递/销毁。
  *
- * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, workspaceExists?: boolean, attachError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
+ * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, workspaceExists = true, attachError, renameError, permissions } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, renameError, permissions } = {}) {
   const created = []
   const resumed = []
-  /** 挂进工作区的记录：`{ workspaceId, sessionId }` */
-  const attached = []
   /** 追加到会话上的 knob 事件（权限继承） */
   const appended = []
   /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
@@ -101,20 +99,6 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
           },
         }
       }
-      if (key === 'workspaceRegistry') {
-        return {
-          get: (workspaceId) => (workspaceExists
-            ? {
-                id: workspaceId,
-                sessionIds: [],
-                async attachSession(sessionId) {
-                  if (attachError !== undefined) throw attachError
-                  attached.push({ workspaceId, sessionId })
-                },
-              }
-            : undefined),
-        }
-      }
       if (key === 'agentPresets' && brokenPresets) {
         return { resolve: async () => ({ id: 'standard' }) }
       }
@@ -153,7 +137,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       return undefined
     },
   }
-  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, attached, appended }
+  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, appended }
 }
 
 test('建会话时用带前缀的会话 id，且不投递任务——开工等 leader 的消息', async () => {
@@ -225,25 +209,21 @@ test('建会话时把显示名钉成会话标题', async () => {
   assert.deepEqual(fixture.titles, [{ sessionId, title: 'research-sources' }])
 })
 
-test('deferPresentation 时建会话不做呈现，present 才补标题与工作区', async () => {
+test('deferPresentation 时建会话不改名，present 才补标题', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
   const { sessionId } = await sessions.spawn({
     name: 'research-sources',
-    workspaceId: 'ws-1',
     deferPresentation: true,
     signal: new AbortController().signal,
   })
   // 改名会追加 session/title 事件、让零 turn 会话在磁盘上 materialize；派工要等
   // 绑卡成功才做，否则绑定失败回滚时磁盘上会留下一条空会话。
   assert.deepEqual(fixture.titles, [])
-  assert.deepEqual(fixture.attached, [])
 
-  sessions.present(sessionId, { name: 'research-sources', workspaceId: 'ws-1' })
-  await new Promise((resolve) => { setTimeout(resolve, 0) })
+  sessions.present(sessionId, { name: 'research-sources' })
   assert.deepEqual(fixture.titles, [{ sessionId, title: 'research-sources' }])
-  assert.deepEqual(fixture.attached, [{ workspaceId: 'ws-1', sessionId }])
 })
 
 test('建会话时带上默认模型选择，否则系统提示里的 {{model}} 变量没值', async () => {
@@ -728,57 +708,6 @@ test('宿主要求忘掉已销毁的会话时只摘记录，不再调 dispose', 
   assert.equal(sessions.get(sessionId), undefined)
   assert.equal(sessions.isWorkerSession(sessionId), true)
 })
-
-test('派出的 worker 挂进项目工作区：不挂就落在官方树的「未分组」里', async () => {
-  const fixture = createFixture()
-  const sessions = createWorkerSessions({ ctx: fixture.ctx })
-
-  const { sessionId } = await sessions.spawn({
-    name: 'w',
-    parentSessionId: 'c',
-    workspaceId: 'ws-1',
-    signal: new AbortController().signal,
-  })
-  // 挂载是 fire-and-forget：派工不等它，否则宿主一次慢写就拖住整次派工。
-  await new Promise((resolve) => { setTimeout(resolve, 0) })
-
-  assert.deepEqual(fixture.attached, [{ workspaceId: 'ws-1', sessionId }])
-})
-
-test('没有工作区可挂时照常派工', async () => {
-  const fixture = createFixture({ workspaceExists: false })
-  const sessions = createWorkerSessions({ ctx: fixture.ctx })
-
-  const { sessionId } = await sessions.spawn({
-    name: 'w',
-    parentSessionId: 'c',
-    workspaceId: 'ws-gone',
-    signal: new AbortController().signal,
-  })
-  await new Promise((resolve) => { setTimeout(resolve, 0) })
-
-  assert.match(sessionId, /^worker-/)
-  assert.deepEqual(fixture.attached, [])
-})
-
-test('挂载失败不拖累派工，只在日志里说明后果', async () => {
-  const fixture = createFixture({ attachError: new Error('宿主拒绝挂载') })
-  const lines = []
-  const sessions = createWorkerSessions({ ctx: fixture.ctx, logger: (line) => lines.push(line) })
-
-  await sessions.spawn({
-    name: 'w',
-    parentSessionId: 'c',
-    workspaceId: 'ws-1',
-    signal: new AbortController().signal,
-  })
-  await new Promise((resolve) => { setTimeout(resolve, 0) })
-
-  // 漂移排查要能看出是哪个工作区：只有会话 id 与错误，定位不到项目。
-  assert.equal(lines.some((line) => line.includes('未分组') && line.includes('ws-1')), true)
-})
-
-
 
 test('同一会话并发续聊只冷恢复一次，不泄漏第二个 agent', async () => {
   const fixture = createFixture()

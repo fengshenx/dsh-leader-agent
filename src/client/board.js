@@ -7,7 +7,7 @@
  *
  * 卡面视觉与交互：卡面零操作铬，active 卡三层、done 卡单行并收进折叠区，
  * 空态与骨架沿用同一套视觉。见
- * `.agents/notes/2026-10-27-board-card-visual-and-interaction.md`。
+ * `.agents/notes/implemented/feature/2026-10-27-board-card-visual-and-interaction.md`。
  *
  * 信号灯不落存储：等你输入/需注意/执行中/未读/空闲由槽位绑定的会话状态实时
  * 推导。运行态的权威值是宿主按 `api-session/status` 事件维护的那一份，它只经

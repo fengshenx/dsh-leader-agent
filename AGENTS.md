@@ -20,14 +20,14 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：lead
 | 理解整体架构、查模块归属 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、宿主契约落点） |
 | 查某处限制、为什么这样取舍 | [docs/limitations.md](docs/limitations.md)（完整限制清单） |
 | 改 host 侧、加工具、动 `agent/created` | [docs/capability-gaps.md](docs/capability-gaps.md)（宿主能力边界，每条都有实测依据） |
-| 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/2026-10-23-client-side-findings-and-build-constraints.md) |
+| 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/implemented/architecture/2026-10-23-client-side-findings-and-build-constraints.md) |
 | 起开发实例、多 worktree 并行、构建与测试机制 | [docs/development.md](docs/development.md) |
-| worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/2026-10-23-dispatch-and-wakeup.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
-| 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/2026-10-27-project-bound-board.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
-| 项目级提示词（`LEADER.md` / `SLOTS.md`；旧名 `COORDINATOR.md` 只是兼容入口） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
+| worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/implemented/architecture/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/implemented/architecture/2026-10-23-dispatch-and-wakeup.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/implemented/feature/2026-11-02-spawn-then-message-and-card-context.md) |
+| 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/implemented/architecture/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/implemented/feature/2026-10-27-project-bound-board.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/implemented/feature/2026-11-02-spawn-then-message-and-card-context.md) |
+| 项目级提示词（`LEADER.md` / `SLOTS.md`；旧名 `COORDINATOR.md` 只是兼容入口） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/implemented/feature/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
 | 写浏览器 e2e 场景、跑 `npm run e2e`、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、场景模板、mock 标记约定、截图落点、断言纪律；脚本化不了的才走人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
-| 发版、发布包内容与 CI | [.telov/skills/release](.telov/skills/release/SKILL.md)（发版手册）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/2026-11-03-npm-oidc-publishing.md) |
+| 发版、发布包内容与 CI | [.telov/skills/release](.telov/skills/release/SKILL.md)（发版手册）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/implemented/process/2026-11-03-npm-oidc-publishing.md) |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
 ## 目录与职责
@@ -44,7 +44,7 @@ tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
 scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名、文档预算、覆盖率、发布包内容）
 docs/               长期文档（架构地图、已知限制、宿主能力边界、开发与构建、e2e 车道与人工取证）
-.agents/notes/      非平凡改动的决策记忆
+.agents/notes/      决策记忆：按 {lifecycle}/{class}/ 归位（口径见目录内 README.md）
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
 COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（Telov 等外部工具用）
 SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review）
@@ -102,10 +102,12 @@ npm run release:check             # 发版门禁：check + build:client + verify
 
 ## 提交与 PR
 
-- 非平凡改动同 PR 携带 `.agents/notes/` 笔记：只记永久决策与边界，不写流水账。正文按
+- 非平凡改动同 PR 携带 `.agents/notes/{lifecycle}/{class}/` 笔记：只记永久决策与边界，不写流水账。
+  双轴取值、类目口径与归档规则见[目录内 README](.agents/notes/README.md)。正文按
   `## 背景` / `## 决策` / `## 边界` / `## 验证` 分节（同现有笔记）：决策拆得开时用 `###`，
   验证写用例与双向验证读数。结构由 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`
-  机械校验（文件名、唯一 H1、首节与决策节、节名不重复），判定逻辑在 `scripts/agent-note-format.mjs`。
+  机械校验（路径双轴、文件名、唯一 H1、首节与必需节、节名不重复、笔记间链接可达），判定逻辑在
+  `scripts/agent-note-format.mjs`，读盘遍历在 `scripts/agent-note-audit.mjs`。
 - 先 `npm run check` 再 `git add`。
 - PR 附证据：单测数与新增用例、双向验证结果、真机读数；截图等临时证据不入库。
 - 行为变更同步 README 与相关 `docs/`。

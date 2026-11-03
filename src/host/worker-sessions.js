@@ -108,41 +108,15 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   }
 
   /**
-   * 把新 worker 会话挂进项目工作区。
-   *
-   * 归属只决定它在官方左栏里落在哪个分组：不挂就是「未分组」，而它的 leader 已经
-   * 挂在项目工作区里。挂失败不阻塞派工——会话已经建好并要收任务，少一层归属比
-   * 派工失败轻得多，所以这里只记日志。
-   *
-   * @param {object} ctx - Cordis 上下文
-   * @param {string | undefined} workspaceId - 目标工作区
-   * @param {string} sessionId - worker 会话 id
-   * @param {(message: string) => void} log - 日志输出
-   * @returns {void}
-   */
-  function attachToWorkspace(ctx, workspaceId, sessionId, log) {
-    if (typeof workspaceId !== 'string' || workspaceId === '') return
-    const workspace = ctx.get('workspaceRegistry')?.get?.(workspaceId)
-    if (workspace === undefined) return
-    if ((workspace.sessionIds ?? []).includes(sessionId)) return
-    void workspace.attachSession(sessionId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error)
-      log(`dsh-leader-kit: worker 会话 ${sessionId} 挂到工作区 ${workspaceId} 失败，它会留在官方树的「未分组」里：${message}`)
-    })
-  }
-
-  /**
-   * 补做建会话时的「呈现」：改标题、挂项目工作区。
+   * 补做建会话时的「呈现」：改标题。
    *
    * @param {object} handle - AgentHandle
    * @param {string} sessionId - 会话 id
    * @param {string | undefined} name - 显示名
-   * @param {string | undefined} workspaceId - 目标工作区
    * @returns {void}
    */
-  function presentOne(handle, sessionId, name, workspaceId) {
+  function presentOne(handle, sessionId, name) {
     if (typeof name === 'string' && name !== '') renameTitle(handle, name)
-    attachToWorkspace(ctx, workspaceId, sessionId, logger)
   }
 
   /**
@@ -269,13 +243,12 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {object} options - 派工参数
      * @param {string | undefined} options.cwd - 工作目录
      * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
-     * @param {string} [options.workspaceId] - 与 leader 同属的项目工作区
      * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
      * @param {object} [options.permissionFrom] - 权限来源会话（leader）；沙箱模式与审批策略从它继承
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与 worker 实际生效的权限
      */
-    async spawn({ cwd, name, workspaceId, signal, permissionFrom, deferPresentation = false }) {
+    async spawn({ cwd, name, signal, permissionFrom, deferPresentation = false }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-kit: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -308,7 +281,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       // 权限要在首轮之前落定：宿主的 permissionPresets 已在 `session/created` 上给
       // 这条新会话 pin 了**用户默认** preset，这里用 leader 的有效值覆盖它。
       const permission = inheritPermission({ ctx, fromSession: permissionFrom, toSession: handle.agent.session, logger })
-      if (!deferPresentation) presentOne(handle, sessionId, name, workspaceId)
+      if (!deferPresentation) presentOne(handle, sessionId, name)
       return { sessionId, permission }
     },
 
@@ -322,13 +295,12 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} sessionId - 会话 id
      * @param {object} options - 呈现参数
      * @param {string} [options.name] - 显示名
-     * @param {string} [options.workspaceId] - 与 leader 同属的项目工作区
      * @returns {void}
      */
-    present(sessionId, { name, workspaceId }) {
+    present(sessionId, { name }) {
       const handle = live.get(sessionId)
       if (handle === undefined) throw new Error(`dsh-leader-kit: 会话 ${sessionId} 不在活表里，无法补做标题与工作区归属`)
-      presentOne(handle, sessionId, name, workspaceId)
+      presentOne(handle, sessionId, name)
     },
 
     /**

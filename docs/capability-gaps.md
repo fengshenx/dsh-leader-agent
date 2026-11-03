@@ -181,7 +181,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **事件窗口是分页的**：初始只装最近一页，`SessionEventWindow.hasMore` 标志更早历史未加载。面板必须驱动 `SessionFace.loadOlder()` 逐页加载到没有更早历史再重放投影，否则早期建卡/改卡不在窗口内；更糟的是窗口内若恰有 `list_cards` 的全量投影，它本应是完整列表，却被当成窗口内的部分视图看待，破坏「全量投影是权威快照」的前提。`loadOlder` 失败时宿主只记日志不抛错，故翻页设了上限（20 页），到顶则标注「仅显示已加载的历史片段」。
 
-**P5 已绕开这条路线**：看板改成项目维度后，数据源从会话事件流换成宿主的卡片库（见[看板按项目组织](../.agents/notes/2026-10-27-project-bound-board.md)）。事件流跨不了会话（worker 建的卡不在 leader 的窗口里），也扛不住宿主回收（窗口丢了卡就没了）。上面两段记录的是走这条路要付的代价，留作背景；本仓不再重放事件。
+**P5 已绕开这条路线**：看板改成项目维度后，数据源从会话事件流换成宿主的卡片库（见[看板按项目组织](../.agents/notes/implemented/feature/2026-10-27-project-bound-board.md)）。事件流跨不了会话（worker 建的卡不在 leader 的窗口里），也扛不住宿主回收（窗口丢了卡就没了）。上面两段记录的是走这条路要付的代价，留作背景；本仓不再重放事件。
 
 ### 21. `ctx.sessions.list()` 只返回 live session——从会话推导的列表会随重启漂移
 
@@ -245,7 +245,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 方法的形参名就是 wire 字段名，宿主按源码解析形参，客户端必须传同名字段，多一个少一个都会被 `gateway/arguments-invalid` 拒掉；
 - 客户端侧 `$mount` 的贡献里每个入参都要带 strict codec（`requireStrictInputs` 会拒收没有 strict codec 的描述符），宿主侧的 SRC 描述符则一律 `src-json`。
 
-**影响**：浏览器侧 → 宿主侧的调用不必自建 Web 路由（那条路要自己处理同源校验与错误形状，鉴权弱于官方 `/api`），也不必装 dsh 内部包（装它会被宿主的 peer/engines 校验卡住）。本仓取 Typert SRC 通道，见[项目作用域与角色槽位](../.agents/notes/2026-10-23-project-scope-and-role-slots.md)。代价是手写的协议形状与宿主版本耦合——宿主改标记契约时本仓要同步改。
+**影响**：浏览器侧 → 宿主侧的调用不必自建 Web 路由（那条路要自己处理同源校验与错误形状，鉴权弱于官方 `/api`），也不必装 dsh 内部包（装它会被宿主的 peer/engines 校验卡住）。本仓取 Typert SRC 通道，见[项目作用域与角色槽位](../.agents/notes/implemented/architecture/2026-10-23-project-scope-and-role-slots.md)。代价是手写的协议形状与宿主版本耦合——宿主改标记契约时本仓要同步改。
 
 ### 27. 左栏没有与工作区并列的区块槽——第三方只能靠 DOM 注入取位
 
@@ -299,7 +299,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **dsh 实测**：工作区记录是封闭 schema（`packages/workspace/workspace/src/spec.ts` 的 `workspaceRecord`：只有 `path` / `title` / `sessionIds` / `createdAt` / `updatedAt`），没有备注、标签或可见性字段；归档只作用于会话（`workspaceDomainState.archivedSessionIds`），工作区级别没有归档。工作区实体的公开接口（`packages/workspace/workspace/src/types.ts`）也只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`，没有隐藏或删除可见性的方法。
 
-**影响**：第三方为了让自己建的会话能被官方 UI 打开（见第 32 条）而注册了工作区——本仓后来改成为了**分组**而归属于它（不归属会落「未分组」，见第 32 条的后续复核）——那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。本仓的落点是**让它显示**：项目目录在官方树里是用户手动开会话的入口，藏掉之后那些会话没有替代路径；渲染层只用来排除会话行（见第 29 条）。宿主若要支持隐藏，只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它；官方的工作区控制器不走 `/api` 通道（`/api/workspaces/list` 与 `/api/workspaces/rename` 均 404），第三方只能经 `workspaceRegistry` 服务改它，删除入口因此放在第三方自己的项目菜单里（删除项目时把它一并删掉），并配二次确认弹窗——弹窗不能复用官方 `Modal` 组件（第三方 bundle 不得 import 宿主 UI 包），只能照 `packages/client/ui-primitives/src/Modal.tsx` 复制改写。
+**影响**：第三方若为了让自己建的会话能被官方 UI 打开（见第 32 条）而注册工作区，那个工作区就会出现在官方左栏的工作区树里，而官方没有「按外部集合隐藏分组」的扩展点。本仓的落点是**不碰工作区**：项目不注册、不挂接，项目会话落进官方树的「未分组」，渲染层只用来排除会话行（见第 29 条）。宿主若要支持隐藏，只有两条路：**归属**记在第三方自己的注册表里（第三方知道哪些工作区是自己建的，宿主的封闭 schema 不必改），**隐藏**走渲染层（官方工作区分组行带 `data-row-key="workspace:<id>"`，命中集合的行由样式表隐藏）。代价是隐藏只在左栏成立——欢迎页的工作区选择器与工作区管理面板仍列着它。
 
 ### 34. 空会话一律渲染欢迎页——没有「标记会话非空」的入口
 
@@ -322,7 +322,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **目标形态**：卡片详情浮层带编辑能力（改标题、状态、链接、槽位、排序）。
 
-**dsh 实测**：宿主官方未暴露通用远程方法注册面（`connection.rpc.handle` 对仓外插件不可用）。但浏览器侧 → 宿主侧的写通道**本仓已经有了**：自建的 Typert SRC 命名空间 `projects`（见第 26 条）在 P3 实测通过，8 个写方法（create / deleteProject / rename / replaceLeader / attachLeader 等）都跑通了。缺的不是通道，是**卡片自己的写方法**——而卡片的写入语义（revision 乐观并发、归档终态）住在 host 侧的卡片存储里，改卡要走那套规则。
+**dsh 实测**：宿主官方未暴露通用远程方法注册面（`connection.rpc.handle` 对仓外插件不可用）。但浏览器侧 → 宿主侧的写通道**本仓已经有了**：自建的 Typert SRC 命名空间 `projects`（见第 26 条）在 P3 实测通过，7 个写方法（create / deleteProject / rename / reorder / replaceLeader / detachSession / updateCardLinks）都跑通了。缺的不是通道，是**卡片自己的写方法**——而卡片的写入语义（revision 乐观并发、归档终态）住在 host 侧的卡片存储里，改卡要走那套规则。
 
 **影响**：链接编辑已补（`updateCardLinks`，整体替换 `links`，宿主侧转调 `cards.update`）；其余写操作——完成、置顶、重命名、删除、改槽位——仍未做，卡面也不放操作按钮。补齐是本仓自己的活：同一命名空间里加方法、宿主侧转调卡片存储的既有领域规则。不是宿主拦路。
 
@@ -426,6 +426,18 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **结论**：右栏默认宽度 = `max(300, round(视口宽 × 45%))`——1920px 宽窗口下约 864px，与「启动时太宽」的观感一致。第三方要改成 400 的公开路径只有三条，都不该走：改宿主默认值（本仓不改宿主）、用 `!important` 覆盖面板 inline 宽度（轨道内联在 frame 的 `grid-template-columns` 上，拖拽把手位置与 dockkit 测宽也按同一宽度算，盖一处会三处不一致）、派发合成 pointer 事件去拖宿主把手（依赖宿主内部 DOM 与手势实现）；私有 `panels` 旁路同样不采用（见上）。**需要宿主提供宽度偏好入口**（例如 `ctx.layout.setRightbarWidth(px)`，或一个公开 CSS 变量）；在那之前看板只能跟随宿主默认宽度，拖出来的宽度刷新后也会弹回 45%。
 
+### 44. 会话从工作区摘除只有 `detachSession` 一条路，语义与字段都在宿主手里
+
+**目标形态**：把插件自己建的会话（leader / 退役 leader / worker）从用户的工作区里摘干净，同时不误伤用户手动的分组。
+
+**dsh 实测**（`0.2.1-rc.2`）：
+
+- 工作区实体的公开面只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`（`packages/workspace/workspace/src/types.ts`），没有别的「删归属」入口。
+- `detachSession` 的文档契约是幂等：会话不在账上时「resolves without writing」（同文件 `types.ts:136-144`）。
+- `registry.list()` 返回的列表项不保证带实体字段（`path` / `detachSession`）；实体要经 `registry.get(id)` 取，`path` 是 canonical 目录的 getter（`packages/workspace/workspace/src/entity.ts:86`）。
+
+**影响**：启动迁移只对目标会话调 `detachSession`，不遍历工作区的 `sessionIds`（那个 getter 按会话 cwd 索引过滤，刚重启时历史会话可能还没索引到，偏偏要摘的就是这类）。这条链一旦漂移——`detachSession` 改成「不在账上也写一次」、`path` getter 改名、或列表项不再需要 `get`——迁移会从「零写盘空操作」变成每次启动写盘，或者直接漏摘。`tests/projects-service.test.js` 的幂等用例用假件复刻了「只在账上才写」的宿主语义，**真机漂移不会被单测抓住**，升级宿主时要复跑 `tests/e2e/project-workspace.e2e.js`。
+
 ---
 
 ## 四、工具级（已验证可用，无缺口）
@@ -451,8 +463,8 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 | 解析目标项目（host 侧） | 通过 | `switch_project` 按 id 或名字返回该项目的 leader 会话；leader 会话已删时如实说明需换新 leader |
 | 项目区块（client 侧） | 通过 | web profile 实测：左栏「项目」区块位于「自动化任务」之下、工作区之上，列出已注册项目（含目录路径）；数据走 Typert SRC 通道，浏览器实测取回列表（见第 26 条） |
 | 项目树（client 侧） | 通过 | 点行首槽位展开，列出该项目目录下的会话（leader 不在其中，会话行为纯文字行、无左右图标）；归属由宿主按 realpath 判定后经远程方法下发（见第 21b、29 条） |
-| 点项目打开 leader 会话 | 通过 | 点项目行 → 先由宿主把 leader 会话挂到项目目录的工作区，再打开会话；leader 会话注册并激活了第三方会话视图目标，官方外壳因此切到 active 形态（见第 34 条），浏览器实测主区域 `data-phase` 由 `hero` 变 `active`、页面无「Into the Unknown」、转录零节点、输入框几何与官方 active 布局一致 |
-| 项目删除（连同工作区） | 通过（接口层已验、GUI 未取证） | 项目菜单只有一条「删除」，先弹二次确认：项目记录删掉，插件注册的工作区随 `workspaceRegistry.delete` 一并移除（只删注册，会话与目录全保留，会话落到工作区树的「未分组」下）；复用的用户工作区不碰（见第 33 条）。隔离 `DSH_HOME` 的 web 实例上按接口层实测过删带工作区与不带工作区两种项目（`workspace.json` / `projects.json` 终态对得上）；菜单三项的渲染、两支弹窗文案与提示条样式仍待一次绑定工作区的浏览器会话 |
+| 点项目打开 leader 会话 | 通过 | 点项目行 → 直接打开 `leaderSessionId`（不碰工作区）；leader 会话注册并激活了第三方会话视图目标，官方外壳因此切到 active 形态（见第 34 条），浏览器实测主区域 `data-phase` 由 `hero` 变 `active`、页面无「Into the Unknown」、转录零节点、输入框几何与官方 active 布局一致 |
+| 项目删除 | 通过 | 项目菜单只有一条「删除」，先弹二次确认：只删 `projects.json` 里的记录，目录、会话与用户的工作区全保留（见第 33 条）。隔离 `DSH_HOME` 的 web 实例上按接口层实测过删项目（`projects.json` / `workspace.json` 终态对得上）；弹窗文案与提示条样式是纯 client 分支，见 `tests/project-panel.test.js` |
 | 官方工作区树排除项目会话 | 通过 | 浏览器实测：官方树里 `test` 工作区下的项目会话行被加隐藏类，`getComputedStyle` 为 `display:none`；官方数据层未动（见第 29 条） |
 | 产品图标 | 通过（内联路径） | 宿主 web 端运行时无 sprite，`<use>` 引用必然落空（见第 31 条）；改为内联路径后浏览器实测图标尺寸 14×14 / 16×16、path 齐全 |
 | 角色槽位注入 | 通过 | `ctx.systemPrompt.context()` 注册运行时上下文（见第 24–25 条）；改 `SLOTS.md` 正文后下一轮 turn 注入新正文；注入前后两轮请求的工具定义数组逐字节一致（32 个工具） |

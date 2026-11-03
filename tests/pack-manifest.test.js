@@ -73,7 +73,7 @@ test('开发残留进包会被拦下', () => {
   const entries = [
     'index.js',
     'tests/skills.test.js',
-    '.agents/notes/2026-11-02-npm-publish-pipeline.md',
+    '.agents/notes/implemented/process/2026-11-02-npm-publish-pipeline.md',
     '.agents/skills/leader-mode/SKILL.md',
     'scripts/verify-pack.mjs',
     '.dev/home/sessions/x.json',
@@ -81,7 +81,7 @@ test('开发残留进包会被拦下', () => {
   ]
   const { forbidden } = checkPackEntries({ entries, required: [] })
   assert.deepEqual(forbidden.sort(), [
-    '.agents/notes/2026-11-02-npm-publish-pipeline.md',
+    '.agents/notes/implemented/process/2026-11-02-npm-publish-pipeline.md',
     '.dev/home/sessions/x.json',
     'dsh-leader-kit-0.1.0.tgz',
     'scripts/verify-pack.mjs',
@@ -118,7 +118,7 @@ test('.agents 只放行 skills 子树：新增目录默认被拦', () => {
   // 判定：哪天 files 写成 ".agents/**"，新目录也不会静默进用户的 node_modules。
   const forbidden = [
     '.agents/prompts/hidden.md',
-    '.agents/notes/2026-11-02-npm-publish-pipeline.md',
+    '.agents/notes/implemented/process/2026-11-02-npm-publish-pipeline.md',
     '.agents/README.md',
     '.agents/config.json',
     '.agents/skills-extra/leader-mode/SKILL.md',
@@ -137,11 +137,11 @@ test('files 放宽到 .agents/** 时，notes 与新增目录仍被拦', () => {
   const entries = [
     'index.js',
     '.agents/skills/leader-mode/SKILL.md',
-    '.agents/notes/2026-11-02-npm-publish-pipeline.md',
+    '.agents/notes/implemented/process/2026-11-02-npm-publish-pipeline.md',
     '.agents/prompts/hidden.md',
   ]
   const { forbidden, missing } = checkPackEntries({ entries, required: [] })
-  assert.deepEqual(forbidden, ['.agents/notes/2026-11-02-npm-publish-pipeline.md', '.agents/prompts/hidden.md'])
+  assert.deepEqual(forbidden, ['.agents/notes/implemented/process/2026-11-02-npm-publish-pipeline.md', '.agents/prompts/hidden.md'])
   assert.deepEqual(missing, [])
 })
 

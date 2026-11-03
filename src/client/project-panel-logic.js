@@ -258,27 +258,6 @@ export function isProjectCurrent(project, sessionIds, currentSessionId, archived
 }
 
 /**
- * 找出要压掉激活态的工作区。
- *
- * 官方把「当前会话所在分组」的目录图标点亮。当前会话若是被排除的会话（项目的
- * leader 或 worker），点亮的分组里看不到它——分组像是开着的，却找不到对应的
- * 会话行。这时把承载它的工作区压回普通色；当前会话不是排除集里的，就不动。
- *
- * @param {string | undefined} currentSessionId - 主区域当前会话 id
- * @param {Set<string>} excludedSessionIds - 从官方树里排除的会话 id
- * @param {{workspaceId: string, sessionIds: readonly string[]}[]} workspaces - 工作区视图
- * @returns {string | undefined} 要压灰的工作区 id；不需要时 undefined
- */
-export function quietWorkspaceOf(currentSessionId, excludedSessionIds, workspaces) {
-  if (typeof currentSessionId !== 'string') return undefined
-  if (excludedSessionIds?.has(currentSessionId) !== true) return undefined
-  const owner = (workspaces ?? []).find(
-    (workspace) => (workspace?.sessionIds ?? []).includes(currentSessionId),
-  )
-  return typeof owner?.workspaceId === 'string' ? owner.workspaceId : undefined
-}
-
-/**
  * 判定归档失败是不是「会话还在跑」。
  *
  * 宿主对有心跳任务的会话默认拒绝归档（`workspace/session-active`），确认后才肯
@@ -297,51 +276,30 @@ export function isArchiveActiveRefusal(reason) {
 /**
  * 打开项目的 leader 会话。
  *
- * 官方 UI 只能打开归属工作区的会话（宿主建会话时传 `cwd` 的话不归属任何工作
- * 区），因此先让宿主把 leader 会话挂到项目目录对应的工作区，挂不上就把原因报给
- * 用户，不静默失败。
- *
- * 挂上之后直接打开会话：leader 会话是空的，官方界面按空会话渲染，但插件会用
- * 一个会话视图目标把它顶进「输入框停靠底部」的对话形态（见 `leader-view.js`），
- * 不需要先跑一轮模型。
- *
- * `recreated` 表示宿主里已经没有这个项目的工作区（用户把它删了）——这次打开顺带
- * 重建了一个。用户点的是项目行，不会注意左栏工作区树里多回一行，所以要提示。
+ * 项目的会话只带 `cwd`，不归属任何 dsh 工作区——项目与会话和官方的工作区分组是
+ * 两回事。官方 UI 能打开只带 `cwd` 的会话，所以点项目行就是一次导航，不碰用户
+ * 的工作区。
  *
  * @param {object} options - 选项
  * @param {object} options.project - 项目
- * @param {(method: string, args: unknown[]) => Promise<unknown>} options.callRemote - 调用宿主远程方法
  * @param {(sessionId: string) => void} options.openSession - 打开会话
- * @returns {Promise<{ok: boolean, message?: string, workspaceId?: string, recreated?: boolean,
- *   reconnected?: number}>} 打开结果
+ * @returns {{ok: boolean, message?: string}} 打开结果
  */
-export async function openLeaderSession({ project, callRemote, openSession }) {
-  try {
-    const result = await callRemote('attachLeader', [project.id])
-    if (result?.attached !== true) {
-      return { ok: false, message: result?.reason ?? 'leader 会话挂到工作区失败。' }
-    }
-    openSession(project.leaderSessionId)
-    // 宿主可能刚为这个目录注册了工作区，把归属带回去给调用方更新列表。
-    return {
-      ok: true,
-      workspaceId: result.workspaceId,
-      recreated: result.recreated === true,
-      reconnected: typeof result.reconnected === 'number' ? result.reconnected : 0,
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    return { ok: false, message: `leader 会话挂到工作区失败：${message}` }
+export function openLeaderSession({ project, openSession }) {
+  const sessionId = project?.leaderSessionId
+  if (typeof sessionId !== 'string' || sessionId === '') {
+    return { ok: false, message: `项目「${project?.name ?? ''}」没有可打开的 leader 会话，请换新 Leader。` }
   }
+  openSession(sessionId)
+  return { ok: true }
 }
 
 /**
  * 构造项目行「更多」菜单的条目。
  *
  * 纯函数：菜单里只放行点击之外的动作——打开 leader 会话就是点项目行本身，不再
- * 重复一个入口。删除是唯一一个破坏性入口，永远出现——项目不管有没有插件注册
- * 的工作区都能删；工作区只在它是插件注册的（记在项目记录的 `workspaceId` 上）
- * 时才会被一并移除，复用的用户工作区不碰。
+ * 重复一个入口。删除是唯一一个破坏性入口，永远出现：它只删项目记录，不碰用户的
+ * 目录、会话与工作区。
  *
  * @param {object} project - 项目
  * @param {{onRename: Function, onReplace: Function, onRemove: Function}} handlers - 各项的处理函数
@@ -358,39 +316,27 @@ export function buildProjectMenuItems(project, handlers) {
 /**
  * 说清「删除」会发生什么。
  *
- * 删除 = 删项目记录 + 移除插件为它注册的工作区（宿主 `workspaceRegistry.delete`
- * 只删注册）。用户最担心的是「会话被删了」，这句必须把会话与文件夹都讲明白；
- * 没有插件工作区时不要提工作区——那会让用户以为自己的工作区也被删了。
+ * 删除只删项目记录：项目不拥有工作区，也不拥有会话，文件夹与会话记录都原样保留。
+ * 用户最担心的是「目录和会话被删了」，这句必须把它们讲明白。
  *
  * @param {object} project - 项目
  * @returns {string} 确认弹窗的说明文字
  */
 export function describeProjectRemoval(project) {
-  const hasWorkspace = typeof project.workspaceId === 'string' && project.workspaceId !== ''
-  return hasWorkspace
-    ? `将把项目「${project.name}」删除，并把它的工作区从 dsh 工作区列表移除。文件夹与会话记录都会保留，其会话将显示在“未分组”下。`
-    : `将把项目「${project.name}」删除。文件夹与会话记录都会保留。`
+  return `将把项目「${project.name}」删除。文件夹、会话记录与 dsh 工作区都会保留。`
 }
 
 /**
  * 删除成功后给哪一句提示。
  *
  * 成功固定一句回执，走 4 秒就消失的提示条——常驻才算噪音，一次性回执不是。
- * `notFound` 走幂等成功，回执一样：它的 `reason` 是「项目不存在」，不能拿来当
- * 工作区告警。
- *
- * 工作区真摘除失败要在回执后面带上原因：项目记录已经没了，用户再也看不到这个
- * 工作区属于谁，只能去官方面板手动删。
+ * `notFound` 走幂等成功（项目已经不在了，目标已达成），不报失败。
  *
  * @param {object} project - 被删的项目
- * @param {{notFound?: boolean, reason?: string}} result - 宿主返回的删除结果
+ * @param {{notFound?: boolean, reason?: string}} _result - 宿主返回的删除结果
  * @returns {string} 提示文字
  */
-export function describeDeletionNotice(project, result) {
-  const reason = result?.reason
-  if (result?.notFound !== true && typeof reason === 'string' && reason !== '') {
-    return `已删除项目「${project.name}」。工作区未移除：${reason}`
-  }
+export function describeDeletionNotice(project, _result) {
   return `已删除项目「${project.name}」。`
 }
 
