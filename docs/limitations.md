@@ -58,3 +58,12 @@
 - **图标数据与宿主 `artwork.ts` 耦合**。宿主 web 端把图标在构建期内联进产物，运行时 DOM 里没有 sprite 节点，第三方 bundle 在运行时渲染只能自己带路径数据——本仓内联的路径取自宿主 `dsh-client-ui-primitives` 的 `artwork.ts`（regular 字重），宿主改图标时本仓要同步。
 - **工具面裁剪靠宿主的 `tools.restrict()`**。已发布的最新 dsh（`0.2.1-rc.4`）里 `tools.register()` 仍只收一个参数，按步求值的 `when` 只在源码仓 HEAD 上，所以裁剪落在 `agent/created` 时对 `agent.ctx` 调一次 `restrict({ deny })`。leader 身份来自项目注册表——**索引重建完成前不裁**：这时候问不出谁是 leader，而少给工具会让 leader 首轮干不成活；工具面这一层的宽松只对读类工具安全，派工前另行 `awaitIndex()` 并复核身份。
 - **浏览器侧 → 宿主侧走 Typert 远程通道**（命名空间 `projects`，经官方 `/api` 共享通道）。dsh 的 `connection.rpc.handle` 对仓外插件不可用（注册作用域拿不到 `webServer`），`/api` 又被官方 gateway 占用；Typert 的 SRC 回退通道允许第三方按协议形状注册服务，但代价是**手写的协议形状与宿主版本耦合**——本仓对齐宿主 `0.2.1-rc.2`（标记属性名、`version:1` 描述符、`typertRemote` 绑定字段、方法形参即 wire 字段名），宿主改契约时本仓要同步改。远程方法名还要避开官方命名空间服务的保留字（撞名会让整个命名空间挂不上）。
+
+## 发布
+
+- **发布不可撤回**：npm 上同一个版本不能重发或删除，只能 `deprecated`；tag 一推上去 workflow 就会尝试发布。所以门禁全挂在上传之前（见[发布与打包](development.md#发布与打包)），别跳过 `release:check`。只从无参 `npm publish` 发布：带路径的 `npm publish <tgz>` 不跑生命周期脚本，整段门禁被跳过。
+- **provenance 只在 CI 里生成**：本地 `npm publish` 没有 OIDC 身份，包页面不会显示「Built and signed on GitHub Actions」。前提是仓库 public 且 `package.json` 的 `repository` 与 workflow 所在仓库一致。首次发布用 `NPM_TOKEN`（包在 npm 上还不存在时无法配 trusted publishing），发过一次后可以改成 OIDC 发布并删掉 secret。
+- **git 直装拿不到客户端产物**：`lib/client.js` 不入库，仓里也没有 `prepare` 钩子。`dsh plugin add git+…` 只适合验证宿主侧；要连客户端一起验证就装 npm 版本，或本地构建后用路径装。
+- **不预检 npm 上的版本占用，幂等跳过也不比内容**：`verify:pack` 不查 registry，重复版本由 npm 自己拒；workflow 的 `npm view` 探测只为跳过已发布，不比对 digest——内容一致性由「发布前同一个提交跑过 `release:check`」保证。
+- **`verify:pack` 验的是磁盘上已有的 `lib/client.js`**：没先 `build:client` 时它把上一次的产物装进临时目录。`release:check` 先构建，所以发布链路不受影响；单跑门禁时自己保证构建过。
+- **装机 smoke 只覆盖宿主侧**：`src/client/**` 依赖 React 与宿主基线模块，装出来的 `node_modules` 里没有它们，所以客户端只验产物形状（closure-factory 外壳）；浏览器里的真实行为靠 `npm run e2e`。

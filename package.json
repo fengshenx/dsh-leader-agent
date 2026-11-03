@@ -4,6 +4,14 @@
   "description": "Leader-driven dispatch for DeepSeek Harness: protocol skills, project bootstrap, and a delivery board.",
   "type": "module",
   "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fengshenx/dsh-leader-kit.git"
+  },
+  "homepage": "https://github.com/fengshenx/dsh-leader-kit#readme",
+  "bugs": {
+    "url": "https://github.com/fengshenx/dsh-leader-kit/issues"
+  },
   "exports": {
     ".": "./index.js",
     "./src/host": "./src/host/index.js",
@@ -33,10 +41,16 @@
     "start": "node scripts/start.mjs",
     "worktree:spawn": "node scripts/worktree-spawn.mjs",
     "worktree:prune": "node scripts/worktree-prune.mjs",
-    "prepublishOnly": "npm run build:client"
+    "verify:pack": "node scripts/verify-pack.mjs",
+    "release:check": "npm run check && npm run build:client && npm run verify:pack",
+    "prepublishOnly": "npm run release:check"
   },
   "engines": {
+    "node": ">=24.9.0",
     "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dsh": {
     "bundle": {
@@ -60,9 +74,7 @@
   "license": "MIT",
   "devDependencies": {
     "esbuild": "^0.28.2",
+    "minidenticons": "^4.2.1",
     "playwright": "^1.64.1"
-  },
-  "dependencies": {
-    "minidenticons": "^4.2.1"
   }
 }
