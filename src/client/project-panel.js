@@ -55,6 +55,7 @@ import {
   createWorkspaceExclusion,
   excludedSessionCountsByWorkspace,
   ungroupedExcludedCount,
+  ungroupedVisibleCount,
 } from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
 
@@ -270,6 +271,14 @@ export function ProjectPanel(props) {
   }, [workspaceItems, excludedSessionIds, archivedSessionIds, sessionRows, currentSessionId])
 
   // 项目的 leader 与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
+  const ungroupedVisible = useMemo(() => ungroupedVisibleCount({
+    sessionRows,
+    workspaceItems,
+    excluded: excludedSessionIds,
+    archivedSessionIds,
+    currentSessionId,
+  }), [sessionRows, workspaceItems, excludedSessionIds, archivedSessionIds, currentSessionId])
+
   // worker 是普通根会话（不是 subagent），官方树不会自己滤掉，只能按会话 id 排除。
   // 用户在项目目录里手动开的会话不属于项目，留在官方树里；组里全被排除时，
   // 空出来的「未分组」组头也一起藏掉。
@@ -278,9 +287,10 @@ export function ProjectPanel(props) {
     exclusion.update({
       sessionIds: excludedSessionIds,
       excludedByGroup: excludedCountsByGroup,
+      ungroupedVisibleCount: ungroupedVisible,
     })
     return () => exclusion.dispose()
-  }, [excludedSessionIds, excludedCountsByGroup])
+  }, [excludedSessionIds, excludedCountsByGroup, ungroupedVisible])
 
   const startAdd = useCallback(async () => {
     if (busy) return

@@ -502,6 +502,20 @@ test('列表标注 leader 会话是否还在', async () => {
   assert.equal(projects[1].leaderAlive, false)
 })
 
+test('列表标注项目目录是否还在：目录被删后客户端靠它决定不藏会话', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const service = makeService({ store, ctx: createContext(), createLeaderSession: createSessionFactory() })
+
+  await service.create({ directory: workspace, name: 'alpha' })
+  const [alive] = await service.list()
+  assert.equal(alive.directoryUsable, true)
+
+  await rm(workspace, { recursive: true, force: true })
+  const [gone] = await service.list()
+  assert.equal(gone.directoryUsable, false)
+})
+
 test('归档的 leader 会话按失效处理', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })

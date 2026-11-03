@@ -9,6 +9,7 @@ import {
   markUngroupedHeader,
   restoreExpandButton,
   ungroupedExcludedCount,
+  ungroupedVisibleCount,
 } from '../src/client/workspace-exclusion.js'
 
 /**
@@ -396,7 +397,7 @@ function fakeUngrouped({ rendered, withOverflow = false }) {
 test('未分组里的项目会话全被排除时，组头也藏起来', () => {
   const group = fakeUngrouped({ rendered: ['w1', 'w2'] })
 
-  markRows(group.root, { excluded: new Set(['w1', 'w2']) })
+  markRows(group.root, { excluded: new Set(['w1', 'w2']), ungroupedVisibleCount: 0 })
 
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
 })
@@ -404,7 +405,7 @@ test('未分组里的项目会话全被排除时，组头也藏起来', () => {
 test('未分组里还有可见会话时组头保留', () => {
   const group = fakeUngrouped({ rendered: ['w1', 'mine'] })
 
-  markRows(group.root, { excluded: new Set(['w1']) })
+  markRows(group.root, { excluded: new Set(['w1']), ungroupedVisibleCount: 1 })
 
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
 })
@@ -412,7 +413,7 @@ test('未分组里还有可见会话时组头保留', () => {
 test('还有展开按钮时不藏组头：未渲染的会话可能不属于排除集', () => {
   const group = fakeUngrouped({ rendered: ['w1'], withOverflow: true })
 
-  markUngroupedHeader(group.root)
+  markUngroupedHeader(group.root, { visibleCount: 0 })
 
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
 })
@@ -429,6 +430,7 @@ test('展开按钮被收起后组头跟着藏起来', () => {
   markRows(group.root, {
     excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5', 'w6']),
     excludedByGroup: new Map([['', 6]]),
+    ungroupedVisibleCount: 0,
   })
 
   assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), true)
@@ -446,6 +448,7 @@ test('未分组超过一屏且混着用户会话：按钮数字不动，组头�
   markRows(group.root, {
     excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5']),
     excludedByGroup: new Map([['', 5]]),
+    ungroupedVisibleCount: 2,
   })
 
   assert.equal(group.button.textContent, '展开其余 2 个会话')
@@ -519,4 +522,34 @@ test('未分组排除数按宿主可见性口径算：空白、归档、子代�
   // w1、w2 与「当前会话是 blank」的 leader-blank 计入；归档、子代理、
   // 非当前空白会话与已归属工作区的都不计。
   assert.equal(count, 3)
+})
+
+test('未分组可见数只数没被排除的会话：组头能不能藏靠它', () => {
+  const count = ungroupedVisibleCount({
+    sessionRows: {
+      kept: { id: 'kept', blank: false },
+      alsoKept: { id: 'alsoKept', blank: false },
+      hidden: { id: 'hidden', blank: false },
+      'other-blank': { id: 'other-blank', blank: true },
+      sub: { id: 'sub', origin: 'subagent' },
+      archived: { id: 'archived', blank: false },
+      'in-workspace': { id: 'in-workspace', blank: false },
+    },
+    workspaceItems: [{ workspaceId: 'w1', sessionIds: ['in-workspace'] }],
+    excluded: new Set(['hidden', 'in-workspace']),
+    archivedSessionIds: new Set(['archived']),
+    currentSessionId: 'kept',
+  })
+
+  assert.equal(count, 2)
+})
+
+test('未分组只剩被排除的会话时可见数为 0', () => {
+  const count = ungroupedVisibleCount({
+    sessionRows: { hidden: { id: 'hidden', blank: false } },
+    workspaceItems: [],
+    excluded: new Set(['hidden']),
+  })
+
+  assert.equal(count, 0)
 })

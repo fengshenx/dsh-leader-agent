@@ -234,6 +234,26 @@ test('没有项目或没有 worker 会话时排除集为空', () => {
   )
 })
 
+test('项目目录不可用时不排除它的会话：否则两棵树里都找不到', () => {
+  const projects = [
+    { id: 'p1', leaderSessionId: 'session-c1', directoryUsable: false },
+    { id: 'p2', leaderSessionId: 'session-c2', directoryUsable: true },
+  ]
+  const sessionsByProject = new Map([
+    ['p1', ['worker-gone']],
+    ['p2', ['worker-ok']],
+  ])
+  assert.deepEqual(
+    [...collectExcludedSessionIds(projects, sessionsByProject)].sort(),
+    ['session-c2', 'worker-ok'],
+  )
+  // 旧版宿主不带这个字段时保持原行为（继续排除），不因缺字段而放开。
+  assert.deepEqual(
+    [...collectExcludedSessionIds([{ id: 'p3', leaderSessionId: 'session-c3' }], new Map())],
+    ['session-c3'],
+  )
+})
+
 test('当前会话取主区域持有的那条', () => {
   assert.equal(currentSessionIdOf({
     's1': { retainedBy: { sidebar: 1 } },

@@ -149,18 +149,29 @@ export function showsProjectActivity({ expanded, rows, leaderRunning }) {
  * 项目的 leader 与 worker 都由项目区块呈现，官方树里再来一份就是重复。worker 是
  * 普通根会话（不是 subagent），官方树不会自己滤掉，所以按 id 显式排除。
  *
+ * **目录不可用的项目不排除**：项目记录不会因为目录被删而消失，但项目行打不开了
+ * （打开前本仓自己会拦），项目树里也没有 leader 的行——这时候继续藏，那些会话就
+ * 在两棵树里都找不到，剩下一堆没人引用的会话文件。
+ *
  * @param {object[]} projects - 项目记录
  * @param {Map<string, string[]>} sessionsByProject - 项目 id 到 worker 会话 id
  * @returns {Set<string>} 要排除的会话 id
  */
 export function collectExcludedSessionIds(projects, sessionsByProject) {
+  const usable = new Set(
+    (projects ?? [])
+      .filter((project) => project?.directoryUsable !== false)
+      .map((project) => project?.id),
+  )
   const excluded = new Set()
   for (const project of projects ?? []) {
+    if (!usable.has(project?.id)) continue
     if (typeof project?.leaderSessionId === 'string' && project.leaderSessionId !== '') {
       excluded.add(project.leaderSessionId)
     }
   }
-  for (const sessionIds of sessionsByProject?.values() ?? []) {
+  for (const [projectId, sessionIds] of sessionsByProject?.entries() ?? []) {
+    if (!usable.has(projectId)) continue
     for (const sessionId of sessionIds ?? []) excluded.add(sessionId)
   }
   return excluded

@@ -440,6 +440,16 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ---
 
+### 45. 「未分组」的组头与会话行分属两个 `groupSection`，DOM 上从组头找不到自己的行
+
+**目标形态**：渲染层判断「未分组里还剩不剩可见会话」，据此决定要不要藏掉那个组头。
+
+**dsh 实测**（`0.2.1-rc.2`，`dsh-client-ui-workspace/lib/client.js` 的 `groupByWorkspace` 与 `ProjectRowItem`）：组头 `div.projectRow[data-row-key="workspace:"]` 的直接父容器 `div.<hash>_groupSection` 只有它一个子元素；松散会话行落在**另一个** `groupSection` 里，那个 section 的子元素全是会话行与展开按钮，没有任何 `workspace:` 行。也就是说 `header.closest(section).querySelectorAll('[data-row-key^="session:"]')` 恒为空。
+
+**影响**：按 DOM 判空必然得出「组里没内容」，于是无条件给组头加隐藏类——用户看到的是「未分组整组消失，卸载插件就回来」。可见性只能在**会话快照**上按宿主 `sessionVisible` 的口径自己算（不在任何工作区、非子代理、未归档、不是「非当前的空会话」），代价是这份口径跟着宿主漂。`tests/e2e/ungrouped-header.e2e.js` 用「界面里删工作区」造松散会话守住这条；手改 `workspace.json` 的 `sessionIds` 不行，宿主不会据此把会话渲染成松散行。
+
+---
+
 ## 四、工具级（已验证可用，无缺口）
 
 表里的工具名反映实测当时的版本：项目注册表工具（`add_project` 等）与 `init_project` 已在后续版本删除，项目改由左栏区块操作、初始化改为纯 skill；这些行保留为宿主能力的实测证据。
