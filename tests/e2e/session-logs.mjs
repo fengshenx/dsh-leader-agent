@@ -48,7 +48,15 @@ export function readSessionLogs(home) {
         continue
       }
       if (!entry.isFile()) continue
-      const text = decode(entry.name, readFileSync(path))
+      // 宿主写日志是「写 .tmp 再 rename」：列出目录与打开文件之间临时文件可能
+      // 已被 rename 走，与 decode 对半帧的容错同属「正在写」，跳过即可。
+      let raw
+      try {
+        raw = readFileSync(path)
+      } catch (_renamedAway) {
+        continue
+      }
+      const text = decode(entry.name, raw)
       if (text !== null) texts.push(text)
     }
   }

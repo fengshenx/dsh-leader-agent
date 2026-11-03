@@ -367,9 +367,10 @@ const STYLE_TEXT = `
 .dsh-leader-agent-session-row[data-selected='true'] {
   background: var(--dsw-alias-interactive-bg-hover);
 }
-/* 状态位：尺寸照官方会话行的 slot（16×20）。官方在这里放运行状态圆点或加载器，
-   我们只区分「运行中」，所以只放加载器——直接渲染宿主的 StateDot，与官方会话
-   行同一个组件、同一个默认尺寸。 */
+/* 状态位：尺寸照官方会话行的 slot（16×20）。官方在这里放状态点或加载器，我们分
+   两档：运行中放加载圈，跑完且未被查看放 done 绿点——同一个 StateDot 组件、同
+   默认尺寸。官方的待交互橙点与子会话档来自 ui-session 的进程内投影，不对插件
+   公开，这两档无从表达。 */
 .dsh-leader-agent-session-status {
   flex: none;
   width: 16px;
@@ -1026,8 +1027,10 @@ function ProjectMenu(props) {
  * 项目下的一个会话行。
  *
  * 纯文字行：左边的会话图标与右边的执行者标记都不画——会话名在项目树里已经能
- * 看清，再加图标只会挤占标题的宽度。运行中的会话仍在行首留一个状态位；悬停整
- * 行时右端露出归档入口（与官方会话行的 hover 动作同位）。
+ * 看清，再加图标只会挤占标题的宽度。行首状态位放两档：运行中加载圈、完成后
+ * 未被查看的绿点（与官方会话行同一个 StateDot，档位语义照官方 sessionStatuses
+ * 的降序：运行中盖过完成）；悬停整行时右端露出归档入口（与官方会话行的 hover
+ * 动作同位）。
  *
  * @param {object} props - 组件属性
  * @returns {object} React 元素
@@ -1042,12 +1045,17 @@ function SessionRow(props) {
       'data-selected': selected ? 'true' : undefined,
       'aria-current': selected ? 'page' : undefined,
       onClick: () => onOpenSession(row.id),
-      title: row.displayTitle ?? row.title ?? row.id,
+      // 行没有官方那套悬停卡，完成状态拼进行标题里当唯一提示。
+      title: `${row.displayTitle ?? row.title ?? row.id}${row.completed === true ? ' · 已完成，待查看' : ''}`,
     },
     createElement(
       'span',
       { className: 'dsh-leader-agent-session-status' },
-      row.running ? createElement(StateDot, { state: 'ongoing' }) : null,
+      row.running
+        ? createElement(StateDot, { state: 'ongoing' })
+        : row.completed === true
+          ? createElement(StateDot, { state: 'done' })
+          : null,
     ),
     createElement(
       'span',

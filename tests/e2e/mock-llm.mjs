@@ -39,10 +39,13 @@ async function readBody(request) {
  *
  * @param {object} options - 选项
  * @param {Record<string, object[]>} options.scripts - 场景标记到步骤列表的映射
+ * @param {number} [options.stepDelayMs=0] - 每步 SSE 输出前的延迟。本地 mock 的
+ *   一轮只有几毫秒，需要「执行中」窗口落在真实时间里的场景（如完成绿点要先等
+ *   running 圈再切走）来不及插进动作，用它把一轮拉长
  * @returns {Promise<{ url: string, port: number, requests: object[], remaining: () => Record<string, number>, stop: () => Promise<void> }>}
  *   base URL、端口、已收到的请求、脚本剩余步数与幂等停止函数
  */
-export async function startMockProvider({ scripts }) {
+export async function startMockProvider({ scripts, stepDelayMs = 0 }) {
   const cursor = createScriptCursor(scripts)
   const requests = []
 
@@ -91,6 +94,7 @@ export async function startMockProvider({ scripts }) {
       connection: 'keep-alive',
     })
     response.flushHeaders()
+    if (stepDelayMs > 0) await new Promise((resolve) => setTimeout(resolve, stepDelayMs))
     for (const event of sseEvents(step, { model: parsed?.model })) {
       response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
     }
