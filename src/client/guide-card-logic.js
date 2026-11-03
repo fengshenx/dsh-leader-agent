@@ -68,10 +68,23 @@ export function readLocalStorage(scope) {
  * @returns {boolean} 是否真的发出去了
  */
 export function sendIntroPrompt(inputActions, prompt) {
-  if (typeof inputActions?.setDraft !== 'function' || typeof inputActions?.submit !== 'function') return false
+  if (!canSendIntro(inputActions)) return false
   inputActions.setDraft(prompt)
   inputActions.submit()
   return true
+}
+
+/**
+ * 输入机能不能真的发出一条消息。
+ *
+ * 渲染守卫与发送路径共用这一个判定：只查一半（比如只认 `submit`）会让按钮照画、
+ * 点下去什么也不发生——那是最难查的一种「点击无反应」。
+ *
+ * @param {{ setDraft?: unknown, submit?: unknown } | undefined} inputActions - 宿主的输入动作
+ * @returns {boolean} 两个动作都在时为 true
+ */
+export function canSendIntro(inputActions) {
+  return typeof inputActions?.setDraft === 'function' && typeof inputActions?.submit === 'function'
 }
 
 /**

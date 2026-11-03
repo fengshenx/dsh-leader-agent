@@ -21,6 +21,7 @@ import { createElement, useEffect, useState } from 'react'
 import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import {
+  canSendIntro,
   createGuideDismissal,
   readLocalStorage,
   sendIntroPrompt,
@@ -77,8 +78,9 @@ export function GuideCardEntry(props) {
     createElement(
       'div',
       { className: 'dsh-leader-kit-guide-actions' },
-      // 输入机拿不到时不画这个按钮：点了没反应比没有按钮更糟。
-      typeof inputActions?.submit !== 'function' ? null : createElement(Button, {
+      // 与 sendIntroPrompt 共用同一个判定：只差一半能力时（比如有 submit 没有
+      // setDraft）宁可不画，也不留一个点了没反应的按钮。
+      canSendIntro(inputActions) === false ? null : createElement(Button, {
         size: 'sm',
         variant: 'outline',
         onClick: () => { sendIntroPrompt(inputActions, t('guide.intro.prompt')) },

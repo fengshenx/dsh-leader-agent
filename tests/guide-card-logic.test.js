@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import {
   GUIDE_DISMISS_PREFIX,
+  canSendIntro,
   createGuideDismissal,
   guideDismissKey,
   readLocalStorage,
@@ -113,9 +115,45 @@ test('让它自我介绍：填进输入框并当场提交', () => {
   assert.deepEqual(calls, [['setDraft', '介绍一下你自己'], ['submit']])
 })
 
-test('输入机缺失或残缺时不发，也不抛', () => {
+test('只给 submit 缺 setDraft：判定不发，按钮层也不渲染', () => {
+  const submitOnly = { submit: () => {} }
+  assert.equal(canSendIntro(submitOnly), false)
+  assert.equal(sendIntroPrompt(submitOnly, '介绍一下你自己'), false)
+})
+
+test('只给 setDraft 缺 submit：同样判定不发', () => {
+  const draftOnly = { setDraft: () => {} }
+  assert.equal(canSendIntro(draftOnly), false)
+  assert.equal(sendIntroPrompt(draftOnly, '介绍一下你自己'), false)
+})
+
+test('两个动作都在：判定通过，且真的发出', () => {
+  const calls = []
+  const both = {
+    setDraft: (text) => calls.push(['setDraft', text]),
+    submit: () => calls.push(['submit']),
+  }
+  assert.equal(canSendIntro(both), true)
+  assert.equal(sendIntroPrompt(both, '介绍一下你自己'), true)
+  assert.deepEqual(calls, [['setDraft', '介绍一下你自己'], ['submit']])
+})
+
+test('渲染守卫与发送路径共用同一个判定：只查一半就会画出假按钮', () => {
+  const source = readFileSync(new URL('../src/client/guide-card.js', import.meta.url), 'utf8')
+  assert.match(
+    source,
+    /canSendIntro\(inputActions\) === false \? null : createElement\(Button/,
+    '渲染守卫必须调 canSendIntro，而不是自己再判一次',
+  )
+  assert.doesNotMatch(
+    source,
+    /typeof inputActions\?\.submit !== 'function' \? null/,
+    '只查 submit 的守卫会在缺 setDraft 时画出点了没反应的按钮',
+  )
+})
+
+test('输入机整个缺失时判定为假', () => {
+  assert.equal(canSendIntro(undefined), false)
+  assert.equal(canSendIntro({}), false)
   assert.equal(sendIntroPrompt(undefined, '介绍一下你自己'), false)
-  assert.equal(sendIntroPrompt({}, '介绍一下你自己'), false)
-  assert.equal(sendIntroPrompt({ setDraft: () => {} }, '介绍一下你自己'), false)
-  assert.equal(sendIntroPrompt({ submit: () => {} }, '介绍一下你自己'), false)
 })
