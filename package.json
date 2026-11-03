@@ -1,6 +1,6 @@
 {
   "name": "dsh-leader-kit",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Leader-driven dispatch for DeepSeek Harness: protocol skills, project bootstrap, and a delivery board.",
   "type": "module",
   "main": "index.js",
