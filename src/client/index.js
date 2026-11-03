@@ -17,6 +17,7 @@
 import { BoardBody } from './board.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
+import { mountGuideCard } from './guide-card.js'
 import { mountLeaderView } from './leader-view.js'
 import { watchLeaderSessions } from './leader-session-index.js'
 import { SLOT_LOCALE_NAMESPACE, en, zh } from './locales.js'
@@ -137,6 +138,9 @@ export function apply(ctx) {
   // 官方欢迎页。
   ctx.inject(['uiConversation'], function mountLeaderViewFiber(conversationCtx) {
     mountLeaderView(conversationCtx)
+    // 引导卡与视图入口共用输入框上方那个 dock 槽：新建项目后 leader 会话里
+    // 一句话都没有，卡在这里说清下一步，发出第一句话即消失。
+    mountGuideCard(conversationCtx)
     mountWorkerReport(conversationCtx)
   })
 

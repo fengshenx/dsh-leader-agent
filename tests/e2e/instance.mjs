@@ -31,7 +31,7 @@ export const WORKTREE = fileURLToPath(new URL('../..', import.meta.url))
 export async function startInstance({ baseUrl, env = {} }) {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-'))
   try {
-    return await launchInRoot({ root, baseUrl, env })
+    return await startInstanceIn({ root, baseUrl, env })
   } catch (error) {
     // 失败路径也要删根：源 profile 缺失、显式端点、实例起不来都会抛在这里，
     // 留着就是每次失败一个临时目录，CI 上反复失败会累积。
@@ -43,13 +43,16 @@ export async function startInstance({ baseUrl, env = {} }) {
 /**
  * 在已建好的数据根里派生 profile 并起实例。
  *
+ * 根由调用方持有：项目注册表只在启动时读回内存，需要 seed 项目的场景必须
+ * 「起一次拿会话 id → 停 → 写 `projects.json` → 用同一个根再起一次」。
+ *
  * @param {object} options - 选项
- * @param {string} options.root - 本次运行的临时数据根
+ * @param {string} options.root - 本次运行的数据根
  * @param {string} options.baseUrl - mock provider 的 base URL
- * @param {Record<string, string>} options.env - 额外的环境变量
+ * @param {Record<string, string>} [options.env] - 额外的环境变量
  * @returns {Promise<object>} 实例句柄
  */
-async function launchInRoot({ root, baseUrl, env }) {
+export async function startInstanceIn({ root, baseUrl, env = {} }) {
   const home = join(root, 'home')
   const paths = resolveDevPaths({
     worktree: WORKTREE,
@@ -104,14 +107,21 @@ async function launchInRoot({ root, baseUrl, env }) {
     ...instance,
     home,
     root,
-    async stop() {
+    /**
+     * 停实例。
+     *
+     * @param {object} [options] - 选项
+     * @param {boolean} [options.keepRoot] - 保留数据根（换一轮启动继续用同一个 home）
+     * @returns {Promise<void>} 停止完成
+     */
+    async stop({ keepRoot = false } = {}) {
       if (stopped) return
       stopped = true
       try {
         await instance.stop()
       } finally {
         // 停实例失败也要删根：下一个用例不该看到上一个的残留。
-        rmSync(root, { recursive: true, force: true })
+        if (!keepRoot) rmSync(root, { recursive: true, force: true })
       }
     },
   }

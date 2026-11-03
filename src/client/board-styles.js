@@ -967,6 +967,72 @@ const STYLE_TEXT = `
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* leader 会话的一次性引导卡：停在输入框正上方，材质与看板卡同源（bg-layer-2
+   底 + 0.5px 发丝描边，不叠 elevation——中性边框与投影不同时出现在一条规则里），
+   文字档与看板空态一致：标题 14/20 secondary，正文 12/18 tertiary。 */
+.dsh-leader-kit-guide-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-border-l3);
+  border-radius: var(--dsw-radius-lg);
+  background: var(--dsw-alias-bg-layer-2);
+  text-align: left;
+}
+
+.dsh-leader-kit-guide-card-title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-leader-kit-guide-card-steps {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-kit-guide-card-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.dsh-leader-kit-guide-card-action {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+
+.dsh-leader-kit-guide-card-action-primary {
+  color: var(--dsw-alias-link);
+}
+
+.dsh-leader-kit-guide-card-action:focus-visible {
+  border-radius: var(--dsw-radius-xs);
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .dsh-leader-kit-guide-card-action:hover {
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+}
 `
 
 /**

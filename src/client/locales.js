@@ -1,14 +1,18 @@
 /**
- * 槽位名的界面显示字典。
+ * 本插件界面文案的字典。
  *
  * 槽位名是机器标识：`SLOTS.md` 的分节名、卡片 `slots` 的 JSON 键、槽位注入的
  * 反查键都用它，形态固定为小写 ASCII（见 `src/host/slots/slot-templates.js`）。
  * 界面上的名字不跟标识走——这里按当前界面语言翻译内置槽位名，卡面 chip 与
  * 提示文案都用翻译后的名字。
  *
- * 这里只放内置槽位的默认显示名。项目在 `SLOTS.md` 每节用 `label:` 声明自己
- * 的名字，优先级高于这份字典（`slotDisplayName`）；两者都没有时显示槽位名本身
- * ——不会因为缺翻译就看不见。
+ * 槽位名之外的一次性界面文案（引导卡）也挂在同一个命名空间：宿主的
+ * `locale/*.json` 只贡献插件显示名（`package-meta.ts` 只读 `title` /
+ * `description`），界面字符串走 `ctx.locale.register`。
+ *
+ * 槽位名部分只放内置槽位的默认显示名。项目在 `SLOTS.md` 每节用 `label:` 声明
+ * 自己的名字，优先级高于这份字典（`slotDisplayName`）；两者都没有时显示槽位名
+ * 本身——不会因为缺翻译就看不见。
  *
  * @module dsh-leader-kit/client/locales
  */
@@ -32,6 +36,14 @@ export const zh = Object.freeze({
   'slot.discuss': '讨论',
   'slot.dev': '开发',
   'slot.review': '审核',
+  'guide.title': '这个目录有一个 Leader 了',
+  'guide.step.files': '在项目目录写 LEADER.md（人设与指挥方法）和 SLOTS.md（每个角色怎么干活）',
+  'guide.step.mode': '让它加载 leader-mode，先读 playbooks/program.md',
+  'guide.step.tell': '直接说你要做什么——它建卡、派工，右栏「看板」跟进',
+  'guide.action.docs': '看上手文档',
+  'guide.action.dismiss': '知道了',
+  'guide.toast.docs-copied': '已复制 docs/getting-started.md：文档在插件目录下',
+  'guide.toast.docs-failed': '没复制成功：文档在插件目录 docs/getting-started.md',
 })
 
 /** 英文字典，键与中文字典一致。 */
@@ -39,6 +51,14 @@ export const en = Object.freeze({
   'slot.discuss': 'Discuss',
   'slot.dev': 'Dev',
   'slot.review': 'Review',
+  'guide.title': 'This directory has a Leader',
+  'guide.step.files': 'Write LEADER.md (who the Leader is and how it commands) and SLOTS.md (how each role works) in the project directory',
+  'guide.step.mode': 'Have it load leader-mode and read playbooks/program.md first',
+  'guide.step.tell': 'Just say what you want: it opens cards and dispatches workers, and you follow along in the board on the right',
+  'guide.action.docs': 'Read the guide',
+  'guide.action.dismiss': 'Got it',
+  'guide.toast.docs-copied': 'Copied docs/getting-started.md: the guide lives in the plugin directory',
+  'guide.toast.docs-failed': 'Copy failed: the guide is at docs/getting-started.md in the plugin directory',
 })
 
 /**
