@@ -692,6 +692,34 @@ test('启动迁移把项目会话从工作区里摘掉，用户手动开的会�
   assert.deepEqual([...workspaces[0].accounts], ['user-opened'])
 })
 
+test('迁移不摘别的项目拖进本项目目录工作区的 leader', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const other = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const detached = []
+  const workspaces = [{
+    id: 'ws-a',
+    path: await realpath(workspace),
+    detachSession: async (sessionId) => { detached.push(sessionId) },
+  }]
+  const service = createProjectService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? { list: () => workspaces } : undefined) },
+    createLeaderSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: () => false,
+  })
+  const alpha = await service.create({ directory: workspace, name: 'alpha' })
+  const beta = await service.create({ directory: other.workspace, name: 'beta' })
+
+  // 用户把 beta 的 leader 拖进 alpha 目录的工作区：按目录配对之后，alpha 的迁移
+  // 只摘 alpha 自己的会话，不能把 beta 的 leader 一起抹掉。
+  assert.equal(await service.detachFromWorkspaces(), 1)
+  assert.deepEqual(detached, [alpha.leaderSessionId])
+  assert.equal(detached.includes(beta.leaderSessionId), false)
+})
+
 test('启动迁移不碰用户手动分组到别的工作区的项目会话', async () => {
   const { home, workspace } = await makeWorkspace()
   const other = await makeWorkspace()
@@ -1111,6 +1139,52 @@ test('没有工作区服务时迁移是空操作', async () => {
     sessionExists: async () => true,
   })
   assert.equal(await service.detachFromWorkspaces(), 0)
+})
+
+test('一个项目都没有时迁移不碰任何工作区', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const detached = []
+  const workspaces = [{
+    id: 'ws-1',
+    path: await realpath(workspace),
+    detachSession: async (sessionId) => { detached.push(sessionId) },
+  }]
+  const service = makeService({
+    store: createProjectStore({ home }),
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? { list: () => workspaces } : undefined) },
+    createLeaderSession: createSessionFactory(),
+    sessionExists: async () => true,
+  })
+  assert.equal(await service.detachFromWorkspaces(), 0)
+  // 只有 worker、没有任何项目时同样不摘：worker 的老挂载只会落在项目目录的工作区里，
+  // 没有项目就没有可认的目录。
+  assert.equal(await service.detachFromWorkspaces({ workerIds: ['worker-1'] }), 0)
+  assert.deepEqual(detached, [])
+})
+
+test('退役 leader 也在迁移的摘除范围内', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const detached = []
+  const workspaces = [{
+    id: 'ws-1',
+    path: await realpath(workspace),
+    detachSession: async (sessionId) => { detached.push(sessionId) },
+  }]
+  const service = makeService({
+    store,
+    ctx: { get: (key) => (key === 'workspaceRegistry' ? { list: () => workspaces } : undefined) },
+    createLeaderSession: factory,
+    sessionExists: async () => true,
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  const replaced = await service.replaceLeader(project.id)
+  assert.deepEqual(replaced.retiredLeaderSessionIds, [project.leaderSessionId])
+
+  // 换下来的 leader 是老挂载的一员：只摘现任会把它留在工作区里当新建草稿。
+  assert.equal(await service.detachFromWorkspaces(), 2)
+  assert.deepEqual(detached.sort(), [project.leaderSessionId, replaced.leaderSessionId].sort())
 })
 
 test('迁移摘除失败只记日志，不影响其余会话', async () => {

@@ -495,28 +495,37 @@ export function createProjectService({
     } = {}) {
       if (registry === undefined || typeof registry.list !== 'function') return 0
       const projects = await store.list()
-      const targets = new Set(workerIds)
-      const projectDirectories = new Set()
+      // leader 与退役 leader 按目录配对：B 项目的 leader 就算被拖进 A 项目目录的工作区，
+      // 也不该被 A 的迁移摘掉——那是用户的分组，不是老挂载。
+      /** @type {Map<string, Set<string>>} 归一路径到该项目自己的会话 */
+      const leadersByDirectory = new Map()
       for (const project of projects) {
+        const canonical = await canonicalize(project.directory)
+        const own = leadersByDirectory.get(canonical) ?? new Set()
         if (typeof project.leaderSessionId === 'string' && project.leaderSessionId !== '') {
-          targets.add(project.leaderSessionId)
+          own.add(project.leaderSessionId)
         }
         for (const sessionId of Array.isArray(project.retiredLeaderSessionIds)
           ? project.retiredLeaderSessionIds
           : []) {
-          if (typeof sessionId === 'string' && sessionId !== '') targets.add(sessionId)
+          if (typeof sessionId === 'string' && sessionId !== '') own.add(sessionId)
         }
-        projectDirectories.add(await canonicalize(project.directory))
+        leadersByDirectory.set(canonical, own)
       }
-      if (targets.size === 0) return 0
+      // worker 只能按 id 认，认不出它属于哪个项目：它们只可能挂在各自项目目录的工作区里，
+      // 所以在命中项目目录的工作区里一律摘。
+      const workerTargets = new Set(workerIds)
+      const hasLeaders = [...leadersByDirectory.values()].some((own) => own.size > 0)
+      if (!hasLeaders && workerTargets.size === 0) return 0
       const workspaces = registry.list()
         .map((info) => (typeof registry.get === 'function' ? registry.get(info.id) : undefined) ?? info)
         .filter((workspace) => typeof workspace.detachSession === 'function'
           && typeof workspace.path === 'string' && workspace.path !== '')
       let removed = 0
       for (const workspace of workspaces) {
-        if (!projectDirectories.has(await canonicalize(workspace.path))) continue
-        for (const sessionId of targets) {
+        const own = leadersByDirectory.get(await canonicalize(workspace.path))
+        if (own === undefined) continue
+        for (const sessionId of new Set([...own, ...workerTargets])) {
           try {
             await workspace.detachSession(sessionId)
             removed += 1
