@@ -36,6 +36,8 @@ PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID
 
 两个调用点此前各自拼原值：`scripts/start.mjs` 的 `process.env.DSH_HOME || join(homedir(), '.dsh')` 会把 `~/alt` 预检成 `<cwd>/~/alt`，宿主实际去 `~/alt`；`scripts/dev-plan.mjs` 的 `env.DSH_HOME ?? …` 是真 bug——`DSH_HOME=~/.dsh` 是 `assertSeparateHome` 注释里点名的「很自然」写法，不归一化时算出字面 `~` 目录，守卫沉默，派生逻辑把日常 profile 改写成自指死链。
 
+同一个函数里的 `DSH_HOME_SOURCE` 是同一类缺口：`DSH_HOME` 归一后是 `<home>/.dsh`，而 sourceHome 若是字面 `~/.dsh`，守卫比不出同一个目录、同样沉默。两个根现在都走 `resolveHomeFromEnv`——数据根与源根只要拿来互相比较或当实际路径用，就必须是同一套归一化的产物。
+
 ### 桌面脚本保留 trim，差异进 limitations
 
 `scripts/desktop-plan.mjs` 仍 trim 取值。它算出的绝对路径经 `--env DSH_HOME=` 交给 `open` 启动的应用，应用不再读原始值；首尾空白按手写笔误处理，比按相对路径算进 cwd 更接近本意。代价是同一个值在桌面侧与 CLI 侧有两套路径，记在 `docs/limitations.md` 的同名条目——卡 #4 要求残留差异有归属，不留在笔记里。
