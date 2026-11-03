@@ -95,7 +95,13 @@ The profile must be named `web`. The plugin manifest declares `platform: web`, a
 
 ### Desktop (DeepSeek Harness Desktop)
 
-Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`. The system `dsh` refuses to manage it; use the CLI bundled with the desktop install:
+Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`.
+
+**GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-kit` and click **Install**:
+
+![Add plugin wizard: enter dsh-leader-kit](docs/assets/readme/desktop-add-plugin.png)
+
+**CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
 
 ```sh
 # quit the app completely first (closing the window only hides it)
@@ -103,9 +109,7 @@ Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`
   plugin --profile desktop add dsh-leader-kit
 ```
 
-On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. You can also add the package name or this repository's absolute path through the app's plugin manager.
-
-The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
+On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
 
 For development inside this repository, `npm run desktop` mounts the current worktree, rebuilds the bundle and launches the app; `-- --remove` unmounts it.
 
