@@ -268,7 +268,7 @@ function ungroupedSessionIds({ sessionRows, workspaceItems, archivedSessionIds, 
  *
  * 宿主 rc.2 的默认视图里，未分组组头与会话行在同一个 `groupSection` 内（组头在前、
  * 行在后），所以早先从组头所在 section 找行的判空并不恒真；这条第三条判据是防御性
- * 的，触发面见 `.agents/notes/2026-11-04-ungrouped-header-visibility.md`。
+ * 的，触发面见 `.agents/notes/implemented/bug-fix/2026-11-04-ungrouped-header-visibility.md`。
  *
  * @param {object} root - 查询根
  * @param {object} options - 选项
