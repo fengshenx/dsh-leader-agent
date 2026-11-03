@@ -170,6 +170,7 @@ test('装配层：工作区服务就绪后把项目 leader 从工作区里摘掉
   const detached = []
   const workspace = {
     id: 'workspace-1',
+    path: projectDirectory,
     async detachSession(sessionId) {
       detached.push(sessionId)
     },

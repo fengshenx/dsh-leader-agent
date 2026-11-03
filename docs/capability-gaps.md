@@ -426,6 +426,18 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **结论**：右栏默认宽度 = `max(300, round(视口宽 × 45%))`——1920px 宽窗口下约 864px，与「启动时太宽」的观感一致。第三方要改成 400 的公开路径只有三条，都不该走：改宿主默认值（本仓不改宿主）、用 `!important` 覆盖面板 inline 宽度（轨道内联在 frame 的 `grid-template-columns` 上，拖拽把手位置与 dockkit 测宽也按同一宽度算，盖一处会三处不一致）、派发合成 pointer 事件去拖宿主把手（依赖宿主内部 DOM 与手势实现）；私有 `panels` 旁路同样不采用（见上）。**需要宿主提供宽度偏好入口**（例如 `ctx.layout.setRightbarWidth(px)`，或一个公开 CSS 变量）；在那之前看板只能跟随宿主默认宽度，拖出来的宽度刷新后也会弹回 45%。
 
+### 44. 会话从工作区摘除只有 `detachSession` 一条路，语义与字段都在宿主手里
+
+**目标形态**：把插件自己建的会话（leader / 退役 leader / worker）从用户的工作区里摘干净，同时不误伤用户手动的分组。
+
+**dsh 实测**（`0.2.1-rc.2`）：
+
+- 工作区实体的公开面只有 `setTitle` / `attachSession` / `insertSessionBefore` / `detachSession` / `status`（`packages/workspace/workspace/src/types.ts`），没有别的「删归属」入口。
+- `detachSession` 的文档契约是幂等：会话不在账上时「resolves without writing」（同文件 `types.ts:136-144`）。
+- `registry.list()` 返回的列表项不保证带实体字段（`path` / `detachSession`）；实体要经 `registry.get(id)` 取，`path` 是 canonical 目录的 getter（`packages/workspace/workspace/src/entity.ts:86`）。
+
+**影响**：启动迁移只对目标会话调 `detachSession`，不遍历工作区的 `sessionIds`（那个 getter 按会话 cwd 索引过滤，刚重启时历史会话可能还没索引到，偏偏要摘的就是这类）。这条链一旦漂移——`detachSession` 改成「不在账上也写一次」、`path` getter 改名、或列表项不再需要 `get`——迁移会从「零写盘空操作」变成每次启动写盘，或者直接漏摘。`tests/projects-service.test.js` 的幂等用例用假件复刻了「只在账上才写」的宿主语义，**真机漂移不会被单测抓住**，升级宿主时要复跑 `tests/e2e/project-workspace.e2e.js`。
+
 ---
 
 ## 四、工具级（已验证可用，无缺口）

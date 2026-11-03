@@ -19,9 +19,11 @@
 
 项目会话落进官方树的「未分组」。会话行本来就被排除（`workspace-exclusion.js`），这次补上组头：组内已渲染的会话行全被隐藏、且没有可见的「展开其余 N 个会话」时，给组头加 `dsh-leader-kit-empty-ungrouped`。判据只看 DOM 现状，不复刻宿主的可见性规则（`blank && id !== current` 不渲染、归档不进组）——上一轮正是因为「复刻规则会漂移」才推翻了解耦路线，这次把判据压到「读渲染结果」就绕开了这个反对理由。
 
-### 历史挂载在启动时摘掉
+### 历史挂载在启动时摘掉，只摘项目目录那个工作区
 
-`detachFromWorkspaces({ workerIds, registry })`：把现任 leader、`retiredLeaderSessionIds` 与登记的 worker 放进目标集合，对每个工作区实体逐个 `detachSession`。`detachSession` 幂等，重跑是空操作；只摘这三类，用户在项目目录里手动开的会话不动。
+`detachFromWorkspaces({ workerIds, registry })`：把现任 leader、`retiredLeaderSessionIds` 与登记的 worker 放进目标集合，**只对「工作区目录（realpath 归一后）等于某个项目目录」的工作区**调 `detachSession`。`detachSession` 幂等，重跑是空操作；只摘这三类，用户在项目目录里手动开的会话不动。
+
+范围必须收窄：用户把项目会话手动分组到别的工作区是个明确动作，第一版对所有工作区摘，等于每次启动都把用户的分组抹一遍。收窄不会漏摘老挂载——旧版本的自动挂载本来就落在项目目录对应的工作区里；判据用归一后的目录相等，符号链接写法（macOS 的 `/tmp` → `/private/tmp`）也能对上。
 
 两个实现约束都是踩出来的：
 
@@ -37,14 +39,22 @@
 - **迁移每次启动都跑一遍**：项目数 × 工作区数的 `detachSession` 调用（基本都是空操作）。量级小，避免再加「迁移版本号」这类状态。
 - **没有工作区服务的组合（acp / headless / sdk）里迁移不跑**：`ctx.inject` 等不到服务，也没东西可摘。worker 身份收编（`adoptedWorkers`）不依赖工作区，不受影响。
 - **用户在项目目录里自建的工作区照常显示**：会话行仍被排除、折叠计数按排除后修正；删项目不动它。
+- **迁移只处理项目目录对应的那个工作区**：用户把项目会话手动分组到其它工作区时，迁移不再摘（旧行为会每次启动抹掉一次）；那一份分组从此归用户所有，插件不读也不改。
 - **「未分组」组头判据只看 DOM**：宿主若改成把空组头直接不渲染，这条补丁自然失效（不再需要），不会反过来藏掉有内容的组。
 - 存量记录里的 `workspaceId` 字段不迁移、不读取；`store.draft` 与 `MUTABLE_FIELDS` 已经不再产出它。
 
 ## 验证
 
-- `npm run check`：1001 tests / 985 pass / 16 skipped / 0 fail；70 个源文件，54 个被单测加载，覆盖率门禁全绿（`workspace-exclusion.js` 79→82、`projects/service.js` 95→96）。
-- 单测新增：删除项目只删记录、建项目不注册工作区、迁移摘除与幂等、迁移不碰用户会话、没有工作区服务时迁移是空操作、摘除失败只记日志、装配层「工作区服务就绪后把项目 leader 从工作区里摘掉」（守住 `ctx.inject` 接缝）。
+- `npm run check`：991 用例通过（16 跳过）；70 个源文件，54 个被单测加载，覆盖率门禁全绿。
+- 单测新增：删除项目只删记录、建项目不注册工作区、迁移摘除与「第二遍零写盘」的幂等、迁移不碰用户会话、迁移不碰用户手动分组到别的工作区的会话、迁移按 realpath 认目录（符号链接写法照样摘净）、从注册表取工作区实体（`list` 只给 id、`get` 给实体）、建项目落盘失败时撤销 leader 会话、撤销失败只记日志、没有工作区服务时迁移是空操作、摘除失败只记日志、装配层「工作区服务就绪后把项目 leader 从工作区里摘掉」（守住 `ctx.inject` 接缝）、未分组超过一屏且混着用户会话时按钮数字与组头都不动。
 - 双向验证：
   1. 撤掉 `ctx.inject` 里的 `detachFromWorkspaces` 调用 → e2e「启动迁移应把 leader 从工作区里摘掉」超时变红（`最后一次观察：false`），还原后 7-9 秒变绿；
-  2. 让 `markUngroupedHeader` 直接 `return false` → e2e「未分组里只剩被排除的项目会话时，组头也要藏起来」变红，还原后变绿。
+  2. 让 `markUngroupedHeader` 直接 `return false` → e2e「未分组里只剩被排除的项目会话时，组头也要藏起来」变红，还原后变绿；
+  3. 撤掉迁移的目录收窄判据（对所有工作区摘）→「迁移不碰用户手动分组到别的工作区的会话」变红，还原后 45 例全绿；
+  4. 把归一后的目录比较换成字符串比较 → 4 条迁移用例变红（含 realpath 那条），证明判据确实依赖 realpath 归一；
+  5. 把假件的 `detachSession` 改成「不在账上也写」→ 幂等用例的「第二遍写盘 0」变红；
+  6. 删掉假 registry 的 `get` → 「list 只给 id 时也能摘」变红；
+  7. 撤掉 `create()` 失败分支里的 `abandonLeaderSession` → 两条撤销用例变红；
+  8. e2e 当前会话行的选择器改回旧的 `aria-current` / `.selected` → 「应当能读到当前会话行」变红（旧写法恒为 null，原断言等于空转）；把比较反向（断言当前会话就是 leader）→ 「不应停在 leader 上」变红。
+- e2e 的已知噪音：`assert.deepEqual(e2e.problems, [])` 偶发红在宿主侧 `Sidebar Session opening failed: Error: Session reference "…" is released`（`SidebarSessionView.dispose` 抛出，栈里没有插件帧）。单跑 4 次 3 绿 1 红；为它改断言或加 retry 都会削弱「页内错误即失败」这条纪律，所以保持原样，遇到时按宿主噪音记录。
 - e2e（`tests/e2e/project-workspace.e2e.js`，真实 dsh + 本地 mock + chromium）：两段式实例——第一段拿宿主的空会话，停实例后 seed `projects.json` 并把 leader 塞回默认工作区（模拟旧数据）→ 第二段启动，等 `storages/workspace.json` 里 leader 被摘掉 → 点项目行打开 leader（引导卡出现）→ 断言「未分组」组头带 `dsh-leader-kit-empty-ungrouped` → 点工作区行的「新建会话」→ 引导卡消失、当前会话不是 leader。连跑 3 次全绿。

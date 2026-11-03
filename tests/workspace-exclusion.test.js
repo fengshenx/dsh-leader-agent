@@ -434,6 +434,24 @@ test('展开按钮被收起后组头跟着藏起来', () => {
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
 })
 
+test('未分组超过一屏且混着用户会话：按钮数字不动，组头保留', () => {
+  // 未分组 7 条：5 条项目会话（都渲染出来了）+ 2 条用户会话（还在「展开其余 2 个」里）。
+  // 已渲染的 5 条全藏，剩余数仍是 2，不能把用户会话一起折掉。
+  const group = fakeUngrouped({
+    rendered: ['w1', 'w2', 'w3', 'w4', 'w5'],
+    withOverflow: true,
+  })
+
+  markRows(group.root, {
+    excluded: new Set(['w1', 'w2', 'w3', 'w4', 'w5']),
+    excludedByGroup: new Map([['', 5]]),
+  })
+
+  assert.equal(group.button.textContent, '展开其余 2 个会话')
+  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), false)
+  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
 test('没有未分组组头时不做任何标记', () => {
   const root = fakeRoot([fakeRow('session:s1')])
   assert.equal(markUngroupedHeader(root), false)

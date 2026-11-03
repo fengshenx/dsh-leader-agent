@@ -479,6 +479,11 @@ export function createProjectService({
      * 只摘项目自己的会话（现任/退役 leader 与登记过的 worker），用户在项目目录里
      * 手动开的会话不碰。
      *
+     * **只处理「工作区目录就是项目目录」的那个工作区**。用户把项目会话手动分组到
+     * 别的工作区是个明确动作，每次启动抹一遍不是迁移该做的事（旧行为下会被抹掉，
+     * 因为那时对所有工作区摘）。旧版本的自动挂载本来就落在项目目录对应的工作区里，
+     * 所以收窄之后历史挂载照样摘得干净：判据用的是 realpath 归一后的目录相等。
+     *
      * @param {object} [options] - 选项
      * @param {Iterable<string>} [options.workerIds] - 登记的 worker 会话 id
      * @param {object} [options.registry] - 工作区注册表；插件装配早期还取不到服务，由调用方传入
@@ -491,6 +496,7 @@ export function createProjectService({
       if (registry === undefined || typeof registry.list !== 'function') return 0
       const projects = await store.list()
       const targets = new Set(workerIds)
+      const projectDirectories = new Set()
       for (const project of projects) {
         if (typeof project.leaderSessionId === 'string' && project.leaderSessionId !== '') {
           targets.add(project.leaderSessionId)
@@ -500,12 +506,16 @@ export function createProjectService({
           : []) {
           if (typeof sessionId === 'string' && sessionId !== '') targets.add(sessionId)
         }
+        projectDirectories.add(await canonicalize(project.directory))
       }
+      if (targets.size === 0) return 0
       const workspaces = registry.list()
         .map((info) => (typeof registry.get === 'function' ? registry.get(info.id) : undefined) ?? info)
-        .filter((workspace) => typeof workspace.detachSession === 'function')
+        .filter((workspace) => typeof workspace.detachSession === 'function'
+          && typeof workspace.path === 'string' && workspace.path !== '')
       let removed = 0
       for (const workspace of workspaces) {
+        if (!projectDirectories.has(await canonicalize(workspace.path))) continue
         for (const sessionId of targets) {
           try {
             await workspace.detachSession(sessionId)

@@ -148,9 +148,12 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
 
   // 界面停在新建出来的会话上，而不是被复用的 leader。
   const currentSessionId = await page.evaluate(() => {
-    const row = document.querySelector('[data-row-key^="session:"][aria-current="true"], [data-row-key^="session:"].selected')
+    // 宿主会话行用 role="treeitem" + aria-selected 标当前行（`Rows.tsx` 的
+    // `aria-selected={selected}`）；`.selected` 是 CSS Modules 哈希类名，靠不住。
+    const row = document.querySelector('[data-row-key^="session:"][aria-selected="true"]')
     return row?.getAttribute('data-row-key') ?? null
   })
+  assert.equal(typeof currentSessionId, 'string', '应当能读到当前会话行（aria-selected="true"）')
   assert.notEqual(currentSessionId, `session:${session.id}`, '在工作区新建会话不应停在 leader 上')
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', `project-workspace-${process.pid}`)
