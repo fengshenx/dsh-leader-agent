@@ -8,9 +8,9 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { launchE2E, waitForLocator } from './harness.mjs'
+import { launchE2E, scenarioTimeout, waitForLocator } from './harness.mjs'
 
-test('左栏项目区块在真实宿主里挂载', { timeout: 90_000 }, async (t) => {
+test('左栏项目区块在真实宿主里挂载', { timeout: scenarioTimeout() }, async (t) => {
   const e2e = await launchE2E({ name: 'plugin' })
   t.after(() => e2e.stop())
 

@@ -8,14 +8,14 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { launchE2E, waitFor, waitForLocator } from './harness.mjs'
+import { launchE2E, scenarioTimeout, waitFor, waitForLocator } from './harness.mjs'
 import { sessionLogsContain } from './session-logs.mjs'
 
 /** 场景标记：mock 用它选脚本，一个标记只表达一个场景。 */
 const MARKER = 'MOCK-E2E-REPLY'
 const REPLY = 'mock 回执已收到'
 
-test('一条带标记的消息走完真实宿主链，回复上屏并落盘', { timeout: 90_000 }, async (t) => {
+test('一条带标记的消息走完真实宿主链，回复上屏并落盘', { timeout: scenarioTimeout() }, async (t) => {
   const e2e = await launchE2E({ name: 'session', scripts: { [MARKER]: [{ text: REPLY }] } })
   t.after(() => e2e.stop())
 

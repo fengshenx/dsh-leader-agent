@@ -116,9 +116,10 @@ export async function startInstanceIn({ root, baseUrl, env = {} }) {
      */
     async stop({ keepRoot = false } = {}) {
       if (stopped) return
-      stopped = true
       try {
         await instance.stop()
+        // 杀成功后才认「已停」：抛错时要能重试，否则孤儿进程留到重启。
+        stopped = true
       } finally {
         // 停实例失败也要删根：下一个用例不该看到上一个的残留。
         if (!keepRoot) rmSync(root, { recursive: true, force: true })

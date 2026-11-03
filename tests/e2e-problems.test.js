@@ -40,6 +40,21 @@ test('放行只认这一条：同一前缀但不同原因的 error 仍然报', (
   assert.deepEqual(problems, ['console.error: Sidebar Session opening failed: Error: network down'])
 })
 
+test('同前缀 + 真实错误里夹着 `is released` 仍然报', () => {
+  // 三条都实测过被旧正则 `.*is released` 误放行：聚合错误、内存释放、超时重试。
+  const leaked = [
+    'Sidebar Session opening failed: AggregateError: [Session reference "s" is released, TimeoutError: channel stuck]',
+    'Sidebar Session opening failed: Error: buffer is released while reading',
+    'Sidebar Session opening failed: RetryError: retry after timeout, session is released',
+  ]
+  for (const text of leaked) {
+    const page = fakePage()
+    const problems = watchProblems(page)
+    page.emit('console', { type: () => 'error', text: () => text })
+    assert.deepEqual(problems, [`console.error: ${text}`])
+  }
+})
+
 test('归集数组可复用：多个页面写同一个 problems', () => {
   const problems = []
   const first = fakePage()

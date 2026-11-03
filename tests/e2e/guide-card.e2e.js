@@ -11,14 +11,14 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
-import { closeBrowser, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 import { zh } from '../../src/client/locales.js'
 import { startMockProvider } from './mock-llm.mjs'
 
@@ -75,7 +75,7 @@ function seedProject(home, session) {
   }, null, 2)}\n`)
 }
 
-test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就消失', { timeout: 90_000 }, async (t) => {
+test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就消失', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-guide-'))
   // 引导发出的那句话不带场景标记，mock 会按「没有标记」回 400：这里要证明的是
   // 「消息发出去并走了一轮模型」，不是模型答得对不对。
@@ -84,18 +84,14 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   let browser = null
   let instance = null
 
-  t.after(async () => {
-    await closeBrowser(browser)
-    await instance?.stop().catch(() => {})
-    await mock.stop().catch(() => {})
-    rmSync(root, { recursive: true, force: true })
-  })
+  t.after(() => stopScenario({ browser, instance, mock, root }))
 
   // 第一段：让宿主建出它自己的空会话，拿到 id 与 cwd。
   const first = await startInstanceIn({ root, baseUrl: mock.url })
   browser = await chromium.launch()
   const bootstrap = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const bootstrapPage = await bootstrap.newPage()
+  watchProblems(bootstrapPage, problems)
   await bootstrapPage.goto(first.url, { waitUntil: 'domcontentloaded' })
   await waitForLocator(bootstrapPage.locator('div[role="textbox"][contenteditable="true"]').first(), {
     description: '第一段实例的输入框可编辑',

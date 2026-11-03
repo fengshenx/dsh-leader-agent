@@ -11,7 +11,7 @@
  * @module dsh-leader-kit/tests/e2e/harness
  */
 
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { WORKTREE, startInstance } from './instance.mjs'
@@ -30,8 +30,14 @@ const CLOSE_BUDGET_MS = 10_000
  * `Sidebar Session opening failed:`；而 `release()` 必然让 readiness 以 `is released` reject。
  * 视图在 ready 之前被销毁（快速切换会话）因此必然打出这条——它是取消，不是故障。
  * 宿主自己的 e2e 也只把特定文案的 warning 与 pageerror 当失败，没有把任意 console.error 当失败。
+ *
+ * 形状对齐宿主的模板 `Session reference "${id}" is released`（`packages/api/session-controller/src/client/sessions/service.ts:201`、`:223`）：
+ * 前缀锚定、引用 id 只认 `[^"]*`、结尾只认换行或文末。写成 `.*is released` 会把
+ * 聚合错误、`buffer is released`、`retry after timeout, session is released` 一起放行。
+ * 尾部不加 `$`：真实 text 首行之后跟着栈，锚到文末会让带栈的那条失配。
+ * 宿主改措辞时这里会失配、e2e 偶发红回来——先看这条，不要为了变绿把整条放宽。
  */
-const EXPECTED_SESSION_RELEASE = /Sidebar Session opening failed: .*is released/
+const EXPECTED_SESSION_RELEASE = /^Sidebar Session opening failed: (?:Error: )?Session reference "[^"]*" is released(?:\n|$)/
 
 /**
  * 收集页内不该出现的异常：未捕获异常与 console.error。
@@ -75,6 +81,64 @@ function budgetScale() {
 }
 
 /**
+ * 测试级上限：内部每个等待都乘 `budgetScale()`，测试级不乘会让慢机先撞它，
+ * 把带读数的「等待失败」换成一句「测试超时」——正是 #104 想避免的形态。
+ *
+ * @param {number} [baseMs] - 本机满额时的上限，默认 90 秒
+ * @returns {number} 实际使用的上限
+ */
+export function scenarioTimeout(baseMs = 90_000) {
+  return Math.round(baseMs * budgetScale())
+}
+
+/**
+ * 逐条跑清理并把失败收集成一条 `e2e 清理失败`。
+ *
+ * 互不短路：前一环挂了，后面的资源仍要收掉。只抛第一条会留下更多残留。
+ *
+ * @param {Array<[string, () => Promise<unknown>]>} steps - 标签与动作
+ * @returns {Promise<void>} 全部步骤跑完
+ */
+async function runCleanup(steps) {
+  const failures = []
+  for (const [label, action] of steps) {
+    try {
+      await action()
+    } catch (error) {
+      failures.push(`${label}: ${error.message}`)
+    }
+  }
+  if (failures.length > 0) throw new Error(`e2e 清理失败：\n${failures.join('\n')}`)
+}
+
+/**
+ * 收掉一个场景自己管的三样资源，并删数据根。
+ *
+ * 场景内中途换一轮用 `instance.stop({ keepRoot: true })`（直接 await、不吞错）；
+ * 收尾统一走这里，让清理失败在两条路径上都进「e2e 清理失败」——只在一条链上记、
+ * 另一条链上吞，同一条 Fail Loud 就变成看运气落在哪条链上。
+ *
+ * @param {object} resources - 资源
+ * @param {import('playwright').Browser | null} [resources.browser] - 浏览器
+ * @param {{ stop: () => Promise<void> } | null} [resources.instance] - 实例
+ * @param {{ stop: () => Promise<void> } | null} [resources.mock] - mock provider
+ * @param {string | null} [resources.root] - 数据根
+ * @returns {Promise<void>} 清理完成
+ */
+export async function stopScenario({ browser = null, instance = null, mock = null, root = null } = {}) {
+  try {
+    await runCleanup([
+      ['关闭浏览器', () => closeBrowser(browser)],
+      ['停止实例', () => instance?.stop()],
+      ['停止 mock', () => mock?.stop()],
+    ])
+  } finally {
+    // 实例 stop 失败时它自己照样会删根，这里再兜一层：临时根不能留给下一个用例。
+    if (root !== null) rmSync(root, { recursive: true, force: true })
+  }
+}
+
+/**
  * 给一个读数加时间上限。
  *
  * `page.evaluate` 没有 timeout 参数（Playwright 的签名只有 `exposeFunctions`），页面
@@ -113,18 +177,23 @@ async function withDeadline(reading, timeoutMs, fallback) {
  */
 export async function closeBrowser(browser, timeoutMs = CLOSE_BUDGET_MS) {
   if (browser === null || browser === undefined) return true
+  // 拒绝原样传出去：浏览器非正常关闭（页面崩、连接断）正是最需要看见的一类，
+  // 吞成成功会让清理链上少一条线索。超时那支另有告警，见下。
+  const closed = browser.close().then(() => true)
   let timer
-  const closed = browser.close().then(() => true, () => true)
-  const inBudget = await Promise.race([
-    closed,
-    new Promise((resolve) => {
-      timer = setTimeout(() => resolve(false), timeoutMs)
-    }),
-  ])
-  clearTimeout(timer)
-  // 超时不抛：清理阶段抛错会盖住真正的失败原因，但这仍然是需要看见的异常。
-  if (!inBudget) console.warn(`[e2e] 关闭浏览器超过 ${timeoutMs}ms，继续清理`)
-  return inBudget
+  try {
+    const inBudget = await Promise.race([
+      closed,
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), timeoutMs)
+      }),
+    ])
+    // 超时不抛：清理阶段抛错会盖住真正的失败原因，但这仍然是需要看见的异常。
+    if (!inBudget) console.warn(`[e2e] 关闭浏览器超过 ${timeoutMs}ms，继续清理`)
+    return inBudget
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 /**
@@ -151,7 +220,7 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
   } catch (error) {
     // 起不来时把已拿到的资源收掉，否则端口与临时根会留给下一个用例背锅。
     // 清理自身的错误不能盖住真正的失败原因，这里逐条吞掉。
-    await closeBrowser(browser)
+    await closeBrowser(browser).catch(() => {})
     await instance?.stop().catch(() => {})
     await mock.stop().catch(() => {})
     throw error
@@ -194,21 +263,14 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
     async stop() {
       if (stopped) return
       stopped = true
-      const failures = []
-      const attempt = async (label, action) => {
-        try {
-          await action()
-        } catch (error) {
-          failures.push(`${label}: ${error.message}`)
-        }
-      }
-      // 关浏览器前先留最后一帧：断言失败时这张图往往就是唯一能看的东西。
-      await attempt('保存结尾截图', () => screenshot('final'))
-      // 顺序固定：先关浏览器（它连着实例），再停实例，最后停 mock 与删数据根。
-      await attempt('关闭浏览器', () => closeBrowser(browser))
-      await attempt('停止实例', () => instance.stop())
-      await attempt('停止 mock', () => mock.stop())
-      if (failures.length > 0) throw new Error(`e2e 清理失败：\n${failures.join('\n')}`)
+      await runCleanup([
+        // 关浏览器前先留最后一帧：断言失败时这张图往往就是唯一能看的东西。
+        ['保存结尾截图', () => screenshot('final')],
+        // 顺序固定：先关浏览器（它连着实例），再停实例，最后停 mock。
+        ['关闭浏览器', () => closeBrowser(browser)],
+        ['停止实例', () => instance.stop()],
+        ['停止 mock', () => mock.stop()],
+      ])
     },
   }
 }

@@ -10,7 +10,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -18,7 +18,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { closeBrowser, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -74,25 +74,21 @@ function attachmentOf(home, workspaceId, sessionId) {
   return (store.tables.workspaces[workspaceId]?.sessionIds ?? []).includes(sessionId)
 }
 
-test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeout: 90_000 }, async (t) => {
+test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-decouple-'))
   const mock = await startMockProvider({})
   const problems = []
   let browser = null
   let instance = null
 
-  t.after(async () => {
-    await closeBrowser(browser)
-    await instance?.stop().catch(() => {})
-    await mock.stop().catch(() => {})
-    rmSync(root, { recursive: true, force: true })
-  })
+  t.after(() => stopScenario({ browser, instance, mock, root }))
 
   // 第一段：让宿主建出它的空会话，拿到 id 与 cwd。
   const first = await startInstanceIn({ root, baseUrl: mock.url })
   browser = await chromium.launch()
   const bootstrap = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const bootstrapPage = await bootstrap.newPage()
+  watchProblems(bootstrapPage, problems)
   await bootstrapPage.goto(first.url, { waitUntil: 'domcontentloaded' })
   await waitForLocator(bootstrapPage.locator('div[role="textbox"][contenteditable="true"]').first(), {
     description: '第一段实例的输入框可编辑',
