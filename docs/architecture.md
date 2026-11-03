@@ -100,7 +100,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ## 持久化布局
 
-运行时数据根是 `$DSH_HOME`（开发实例在 `.dev/home`），本 bundle 的数据全在 `dsh-leader-kit/` 下：
+运行时数据根是 `$DSH_HOME`（开发实例在 `.dev/home`），按宿主 `dsh-home-paths` 的口径解析（`~` 展开、相对路径 `resolve`、空白按未设，见 `src/host/home-paths.js`）。本 bundle 的数据全在 `dsh-leader-kit/` 下：
 
 | 文件 | 内容 |
 |---|---|

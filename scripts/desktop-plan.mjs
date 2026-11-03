@@ -9,37 +9,20 @@
  * @module dsh-leader-kit/scripts/desktop-plan
  */
 
-import { isAbsolute, join, resolve } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+import { expandHomePath } from '../src/host/home-paths.js'
 import { LEADER_KIT_PACKAGE } from './dev-plan.mjs'
 
 /** 桌面应用在 Windows 上的可执行文件名后缀（Electron/electron-builder 的产物形态）。 */
 const WINDOWS_EXE_EXTENSION = '.exe'
+
+export { expandHomePath }
 
 /** 桌面应用自己拥有的 profile 名；`apps/desktop/src/paths.ts` 里写死的那个。 */
 export const DESKTOP_PROFILE = 'desktop'
 
 /** 桌面应用在 macOS 上的默认名字，`open -a` 用；`DSH_DESKTOP_APP` 可换。 */
 export const DESKTOP_APP_NAME = 'DeepSeek Harness'
-
-/**
- * 按宿主的 `expandHomePath` 语义归一化路径。
- *
- * 宿主对 `DSH_HOME` 先展开 `~` 再 `resolve`（相对路径按当前目录），脚本照抄同一套
- * 口径：直接拿环境变量的字面量拼 `profiles/desktop`，`~/x` 会变成 `<cwd>/~/x`。
- * 宿主的 `home-paths` 同时认 `~/` 与 `~\`（Windows 上两种写法都有人用）。
- *
- * @param {string} input - 原始路径
- * @param {string} homeDir - 用户主目录
- * @param {string} [cwd] - 当前工作目录，相对路径的基准
- * @returns {string} 绝对路径
- */
-export function expandHomePath(input, homeDir, cwd = process.cwd()) {
-  const raw = String(input ?? '')
-  const expanded = raw === '~'
-    ? homeDir
-    : raw.startsWith('~/') || raw.startsWith('~\\') ? join(homeDir, raw.slice(2)) : raw
-  return isAbsolute(expanded) ? resolve(expanded) : resolve(cwd, expanded)
-}
 
 /**
  * 从 `Info.plist` 的 XML 文本里取 `CFBundleExecutable`。
