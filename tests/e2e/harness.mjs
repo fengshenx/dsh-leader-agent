@@ -3,7 +3,8 @@
  *
  * 三条硬约束（都来自宿主 web 车道的实测结论，删掉任何一条都会让套件认证坏 wire）：
  * - **pageerror / console.error 即失败**：页内异常被重连与历史重同步自愈时，
- *   场景会绿着通过，实际断了一条通路。
+ *   场景会绿着通过，实际断了一条通路。宿主自己记成 error 的预期取消按文案放行，
+ *   见 {@link EXPECTED_SESSION_RELEASE}。
  * - **按状态同步，不用 sleep**：等 DOM 稳定、等落盘文件出现，等某个具体状态。
  * - **不设重试**：失败就是失败，重试只会把竞态藏起来。
  *
@@ -21,6 +22,37 @@ const READ_BUDGET_MS = 2_000
 
 /** 关闭浏览器的上限：正常关闭不到 1 秒，等满说明浏览器进程没干净退出。 */
 const CLOSE_BUDGET_MS = 10_000
+
+/**
+ * 宿主自己记成 `console.error` 的预期取消。
+ *
+ * `ui-sidebar-right/src/client/session-view.ts` 在构造时订阅 `reference.ready`，失败就打
+ * `Sidebar Session opening failed:`；而 `release()` 必然让 readiness 以 `is released` reject。
+ * 视图在 ready 之前被销毁（快速切换会话）因此必然打出这条——它是取消，不是故障。
+ * 宿主自己的 e2e 也只把特定文案的 warning 与 pageerror 当失败，没有把任意 console.error 当失败。
+ */
+const EXPECTED_SESSION_RELEASE = /Sidebar Session opening failed: .*is released/
+
+/**
+ * 收集页内不该出现的异常：未捕获异常与 console.error。
+ *
+ * 已知的预期取消按文案放行（见 {@link EXPECTED_SESSION_RELEASE}），其余一律失败——
+ * 放大到「所有 console.error 都放行」会漏掉插件自己的错误。
+ *
+ * @param {import('playwright').Page} page - 页面
+ * @param {string[]} [problems] - 归集的数组，默认新建
+ * @returns {string[]} 随页面生命周期增长的异常列表，场景末尾断言为空
+ */
+export function watchProblems(page, problems = []) {
+  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  page.on('console', (message) => {
+    if (message.type() !== 'error') return
+    const text = message.text()
+    if (EXPECTED_SESSION_RELEASE.test(text)) return
+    problems.push(`console.error: ${text}`)
+  })
+  return problems
+}
 
 let warnedScale = false
 
@@ -126,11 +158,7 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
   }
 
   /** 失败时随断言一起打印：只看断言文本会漏掉页内真正的报错。 */
-  const problems = []
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
-  page.on('console', (message) => {
-    if (message.type() === 'error') problems.push(`console.error: ${message.text()}`)
-  })
+  const problems = watchProblems(page)
 
   // 截图落在工作树的 .dev/（已 gitignore）：给人看的证据，不入库、不替代断言。
   // 带上 pid：同机并发两次 e2e 时同名场景不互相覆盖，读数才对得上图。

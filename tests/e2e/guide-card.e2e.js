@@ -18,7 +18,7 @@ import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
-import { closeBrowser, waitFor, waitForLocator } from './harness.mjs'
+import { closeBrowser, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 import { zh } from '../../src/client/locales.js'
 import { startMockProvider } from './mock-llm.mjs'
 
@@ -116,10 +116,7 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const second = await startInstanceIn({ root, baseUrl: mock.url })
   instance = second
   const ready = async (page) => {
-    page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
-    page.on('console', (message) => {
-      if (message.type() === 'error') problems.push(`console.error: ${message.text()}`)
-    })
+    watchProblems(page, problems)
     await page.goto(second.url, { waitUntil: 'domcontentloaded' })
     return page.locator('.dsh-leader-kit-project-row').first()
   }

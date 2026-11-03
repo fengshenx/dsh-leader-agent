@@ -154,7 +154,7 @@ await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>-<pid>/repl
 - **禁 `networkidle`**：SSE 长连接下它永远不解析。
 - **禁单次瞬态 DOM 采样**：从流式输出到 React commit 的每一跳都可能合并 chunk，采样天然是竞态。
 - **禁固定 sleep**：等 readiness 事件、状态翻转或落盘条件。
-- **pageerror / console.error 即失败**：重连与历史重同步会把断掉的通路自愈掉，套件于是认证了坏 wire。
+- **pageerror / console.error 即失败**：重连与历史重同步会把断掉的通路自愈掉，套件于是认证了坏 wire。唯一例外是宿主的 session 引用释放，`watchProblems()` 按文案放行。
 - **端口用 `listen(0)`**：先扫空闲端口再绑定会与并发进程抢。
 - **默认不开重试**：重试只会把竞态藏起来。
 - **一次只改一个变量**：两个变量同时变，失败原因就分不开。

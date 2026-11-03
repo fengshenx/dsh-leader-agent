@@ -29,12 +29,13 @@
 
 - 不引入重试：重试只会把竞态藏起来（沿用宿主的确定性规则）。
 - 不改并发度：试过 `--test-concurrency=2`，每轮 12 秒（比默认慢 3 秒）且仍偶发失败，没有收益。
-- **不消除宿主侧的 `Session reference "…" is released`**：它发生在宿主的 `SidebarSessionView.dispose` 访问已释放的 session reference 时，栈里没有插件帧，属宿主 client 竞态。保留「console.error 即失败」的纪律，不为它加白名单；这类偶发失败仍会红，需要在报告里如实标出。
+- **按宿主口径收窄 `console.error`，不是全放行**：`ui-sidebar-right/src/client/session-view.ts` 在构造时订阅 `reference.ready`，失败就打 `console.error('Sidebar Session opening failed:')`；而 `release()` 必然让 readiness 以 `is released` reject。视图在 ready 之前被销毁（快速切换会话）因此必然打出这条——它是预期取消，不是故障。宿主自己的 e2e 只把特定文案的 warning 与 pageerror 当失败（`scaffold.ts` 的 `watchConsole`），本仓原先的「任意 console.error 即失败」比宿主严。`watchProblems()` 只按文案放行这一条，其余 `console.error` 与全部 `pageerror` 仍是失败。
 - 计时来自本机（10 核 macOS）；慢机仍走 `E2E_BUDGET_SCALE`，本次不动它。
 
 ## 验证
 
-- `npm run check`：1044 个用例通过（17 跳过），新增 `tests/e2e-mock-stop.test.js` 两例；13 篇 standing docs 在限内。
+- `npm run check`：1048 个用例通过（17 跳过），新增 `tests/e2e-mock-stop.test.js` 两例与 `tests/e2e-problems.test.js` 四例；13 篇 standing docs 在限内。
 - 双向验证（mock）：还原成 `await new Promise((resolve) => server.close(resolve))` → `stop 不等未结束的请求` 2110ms 变红（2 秒预算用尽）；恢复后 108ms 绿。
 - 卡死：改前全量连跑 3 次、2 次卡住（90s / 5min+）；改后连跑 5 次，全部 8–9 秒结束，0 次卡死。
-- 失败率：改后 5 轮 4 绿 1 红，红的是宿主的 `Session reference is released`（`project-workspace`），与本次改动无关；改前同样跑法 5 轮 2 红（含上述错误与「没有落盘的空会话」，后者已由轮询修掉）。
+- 双向验证（problems 过滤）：去掉文案放行 → `宿主的 session 引用释放是预期取消` 变红；恢复后 4 例全绿。同组用例还守住「同一前缀但不同原因仍然报」与「普通 console.error 仍然报」。
+- 失败率：放行该文案前 5 轮 4 绿 1 红，红的是宿主的 `Session reference is released`（`project-workspace`）；放行后连跑 5 轮全绿，每轮 8–9 秒。

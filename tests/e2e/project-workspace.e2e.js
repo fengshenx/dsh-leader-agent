@@ -18,7 +18,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { closeBrowser, waitFor, waitForLocator } from './harness.mjs'
+import { closeBrowser, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -123,10 +123,7 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
 
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const page = await context.newPage()
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
-  page.on('console', (message) => {
-    if (message.type() === 'error') problems.push(`console.error: ${message.text()}`)
-  })
+  watchProblems(page, problems)
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
 
   const row = page.locator('.dsh-leader-kit-project-row').first()
