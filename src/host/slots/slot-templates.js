@@ -51,10 +51,11 @@ export function isValidSlotName(name) {
 /**
  * 零合法槽位时回落的默认槽位名。
  *
- * 默认三角色 discuss/dev/review 对应讨论、实现、审查三类职责，覆盖一次交付的
- * 完整链路。回落而非留空，是为了让没写 `SLOTS.md` 的项目仍有一份可用的槽位骨架。
+ * 默认两角色 dev/review 对应实现与审查，是每次交付都绕不开的两步；需求讨论由
+ * leader 在派工前自己完成，不占一个槽位。回落而非留空，是为了让没写 `SLOTS.md`
+ * 的项目仍有一份可用的槽位骨架。
  */
-export const DEFAULT_SLOT_NAMES = Object.freeze(['discuss', 'dev', 'review'])
+export const DEFAULT_SLOT_NAMES = Object.freeze(['dev', 'review'])
 
 /**
  * 从 frontmatter 的 `slots` 字段读显示名。

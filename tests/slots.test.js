@@ -148,6 +148,11 @@ test('没有 frontmatter、空 label 或正文缺节时按未声明处理', () =
   assert.equal(orphan.has('audit'), false)
 })
 
+test('默认槽位只有 dev 与 review', () => {
+  // 需求讨论由 leader 在派工前自己完成，不占槽位；这条是产品口径，别在回落里悄悄加回来。
+  assert.deepEqual([...DEFAULT_SLOT_NAMES], ['dev', 'review'])
+})
+
 test('文件缺失时回落默认槽位名，正文为空', async () => {
   const project = await createProject(undefined)
   try {

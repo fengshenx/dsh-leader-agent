@@ -25,13 +25,13 @@ issue 要求「文案进 `locale/zh.json` / `locale/en.json`」，但宿主的 `
 
 ### 唯一动作是「替用户发一条消息」，走宿主的输入机
 
-按钮的定位是**替用户发出那条自我介绍请求**，与用户手敲回车等价：点下去之后会话里多一条 user 消息、走一轮标准模型回合，卡片随后因为 `blank` 翻假而消失。不是预填、不是复制、不是 toast。
+按钮的定位是**替用户发出那句开场请求**，与用户手敲回车等价：点下去之后会话里多一条 user 消息、走一轮标准模型回合，卡片随后因为 `blank` 翻假而消失。不是预填、不是复制、不是 toast。
 
 通道在宿主 rc.2 就有：会话作用域槽位的标准 props 里合并了 `inputActions: InputActions`（`packages/client/ui-conversation/src/client/contract/input.ts:247`），`submit()` 的注释写着「Enter submission（adjudication / claim transaction / default sink inside）」——就是回车那条路径。实现是 `setDraft(prompt)` + `submit()`（`sendIntroPrompt`）。输入机缺失时**不渲染这个按钮**，而不是画一个点了没反应的按钮。
 
-文案也跟着改成祈使句（读出「发消息」）：中文「让它介绍一下自己」，英文「Ask it to introduce itself」；发出去的正文是 `guide.intro.prompt`。候选：`让它先做个自我介绍`、`对它说：介绍一下你自己`——都更短或更像对话，但按钮上塞对话句式读起来拐，选了最短的祈使句。
+按钮文案取「了解怎么用」/「Show me how to use it」，正文是一句触发语（「这个项目还没配置，先讲讲 dsh-leader-kit 怎么用」）。作答要求——先解释怎么工作、再问是否初始化 `LEADER.md` 与 `SLOTS.md`、确认前不写文件——放在 leader 运行时上下文的初始化提示里，理由与取舍见 [2026-11-03-project-initialization-onboarding.md](2026-11-03-project-initialization-onboarding.md)：用户消息只该是一句人话，长约束进提示词。
 
-首版这条动作是「看上手文档 = 复制路径 + toast」，用户判定没意义后改过一版外链 GitHub 文档页，随后定稿为**只保留自我介绍**——文档入口整条去掉，`docs/limitations.md` 里那条「只能复制路径」的限制也一并删掉（行为已不存在，留一条描述已删行为的限制只会误导）。
+首版这条动作是「看上手文档 = 复制路径 + toast」，用户判定没意义后改过一版外链 GitHub 文档页，随后定稿为**只保留一个开场动作**——文档入口整条去掉，`docs/limitations.md` 里那条「只能复制路径」的限制也一并删掉（行为已不存在，留一条描述已删行为的限制只会误导）。首发版这个动作叫「让它介绍一下自己」，正文只是一句空泛的自我介绍请求；新项目没有 `LEADER.md` 时模型只能答成宿主自我介绍，于是改成「先讲用法、再问是否初始化」。
 
 ### 形态取单行提示条，几何与输入框同源
 
@@ -51,7 +51,7 @@ issue 要求「文案进 `locale/zh.json` / `locale/en.json`」，但宿主的 `
 ## 边界
 
 - 只对 leader 会话生效；worker 会话与普通会话没有变化（`leaderSessionIndex` 不含它们）。
-- 卡片渲染本身不写转录、不产生模型调用、不发消息——e2e 断言引导期间模型请求数为 0、日志里没有 `user/message`。唯一会发消息的是用户点「让它介绍一下自己」那一次，走的是与回车相同的提交路径。
+- 卡片渲染本身不写转录、不产生模型调用、不发消息——e2e 断言引导期间模型请求数为 0、日志里没有 `user/message`。唯一会发消息的是用户点「了解怎么用」那一次，走的是与回车相同的提交路径。
 - localStorage 私有模式：读抛错按「没关过」处理（卡片再出现一次），写抛错静默丢弃（这次不记住），两处都在单行注释里写了原因。
 - 引导条上没有外链、没有剪贴板动作：文档入口在定稿时整条去掉，「打开本地文件 / 包内不带 docs」那条限制也随之从 `docs/limitations.md` 删除——留着一条描述已删行为的限制只会误导。
 - 输入机能力的判定只有一处（`canSendIntro`）：渲染守卫与发送路径都调它。只认 `submit` 的旧写法会让按钮照画、点了没反应，单测把「只给 submit」「只给 setDraft」「两者都在」三种情况都钉住了。

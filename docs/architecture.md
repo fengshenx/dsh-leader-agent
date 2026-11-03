@@ -13,7 +13,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
 | 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、worker 回报气泡、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
-| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-project` 初始化方法 |
+| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-leader-kit` 初始化方法 |
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
@@ -93,7 +93,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 官方树排除 | 渲染层按 `data-row-key="session:<id>"` 给 leader 与 worker 行加隐藏类；数据层不动，因此官方计数与搜索仍包含它们 |
 | 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
-| leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手说明（与输入框同宽同圆角）；「让它介绍一下自己」经宿主 `inputActions` 发一条消息，关闭标记存 localStorage |
+| leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手说明（与输入框同宽同圆角）；「了解怎么用」经宿主 `inputActions` 发一条消息：先讲协作方式，再问是否初始化 `LEADER.md` 与 `SLOTS.md`（确认前不写文件）；关闭标记存 localStorage |
 | worker 回报气泡 | 独立 Chat node kind + exclusive claim，左侧气泡、头像、名字可下钻；只渲染最后一次回报 |
 | 看板 tab 与入口 | 右栏 tab 类型静态注册；「开始」页入口接管自己那枚胶囊的渲染，只在项目会话里画出来 |
 | 浮层与提示条 | 弹窗外壳（`modal-shell.js`）与菜单复刻官方源码改写；一次性消息走宿主的 `shell.overlay` 槽位，4 秒淡出 |
@@ -116,18 +116,18 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 来源 | 注入对象 | 生效时机 |
 |---|---|---|
 | `.agents/skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
-| `.agents/skills/init-project/` | 初始化方法 | 模型调用 `skill` 工具时 |
+| `.agents/skills/init-leader-kit/` | 项目初始化方法（`AGENTS.md` + `LEADER.md` + `SLOTS.md`） | 模型调用 `skill` 工具时 |
 | `LEADER.md` | 该项目的 leader 会话 | 每轮请求求值，读文件内容变化才追加 |
 | `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，读文件内容变化才追加 |
 | 卡片事实 | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，卡片内容变化才追加 |
 
 这三类注入都走运行时上下文（`systemPrompt.context`）：宿主在每次模型请求前求值 provider，只有渲染文本与上一份快照不同时才作为一条 user 消息追加。因此正文没变的轮次不重复注入，改动在下一个模型请求生效，不需要 watcher。
 
-`LEADER.md`、`SLOTS.md` 与卡片事实都**只贡献提示词文本，不授予工具权限**。`LEADER.md` 按身份注入（项目注册表指针），不需要卡片绑定；`SLOTS.md` 与卡片事实按卡片绑定注入。文件缺失、读失败或正文为空时注入空串，不阻断会话；配置错误大声告警，且同一问题只报一次。
+`LEADER.md`、`SLOTS.md` 与卡片事实都**只贡献提示词文本，不授予工具权限**。`LEADER.md` 按身份注入（项目注册表指针），不需要卡片绑定；`SLOTS.md` 与卡片事实按卡片绑定注入。`LEADER.md` 读失败或正文为空时注入空串，不阻断会话；文件缺失（含只有空白）时改为注入初始化提示：告诉模型怎么解释这个 bundle、怎么问用户要不要初始化两份手册，用户确认后才创建文件。配置错误大声告警，且同一问题只报一次。
 
 卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**。重新打开不恢复绑定——那是新的指派，要显式再绑一次。投递门禁按绑定卡的 `status === 'active'` 判断；同时挂多张 `active` 卡一律拒绝投递（角色注入只按一张卡算），要把卡先收敛到一张。名册到顶给候选时，挂卡 worker 单列、不当作可复用。
 
-`SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`。
+`SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
 协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-kit/.agents/skills/`）。这个路径同时是 dsh 的项目级 skill 目录：任何项目在自己的 `.agents/skills/` 放同名副本即可覆盖，项目副本优先——dsh 的 skill 发现按来源层级取优，项目级 rank 200 低于 bundle 的 600。
 
@@ -139,7 +139,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `src/host/tools/` | 六个工具的实现：`spawn_worker` / `message_worker` / `read_worker_session` / `create_card` / `update_card` / `list_cards` |
 | `src/client/` | 左栏项目区块与项目树、右栏看板与卡片详情、worker 回报气泡、浮层与提示条 |
 | `src/shared/` | 两端共用的纯函数与线上类型（frontmatter 解析、卡片链接判定、项目通道方法名） |
-| `.agents/skills/` | 协议层 `leader-mode` 与初始化方法 `init-project` |
+| `.agents/skills/` | 协议层 `leader-mode` 与项目初始化方法 `init-leader-kit` |
 | `build/`、`scripts/` | 客户端构建（原子替换）与开发实例、worktree、门禁脚本 |
 
 单个文件的职责写在文件头注释里——那是权威来源，不在文档里再抄一份。改某块前按 [AGENTS.md 的按任务查阅](../AGENTS.md#按任务查阅)找归属文档。

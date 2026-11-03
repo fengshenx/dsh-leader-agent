@@ -29,7 +29,7 @@
 
 1. **通过一个 Leader，帮你推进开发和 Review** — 你只跟 Leader 说目标，它拆卡、派工、盯住每个 worker 的完成、验证产物、组织审查。注意力回到「要什么」上，不用逐个陪跑——目标规模是一次并行开发 10 个 feature。
 2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板。卡面上是执行者槽位与实时信号灯，卡片说明按 Markdown 渲染，链接可在浮层里直接编辑；点卡面看详情（目标、范围、验收、链接，其余只读），点槽位直接下钻进那个 Agent 的会话接着聊。worker 的回报也渲染成气泡，同样支持 Markdown。
-3. **Agent 自由编排** — 拆成两份文件：`LEADER.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（讨论 / 开发 / 审核……）。两者在每次模型请求前求值、正文变化才追加，改文件即改行为，不用重建会话。
+3. **Agent 自由编排** — 拆成两份文件：`LEADER.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（开发 / 审核……）。两者在每次模型请求前求值、正文变化才追加，改文件即改行为，不用重建会话。
 4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个 leader 会话，项目树列出它派出的 worker；项目行可拖拽排序，删除项目会一并摘掉插件注册的工作区、保留文件夹与会话记录。项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
 6. **回看 worker 的会话过程，不必唤醒它** — `read_worker_session` 直读 worker 的会话日志，给出每轮的任务、正文、调过哪些工具与失败原因。只读：不唤醒 worker、不产生模型调用。完成通知负责「产物是什么」，它负责「过程是怎样的」，排查不必再开一轮。
@@ -124,16 +124,16 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 | 文件 / skill | 写给谁 | 管什么 |
 |---|---|---|
 | `LEADER.md` | 项目里的 Leader | 这个项目怎么指挥：职责边界、卡与派工的粒度、必须写进简报的硬约束、验收口径。leader 会话自动注入，不需要绑定 |
-| `SLOTS.md` | 不同角色的 worker | 按 `## <槽位名>` 分节写角色方法与人设（`discuss` / `dev` / `review`…）；卡片 `slots` 字段把槽位绑到会话，被绑会话注入对应分节 |
+| `SLOTS.md` | 不同角色的 worker | 按 `## <槽位名>` 分节写角色方法与人设（`dev` / `review`…）；卡片 `slots` 字段把槽位绑到会话，被绑会话注入对应分节 |
 | `leader-mode` skill | Leader 的编排协议 | 技术讨论 → 设计 → 实现交付 → 审查 → 合入的分阶段 playbook，加并行协作与交接规范 |
 
 `LEADER.md` 与 `SLOTS.md` 在每次模型请求前求值、正文变化才追加：改动在下一个请求生效，没变的轮次不重复注入。`leader-mode` skill 走的是另一条路——模型按需调 `skill` 工具加载，所以上面第 2 步写的是「加载」而不是「配置」。目标项目自己的 `AGENTS.md` 由宿主的 agent-instructions 读成系统提示段落。卡片转为 `done` / `archived` 即释放执行者——槽位绑定与卡片事实一起停止注入。
 
 插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给 Telov 等仍按旧文件名找 leader 手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
 
-槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`。
+槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
-`init-project` skill 做另一件事：把仓库工程约定（worktree 纪律、验证要求、文档机制）并入目标项目 `AGENTS.md` 的受管区块，写入即对后续会话生效，重复执行只替换受管区块，不覆盖项目自己的内容。
+`init-leader-kit` skill 管项目初始化：先把仓库工程约定并入目标项目 `AGENTS.md` 的受管区块，再按包内骨架写 `LEADER.md`（leader 怎么指挥这个项目）与 `SLOTS.md`（执行者角色）。重复执行只替换受管区块，两份手册先读后改；空目录写带 TODO 的骨架，并把还没答的三个问题问清楚，不编造项目事实。
 
 完整交互（槽位 frontmatter 细节、归档、换 leader、看板信号灯口径）见[使用手册](docs/usage.md)。
 

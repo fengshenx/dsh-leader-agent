@@ -175,7 +175,7 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   await card(page).waitFor({ state: 'detached', timeout: 5_000 })
   assert.equal(await card(page).count(), 0, '关过的会话重载后不该再出现引导卡')
 
-  // 三、没关过的新浏览器里点「让它介绍一下自己」：消息真的发出去（用户消息上屏、
+  // 三、没关过的新浏览器里点「了解怎么用」：消息真的发出去（用户消息上屏、
   // 走一轮模型），卡片随即因为转录不再为空而消失。
   const fresh = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const freshPage = await fresh.newPage()

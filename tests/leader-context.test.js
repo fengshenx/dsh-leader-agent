@@ -10,6 +10,7 @@ import {
   LEGACY_LEADER_CONTEXT_FILE,
   applyLeaderContext,
   loadLeaderManual,
+  renderLeaderContext,
 } from '../src/host/leader-context.js'
 import { ROLE_CONTEXT_ORDER } from '../src/host/slots/index.js'
 
@@ -94,18 +95,110 @@ test('leader 会话注入项目根手册正文', async () => {
   }
 })
 
-test('手册缺失或只有空白时返回空串', async () => {
+test('手册缺失或只有空白时 loadLeaderManual 返回空串（提示由渲染层给）', async () => {
   const missing = await createProject(undefined)
   const blank = await createProject('  \n\n')
   try {
     assert.equal(loadLeaderManual(missing.directory), '')
     assert.equal(loadLeaderManual(blank.directory), '')
-    const { ctx, holder } = createFakeCtx()
-    applyLeaderContext({ ctx, resolveDirectory: () => missing.directory })
-    assert.equal(holder.registered.text({ agent: { id: 'session-a' } }), '')
   } finally {
     await missing.cleanup()
     await blank.cleanup()
+  }
+})
+
+test('项目还没有手册时注入初始化提示：解释怎么工作、问是否初始化、确认后才写', async () => {
+  const project = await createProject(undefined)
+  try {
+    const { ctx, holder } = createFakeCtx()
+    applyLeaderContext({ ctx, resolveDirectory: () => project.directory })
+    const text = holder.registered.text({ agent: { id: 'session-a' } })
+    assert.match(text, /## 项目待初始化/)
+    assert.match(text, /LEADER\.md/)
+    assert.match(text, /SLOTS\.md/)
+    assert.match(text, /init-leader-kit/)
+    assert.match(text, /目录是空的就写带 TODO 的骨架/)
+    assert.match(text, /不要创建或修改任何文件/)
+    // 用户直接派活时不打断：提示自己限定触发面。
+    assert.match(text, /用户直接派活时不要打断/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('已有 SLOTS.md、只缺 LEADER.md 时，提示不再说两份都缺', async () => {
+  const project = await createProject(undefined)
+  try {
+    await writeFile(join(project.directory, 'SLOTS.md'), '# 角色槽位\n', 'utf8')
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /还没有 `LEADER\.md`（leader 工作方法）。/)
+    assert.doesNotMatch(text, /与 `SLOTS\.md`（执行者角色手册）/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('手册存在时注入正文，不再出现初始化提示', async () => {
+  const project = await createProject('派工前先建卡。')
+  try {
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## leader 手册/)
+    assert.doesNotMatch(text, /## 项目待初始化/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('LEADER.md 存在但只有空白时，提示说的是补内容而不是「还没有」', async () => {
+  const project = await createProject('  \n\n')
+  try {
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## 项目待初始化/)
+    assert.match(text, /`LEADER\.md` 还是空的（只有空白）/)
+    // 让模型去「建」一个已经存在的文件只会撞车。
+    assert.doesNotMatch(text, /还没有 `LEADER\.md`/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('只有旧名 COORDINATOR.md 时按旧名注入正文，不出现初始化提示', async () => {
+  const project = await createProject(undefined)
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。\n', 'utf8')
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## leader 手册/)
+    assert.match(text, /旧名时代的手册。/)
+    assert.doesNotMatch(text, /## 项目待初始化/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('LEADER.md 是空的、旧名手册有内容时回落到旧名，不当成没初始化', async () => {
+  const project = await createProject('\n \n')
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。\n', 'utf8')
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## leader 手册/)
+    assert.match(text, /旧名时代的手册。/)
+    assert.doesNotMatch(text, /## 项目待初始化/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('提示要求拒绝后不追问、不写文件，并给出彻底停用的办法', async () => {
+  const project = await createProject(undefined)
+  try {
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /本轮及本会话不要再追问/)
+    assert.match(text, /不要为了记录这个拒绝去写任何文件/)
+    // 拒绝只在本会话生效，所以要给出真正能让提示消失的办法。
+    assert.match(text, /自行创建 `LEADER\.md`/)
+    assert.match(text, /init-leader-kit/)
+  } finally {
+    await project.cleanup()
   }
 })
 

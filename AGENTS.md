@@ -37,7 +37,7 @@ index.js            包入口：导出 name / inject / apply（实现都在 src/
 src/host/           宿主侧：工具、派工器、存储、项目服务、worker 会话生命周期
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
-.agents/skills/     协议层 skill（leader-mode 派工协议、init-project 初始化方法）
+.agents/skills/     协议层 skill（leader-mode 派工协议、init-leader-kit 初始化方法）
 .telov/skills/      工作区运维 skill（release 发版手册，不进发布包）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
@@ -47,7 +47,7 @@ docs/               长期文档（架构地图、已知限制、宿主能力边
 .agents/notes/      非平凡改动的决策记忆
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
 COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（Telov 等外部工具用）
-SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / dev / review）
+SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review）
 ```
 
 ## 常用命令

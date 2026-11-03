@@ -133,7 +133,7 @@ test('装配层：skill provider 读包内 .agents/skills', async () => {
     assert.ok(holder.skillsProvider, 'skill provider 没有注册')
     // 路径拼错时 provider 读盘失败会静默返回空候选，这条断言守的是搬迁后的真实位置。
     const names = (await holder.skillsProvider.list()).map(candidate => candidate.name).sort()
-    assert.deepEqual(names, ['init-project', 'leader-mode'])
+    assert.deepEqual(names, ['init-leader-kit', 'leader-mode'])
   } finally {
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME
