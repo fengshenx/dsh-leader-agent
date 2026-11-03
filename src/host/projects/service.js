@@ -26,6 +26,25 @@ import { MAX_PROJECT_NAME_LENGTH } from '../../shared/projects.js'
 const canonicalize = createCanonicalizer(realpath)
 
 /**
+ * 目录是否仍然可用：存在且是目录。
+ *
+ * 项目记录不会因为目录被删而消失，客户端据此决定要不要继续把项目会话从官方树里
+ * 排除——目录没了，项目行打不开，项目树也没有 leader 的行，官方树是那些会话唯一
+ * 的列表入口。
+ *
+ * @param {string} directory - 项目目录
+ * @returns {Promise<boolean>} 目录是否存在且是目录
+ */
+export async function isDirectoryUsable(directory) {
+  if (typeof directory !== 'string' || directory.trim() === '') return false
+  try {
+    return (await stat(directory)).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+/**
  * 校验项目目录。
  * @param {string} directory - 候选目录
  * @returns {Promise<string>} 归一化后的绝对路径
@@ -251,6 +270,7 @@ export function createProjectService({
       id: project.id,
       name: project.name,
       directory: project.directory,
+      directoryUsable: await isDirectoryUsable(project.directory),
       leaderSessionId: project.leaderSessionId ?? '',
       leaderAlive: await leaderAliveOf(project.leaderSessionId),
       retiredLeaderSessionIds: Array.isArray(project.retiredLeaderSessionIds)
@@ -451,7 +471,10 @@ export function createProjectService({
     },
 
     /**
-     * 列项目，并标注 leader 会话是否仍在。
+     * 列项目，并标注 leader 会话是否仍在、项目目录是否还在。
+     *
+     * `directoryUsable` 给客户端用：目录被删后项目行打不开，客户端据此停止把该项目
+     * 的会话从官方树里排除，否则那些会话在两棵树里都找不到。
      *
      * @returns {Promise<object[]>} 项目列表
      */
@@ -460,6 +483,7 @@ export function createProjectService({
       return Promise.all(projects.map(async (project) => ({
         ...project,
         leaderAlive: await leaderAliveOf(project.leaderSessionId),
+        directoryUsable: await isDirectoryUsable(project.directory),
       })))
     },
 
