@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
-  INIT_DECLINED_MARKER,
   LEADER_CONTEXT_FILE,
   LEADER_CONTEXT_NAME,
   LEADER_CONTEXT_ORDER,
@@ -13,6 +12,7 @@ import {
   loadLeaderManual,
   renderLeaderContext,
 } from '../src/host/leader-context.js'
+import { createInitDeclinedStore } from '../src/host/init-declined.js'
 import { ROLE_CONTEXT_ORDER } from '../src/host/slots/index.js'
 
 /**
@@ -189,18 +189,31 @@ test('LEADER.md 是空的、旧名手册有内容时回落到旧名，不当成�
   }
 })
 
-test('用户拒绝初始化后（标记文件存在）不再注入提示', async () => {
+test('用户拒绝初始化后（数据域标记存在）不再注入提示，删掉标记下一轮恢复', async () => {
   const project = await createProject(undefined)
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const declined = createInitDeclinedStore({ home })
+  const options = {
+    sessionId: 'session-a',
+    resolveDirectory: () => project.directory,
+    isDeclined: declined.isDeclined,
+    declinedFileOf: declined.fileOf,
+  }
   try {
-    const before = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    const before = renderLeaderContext(options)
     assert.match(before, /## 项目待初始化/)
-    await mkdir(join(project.directory, '.dsh-leader-kit'), { recursive: true })
-    await writeFile(join(project.directory, ...INIT_DECLINED_MARKER.split('/')), '', 'utf8')
-    assert.equal(renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory }), '')
-    // 提示里要写明写标记这件事，否则模型无从知道怎么让提示停下。
-    assert.ok(before.includes(INIT_DECLINED_MARKER))
+    // 提示直接给出数据域里的绝对路径：模型照抄即可，不需要知道 dsh home 怎么解析。
+    assert.ok(before.includes(declined.fileOf(project.directory)))
+    assert.ok(declined.fileOf(project.directory).startsWith(home))
+    await mkdir(declined.directory, { recursive: true })
+    await writeFile(declined.fileOf(project.directory), '', 'utf8')
+    assert.equal(renderLeaderContext(options), '')
+    // 标记是每轮求值的：删掉后下一轮就恢复提示，不需要重启。
+    await rm(declined.fileOf(project.directory))
+    assert.match(renderLeaderContext(options), /## 项目待初始化/)
   } finally {
     await project.cleanup()
+    await rm(home, { recursive: true, force: true })
   }
 })
 

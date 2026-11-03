@@ -24,9 +24,11 @@
 
 ### 用户拒绝初始化后写标记文件，提示不再出现
 
-拒绝只发生一次，但进程重启就丢，每轮重新问一遍是不可接受的噪声。标记落成项目目录里的空文件 `.dsh-leader-kit/init-declined`（`INIT_DECLINED_MARKER`）：随项目走、跨会话与重启持久，删除它即恢复提示，不需要另一套存储域与清理逻辑。写入由模型在用户明确拒绝后完成——提示第 4 步写明了路径和「不要写别的内容」，`renderInitializationHint` 见到标记就返回空串。
+拒绝只发生一次，但进程重启就丢，每轮重新问一遍是不可接受的噪声。标记落成插件数据域里的空文件：`<dsh home>/dsh-leader-kit/init-declined/<目录名>-<哈希>`（`src/host/init-declined.js`），`applyLeaderContext` 把 `isDeclined` 与 `declinedFileOf` 传进渲染层，提示第 4 步给出**绝对路径**让模型直接建。「拒绝过」的判定只看文件是否存在，所以删除后下一轮求值就恢复提示，不用重启。
 
-否决的方案是把标记放进 dsh home 的数据域：提示词组装是同步的，读 home 还得把路径或读取函数注入渲染入口；而项目目录本就是这位 leader 的工作区，写一个空文件不需要新契约。代价（模型没写标记就再问一次、拒绝是项目级不按会话分）记在 `docs/limitations.md`。
+一度把标记放在项目目录（`.dsh-leader-kit/init-declined`），审查否掉了：项目目录是用户的 git 仓库，实测 `git status` 会多出 `?? .dsh-leader-kit/`，`git add -A` 会把这个空文件提交进去，而插件没有、也不该有替用户往仓库里立 `.gitignore` 的权力。数据域方案多出来的成本只是渲染入口多两个回调——`renderInitializationHint` 本来就收 `directory`，传一个 `isDeclined(directory)` 与一个路径函数等价。
+
+文件名带目录名是为了人工排查（只看哈希分不出是哪个项目），哈希取项目目录绝对路径的 sha256 前 12 位，同名仓库不会互相覆盖。代价（模型没写标记就再问一次、拒绝是项目级不按会话分）记在 `docs/limitations.md`。
 
 ### 默认槽位从三角色改为两角色
 
@@ -54,16 +56,18 @@
 
 - 初始化提示只在「`LEADER.md` 不存在或只有空白，且 `COORDINATOR.md` 也没有正文」时注入；项目已有手册（任一文件名）就不再出现。
 - 空白 `LEADER.md` 与缺失 `LEADER.md` 的提示文案不同：前者让模型补内容，后者才让它建文件。
+- **清空新版 `LEADER.md` 会让旧名手册「复活」**：回落在判定顺序上就是把空的新版当没有。按旧名初始化过的项目里，用户如果选择清空而不是删除 `LEADER.md`，`COORDINATOR.md` 的正文会重新进入注入——这是「空文件不是手册」的必然代价，日志会报一条说明按旧名读取。想彻底停用就把两个文件都删掉。
 - 提示不打断正常派工：用户直接下任务时模型按常规流程干活，不主动兜售初始化。
-- 拒绝初始化后靠项目目录的 `.dsh-leader-kit/init-declined` 静音；模型没写标记则新会话会再问一次（`docs/limitations.md` 有同一条）。
+- 拒绝初始化后靠数据域里的标记静音（`<dsh home>/dsh-leader-kit/init-declined/`）；模型没写标记则新会话会再问一次（`docs/limitations.md` 有同一条）。
 - 引导卡的 `blank` 判据不变：消息发出后卡片消失，关掉的状态按 leader 会话 id 存 localStorage。
 - 空目录的骨架带 `TODO`，是给人填的；skill 明确不要用通用道理填满。
 
 ## 验证
 
-- `tests/leader-context.test.js`：新增「项目还没有手册时注入初始化提示」（断言含 `## 项目待初始化`、`init-leader-kit`、`不要创建或修改任何文件`、`用户直接派活时不要打断`）、「已有 `SLOTS.md` 只缺 `LEADER.md` 时措辞不同」、「手册存在时不出现初始化提示」、「仅空白 `LEADER.md` 时提示说的是补内容」、「只有 `COORDINATOR.md` 时按旧名注入」「空 `LEADER.md` + 有内容 `COORDINATOR.md` 时回落到旧名」「标记文件存在时不再注入」；原「缺失返回空串」改为只断言 `loadLeaderManual`。
-- 双向验证（撤销 → 对应用例变红 → 还原 → 22 例全绿）：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；把 `loadLeaderManual` 的新版判据改回 `first.body !== undefined`（空新版遮蔽旧名）→ 回落用例红；删掉 `existsSync(INIT_DECLINED_MARKER)` 早退 → 拒绝用例红。
+- `tests/leader-context.test.js`：新增「项目还没有手册时注入初始化提示」（断言含 `## 项目待初始化`、`init-leader-kit`、`不要创建或修改任何文件`、`用户直接派活时不要打断`）、「已有 `SLOTS.md` 只缺 `LEADER.md` 时措辞不同」、「手册存在时不出现初始化提示」、「仅空白 `LEADER.md` 时提示说的是补内容」、「只有 `COORDINATOR.md` 时按旧名注入」「空 `LEADER.md` + 有内容 `COORDINATOR.md` 时回落到旧名」「拒绝后不再注入、删掉标记下一轮恢复（断言提示里给出数据域绝对路径）」；原「缺失返回空串」改为只断言 `loadLeaderManual`。
+- `tests/init-declined.test.js`：五例——标记落数据域而非项目目录、同一目录稳定且不同目录（含同名仓库）分开、无标记不算拒绝、写入后判定为已拒绝且删除即恢复、目录名含中文与空格时文件名仍合法。
+- 双向验证（撤销 → 对应用例变红 → 还原 → 27 例全绿）：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；把 `loadLeaderManual` 的新版判据改回 `first.body !== undefined`（空新版遮蔽旧名）→ 回落用例红；把 `isDeclined` 短路成 `false` → 拒绝用例红。
 - `tests/guide-card-logic.test.js`：新增「开场正文只发一句触发语」——断言两句 `guide.intro.prompt` 都含 `dsh-leader-kit`、不含 `LEADER.md`、长度小于 80。
 - `tests/skills.test.js` / `tests/leader-wiring.test.js` / `tests/pack-manifest.test.js`：skill 名单与包内路径同步为 `init-leader-kit`；新增「初始化骨架默认只含 dev 与 review 两个槽位」。
 - `tests/slots.test.js`：新增「默认槽位只有 dev 与 review」，锁住回落口径（讨论由 leader 自己做，不占槽位）。
-- `npm run check`：1000 用例通过（16 跳过），98 文件语法通过，13 篇 standing docs 在预算内。
+- `npm run check`：1009 用例通过（16 跳过），99 文件语法通过，13 篇 standing docs 在预算内。`limitations.md` / `usage.md` 的天花板按 5% 余量重算（6900 / 5600）：两条边界是使用者与后续维护都要读到的事实，压缩会丢信息。

@@ -12,7 +12,7 @@
  * @module dsh-leader-kit/host/leader-context
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SLOT_TEMPLATE_FILE } from './slots/slot-templates.js'
 
@@ -26,18 +26,6 @@ export const LEADER_CONTEXT_FILE = 'LEADER.md'
  * `COORDINATOR.md`，不退回就等于升级即静默失去手册注入。
  */
 export const LEGACY_LEADER_CONTEXT_FILE = 'COORDINATOR.md'
-
-/**
- * 用户明确拒绝初始化后，模型在项目目录写下的标记文件（项目相对路径，正斜杠）。
- *
- * 拒绝是用户的一次性决定，不该每轮再问一次；而「拒绝过」这件事只有对话知道，
- * 进程重启就丢了。落成项目目录里的空文件是最短的持久化：随项目走，换机器也在，
- * 不需要另一套存储域与清理逻辑。删除该文件即恢复提示。
- *
- * 用正斜杠而不是 `join`：这个常量会原样出现在给模型看的提示里，`\` 在 Windows
- * 上既是分隔符又是转义符，写进提示容易被读错。
- */
-export const INIT_DECLINED_MARKER = '.dsh-leader-kit/init-declined'
 
 /** 注入项的上下文名。 */
 export const LEADER_CONTEXT_NAME = 'dsh-leader-kit:leader'
@@ -149,9 +137,13 @@ export function loadLeaderManual(directory, logger = () => {}) {
  * 会回落到旧名正文，走到这里只说明调用方绕开了它。
  *
  * @param {string} directory - 项目目录绝对路径
+ * @param {object} [options] - 选项
+ * @param {(directory: string) => boolean} [options.isDeclined] - 该项目是否已被明确拒绝过初始化
+ * @param {(directory: string) => string | undefined} [options.declinedFileOf] - 拒绝标记文件路径，
+ *   写进提示让模型知道该建在哪里；拿不到路径时这一步不出现
  * @returns {string} 提示正文；手册读失败（文件存在但读不了）或用户已拒绝初始化时为空串
  */
-export function renderInitializationHint(directory) {
+export function renderInitializationHint(directory, { isDeclined = () => false, declinedFileOf = () => undefined } = {}) {
   const leader = readManual(join(directory, LEADER_CONTEXT_FILE))
   // 文件存在但读不了不是「没初始化」：loadLeaderManual 已经记过日志，这里再提示
   // 会让用户去建一个已经存在的文件。
@@ -159,11 +151,15 @@ export function renderInitializationHint(directory) {
   if (leader.body !== undefined && leader.body.trim() !== '') return ''
   const legacy = readManual(join(directory, LEGACY_LEADER_CONTEXT_FILE))
   if (legacy.body !== undefined && legacy.body.trim() !== '') return ''
-  if (existsSync(join(directory, ...INIT_DECLINED_MARKER.split('/')))) return ''
+  if (isDeclined(directory)) return ''
   const slots = readManual(join(directory, SLOT_TEMPLATE_FILE))
   const hasSlots = slots.body !== undefined && slots.body.trim() !== ''
   const missingLeader = leader.body === undefined
   const slotsClause = hasSlots ? '' : `\`${SLOT_TEMPLATE_FILE}\`（执行者角色手册）`
+  const declinedFile = declinedFileOf(directory)
+  const declinedStep = declinedFile === undefined
+    ? []
+    : [`4. 用户明确说不需要初始化时，建一个空文件 \`${declinedFile}\`（这是插件的本机数据目录，不在项目仓库里），此后这段提示不再出现；不要写别的内容，也不要删改用户已有的文件。`]
   return [
     '## 项目待初始化',
     '',
@@ -180,7 +176,7 @@ export function renderInitializationHint(directory) {
     '1. 说明 dsh-leader-kit 怎么工作：你负责拆解目标、建任务卡、派工；worker 在各自的工作区干活并回报；用户在看板上跟进进度、审核与验收。一个任务一张卡，卡上标出执行者。',
     '2. 说明两份文件各解决什么，然后问用户是否现在初始化。',
     '3. 用户明确同意后，加载 `init-leader-kit` skill 并按它执行：目录里已有的文档先读，目录是空的就写带 TODO 的骨架，不要编造项目内容。',
-    `4. 用户明确说不需要初始化时，在项目目录建一个空文件 \`${INIT_DECLINED_MARKER}\`，此后这段提示不再出现；不要写别的内容，也不要删改用户已有的文件。`,
+    ...declinedStep,
     '',
     '用户没同意前不要创建或修改任何文件；已经问过、用户还没回答时不要重复追问。用户直接派活时不要打断，按正常流程干活。',
   ].join('\n')
@@ -193,15 +189,17 @@ export function renderInitializationHint(directory) {
  * @param {string | undefined} options.sessionId - 会话 id
  * @param {(sessionId: string) => string | undefined} options.resolveDirectory - 取会话所属项目目录；
  *   只有该项目的 leader 会话才有值，普通会话与 worker 返回 undefined
+ * @param {(directory: string) => boolean} [options.isDeclined] - 该项目是否已被拒绝过初始化
+ * @param {(directory: string) => string | undefined} [options.declinedFileOf] - 拒绝标记文件路径
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {string} 上下文文本；不是 leader、目录不可得或手册读失败时为空串
  */
-export function renderLeaderContext({ sessionId, resolveDirectory, logger = () => {} }) {
+export function renderLeaderContext({ sessionId, resolveDirectory, isDeclined = () => false, declinedFileOf = () => undefined, logger = () => {} }) {
   if (typeof sessionId !== 'string' || sessionId === '') return ''
   const directory = resolveDirectory(sessionId)
   if (typeof directory !== 'string' || directory === '') return ''
   const body = loadLeaderManual(directory, logger)
-  if (body === '') return renderInitializationHint(directory)
+  if (body === '') return renderInitializationHint(directory, { isDeclined, declinedFileOf })
   return [
     '## leader 手册',
     '',
@@ -217,10 +215,12 @@ export function renderLeaderContext({ sessionId, resolveDirectory, logger = () =
  * @param {object} options - 选项
  * @param {object} options.ctx - Cordis 上下文
  * @param {(sessionId: string) => string | undefined} options.resolveDirectory - 取 leader 会话的项目目录
+ * @param {(directory: string) => boolean} [options.isDeclined] - 该项目是否已被拒绝过初始化
+ * @param {(directory: string) => string | undefined} [options.declinedFileOf] - 拒绝标记文件路径
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {void}
  */
-export function applyLeaderContext({ ctx, resolveDirectory, logger = () => {} }) {
+export function applyLeaderContext({ ctx, resolveDirectory, isDeclined = () => false, declinedFileOf = () => undefined, logger = () => {} }) {
   ctx.effect(() => ctx.systemPrompt.context({
     name: LEADER_CONTEXT_NAME,
     order: LEADER_CONTEXT_ORDER,
@@ -231,7 +231,7 @@ export function applyLeaderContext({ ctx, resolveDirectory, logger = () => {} })
       const sessionId = context.agent?.id
       if (typeof sessionId !== 'string') return ''
       try {
-        return renderLeaderContext({ sessionId, resolveDirectory, logger })
+        return renderLeaderContext({ sessionId, resolveDirectory, isDeclined, declinedFileOf, logger })
       } catch (error) {
         // 求值失败会让整个 turn 崩掉。手册是增量信息，取不到就当没有。
         logger(`dsh-leader-kit: 渲染 leader 手册失败：${error instanceof Error ? error.message : String(error)}`)
