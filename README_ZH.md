@@ -99,7 +99,7 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 **图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-kit` 后点「安装」：
 
-![Add plugin 向导：输入 dsh-leader-kit](docs/assets/readme/desktop-add-plugin.png)
+<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-kit" width="880">
 
 **命令行安装**：系统 `dsh` 拒绝管理 desktop profile，要用桌面安装自带的 CLI：
 

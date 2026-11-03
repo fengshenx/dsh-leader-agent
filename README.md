@@ -99,7 +99,7 @@ Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`
 
 **GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-kit` and click **Install**:
 
-![Add plugin wizard: enter dsh-leader-kit](docs/assets/readme/desktop-add-plugin.png)
+<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-kit" width="880">
 
 **CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
 
