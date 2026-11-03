@@ -23,7 +23,7 @@
       "reason": "轮询与宿主事件回调的分支只在真实实例里走到，逐步补"
     },
     "src/client/workspace-exclusion.js": {
-      "lines": 82,
+      "lines": 84,
       "reason": "路径匹配分支多，逐步补"
     },
     "src/host/dispatch.js": {

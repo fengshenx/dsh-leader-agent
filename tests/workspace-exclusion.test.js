@@ -7,6 +7,7 @@ import {
   markRows,
   markSessionRow,
   markUngroupedHeader,
+  restoreExpandButton,
   ungroupedExcludedCount,
 } from '../src/client/workspace-exclusion.js'
 
@@ -450,6 +451,47 @@ test('未分组超过一屏且混着用户会话：按钮数字不动，组头�
   assert.equal(group.button.textContent, '展开其余 2 个会话')
   assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), false)
   assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+})
+
+test('还原展开按钮：文本仍是我们写的那句时换回宿主原数', () => {
+  const button = fakeRow('overflow:')
+  button.textContent = '展开其余 3 个会话'
+  // 真实调用链里 origin 由 `hostExpandCount` 在改数字之前记下。
+  button.dataset.expandOrigin = '3'
+  adjustExpandButton(button, 1)
+  assert.equal(button.textContent, '展开其余 1 个会话')
+
+  restoreExpandButton(button)
+
+  assert.equal(button.textContent, '展开其余 3 个会话')
+  assert.equal(button.dataset.expandOrigin, undefined)
+  assert.equal(button.dataset.expandWritten, undefined)
+})
+
+test('还原展开按钮：宿主重写过文案时不碰文本，只清掉记下的数字', () => {
+  const button = fakeRow('overflow:')
+  // 宿主在一次重渲染里自己算了一遍：它的数字是新的，我们记的那份已经过期。
+  button.textContent = '展开其余 5 个会话'
+  button.dataset.expandOrigin = '3'
+  button.dataset.expandWritten = '展开其余 1 个会话'
+
+  restoreExpandButton(button)
+
+  assert.equal(button.textContent, '展开其余 5 个会话')
+  assert.equal(button.dataset.expandOrigin, undefined)
+  assert.equal(button.dataset.expandWritten, undefined)
+})
+
+test('还原展开按钮：没有 dataset 的节点只去掉隐藏类', () => {
+  const button = fakeRow('overflow:')
+  button.textContent = '展开其余 2 个会话'
+  delete button.dataset
+  button.classList.add('dsh-leader-kit-excluded-expand')
+
+  restoreExpandButton(button)
+
+  assert.equal(button.textContent, '展开其余 2 个会话')
+  assert.equal(button.classes.has('dsh-leader-kit-excluded-expand'), false)
 })
 
 test('没有未分组组头时不做任何标记', () => {

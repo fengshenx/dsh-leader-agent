@@ -340,10 +340,13 @@ export function adjustExpandButton(button, remainingVisible) {
  *
  * 只在文本仍是我们写的那句时替换数字：宿主已经重写过就说明它自己是对的。
  *
+ * 导出是给单测的：插件重载而页面不刷新时，留下来的是被改小的数字，
+ * 还原路径错了会让宿主的文案永久偏小。
+ *
  * @param {object} button - 展开按钮
  * @returns {void}
  */
-function restoreExpandButton(button) {
+export function restoreExpandButton(button) {
   button.classList.remove(HIDDEN_BUTTON_CLASS)
   if (button.dataset === undefined) return
   const origin = button.dataset[ORIGIN_ATTR]
