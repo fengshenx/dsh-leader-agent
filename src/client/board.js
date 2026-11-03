@@ -546,7 +546,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           'div',
           { className: 'dsh-leader-kit-board-empty-hint' },
           leaderDead
-            ? '请在左栏项目区块对该项目换新 leader，再打开看板。'
+            ? '请在左栏项目区块对该项目换新 Leader，再打开看板。'
             : `这是「${project.name ?? '本项目'}」所在目录里的普通会话；去该项目的 leader 或 worker 会话查看交付看板。`,
         ),
       ),

@@ -52,7 +52,7 @@ import {
 import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteError } from './project-remote.js'
 import { notifyProjectsChanged } from './project-changes.js'
 import { showToast } from './toast.js'
-import { createWorkspaceExclusion } from './workspace-exclusion.js'
+import { createWorkspaceExclusion, excludedSessionCountsByWorkspace } from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
 
 /**
@@ -245,6 +245,17 @@ export function ProjectPanel(props) {
     [projects, sessionsByProject],
   )
 
+  // 官方树的「展开其余 N 个会话」按数据层算 N，被藏掉的项目会话也算在里面。
+  // 按分组统计排除集大小交给渲染层改正文案，见 workspace-exclusion.js。
+  const excludedCountsByWorkspace = useMemo(
+    () => excludedSessionCountsByWorkspace({
+      workspaceItems,
+      excluded: excludedSessionIds,
+      archivedSessionIds,
+    }),
+    [workspaceItems, excludedSessionIds, archivedSessionIds],
+  )
+
   // 项目的 leader 与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
   // worker 是普通根会话（不是 subagent），官方树不会自己滤掉，只能按会话 id 排除。
   // 用户在项目目录里手动开的会话不属于项目，留在官方树里。
@@ -258,9 +269,10 @@ export function ProjectPanel(props) {
     exclusion.update({
       sessionIds: excludedSessionIds,
       quietWorkspaceIds: quietWorkspaceId === undefined ? [] : [quietWorkspaceId],
+      excludedByGroup: excludedCountsByWorkspace,
     })
     return () => exclusion.dispose()
-  }, [excludedSessionIds, quietWorkspaceId])
+  }, [excludedSessionIds, quietWorkspaceId, excludedCountsByWorkspace])
 
   const startAdd = useCallback(async () => {
     if (busy) return
@@ -330,7 +342,7 @@ export function ProjectPanel(props) {
 
   const openProject = useCallback(async (project) => {
     if (!isProjectOpenable(project)) {
-      showToast(`项目「${project.name}」的 leader 会话已被删除，请换新 leader。`)
+      showToast(`项目「${project.name}」的 leader 会话已被删除，请换新 Leader。`)
       return
     }
     const uiWorkspace = getUiWorkspace?.()
@@ -413,18 +425,39 @@ export function ProjectPanel(props) {
     })
   }, [callRemote, refresh, reorderQueue])
 
+  /**
+   * 换新 leader：建一个新会话并改绑，然后把它打开。
+   *
+   * 打开是这件事的唯一回执：新 leader 会话不在项目树下单独出行（项目行就是它的
+   * 入口），官方工作区树里它又属于排除集——不导航过去，用户只能看到官方树里
+   * 新会话「闪一下就没」，不知道它去了哪。
+   *
+   * 新 id 先写回本地摘要再导航：官方树里刚出现的会话行要立刻进排除集，等
+   * `refresh` 回来才藏的话，那一拍就是用户看见的闪烁。
+   *
+   * @param {object} project - 项目
+   * @returns {Promise<void>} 完成
+   */
   const replaceLeader = useCallback(async (project) => {
     if (busy) return
     setBusy(true)
     try {
-      await callRemote('replaceLeader', [project.id])
+      const updated = await callRemote('replaceLeader', [project.id])
+      const leaderSessionId = typeof updated?.leaderSessionId === 'string' ? updated.leaderSessionId : ''
+      if (leaderSessionId !== '') {
+        setProjects((current) => current.map((item) => (
+          item.id === project.id ? { ...item, ...updated } : item
+        )))
+        const uiWorkspace = getUiWorkspace?.()
+        if (uiWorkspace !== undefined) uiWorkspace.openSession(leaderSessionId)
+      }
       await refresh()
     } catch (error) {
-      showToast(`换新 leader 失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(`换新 Leader 失败：${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, refresh])
+  }, [busy, callRemote, getUiWorkspace, refresh])
 
   const requestDelete = useCallback((project) => {
     setDeleteError('')

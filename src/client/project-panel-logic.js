@@ -350,7 +350,7 @@ export async function openLeaderSession({ project, callRemote, openSession }) {
 export function buildProjectMenuItems(project, handlers) {
   const items = []
   items.push({ id: 'rename', label: '重命名', icon: 'edit-outline', onSelect: () => handlers.onRename(project) })
-  items.push({ id: 'replace', label: '换新 leader', icon: 'refresh-outline', onSelect: () => handlers.onReplace(project) })
+  items.push({ id: 'replace', label: '换新 Leader', icon: 'refresh-outline', onSelect: () => handlers.onReplace(project) })
   items.push({ id: 'remove', label: '删除', icon: 'trash-outline', danger: true, onSelect: () => handlers.onRemove(project) })
   return items
 }

@@ -862,7 +862,7 @@ function ProjectRow(props) {
               {
                 type: 'button',
                 className: 'dsh-leader-kit-project-icon-button',
-                title: '换新 leader',
+                title: '换新 Leader',
                 disabled: busy,
                 onClick: (event) => { event.stopPropagation(); onReplace(project) },
               },
