@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path'
 import {
   DESKTOP_PROFILE, desktopLinkSpec, expandHomePath, looksLikeAppPath, parseBundleExecutable,
   planDesktopDisable, planDesktopEnable, planDshHomeEnv, planLinkAction, planProfileLockAction,
-  resolveDesktopPaths,
+  resolveDesktopPaths, resolveHomePathsOrThrow,
 } from '../scripts/desktop-plan.mjs'
 import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
@@ -245,8 +245,8 @@ test('启动接线：open 收 .app 绝对路径，数据根用 --env 显式传',
 
 test('启动 fail closed：探不到运行态不启动，open 有 stderr 不当成功', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  // ~user 的判定必须真接到 main 上，否则只是纯函数自娱自乐。
-  assert.match(source, /homeEnv === 'unsupported-tilde-user'/)
+  // 校验必须真接在 main 的第一行，不能在 if 里被短路掉。
+  assert.match(source, /const paths = resolveHomePathsOrThrow\(\{/)
   // 已运行实例收不到 --env（rc 仍 0），所以探活拿不到结论时不能自动启动。
   assert.match(source, /process\.platform === 'darwin' && running === null/)
   assert.ok(source.indexOf("running === null") < source.indexOf('launchDesktopApp(appBundle'))
@@ -264,4 +264,25 @@ test('锁覆盖整个读改写：自己建 <profile>/lock，只删自己那把',
   assert.equal((source.match(/withProfileLock\(paths, \(\) => \{/g) ?? []).length, 2)
   // 一次性检查已被替换：检查与写入之间有窗口。
   assert.doesNotMatch(source, /assertProfileLockFree/)
+})
+
+test('DSH_HOME 的两种非法写法在解析入口就抛（行为级，走真实路径解析）', () => {
+  // ~user/x 落到 <cwd>/~user/x 会写坏另一个目录，必须在解析前拒。
+  assert.throws(
+    () => resolveHomePathsOrThrow({ rawHome: '~user/x', homeDir: HOME, cwd: '/work' }),
+    /~user 写法/,
+  )
+  assert.throws(
+    () => resolveHomePathsOrThrow({ rawHome: '~user/x', homeDir: HOME }),
+    (error) => !String(error.message).includes('/work/~user'),
+  )
+  // 相对路径：应用侧算出来的是另一条。
+  assert.throws(
+    () => resolveHomePathsOrThrow({ rawHome: 'probe-rel', homeDir: HOME, cwd: '/tmp' }),
+    /是相对路径/,
+  )
+  // 合格的写法照常解析，首尾空白被 trim 掉。
+  assert.equal(resolveHomePathsOrThrow({ rawHome: ' /tmp/x ', homeDir: HOME }).home, '/tmp/x')
+  assert.equal(resolveHomePathsOrThrow({ rawHome: '', homeDir: HOME }).home, join(HOME, '.dsh'))
+  assert.equal(resolveHomePathsOrThrow({ rawHome: '~/dsh', homeDir: HOME }).home, join(HOME, 'dsh'))
 })

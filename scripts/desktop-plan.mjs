@@ -87,6 +87,36 @@ export function planDshHomeEnv(rawHome) {
 }
 
 /**
+ * 校验 `DSH_HOME` 并算出 desktop profile 的各条路径。
+ *
+ * 两个不合格的写法在入口就拒：相对路径的基准是发起命令的目录（应用由 `open` 启动，
+ * cwd 不同），`~user` 宿主也不展开（照字面拼会落到 `<cwd>/~user/x`）。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.rawHome - 原始 `DSH_HOME`，未设时传空串
+ * @param {string} options.homeDir - 用户主目录
+ * @param {string} [options.cwd] - 当前工作目录
+ * @returns {object} `resolveDesktopPaths` 的结果
+ * @throws `DSH_HOME` 是相对路径或 `~user` 写法时
+ */
+export function resolveHomePathsOrThrow({ rawHome, homeDir, cwd }) {
+  const verdict = planDshHomeEnv(rawHome)
+  if (verdict === 'unsupported-tilde-user') {
+    throw new Error(
+      `DSH_HOME=${rawHome} 用了 ~user 写法：宿主只展开单独的 ~ 与 ~/、~\\ 前缀，`
+      + '照字面拼下去会变成 <当前目录>/~user/…。改成 ~/…，或写绝对路径。',
+    )
+  }
+  if (verdict === 'relative') {
+    throw new Error(
+      `DSH_HOME=${rawHome} 是相对路径：它的基准是发起命令的目录，而桌面应用由 open 启动、`
+      + '不继承这个 shell 的环境，两边会算成不同的数据根。改成绝对路径，或用 ~/ 开头的写法。',
+    )
+  }
+  return resolveDesktopPaths({ homeDir, cwd, env: { DSH_HOME: rawHome } })
+}
+
+/**
  * 桌面应用那把锁该不该拦。
  *
  * 宿主 `DesktopProjectManager.withLock` 用 `openSync(lock, 'wx')` 建 `<profile>/lock`、

@@ -36,7 +36,7 @@ import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
 import { LEADER_KIT_PACKAGE, assertWebBundle } from './dev-plan.mjs'
 import {
   DESKTOP_APP_NAME, expandHomePath, looksLikeAppPath, parseBundleExecutable, planDesktopDisable,
-  planDesktopEnable, planDshHomeEnv, planLinkAction, planProfileLockAction, resolveDesktopPaths,
+  planDesktopEnable, planLinkAction, planProfileLockAction, resolveHomePathsOrThrow,
 } from './desktop-plan.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 import { detachNodeModulesLink } from './worktree-common.mjs'
@@ -352,21 +352,11 @@ function detachLink(linkPath) {
  */
 function main() {
   const homeDir = homedir()
-  const rawHome = process.env.DSH_HOME?.trim() ?? ''
-  const homeEnv = planDshHomeEnv(rawHome)
-  if (homeEnv === 'unsupported-tilde-user') {
-    throw new Error(
-      `DSH_HOME=${rawHome} 用了 ~user 写法：宿主只展开单独的 ~ 与 ~/、~\\ 前缀，`
-      + '照字面拼下去会变成 <当前目录>/~user/…。改成 ~/…，或写绝对路径。',
-    )
-  }
-  if (homeEnv === 'relative') {
-    throw new Error(
-      `DSH_HOME=${rawHome} 是相对路径：它的基准是发起命令的目录，而桌面应用由 open 启动、`
-      + '不继承这个 shell 的环境，两边会算成不同的数据根。改成绝对路径，或用 ~/ 开头的写法。',
-    )
-  }
-  const paths = resolveDesktopPaths({ homeDir, cwd: process.cwd(), env: process.env })
+  const paths = resolveHomePathsOrThrow({
+    rawHome: process.env.DSH_HOME ?? '',
+    homeDir,
+    cwd: process.cwd(),
+  })
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
   const appBundle = appBundlePath(appName, homeDir)
   const remove = process.argv.slice(2).includes('--remove')

@@ -34,9 +34,12 @@
 - 桌面应用运行中拒绝写入：宿主只在启动时读 profile，写入不生效，还可能和应用自己的插件管理撞上。探活依赖 `plutil` 读 `Info.plist` 再 `pgrep -x`，只在 macOS 上做；Linux 与 Windows 都返回「探不了」，脚本照样写完 profile 并提示手动启动——不要在 Linux 上调一个不存在的 `plutil` 把整条命令卡死。
 - **进程名取自 `.app` 的 `Info.plist`（`CFBundleExecutable`）**，不按包文件名猜：`Lark.app` 的进程是 `Feishu`，带版本号的快照（`DeepSeek Harness 0.2.1.app`）同理。取不到 `.app`、读不到 plist 或缺 `CFBundleExecutable` 时直接报错退出——猜一个名字会漏判运行态，进而写坏 profile。`open -a` 收的是解析后的 `.app` 绝对路径，不是 `DSH_DESKTOP_APP` 原值。
 - **两把锁都要认**：`<profile>/lock` 是桌面应用自己的那把——`resolveDesktopPaths` 的 `lock` 字段，`DesktopProjectManager.withLock` 用 `openSync(..., 'wx')` 建它并写入自己的 PID，`applyRelease()` / `disableAllPlugins()` 都走它；`package.json.lock` 是宿主的 `dsh-atomic-write` 在写 manifest 时用的 `<file>.lock` 兄弟文件。第一版只查了后者，判断错了：`<profile>/lock` 平时不存在（操作完就删），不等于没有。
-  - `<profile>/lock` 按持有者进程判活：PID 读不出或非法时与宿主一样当「活跃」拒绝；PID 已退出（`ESRCH`）是陈旧锁，宿主自己会接管，脚本只提示不拦。
+  - `<profile>/lock` 按持有者进程判活：PID 读不出或非法时与宿主一样当「活跃」拒绝；PID 已退出（`ESRCH`）是陈旧锁——脚本删掉它后自己接管（与宿主 `withLock` 的行为一致），只在输出里说明一句。
+  - 边界：在「建锁文件」与「写入自己的 PID」之间被 `kill -9` 会留下一个空锁文件，PID 读不出 → 按活跃拒绝，需要人工删掉。宿主 `withLock` 是同一协议、同一缺口，接受它换「不需要额外锁元数据」。
 - **脚本自己持锁覆盖整个读改写**：只「检查一下再写」仍然有窗口——检查与写入之间插进来的第二个写者（桌面应用的 `applyRelease`、另一个终端里的本脚本）照样会相互覆盖。所以按宿主同协议 `openSync(..., 'wx')` 建 `<profile>/lock`、写入自己的 PID、`finally` 里只删自己那把（内容不匹配就说明已被接管），把「重读 manifest → 规划 → 写 manifest → 动链接」整段包在里面。内层再叠仓里既有的 `withFileLockSync`（`scripts/atomic-write.mjs`，与 `dsh-atomic-write` 同协议）管 `package.json.lock`。`npm run build:client` 仍在锁外：它不碰 profile。
 - **启动 fail closed**：`open --env` 对**已运行**的实例无效（rc 仍是 0，环境被丢掉），所以探到应用在跑就拒绝；探不到运行态（`pgrep` 缺失）时也不自动启动，只打印带 `DSH_HOME` 的手动命令；`open` 返回后 stderr 非空一律当失败——成功时它是静默的。
+  - `open --env` 对已运行实例是「部分成功」：profile 已经挂好，但应用仍用启动时的旧环境。脚本不回滚挂载（那是真实写入的结果），而是报错要求先完全退出应用再重跑——下次启动才读得到新 profile 与 `DSH_HOME`。
+  - 边界：「先探活、再启动」之间应用被手动打开仍会落进上面这种部分成功；拦不干净，靠 `open` 的 stderr 与下一次重跑兜住。
 - `--remove` 是**包级摘除**，只摘「能判定是当前工作树挂的」那份：依赖说明符不等于 `link:<当前目录>`（别的工作树、插件管理的版本）、或只在 `bundles` 里出现而没有依赖条目时，一律拒绝并说明，不摘别人的安装。
 - **实体目录占位时整单拒绝**（而不是只摘声明）：`node_modules/dsh-leader-kit` 是实体目录、而 manifest 里又有本插件的记录时，`--remove` 直接报错、manifest 一个字不改。两个可选语义（只摘声明 / 拒绝）选了后者——前者会留下「声明没了、磁盘上还挂着一份插件管理装的包」的状态，而宿主只按 `bundles` 加载，看上去「摘干净了」，实际那份目录还在且下次 `--remove` 判不出归属。目录与声明要么一起解决，要么都不动。
 - `--remove` 不依赖应用是否存在：探活只在挂载分支做。应用卸载、改名之后照样要能摘除，探活失败不该拦住摘除。
@@ -58,8 +61,8 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
 
 ## 验证
 
-- `tests/desktop-plan.test.js` 23 个用例：路径解析（默认、`DSH_HOME` 覆盖、空串回落）、`expandHomePath`（`~` / `~/x` / 相对 / 绝对 / 路径中间的 `~`）、首次挂载写入依赖与 bundle 末尾、幂等、已装另一来源拒绝（工作树与版本号两种）、bundle 已含时不重复、缺 bundles 列表拒绝、摘除只动本插件、未装时摘除是空操作、摘除时别的工作树与判不出归属都拒绝、`parseBundleExecutable`（含 `Lark.app → Feishu` 与三种取不到）、`planLinkAction` 四种组合、`ensureLink` 先于 `writeManifest` 的顺序断言、探活接线断言（进程名来自 plist、`args: ['-x', processName]`）、`~\` 展开、相对 `DSH_HOME` 判定、`DSH_DESKTOP_APP` 的路径/名字形态、`<profile>/lock` 的四种占用状态、摘除不依赖应用存在、两处 manifest 写入都在 `withFileLockSync` 内重读、`~user` 拒绝、`DSH_HOME` 首尾空白 trim、启动 fail closed（探不到运行态不启动、`open` 有 stderr 不当成功）、持锁覆盖整个读改写。
-- 双向验证（逐条撤销 → 变红 → 还原，每次还原 23 pass）：
+- `tests/desktop-plan.test.js` 24 个用例：路径解析（默认、`DSH_HOME` 覆盖、空串回落）、`expandHomePath`（`~` / `~/x` / 相对 / 绝对 / 路径中间的 `~`）、首次挂载写入依赖与 bundle 末尾、幂等、已装另一来源拒绝（工作树与版本号两种）、bundle 已含时不重复、缺 bundles 列表拒绝、摘除只动本插件、未装时摘除是空操作、摘除时别的工作树与判不出归属都拒绝、`parseBundleExecutable`（含 `Lark.app → Feishu` 与三种取不到）、`planLinkAction` 四种组合、`ensureLink` 先于 `writeManifest` 的顺序断言、探活接线断言（进程名来自 plist、`args: ['-x', processName]`）、`~\` 展开、相对 `DSH_HOME` 判定、`DSH_DESKTOP_APP` 的路径/名字形态、`<profile>/lock` 的四种占用状态、摘除不依赖应用存在、两处 manifest 写入都在 `withFileLockSync` 内重读、`~user` 拒绝、`DSH_HOME` 首尾空白 trim、启动 fail closed（探不到运行态不启动、`open` 有 stderr 不当成功）、持锁覆盖整个读改写。
+- 双向验证（逐条撤销 → 变红 → 还原，每次还原 24 pass）：
   - `planLinkAction` 的「指向别处」从 `refuse` 改回 `create`（即原来的静默替换）→ 1 fail（22 pass）。
   - `planDesktopDisable` 删掉归属校验 → 1 fail（22 pass）。
   - `desktop.mjs` 把 `writeManifest` 挪回 `ensureLink` 之前 → 顺序用例 1 fail（22 pass）。
@@ -71,7 +74,9 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
   - `--remove` 分支挪到探活之后 → 顺序用例 1 fail。
   - 删掉「实体目录 + 有记录 → 拒绝」→ 同一用例 1 fail。
   - 挂载分支去掉 `withFileLockSync`（直接读改写）→ 锁包裹用例 1 fail。
-  - `planDshHomeEnv` 去掉 `~user` 分支（落到相对/绝对）→ 1 fail；再删掉 main 里对应的拒绝分支 → 接线用例 1 fail。
+  - `planDshHomeEnv` 去掉 `~user` 分支（落到相对/绝对）→ 1 fail。
+  - `resolveHomePathsOrThrow` 删掉 `~user` 拒绝分支 → 行为用例 1 fail（这条不看源码正则，直接构造 `~user/x` 走真实解析）。
+  - `main` 把校验改成 `if (false && …)` 短路 → 接线用例 1 fail。
   - `resolveDesktopPaths` 改回不 trim（用原始 `DSH_HOME`）→ 1 fail。
   - 删掉「darwin 且 running 为 null 不启动」→ 1 fail；`open` 后不看 stderr → 1 fail。
   - `<profile>/lock` 从「'wx' 独占持有」改回「不存在才写」→ 持锁用例 1 fail。
@@ -80,7 +85,7 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
   - 相对 `DSH_HOME=probe-rel`：报「是相对路径」并退出；`DSH_HOME='~user/x'` 报「不支持 ~user 写法」；`DSH_HOME=' /tmp/x '` 先 trim，profile 落到 `/tmp/x/profiles/desktop`。
   - `<profile>/lock` 里写当前 shell 的 PID：报「持有者还在」并退出；改写已退出的 PID（999999）后提示「陈旧锁，继续」并正常写入。
   - `DSH_DESKTOP_APP=DeepSeek Harness.app`（裸名）：解析到 `/Applications/DeepSeek Harness.app`，挂载成功；把假 `open` 放在 `PATH` 前拦下启动，实测发出的命令是 `open --env DSH_HOME=/tmp/probe-rel -a "/Applications/DeepSeek Harness.app"`——数据根是绝对路径、`.app` 也是绝对路径，真实应用没被拉起。
-  - 应用名不存在（`__no_such_app__`）：早失败「找不到应用」，manifest 与 `node_modules` 都没动（修复前会先写盘、最后才在 `open -a` 失败）。
+  - 应用名不存在（`__no_such_app__`）：早失败「找不到桌面应用」，manifest 与 `node_modules` 都没动（修复前会先写盘、最后才在 `open -a` 失败）。
   - `--remove` 装的是别的工作树：报「不是当前目录」，manifest 保持原样。
   - `--remove` 遇到实体目录 + manifest 有记录：整单拒绝，manifest 的 sha256 前后一致（哈希不变），实体目录仍在；手工删掉目录后重跑才摘干净。
   - 并发：挂载后同时起两个 `--remove`，一个报「manifest 已更新」、另一个「本来就没有」，退出码都是 0，最终 manifest 不残留本插件——持锁让两个写者串行。
