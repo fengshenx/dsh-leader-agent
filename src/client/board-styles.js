@@ -967,6 +967,62 @@ const STYLE_TEXT = `
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* leader 会话的一次性引导条：与输入框同一套几何——宽度共用宿主给输入框外壳的
+   --dsh-composer-card-max-width（同一个 token，窗口变窄时一起收），圆角同取
+   --dsw-radius-panel。材质刻意比输入框轻一档：输入框是白面 + elevation-soft，
+   引导条取交互悬停档的浅底、不叠投影，两块叠在一起才不会被读成两个输入框。
+   文字档对齐宿主正文：标题 14/22 500，步骤 13/20（宿主里 11/12 只用于元信息，
+   提示正文不该比它更小）。 */
+.dsh-leader-kit-guide-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px 10px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--dsh-composer-card-max-width, 952px);
+  margin: 0 auto 8px;
+  padding: 10px 14px;
+  border-radius: var(--dsw-radius-panel);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* 图标与标题首行对齐：标题行高 22、图标 16，下沉 3px 才落在同一基线上 */
+.dsh-leader-kit-guide-icon {
+  margin-top: 3px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* flex:1 + min-width:0：文本块吃掉动作左侧的全部宽度，右侧不留空；
+   min-width 是为了窄窗口下让文字换行而不是把动作挤出去 */
+.dsh-leader-kit-guide-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dsh-leader-kit-guide-title {
+  font-size: var(--dsw-font-s-strong-14-font-size);
+  line-height: var(--dsw-font-s-strong-14-line-height);
+  font-weight: var(--dsw-font-s-strong-14-font-weight);
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-kit-guide-steps {
+  font-size: var(--dsw-font-xs-13-font-size);
+  line-height: var(--dsw-font-xs-13-line-height);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-kit-guide-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+  margin-left: auto;
+}
 `
 
 /**

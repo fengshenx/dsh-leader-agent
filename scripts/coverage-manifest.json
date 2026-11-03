@@ -6,6 +6,7 @@
     "src/client/card-detail.js": "卡片详情弹层组件，归 e2e",
     "src/client/card-links-editor.js": "链接编辑器组件，归 e2e",
     "src/client/confirm-dialog.js": "确认弹层组件，归 e2e",
+    "src/client/guide-card.js": "引导卡组件（React.createElement），挂在宿主 conversation.input.dock，只有真实宿主能加载；触发与关闭逻辑已由 tests/guide-card-logic.test.js 覆盖",
     "src/client/leader-view.js": "leader 运行态视图组件，归 e2e",
     "src/client/icons.js": "图标 SVG 常量，没有逻辑",
     "src/client/index.js": "客户端入口：注册项目树、看板与 sidebar 注入，只能由宿主加载",
