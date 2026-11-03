@@ -46,6 +46,7 @@ import {
   isProjectOpenable,
   moveProjectBefore,
   openLeaderSession,
+  sameProjectList,
   validateProjectName,
 } from './project-panel-logic.js'
 import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteError } from './project-remote.js'
@@ -55,8 +56,18 @@ import {
   createWorkspaceExclusion,
   excludedSessionCountsByWorkspace,
   ungroupedExcludedCount,
+  ungroupedVisibleCount,
 } from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
+
+/**
+ * 项目列表的重读间隔。
+ *
+ * 只有「目录被别人删掉」这一个事实需要靠轮询发现：它不产生会话事件、也不产生焦点
+ * 事件，其余变更（增删改项目、换 leader、归档）都有明确的调用点。间隔取 5 秒——
+ * 慢到不至于变成一次后台空转，快到用户删完目录切回来就能看见会话回到树里。
+ */
+const PROJECT_REFRESH_INTERVAL_MS = 5000
 
 /**
  * 项目区块。
@@ -109,6 +120,8 @@ export function ProjectPanel(props) {
   const [naming, setNaming] = useState(null)
   /** 拖拽排序的写入队列：连续拖动时一笔一笔地发，见 `reorderProject`。 */
   const [reorderQueue] = useState(() => createWriteQueue())
+  /** 上一次读到的项目列表，用来判断轮询结果是否真的变了。 */
+  const projectsRef = useRef([])
 
   const refresh = useCallback(async () => {
     // 通道还没挂好时不发请求：报错只会写一条看不懂的「通道不可用」，
@@ -116,7 +129,11 @@ export function ProjectPanel(props) {
     if (!isProjectRemoteReady()) return
     try {
       const value = await callRemote('list', [])
-      setProjects(Array.isArray(value) ? value : [])
+      const next = Array.isArray(value) ? value : []
+      const changed = !sameProjectList(projectsRef.current, next)
+      projectsRef.current = next
+      if (!changed) return
+      setProjects(next)
       // 项目有变就广播：右栏「看板」入口按项目与会话身份画，注销项目或换 leader
       // 之后不通知，那里会留下一枚点开说「不属于任何项目」的胶囊。增删改的每个
       // 入口都在成功之后调本函数，广播放这里就不会漏。
@@ -164,6 +181,21 @@ export function ProjectPanel(props) {
     void refresh()
     void refreshSessionIndex()
   }), [refresh, refreshSessionIndex])
+
+  // 定期重读项目列表：目录可能在别处被删掉（文件管理器、终端），而这件事既不产生
+  // 会话事件也不产生焦点事件。目录失效后要停止把该项目的会话从官方树里排除，否则
+  // 那些会话在项目行与官方树里同时打不开。页面不可见时不问，切回可见立刻补一次。
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    const timer = setInterval(tick, PROJECT_REFRESH_INTERVAL_MS)
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [refresh])
 
   // 订阅会话列表：标题与运行状态随会话变化，归属也会因新会话而变。
   useEffect(() => {
@@ -269,6 +301,16 @@ export function ProjectPanel(props) {
     return counts
   }, [workspaceItems, excludedSessionIds, archivedSessionIds, sessionRows, currentSessionId])
 
+  // 组头要不要藏，只能按会话快照判：宿主把未分组的组头与会话行分在不同层，DOM 上
+  // 从组头查不到自己的行，早先按 DOM 判空等于无条件藏组头（未分组整组消失）。
+  const ungroupedVisible = useMemo(() => ungroupedVisibleCount({
+    sessionRows,
+    workspaceItems,
+    excluded: excludedSessionIds,
+    archivedSessionIds,
+    currentSessionId,
+  }), [sessionRows, workspaceItems, excludedSessionIds, archivedSessionIds, currentSessionId])
+
   // 项目的 leader 与 worker 会话都不在官方工作区树里重复出现：它们由项目区块呈现。
   // worker 是普通根会话（不是 subagent），官方树不会自己滤掉，只能按会话 id 排除。
   // 用户在项目目录里手动开的会话不属于项目，留在官方树里；组里全被排除时，
@@ -278,9 +320,10 @@ export function ProjectPanel(props) {
     exclusion.update({
       sessionIds: excludedSessionIds,
       excludedByGroup: excludedCountsByGroup,
+      ungroupedVisibleCount: ungroupedVisible,
     })
     return () => exclusion.dispose()
-  }, [excludedSessionIds, excludedCountsByGroup])
+  }, [excludedSessionIds, excludedCountsByGroup, ungroupedVisible])
 
   const startAdd = useCallback(async () => {
     if (busy) return
