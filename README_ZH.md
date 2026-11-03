@@ -95,7 +95,14 @@ profile 名必须用 `web`：插件 manifest 声明 `platform: web`，而 `dev` 
 
 ### 桌面版（DeepSeek Harness Desktop）
 
-桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通；`DSH_HOME` 要用绝对路径或 `~/` 写法。在本仓库里 `npm run desktop` 挂当前工作树并启动，`-- --remove` 摘除；profile 规则与多工作树限制见[开发](docs/development.md#日常实例)。
+桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。在仓库里一条命令挂载并启动：
+
+```sh
+npm run desktop              # 挂当前工作树、重建客户端产物、拉起应用
+npm run desktop -- --remove  # 摘除
+```
+
+应用只在启动时读 profile：先完全退出（关窗口只是隐藏），同一时刻只能挂一个工作树版本；`DSH_HOME` 要用绝对路径或 `~/` 写法。不用脚本也可以在应用的插件管理里「添加插件」，填本仓库的绝对路径。会话、项目与卡片数据与 `web` 共享，插件包与激活状态各自一份。
 
 ### 五步上手
 
