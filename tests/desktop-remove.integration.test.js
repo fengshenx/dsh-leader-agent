@@ -30,6 +30,9 @@ function makeFixture(t, { gitMarker = 'file' } = {}) {
   t.after(() => rmSync(root, { recursive: true, force: true }))
   const tree = join(root, 'tree')
   cpSync(SCRIPT_DIR, join(tree, 'scripts'), { recursive: true })
+  // `scripts/dev-plan.mjs` 与 `scripts/desktop-plan.mjs` 从 `src/host/home-paths.js` 取
+  // 数据根归一化，脚本跑起来必须能解析到它——缺这份就 ERR_MODULE_NOT_FOUND。
+  cpSync(join(SCRIPT_DIR, '..', 'src'), join(tree, 'src'), { recursive: true })
   if (gitMarker === 'file') writeFileSync(join(tree, '.git'), 'gitdir: /elsewhere/.git/worktrees/tree\n')
   else mkdirSync(join(tree, '.git'))
   return { root, tree, home: join(root, 'home') }
