@@ -55,7 +55,7 @@
   - B 把 `dispatch.js` 门槛从 97 抬到 100 → `LOW 97.14% / 100%`（未覆盖行号一并列出）、exit 1；还原绿。
   - C 把 `src/client/markdown.js` 从 `unmeasured` 挪进 `thresholds` → 「登记了门槛但这个文件没被任何单测加载」、exit 1；还原绿。
   - D 把已加载的 `src/host/message.js` 登记进 `unmeasured` → 「登记为单测不可加载，但它出现在覆盖率报告里」、exit 1；还原绿。
-- 文档体量：`AGENTS.md` 3,680 → 天花板 3,930 抬到 4,050（× 1.10）；`docs/development.md` 1,866 → 天花板 1,780 抬到 1,980（× 1.05，合并 main 后按当时的实际值重算）。两者都是新增机制说明，不是把细节塞进现有规则。
+- 文档体量：`AGENTS.md` 3,680 → 天花板 3,930 抬到 4,050（× 1.10）；`docs/development.md` 1,878 → 天花板 1,780 抬到 1,980（× 1.05，合并 main 后按当时的实际值重算）。两者都是新增机制说明，不是把细节塞进现有规则。
 - 第一批存量清零（同 PR）：10 个 ≤8 行缺口的文件（`project-remote`、`cards/store`、`projects/remote`、`skills`、`read-worker`、`coordinator-session-index`、`notification-store`、`worker-registry`、`worker-sessions`、`projects/store`）与两个 CSS 常量文件一起清零。判据是「先看未覆盖行是死代码还是缺用例」：`codecFor` 的 throw 删掉，其余 12 处都是可构造的错误分支或转发方法，补了 16 条用例（本批之后 946 tests 总数）。
 - 第一批后的读数：`verify-coverage: 930 个用例通过（16 跳过），68 个源文件，53 个被单测加载（45 个行覆盖 100%），15 个登记为单测不可加载`；`thresholds` 从 18 条降到 8 条。覆盖率聚合值不写进文档——它们随用例增减漂移，可复现的三项是文件数、被加载数与 100% 的文件数。
 - `npm run check`：946 tests / 930 pass / 16 skipped / 0 fail；Agent Note 门禁、文档工具名、文档预算、语法检查与覆盖率门禁全过。

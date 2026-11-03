@@ -112,7 +112,8 @@ if (run.code !== 0) {
 const report = parseCoverageTable(run.stdout)
 if (report.size === 0) {
   console.error('verify-coverage: 测试通过但没解析到覆盖率表格。')
-  console.error('  确认 Node 仍支持 --experimental-test-coverage，且没有传 --test-reporter（自定义 reporter 会抑制表格）。')
+  console.error('  解析窗口按 `start of coverage report` 与 `end of coverage report` 两个标记收边：两个都在却解不出表格才说明是覆盖率真的没了。')
+  console.error('  缺标记时先怀疑 Node 改了报告文案（标记漂移），再怀疑 --test-reporter 抑制了表格。')
   printTail(run.stderr)
   process.exit(1)
 }
