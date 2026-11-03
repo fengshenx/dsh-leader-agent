@@ -87,6 +87,35 @@ export function isProjectOpenable(project) {
 }
 
 /**
+ * 两份项目列表在界面上是否等价。
+ *
+ * 项目列表要定期重读（目录可能在别处被删掉，见 `project-panel` 的轮询），每次都
+ * 换一个新数组会连带重渲染整棵项目树、并向外广播一次「项目有变」。只有渲染用到的
+ * 字段真的变了才算变——顺序也算，拖拽排序就是靠它落地的。
+ *
+ * @param {object[]} previous - 上一份列表
+ * @param {object[]} next - 新读到的列表
+ * @returns {boolean} 是否等价
+ */
+export function sameProjectList(previous, next) {
+  if (previous === next) return true
+  if (!Array.isArray(previous) || !Array.isArray(next)) return false
+  if (previous.length !== next.length) return false
+  for (let index = 0; index < previous.length; index += 1) {
+    const before = previous[index]
+    const after = next[index]
+    if (before === after) continue
+    if (before?.id !== after?.id) return false
+    if (before?.name !== after?.name) return false
+    if (before?.directory !== after?.directory) return false
+    if (before?.directoryUsable !== after?.directoryUsable) return false
+    if (before?.leaderSessionId !== after?.leaderSessionId) return false
+    if (before?.leaderAlive !== after?.leaderAlive) return false
+  }
+  return true
+}
+
+/**
  * 挑出项目下要列出的会话行。
  *
  * leader 不在其中——项目名就是它的入口，重复列出会让「点项目名打开 leader」这条

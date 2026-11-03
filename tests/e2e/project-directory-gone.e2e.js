@@ -91,10 +91,9 @@ test('项目目录被删后，它的会话回到官方树里可见', { timeout: 
   await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
 
   // 删目录：项目行再也打不开，继续排除会让会话两处都不可达。
+  // 不派发 focus：真实场景里用户在别处删目录，窗口不会收到任何事件，
+  // 客户端只能靠自己重新问一次宿主。
   rmSync(directory, { recursive: true, force: true })
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event('focus'))
-  })
 
   await waitFor({
     description: '删目录后会话行回到官方树里可见',

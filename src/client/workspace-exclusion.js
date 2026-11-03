@@ -122,14 +122,15 @@ export function markSessionRow(row, excluded) {
  * @param {object} state - 标记状态
  * @param {Set<string>} state.excluded - 要排除的会话 id
  * @param {Map<string, number>} [state.excludedByGroup] - 工作区 id 到该组排除集大小；缺省不修折叠计数
+ * @param {boolean} [state.hideUngrouped] - 未分组里只剩被排除的会话；缺省不藏
  * @returns {void}
  */
-export function markRows(root, { excluded, excludedByGroup }) {
+export function markRows(root, { excluded, excludedByGroup, hideUngrouped = false }) {
   for (const row of root.querySelectorAll('[data-row-key^="session:"]')) {
     markSessionRow(row, excluded)
   }
   if (excludedByGroup !== undefined) adjustGroupOverflow(root, excludedByGroup)
-  markUngroupedHeader(root)
+  markUngroupedHeader(root, { hide: hideUngrouped })
 }
 
 /**
@@ -191,42 +192,101 @@ export function ungroupedExcludedCount({
   archivedSessionIds,
   currentSessionId,
 }) {
-  const accounted = new Set()
-  for (const item of workspaceItems ?? []) {
-    for (const sessionId of item?.sessionIds ?? []) accounted.add(sessionId)
-  }
   let count = 0
-  for (const [sessionId, row] of Object.entries(sessionRows ?? {})) {
-    if (accounted.has(sessionId)) continue
-    if (row?.origin === 'subagent') continue
-    if (row?.blank === true && sessionId !== currentSessionId) continue
-    if (archivedSessionIds?.has(sessionId) === true) continue
-    if (excluded?.has(sessionId) !== true) continue
-    count += 1
+  for (const sessionId of ungroupedSessionIds({ sessionRows, workspaceItems, archivedSessionIds, currentSessionId })) {
+    if (excluded?.has(sessionId) === true) count += 1
   }
   return count
 }
 
 /**
- * 按当前 DOM 判定「未分组」组头要不要藏。
+ * 判定「未分组」组头要不要藏：组里剩下的会话是不是全被我们藏了。
  *
- * 判据只看渲染结果：组内没有可见的会话行、也没有还开着的「展开其余 N 个会话」。
- * 有展开按钮说明数据层还有没渲染的行，此时不藏——宁可留一个空组头，也不误伤
- * 用户自己的会话。
+ * 不问「宿主会不会显示这些会话」，只问「它们是不是都在排除集里」。这个问题的答案
+ * 只取决于会话 id 与工作区归属，与宿主怎么排版、怎么算可见性都无关——宿主换一版
+ * 渲染实现不会影响它，插件也不用复刻 `sessionVisible`。
+ *
+ * 口径刻意保守：
+ * - 快照还没到（`sessionRows` 为空）时不判定，组头留着——否则退化成「恒藏」；
+ * - 不过滤空会话：空会话可能正在成为当前会话，宁可多留一个空组头；
+ * - 未分组里一个会话都没有时不藏：那时宿主压根不渲染这个组，藏不藏都无所谓。
+ *
+ * 只有「subagent 与已归档」被排除在外——这两类宿主一定不渲染它们的行，把它们算
+ * 进来只会让空组头常驻。
+ *
+ * @param {object} options - 输入
+ * @param {Record<string, object>} options.sessionRows - 会话 id 到会话行（含 `origin`）
+ * @param {object[]} options.workspaceItems - 宿主工作区快照（`{workspaceId, sessionIds}`）
+ * @param {Set<string>} options.excluded - 要排除的会话 id
+ * @param {Set<string>} [options.archivedSessionIds] - 已归档的会话 id
+ * @returns {boolean} 组头是否该藏
+ */
+export function shouldHideUngroupedHeader({ sessionRows, workspaceItems, excluded, archivedSessionIds }) {
+  if (Object.keys(sessionRows ?? {}).length === 0) return false
+  const ids = ungroupedSessionIds({ sessionRows, workspaceItems, archivedSessionIds, visibleOnly: false })
+  if (ids.length === 0) return false
+  return ids.every((sessionId) => excluded?.has(sessionId) === true)
+}
+
+/**
+ * 列出「未分组」里的会话 id。
+ *
+ * 两个用途共用这一处口径：折叠按钮的修正要「宿主会渲染的那些」（`visibleOnly`），
+ * 组头显隐要「除了宿主一定不渲染的之外全部」（`visibleOnly: false`）。分开算过一
+ * 次，两边对不上就会出现「按钮说还剩 N 个，组头却先没了」。
+ *
+ * @param {object} options - 输入
+ * @param {Record<string, object>} options.sessionRows - 会话 id 到会话行
+ * @param {object[]} options.workspaceItems - 宿主工作区快照
+ * @param {Set<string>} [options.archivedSessionIds] - 已归档的会话 id
+ * @param {string} [options.currentSessionId] - 主区域当前会话 id
+ * @param {boolean} [options.visibleOnly] - 只返回宿主一定会渲染的会话；缺省 true
+ * @returns {string[]} 会话 id 列表
+ */
+function ungroupedSessionIds({
+  sessionRows,
+  workspaceItems,
+  archivedSessionIds,
+  currentSessionId,
+  visibleOnly = true,
+}) {
+  const accounted = new Set()
+  for (const item of workspaceItems ?? []) {
+    for (const sessionId of item?.sessionIds ?? []) accounted.add(sessionId)
+  }
+  const ids = []
+  for (const [sessionId, row] of Object.entries(sessionRows ?? {})) {
+    if (accounted.has(sessionId)) continue
+    if (row?.origin === 'subagent') continue
+    if (archivedSessionIds?.has(sessionId) === true) continue
+    if (visibleOnly && row?.blank === true && sessionId !== currentSessionId) continue
+    ids.push(sessionId)
+  }
+  return ids
+}
+
+/**
+ * 按调用方给的判定结果决定「未分组」组头要不要藏。
+ *
+ * 判据在 {@link shouldHideUngroupedHeader}：只看会话快照与排除集，不读 DOM。早先按
+ * DOM 判空，押在「组头所在容器里能查到自己的行」上——折叠与渲染时机都会影响那个
+ * 容器，一旦查不到就当成「组是空的」，整个「未分组」被藏掉。
+ *
+ * DOM 上只保留一条保护：还有可见的「展开其余 N 个会话」就不藏。那说明数据层还有
+ * 没渲染的行，宁可留一个空组头，也不误伤用户自己的会话。
  *
  * @param {object} root - 查询根
+ * @param {object} options - 选项
+ * @param {boolean} [options.hide] - 快照判定「组里只剩被排除的会话」；缺省不藏
  * @returns {boolean} 组头是否被藏起来
  */
-export function markUngroupedHeader(root) {
+export function markUngroupedHeader(root, { hide: shouldHide = false } = {}) {
   const header = root.querySelector?.('[data-row-key="workspace:"]')
   if (header === undefined || header === null) return false
-  const section = groupSectionOf(header) ?? header.parentElement
-  if (section === undefined || section === null) return false
-  const anyVisibleRow = Array.from(section.querySelectorAll('[data-row-key^="session:"]'))
-    .some((row) => row.classList?.contains?.(HIDDEN_CLASS) !== true)
-  const anyVisibleOverflow = Array.from(section.querySelectorAll('[data-row-key^="overflow:"]'))
+  const anyVisibleOverflow = Array.from(root.querySelectorAll?.('[data-row-key^="overflow:"]') ?? [])
+    .filter((button) => button.getAttribute?.('data-row-key') === 'overflow:')
     .some((button) => button.classList?.contains?.(HIDDEN_BUTTON_CLASS) !== true)
-  const hide = !anyVisibleRow && !anyVisibleOverflow
+  const hide = shouldHide && !anyVisibleOverflow
   header.classList.toggle(EMPTY_UNGROUPED_CLASS, hide)
   return hide
 }
@@ -448,6 +508,8 @@ export function createWorkspaceExclusion() {
   let excluded = new Set()
   /** @type {Map<string, number>} 工作区 id 到该组排除集大小 */
   let excludedByGroup = new Map()
+  /** @type {boolean} 未分组里只剩被排除的会话 */
+  let hideUngrouped = false
   /** @type {MutationObserver | undefined} 观察器 */
   let observer
 
@@ -457,7 +519,7 @@ export function createWorkspaceExclusion() {
    */
   const markAll = () => {
     if (typeof document === 'undefined') return
-    markRows(document, { excluded, excludedByGroup })
+    markRows(document, { excluded, excludedByGroup, hideUngrouped })
   }
 
   const scheduler = createFrameScheduler({
@@ -486,11 +548,13 @@ export function createWorkspaceExclusion() {
      * @param {object} state - 集合
      * @param {Iterable<string>} state.sessionIds - 要排除的会话 id
      * @param {Map<string, number>} [state.excludedByGroup] - 工作区 id（未分组为空串）到该组排除集大小
+     * @param {boolean} [state.hideUngrouped] - 未分组里只剩被排除的会话
      * @returns {void}
      */
-    update({ sessionIds, excludedByGroup: counts }) {
+    update({ sessionIds, excludedByGroup: counts, hideUngrouped: hide = false }) {
       excluded = new Set(sessionIds)
       excludedByGroup = counts ?? new Map()
+      hideUngrouped = hide
       markAll()
     },
 

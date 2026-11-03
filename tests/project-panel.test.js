@@ -23,6 +23,7 @@ import {
   projectDropAnchor,
   projectDropPlan,
   projectSectionLayout,
+  sameProjectList,
   selectProjectSessionRows,
   showsProjectActivity,
   isArchiveActiveRefusal,
@@ -659,4 +660,21 @@ test('本地乐观重排与服务端 move 同语义', () => {
   )
   // 不改动入参。
   assert.deepEqual(projects.map((project) => project.id), ['a', 'b', 'c'])
+})
+
+test('项目列表等价判定只看渲染字段与顺序', () => {
+  const base = [
+    { id: 'a', name: '甲', directory: '/w/a', directoryUsable: true, leaderSessionId: 's1', leaderAlive: true },
+    { id: 'b', name: '乙', directory: '/w/b', directoryUsable: true, leaderSessionId: 's2', leaderAlive: true },
+  ]
+
+  // 新读到的同值列表（换引用）算等价：轮询每 5 秒读一次，不等价就会一直重渲染。
+  assert.equal(sameProjectList(base, base.map((project) => ({ ...project }))), true)
+  // 目录被删掉：必须算变，否则会话继续被排除。
+  assert.equal(sameProjectList(base, [base[0], { ...base[1], directoryUsable: false }]), false)
+  // 顺序变化算变：拖拽排序靠它落地。
+  assert.equal(sameProjectList(base, [base[1], base[0]]), false)
+  assert.equal(sameProjectList(base, base.slice(0, 1)), false)
+  assert.equal(sameProjectList(base, [{ ...base[0], leaderAlive: false }, base[1]]), false)
+  assert.equal(sameProjectList(base, [{ ...base[0], name: '丙' }, base[1]]), false)
 })
