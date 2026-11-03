@@ -128,3 +128,57 @@ export async function waitFor({ check, description, timeoutMs = 15_000, interval
   }
   throw new Error(`等待超时（${timeoutMs}ms）：${description}；最后一次观察：${JSON.stringify(last)}`)
 }
+
+/**
+ * 页面读数：区分「数据没到」与「渲染错了」。
+ *
+ * 只读宿主左栏的通用结构与插件的容器/行，不读文案——读数是失败时的附加证据，
+ * 不参与断言。
+ *
+ * @param {import('playwright').Page} page - 页面
+ * @returns {Promise<object>} 会话行、工作区行、输入框与插件元素的当前计数
+ */
+export async function describePage(page) {
+  try {
+    return await page.evaluate(() => ({
+      url: location.href,
+      rowKeys: [...document.querySelectorAll('[data-row-key]')].map((node) => node.getAttribute('data-row-key')),
+      composer: document.querySelector('div[role="textbox"][contenteditable="true"]') !== null,
+      leaderKit: {
+        sections: document.querySelectorAll('.dsh-leader-kit-project-section').length,
+        projectRows: document.querySelectorAll('.dsh-leader-kit-project-row').length,
+        guideCards: document.querySelectorAll('.dsh-leader-kit-guide-card').length,
+        excluded: document.querySelectorAll('.dsh-leader-kit-excluded-session').length,
+      },
+    }))
+  } catch (error) {
+    // 页面已经关掉时读不到 DOM：读数只是附加证据，不能盖住真正的失败原因。
+    return { unavailable: error.message }
+  }
+}
+
+/**
+ * 等元素进入目标状态，失败时把页面读数一起报出来。
+ *
+ * 预算按「这一步正常情况下要多久」给：实测单个场景 3–8 秒，元素通常 1–2 秒内
+ * 到位。写成 60 秒只会让失败多干等一分钟，还把「机器慢」与「等错了元素」混成
+ * 同一个症状。
+ *
+ * @param {import('playwright').Locator} locator - 目标元素
+ * @param {object} options - 选项
+ * @param {string} options.description - 报错时说明在等什么
+ * @param {'attached'|'visible'|'detached'|'hidden'} [options.state] - 等待的状态，默认 `visible`
+ * @param {number} [options.timeoutMs] - 预算，默认 15 秒
+ * @returns {Promise<void>} 元素进入目标状态
+ */
+export async function waitForLocator(locator, { description, state = 'visible', timeoutMs = 15_000 }) {
+  try {
+    await locator.waitFor({ state, timeout: timeoutMs })
+  } catch (error) {
+    const snapshot = await describePage(locator.page())
+    throw new Error(
+      `等待超时（${timeoutMs}ms）：${description}；locator ${locator}；页面读数 ${JSON.stringify(snapshot)}`,
+      { cause: error },
+    )
+  }
+}

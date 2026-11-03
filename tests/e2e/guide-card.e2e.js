@@ -18,7 +18,7 @@ import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
-import { waitFor } from './harness.mjs'
+import { waitFor, waitForLocator } from './harness.mjs'
 import { zh } from '../../src/client/locales.js'
 import { startMockProvider } from './mock-llm.mjs'
 
@@ -97,8 +97,10 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const bootstrap = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const bootstrapPage = await bootstrap.newPage()
   await bootstrapPage.goto(first.url, { waitUntil: 'domcontentloaded' })
-  await bootstrapPage.locator('div[role="textbox"][contenteditable="true"]').first()
-    .waitFor({ state: 'visible', timeout: 60_000 })
+  await waitForLocator(bootstrapPage.locator('div[role="textbox"][contenteditable="true"]').first(), {
+    description: '第一段实例的输入框可编辑',
+    timeoutMs: 20_000,
+  })
   const session = firstSession(first.home)
   assert.notEqual(session, null, '宿主启动后应有一个落盘的空会话')
   await bootstrap.close()
@@ -120,14 +122,14 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const card = (page) => page.locator('.dsh-leader-kit-guide-card')
   const openLeader = async (page) => {
     const row = await ready(page)
-    await row.waitFor({ state: 'visible', timeout: 60_000 })
+    await waitForLocator(row, { description: '项目行出现在左栏', timeoutMs: 20_000 })
     await row.click()
   }
 
   // 一、卡片出现，且引导期间没有任何模型请求。
   const page = await (await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })).newPage()
   await openLeader(page)
-  await card(page).waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(card(page), { description: '引导卡出现', timeoutMs: 15_000 })
   assert.match(await card(page).innerText(), /这个目录有一个 Leader 了/, '卡片标题应来自 locale 字典')
   // 视觉硬指标：与输入框外壳同宽同边界。输入框外壳是编辑器往上第一个带
   // max-width 的祖先（宿主自己就是靠它把输入框收在内容列宽内的）。
@@ -168,11 +170,13 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
 
   // 二、点「知道了」关掉，重载后不再出现。
   await page.getByRole('button', { name: '知道了' }).click()
-  await card(page).waitFor({ state: 'detached', timeout: 10_000 })
+  await waitForLocator(card(page), { description: '点「知道了」后引导卡消失', state: 'detached', timeoutMs: 10_000 })
   await openLeader(page)
-  await page.locator('div[role="textbox"][contenteditable="true"]').first()
-    .waitFor({ state: 'visible', timeout: 30_000 })
-  await card(page).waitFor({ state: 'detached', timeout: 5_000 })
+  await waitForLocator(page.locator('div[role="textbox"][contenteditable="true"]').first(), {
+    description: '重载后输入框可编辑',
+    timeoutMs: 15_000,
+  })
+  await waitForLocator(card(page), { description: '重载后引导卡不再出现', state: 'detached', timeoutMs: 5_000 })
   assert.equal(await card(page).count(), 0, '关过的会话重载后不该再出现引导卡')
 
   // 三、没关过的新浏览器里点「了解怎么用」：消息真的发出去（用户消息上屏、
@@ -180,15 +184,15 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const fresh = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const freshPage = await fresh.newPage()
   await openLeader(freshPage)
-  await card(freshPage).waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(card(freshPage), { description: '新浏览器里引导卡出现', timeoutMs: 15_000 })
   const beforeRequests = mock.requests.length
   await freshPage.screenshot({ path: join(artifacts, 'before-click.png') })
   await freshPage.getByRole('button', { name: zh['guide.action.intro'] }).click()
   // 用户消息的容器是宿主 chat 节点的 data-chat-flow-kind="user"；不用「文本包含
   // 某句话」定位——引导卡自己的文案里也有同一句话，那样断言会被卡片命中。
   const bubble = freshPage.locator('[data-chat-flow-kind="user"]')
-  await bubble.first().waitFor({ state: 'visible', timeout: 30_000 })
-  await card(freshPage).waitFor({ state: 'detached', timeout: 15_000 })
+  await waitForLocator(bubble.first(), { description: '用户消息气泡上屏', timeoutMs: 15_000 })
+  await waitForLocator(card(freshPage), { description: '发出消息后引导卡消失', state: 'detached', timeoutMs: 15_000 })
   // 气泡容器里还有时间戳，所以断言落在「存在一个叶子元素，其文本恰好是那句话」。
   const bubbleText = await bubble.first().evaluate(
     (node, text) => [...node.querySelectorAll('*')]
@@ -201,13 +205,11 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   await waitFor({
     description: '会话日志里出现引导发出的那条消息',
     check: () => readSessionLogs(second.home).some((text) => text.includes(INTRO_PROMPT)),
-    timeoutMs: 30_000,
   })
   // 模型请求在日志写入之后才发出：等它到 mock，别紧接着断言时序。
   await waitFor({
     description: `点击后应走一轮模型请求（此前 ${beforeRequests} 次）`,
     check: () => mock.requests.length > beforeRequests,
-    timeoutMs: 30_000,
   })
   assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')
 

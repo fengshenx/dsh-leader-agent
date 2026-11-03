@@ -27,6 +27,8 @@ npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文�
 
 `npm run e2e` 先跑 `npm run build:client`：`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错。
 
+**单跑也要先构建**：`node --test` 不构建，新 checkout / worktree 里 `lib/` 为空，症状是每个等待都超时，不是启动失败。
+
 **`npm run e2e -- <文件>` 不会缩小要跑的集合**：npm 把 `--` 后面的参数追加到 script 末尾，实际执行的是 `node --test "tests/e2e/*.e2e.js" <文件>`，脚本里的 glob 照旧展开，两个文件都会跑（实测 `tests 2`）。要单跑一个文件就绕过 npm script 直接调 `node --test`；改过 `src/client/` 时先自己 `npm run build:client`。
 
 前提：`dsh` 装好，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件——与 `npm run dev` 相同，缺任何一个都会当场报错并给出可照做的修法。Node 需要 22.15+：`session-logs.mjs` 用 `node:zlib` 的 zstd 解压（v22.15.0 加入），`node --test "tests/e2e/*.e2e.js"` 依赖 test runner 自带的 glob。旧版本上不是「跑不过」，而是 import 期就崩。
@@ -36,7 +38,7 @@ npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文�
 ```
 tests/e2e/
   instance.mjs       起隔离实例：mkdtemp 数据根、派生 profile、注入 mock 端点
-  harness.mjs        launchE2E()：mock + 实例 + chromium；waitFor() 轮询工具
+  harness.mjs        launchE2E()：mock + 实例 + chromium；waitFor()、waitForLocator()、describePage()
   mock-llm.mjs       本地 Messages mock（node:http，零依赖）
   mock-script.mjs    可判定部分：标记解析、脚本游标、SSE 事件序列
   session-logs.mjs   读会话日志（递归、兼容未压缩与 zstd）
@@ -52,7 +54,7 @@ tests/e2e-mock-script.test.js mock 纯函数
 ```js
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { launchE2E, waitFor } from './harness.mjs'
+import { launchE2E, waitFor, waitForLocator } from './harness.mjs'
 import { sessionLogsContain } from './session-logs.mjs'
 
 test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
@@ -66,7 +68,7 @@ test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
     .fill('MOCK-XXX 做点什么')
 
   // 断言锚：DOM class / 计算样式 / 落盘文件；不读 agent 的自述文本
-  await e2e.page.locator('.dsh-leader-kit-project-section').waitFor({ state: 'visible' })
+  await waitForLocator(e2e.page.locator('.dsh-leader-kit-project-section'), { description: '项目区块挂载' })
   await waitFor({ description: '会话日志写入回执', check: () => sessionLogsContain(e2e.instance.home, '回执') })
 
   assert.deepEqual(e2e.problems, [], '页内不应有未处理的异常或 console 错误')
@@ -94,6 +96,8 @@ test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
 
 - **断言外部世界**：DOM 的 class、`getComputedStyle` 的具体属性、磁盘上的 JSON。不读 agent 的自述文本，不拿页面里的推理文字当证据。
 - **等状态，不睡时间**。`waitFor()` 轮询到条件成立；locator 用 `contenteditable="true"`、`data-*`、可见文本这类状态条件，让 playwright 自己等。
+- **等待预算按正常耗时给**。实测单场景 3–8 秒、元素 1–2 秒到位：首次启动 20 秒、元素状态 15 秒。写 60 秒/90 秒只会让失败多等一整分钟，还把「机器慢」与「等错了元素」混成同一个症状。
+- **失败要带读数**。元素等待走 `waitForLocator()`：超时报 locator 与页面读数（会话行、工作区行、插件元素计数），能直接区分「数据没到」和「渲染错了」；自定义读数用 `describePage()`。
 - **造状态用 seed**：目标状态直接写进数据文件（`<home>/dsh-leader-kit/cards.json`、`projects.json`），让界面去读。靠反复重启、反复点 UI 去凑瞬时态，永远对不齐。
 - **标识符必须来自本次运行**：端口、token、会话 id、数据根都从本次实例取，不硬编码上一轮残留的值。
 - **双向验证**：撤掉修复 → 断言必须变红 → 还原 → 变绿。绿了但撤掉修复也绿，说明断言没守住任何东西。
@@ -117,11 +121,12 @@ await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>-<pid>/repl
 
 ### 失败诊断
 
-1. 先看 `problems`（pageerror / console.error）。本仓出过「圆点不亮」查不出原因的情况，根因是三处空 `catch`：保留会话失败、订阅就绪失败，全都吞掉，界面上只剩一个空心圈。失败必须报告，且同一目标只报一次。
-2. 看 `instance.logs`（子进程 stdout/stderr 全量）与 `mock.requests`：模型请求到底有没有发出来、打到哪个端点、带没带标记。
-3. **区分「数据没到」与「渲染错了」**：落盘文件里有没有、DOM 里有没有，分开查；字段不在就是数据层的问题，不在渲染层。
-4. **一次性日志优于每帧日志**：首次读数打一条就够，高频刷新会把控制台淹掉。
-5. 起不来先看源 profile：`dsh` 不在 PATH、profile 缺 web app bundle、`node_modules` 没装，报错都会直接说明。
+1. **先看耗时**：单场景正常 3–8 秒（全量约 10 秒）。跑了一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型：`lib/client.js` 没构建、会话行没渲染），不是机器慢。别用 `grep` / `head` 过滤输出，`TimeoutError` 里的 locator 就是线索。
+2. 先看 `problems`（pageerror / console.error）。本仓出过「圆点不亮」查不出原因的情况，根因是三处空 `catch`：保留会话失败、订阅就绪失败，全都吞掉，界面上只剩一个空心圈。失败必须报告，且同一目标只报一次。
+3. 看 `instance.logs`（子进程 stdout/stderr 全量）与 `mock.requests`：模型请求到底有没有发出来、打到哪个端点、带没带标记。
+4. **区分「数据没到」与「渲染错了」**：落盘文件里有没有、DOM 里有没有，分开查；字段不在就是数据层的问题，不在渲染层。
+5. **一次性日志优于每帧日志**：首次读数打一条就够，高频刷新会把控制台淹掉。
+6. 起不来先看源 profile：`dsh` 不在 PATH、profile 缺 web app bundle、`node_modules` 没装，报错都会直接说明。
 
 ### 不覆盖
 
