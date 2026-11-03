@@ -94,6 +94,19 @@ test('登记表损坏时重建空表并保留备份', async () => {
   )
 })
 
+test('登记表结构非法时按损坏处理：合法 JSON 但缺 workers 数组', async () => {
+  const home = await makeTempDir('dsh-leader-kit-registry-')
+  const directory = `${home}/dsh-leader-kit`
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  await mkdir(directory, { recursive: true })
+  await writeFile(`${directory}/workers.json`, JSON.stringify({ version: 1 }), 'utf8')
+  const warned = []
+  const registry = createWorkerRegistry({ home, logger: (message) => warned.push(message) })
+  assert.equal(await registry.get('child-1'), undefined)
+  assert.equal(warned.length, 1)
+  assert.match(warned[0], /损坏/)
+})
+
 test('换协调者后改绑父会话，并留下去向痕迹', async () => {
   const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })

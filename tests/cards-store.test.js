@@ -113,6 +113,29 @@ test('卡片库损坏时备份原文件并以空库继续', async () => {
   }
 })
 
+test('卡片库结构非法时按损坏处理：合法 JSON 但缺 cards 数组', async () => {
+  const { store, home } = await createStore()
+  try {
+    await store.create({ title: '一张' })
+    await writeFile(store.file, JSON.stringify({ version: 1, counter: 7 }), 'utf8')
+    assert.deepEqual(await store.list(), [])
+    assert.deepEqual(JSON.parse(await readFile(store.file, 'utf8')).cards, [])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('改卡传非法状态时拒绝，不把坏状态写进卡片库', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '一张' })
+    await assert.rejects(() => store.update({ id: card.id, status: 'doing' }), /卡片状态非法/)
+    assert.equal((await store.list()).find((item) => item.id === card.id).status, 'active')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('并发建卡不丢卡、编号不重复', async () => {
   const { store, home } = await createStore()
   try {
