@@ -6,8 +6,8 @@
 
 被问到「leader 与 worker 的回报有没有持久化和幂等、会不会重复投递、会不会丢消息」时，逐条核过实现并跑了两条探针（复用 `tests/dispatch.test.js` 的夹具，非真机）。现状是分层的：
 
-- **会话本体**由宿主 JSONL 持有，进程重启后 `agents.resume()` 冷恢复；**worker 登记表**与**完成通知队列**各自落盘在 `$DSH_HOME/dsh-leader-kit/`，都是原子写加串行读改写（`worker-registry.js:78-99`、`notification-store.js:72-89`）。
-- **通知入队按 id 幂等**（`note-<childId>-<startedAt>`），落盘失败重试与重结算不会多出一条；**投递**有进程内 `delivering` 闸、`flushWaiting` 的先摘后投、投前核对落盘队列，挡得住轮询重入与补投并发（`dispatch.js:228-235`、`dispatch.js:379-428`）。
+- **会话本体**由宿主 JSONL 持有，进程重启后 `agents.resume()` 冷恢复；**worker 登记表**与**完成通知队列**各自落盘在 `$DSH_HOME/dsh-leader-kit/`，都是原子写加串行读改写（`worker-registry.js:78-99`、`notification-store.js:36-66`：读在 `36-55`、原子写在 `62-66`、串行在 `75-79`）。
+- **通知入队按 id 幂等**（`note-<childId>-<startedAt>`，查重在 `notification-store.js:106`，先查后写），落盘失败重试与重结算不会多出一条；**投递**有进程内 `delivering` 闸、`flushWaiting` 的先摘后投、投前核对落盘队列，挡得住轮询重入与补投并发（`dispatch.js:228-235`、`dispatch.js:379-428`）——这几处查重都发生在 `agent.followup`（也就是宿主的 `session.append`）之前，重入不会往会话日志里多写一条。
 - **卡片写入**走 `expectedRevision` 乐观并发，**worker 登记**按 childId 更新而非追加。
 
 三个缺口不在这一层：
@@ -19,7 +19,8 @@
 审查复核时又实测出两处**只在队列化之后才成为缺陷**的问题，一并写进本提案：
 
 4. **结算重试会吃掉下一轮的 `turn/end`**（`dispatch.js:857-880`）。`emitNotification` 失败时记录不删，等这个 worker 下一轮结束时重试——单条记录时这已经是「用下一轮的轮次还上一轮的债」。队列化后更糟：队首 A 落盘失败留在队首，下一轮 `turn/end` 本属于 B，`settleTurn` 取到的仍是 A，重试成功后删掉队首——A 送出去了，B 那一轮被消耗、再无对应轮次。构造「在飞两条 + 首次 `enqueue` 失败」实测：leader 少一条回报；worker 不再跑则那条永久滞留在队列里。
-5. **`interrupt` / 归档后在飞记录不清**。`dispatch.js` 全文除 `settleTurn` 外没有别的 `inflight` 清理点：worker 被中断且没走到 `turn/end` 时记录留在表里，`describeRoster` 的 `inflight.has(item.childId)`（`dispatch.js:479`）让这个 worker 永久被判「在跑」——既不能接新活，也不进空闲与挂卡列表；`reassignParent`（`dispatch.js:1007-1042`）还会把这些记录当成可迁移的活记录。
+5. **归档与销毁后在飞记录不清**。`dispatch.js` 全文除 `settleTurn` 外没有别的 `inflight` 清理点：会话被归档或被销毁时记录留在表里，`describeRoster` 的 `inflight.has(item.childId)`（`dispatch.js:479`）让这个 worker 永久被判「在跑」——既不能接新活，也不进空闲与挂卡列表；`reassignParent`（`dispatch.js:1007-1042`）还会把这些记录当成可迁移的活记录。
+   **中断不算这一类**：宿主 rc.2 的停止按钮走 `cancel({ kind: 'user' }, { keepInbox: true })`（`session-controller/src/commands.ts:509`），中断后 inbox 保留、后续 `followup` 继续被消费——那些回报本来就该送达，清队列会把它们错标成「被中断」。
 
 在飞记录仅内存、进程在 worker 跑完前被杀则那一轮不结算，已在 `docs/limitations.md` 的「报告结算依赖轮次正常结束」记明，本提案不改这一条——要改得先把在飞记录落盘，代价是每轮多两次写盘。
 
@@ -36,8 +37,8 @@
 
 配套改动，漏一条队列就会错位：
 
-- **`turnText` 也要按记录绑定**。现在是 `Map<sessionId, string>`（`dispatch.js:906-910`）：队列化后同一会话的两条在飞记录共用一个 key，队首结算时读到的可能是后一轮 `assistant/message` 的文本，摘要会串轮。改为按记录标识（如 `note-<childId>-<startedAt>`）存，或让 `assistant/message` 只写队尾那条。
-- `inflightCount()` 改为求和；`reassignParent` 的 `for (const record of inflight.values())`（`dispatch.js:1035`）要展平成队列内的每条记录再改 `parentSessionId`，否则 `moved` 恒为 0、接管的父会话拿不到在飞记录。
+- **`turnText.delete` 提到冻结 `summary` 之后、`emitNotification` 之前**（`dispatch.js:862-878`）。现在 delete 在 `emit` 之后，`emitNotification` 失败时 `turnText` 残留，下一轮 `assistant/message` 会往同一个 key 写新文本。串不串轮由这个清理时机决定，与 key 粒度无关——保持 `Map<sessionId, string>` 单键即可，不要为了「按记录存」引入「`assistant/message` 只写队尾」这种没有依据的假设。
+- `inflightCount()` 改为求和；`reassignParent` 的 `for (const record of inflight.values())`（`dispatch.js:1035`）要展平成队列内的每条记录。不展平不只是 `moved` 恒为 0：`record.parentSessionId` 也不会迁移，结算时通知按退役的父会话 id 投递，`deliver` 判 `disposed` 后标 undelivered 等重开——那条回报就此永久滞留。
 - `describeRoster` 的「在跑」判定仍是 `inflight.has`（队空时删键），语义不变。
 
 放弃的替代方案：在 `message()` 里 `inflight.has` 就拒绝投递。它保不住「worker 忙时 leader 追问」这个正常用法——那正是 `merged` 回执存在的意义；拒绝只是把丢失换成让 leader 重试，而重试本身会重复投递。
@@ -52,13 +53,14 @@
 
 不做这一步，缺口 4 就是队列化的必然后果：重试吃掉的是别人的轮次，队列越长错位越多。
 
-### interrupt 与归档要清掉在飞记录
+### 归档与销毁要清掉在飞记录
 
-三处入口各清一次，收口缺口 5：
+只清「这个会话已经不会再有 `turn/end`」的两种情形，收口缺口 5：
 
-- worker 会话被中断或销毁时（`worker-sessions.js` 的重建与销毁路径），删掉该会话的整个队列，并按需落一条「被中断」的通知，让 leader 知道这一轮没有产出。
-- `archivedSessionIds()` 里出现的会话从 `inflight` 摘掉——`describeRoster` 已经按它过滤 worker 列表，在飞表要跟同一口径。
-- 兜底：结算前丢弃 `startedAt` 超过阈值的记录（长时间收不到 `turn/end`），并记一行日志。兜底不代替前两条。
+- **归档**：`archivedSessionIds()` 里出现的会话从 `inflight` 摘掉——`describeRoster` 已经按它过滤 worker 列表，在飞表要跟同一口径。归档的 `session-stop` 不带 `keepInbox`（`archive-admission.ts`），inbox 不保留，这些记录等不到结算。
+- **销毁**：会话对象没了但 inbox 还留着，同样等不到 `turn/end`，销毁路径（`worker-sessions.js`）一并清。
+- **中断不清**：停止按钮是 `cancel({ kind: 'user' }, { keepInbox: true })`（`session-controller/src/commands.ts:509`），inbox 保留、后续 `followup` 继续被消费。清队列会把本该送达的回报改写成「被中断」通知——那是把「不丢」的承诺换成好看的状态。
+- 兜底：结算前丢弃 `startedAt` 超过阈值的记录（宿主拖了很久不给 `turn/end`），并记一行日志。兜底不代替前两条。
 
 ### 回报接受 at-least-once，重复要可识别
 
@@ -87,7 +89,7 @@
 - **通知队列损坏即整队丢弃**：`notification-store.js:59-64` 备份后返回空队列，只留一行日志。不在本提案范围。
 - **队列化的前提是「一条 followup 一个 turn」**：若宿主改成一次 turn 消费多条 `next-turn`，队列与轮次会错位。这条依赖记在这里，宿主升级时按 `inbox.claim` 的实现核对。
 - **「待落盘」槽是新的一处内存态**：摘下队首后进程被杀，那条通知既不回队列也没落盘——窗口从「结算→落盘」挪到「摘→落盘」，长度是两次内存操作。要彻底消掉得把「已摘」也落盘，代价与整表落盘相同，不在本提案范围。
-- **中断清理不能只靠事件**：`interrupt` 之后宿主是否一定发 `turn/end`（`reason` 是什么）本仓没有契约可依，所以清理要同时挂在会话销毁路径与超时兜底上。
+- **清理时机不能只靠事件**：归档与销毁之后宿主是否一定补一个 `turn/end` 本仓没有契约可依，所以清理挂在会话状态与销毁路径上，再留超时兜底。反过来，中断**不能**清理——`keepInbox` 决定了那些 `followup` 还会被消费。
 - **只影响 leader 投递的轮次**：人下钻跟 worker 直接对话的轮次不进在飞表，行为不变。
 
 ## 验收标准
@@ -105,7 +107,7 @@
 2. 队列内摘要不串轮：两轮 assistant 文本不同，两条通知的正文各自对应自己的轮次（钉 `turnText` 按记录绑定）。
 3. 落盘失败重试不占后续轮次：队首 `enqueue` 失败 + 其后两轮 `turn/end`，三条通知都在、正文各归其轮。
 4. `reassignParent` 迁移队列：在飞两条时接管父会话，`moved` 返回 2，两条通知都投给新父会话。
-5. `interrupt` / 归档清队列：清理后 `describeRoster` 不再判该 worker 在跑，`inflightCount()` 归零。
+5. 归档 / 销毁清队列：清理后 `describeRoster` 不再判该 worker 在跑，`inflightCount()` 归零；另有一条反向用例——中断（`keepInbox: true`）后队列**不**被清，后续 `followup` 的回报照常送达。
 6. `flushWaiting` 对已投出的通知不重复投；补投后 leader 只被唤醒一次。
 
 现有 `tests/dispatch.test.js` 的「一轮只结算一次回报，重复上报不重复唤醒」与「通知落盘失败时保留在飞记录」两条断言不能改弱——它们钉的是同一批不变量。
