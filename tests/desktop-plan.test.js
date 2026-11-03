@@ -224,3 +224,11 @@ test('写 manifest 的重读与写入在同一把锁里（消掉 TOCTOU）', () 
   const locked = source.slice(source.indexOf('withFileLockSync(paths.packagePath, () => {'))
   assert.match(locked, /readManifest\(paths\.packagePath\)/)
 })
+
+test('启动接线：open 收 .app 绝对路径，数据根用 --env 显式传', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // open 不做 shell 展开，也不该让它按自己的 cwd 解析相对 DSH_HOME。
+  assert.match(source, /'--env', `DSH_HOME=\$\{dshHome\}`, '-a', bundle/)
+  assert.doesNotMatch(source, /args: \['-a', appName\]/)
+  assert.match(source, /launchDesktopApp\(appBundle, \{ dshHome: paths\.home \}\)/)
+})

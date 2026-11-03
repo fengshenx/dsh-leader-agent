@@ -231,18 +231,25 @@ function assertProfileLockFree(paths) {
 /**
  * 拉起桌面应用。
  *
- * 用解析出来的 `.app` 绝对路径而不是 `DSH_DESKTOP_APP` 原值：`open` 不做 shell 展开，
- * `~/Foo.app` 原样传过去必然失败。
+ * 两处都用绝对路径而不是原值：`open` 不做 shell 展开（`~/Foo.app` 原样传过去必然
+ * 失败），而数据根必须显式交给应用——`open` 拉起的是新进程，不能指望它按本终端的
+ * 目录去解析相对路径。`open --env` 是 macOS 给被启动进程注入环境变量的唯一途径。
  *
  * @param {string | null} bundle - `.app` 绝对路径
+ * @param {object} options - 选项
+ * @param {string} options.dshHome - 要写进应用环境的 `DSH_HOME`（绝对路径）
  * @returns {boolean} 是否由本脚本启动
  */
-function launchDesktopApp(bundle) {
+function launchDesktopApp(bundle, { dshHome }) {
   if (process.platform !== 'darwin' || bundle === null) {
-    console.log(`请手动启动桌面应用${bundle === null ? '' : `（${bundle}）`}。`)
+    console.log(`请手动启动桌面应用${bundle === null ? '' : `（${bundle}，DSH_HOME=${dshHome}）`}。`)
     return false
   }
-  const result = spawnCommandSync({ command: 'open', args: ['-a', bundle], encoding: 'utf8' })
+  const result = spawnCommandSync({
+    command: 'open',
+    args: ['--env', `DSH_HOME=${dshHome}`, '-a', bundle],
+    encoding: 'utf8',
+  })
   if (result.status !== 0) {
     throw new Error(
       `open -a "${bundle}" 失败（退出码 ${result.status}）：${(result.stderr || result.stdout || '').trim()}`,
@@ -330,7 +337,6 @@ function main() {
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
   const appBundle = appBundlePath(appName, homeDir)
   const remove = process.argv.slice(2).includes('--remove')
-  const defaultHome = join(homeDir, '.dsh')
 
   if (!existsSync(paths.packagePath)) {
     console.error(`找不到桌面 profile: ${paths.packagePath}`)
@@ -422,13 +428,7 @@ function main() {
   console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
   console.log('')
 
-  if (paths.home !== defaultHome) {
-    // open 走 LaunchServices，不继承这个 shell 的环境变量：应用会去读默认的 ~/.dsh。
-    console.log(`数据根不是默认的 ${defaultHome}，open -a 不传环境变量，桌面应用会读默认位置。`)
-    console.log(`手动启动：DSH_HOME="${paths.home}" open -a "${appBundle ?? appName}"`)
-    return
-  }
-  const launched = launchDesktopApp(appBundle)
+  const launched = launchDesktopApp(appBundle, { dshHome: paths.home })
   console.log('')
   if (launched) {
     console.log('桌面应用已启动。右栏出现「看板」Tab、左栏出现「项目」区块即生效。')

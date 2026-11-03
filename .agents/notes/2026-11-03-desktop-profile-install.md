@@ -21,8 +21,8 @@
 - 桌面应用执行包操作时用的是它自带的 pnpm 与 Electron Node 模式（`ELECTRON_RUN_AS_NODE`、私有 launcher 环境）。脚本复刻那套环境容易随宿主版本漂移而失效；而宿主启动时只按 `bundles` 列表解析包，不校验 `link:` 与磁盘链接是否一致——`npm run dev` 的派生 profile 已经用同一机制跑通。
 - 代价是 `pnpm-lock.yaml` 与 manifest 短暂不一致；link 依赖不需要网络，下次在桌面应用的插件管理里做安装/卸载时由 pnpm 自己补齐。这个代价写进 README 的一句话里。
 - `DSH_HOME` 按宿主的 `expandHomePath` 语义归一化：先展开 `~`（`~/` 与 `~\` 两种写法都认，Windows 上两种都有人用）再 `resolve`。原实现直接拿字面量拼 `profiles/desktop`，`~/x` 会变成 `<cwd>/~/x`、相对路径也找错 profile。
-- **相对 `DSH_HOME` 直接拒绝**：脚本能按自己的 cwd 算出绝对路径，但桌面应用由 `open` 经 LaunchServices 启动、不继承这个 shell 的环境——应用会拿原值在自己的 cwd 再 resolve，两边不是同一个数据根。与其写一半，不如让人改成绝对路径或 `~/` 写法。
-- **数据根不是默认 `~/.dsh` 时不自动拉起应用**：`open -a` 没有传环境变量的能力（`DSH_DESKTOP_APP` 也是同一原因只影响本脚本的判断）。这种情况只挂 profile，并打印 `DSH_HOME="<绝对路径>" open -a "<.app>"` 让人自己带变量启动。
+- **相对 `DSH_HOME` 直接拒绝**：脚本能按自己的 cwd 算出绝对路径，但桌面应用由 `open` 经 LaunchServices 启动、cwd 不是这个 shell 的——应用拿相对值会算成另一个数据根。与其写一半，不如让人改成绝对路径或 `~/` 写法。
+- **数据根用 `open --env` 显式传给应用**：拉起的应用是独立进程，不保证按本终端的环境解析，所以启动时固定带 `--env DSH_HOME=<绝对路径>`（`open` 给被启动进程注入环境变量的唯一途径，实测 macOS 27.2 接受该参数）。默认根也照传，省掉「默认值碰巧一致」的隐式依赖。
 - `DSH_DESKTOP_APP` 的写法与启动用同一套解析结果：只有含分隔符或以 `~` 开头才算路径，`DeepSeek Harness.app` 这种裸包名按**名字**在常见安装位置找（按路径解析会找成 `<cwd>/DeepSeek Harness.app`）；找到的 `.app` 绝对路径既用于读 `Info.plist`，也用于 `open -a`——`open` 不做 shell 展开，把 `~/Foo.app` 原样传过去必然失败。
 - **构建前置**：先 `npm run build:client`、成功后才建链接与写 manifest。原顺序是最后构建，构建失败时插件已经处于「已挂载」状态，宿主下次启动会加载一份没有客户端产物的包（右栏空白）。失败时什么都没动。
 
