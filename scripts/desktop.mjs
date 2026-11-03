@@ -43,8 +43,8 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
-import { prepareProfileDir } from './dev-instance.mjs'
-import { LEADER_KIT_PACKAGE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
+import { inheritCredentialRefs, prepareProfileDir } from './dev-instance.mjs'
+import { CREDENTIALS_FILE, LEADER_KIT_PACKAGE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
 import {
   DESKTOP_APP_NAME, DESKTOP_PROFILE, desktopPathsOf, derivedDesktopHome, expandHomePath,
   installedSpecOf, looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable,
@@ -540,7 +540,7 @@ function detachLink(linkPath) {
  * @param {string} options.homeDir - 用户主目录
  * @param {object} options.dailyPaths - 日常工作根的路径
  * @param {object} options.dailyManifest - 日常 profile 的 `package.json` 解析结果
- * @returns {object} 派生数据根的路径
+ * @returns {{ paths: object, credentials: { keys: string[], notice: string | null } }} 派生数据根的路径与凭据继承结果
  */
 function prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest }) {
   const home = derivedDesktopHome({ worktree })
@@ -553,7 +553,13 @@ function prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest }) {
   })
   assertSeparateHome({ home: derived.home, sourceHome: dailyPaths.home })
   prepareProfileDir({ worktree, paths: derived, sourcePackage: dailyManifest })
-  return desktopPathsOf(home)
+  // 数据根独立，凭据也跟着独立：不搬 refs 的话派生实例一进界面就没有 API key，
+  // 得手填一遍。与 `npm run dev` 共用同一份实现（只搬 refs，不搬 records）。
+  const credentials = inheritCredentialRefs({
+    credentialsPath: derived.credentialsPath,
+    sourceCredentialsPath: derived.sourceCredentialsPath,
+  })
+  return { paths: desktopPathsOf(home), credentials }
 }
 
 /**
@@ -605,7 +611,7 @@ async function main() {
 
   if (remove) {
     const paths = useDerived
-      ? prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })
+      ? prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest }).paths
       : dailyPaths
     if (!existsSync(paths.packagePath)) {
       console.log(`没有可摘的挂载：${paths.packagePath} 不存在。`)
@@ -658,9 +664,10 @@ async function main() {
   }
 
   // 探活放在派生之前：应用在跑时派生根也一个字节都不动，免得改到正在被读的 profile。
-  const paths = useDerived
+  const derived = useDerived
     ? prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })
-    : dailyPaths
+    : null
+  const paths = derived?.paths ?? dailyPaths
 
   try {
     assertWebBundle({
@@ -706,6 +713,12 @@ async function main() {
   console.log(`  插件      ${paths.linkPath} -> ${worktree}`)
   console.log(`  manifest  ${changed ? '已更新' : '已是最新'}`)
   console.log(`  链接      ${action === 'kept' ? '已指向当前目录' : '已创建'}`)
+  if (derived !== null && derived.credentials.keys.length > 0) {
+    console.log(`  凭据引用  ${join(dailyPaths.home, CREDENTIALS_FILE)} -> ${paths.home}（${derived.credentials.keys.join(', ')}）`)
+  }
+  if (derived !== null && derived.credentials.notice !== null) {
+    console.warn(`  凭据引用  ${derived.credentials.notice}`)
+  }
   console.log('')
 
   if (target.kind !== 'unsupported' && running === null) {

@@ -21,6 +21,8 @@
 
 派生与依赖链接直接调 `dev-instance.mjs` 的 `prepareProfileDir`，与 `npm run dev`、e2e 共用同一份实现：三处的组合一旦漂移，e2e 测到的就不是用户拿到的实例。
 
+**凭据也跟着搬**：派生数据根独立，`.credentials.yaml` 也就独立，不搬 `refs` 的话派生根实例一进界面就没有 API key。`inheritCredentialRefs` 从 `dev.mjs` 挪进 `dev-instance.mjs`（两处调用、一份实现），只搬 `refs` 不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录；目标里已有的条目优先，写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。不改成 `DEEPSEEK_API_KEY` 启动环境注入：那样 key 会留在 agent 工具进程的环境里。
+
 派生数据根是 `.dev/desktop-home` 而不是 `.dev/home`：`npm run dev` 与桌面实例同时开着时，共用一份数据根会让两边往同一批会话、项目、卡片里写。
 
 顺序上，**探活放在派生之前**：应用在跑时连派生根都不碰，免得改到正在被读的 profile。`--remove` 跟随同一套判定，在哪个目录跑就摘哪个根。
@@ -35,12 +37,14 @@
 
 ## 验证
 
-- 单测（`tests/desktop-plan.test.js`，Windows 上 35 pass / 0 fail）：`planDesktopHome` 覆盖 worktree 与主 checkout 两态、`installedSpec` 只作为提示；`derivedDesktopHome` 断言与 `.dev/home` 不同目录；接线断言锁住「`DSH_HOME` 未显式指定」「源固定成 `dailyPaths.home`」「派生在 `withProfileLock` 之前」「worktree 标记读 `.git` 的文件态」。
+- 单测（`tests/desktop-plan.test.js`，Windows 上 35 pass / 0 fail）：`planDesktopHome` 覆盖 worktree 与主 checkout 两态、`installedSpec` 只作为提示；`derivedDesktopHome` 断言与 `.dev/home` 不同目录；接线断言锁住「`DSH_HOME` 未显式指定」「源固定成 `dailyPaths.home`」「派生在 `withProfileLock` 之前」「worktree 标记读 `.git` 的文件态」「派生时把日常凭据的 refs 搬进派生根」。
 - 真机（Windows，桌面版 0.2.1-rc.5，worktree 内 `node scripts/desktop.mjs`，日常 `~/.dsh/profiles/desktop` 只读）：
   - 输出走「分支隔离」分支，数据根 `…\.worktrees\windows-desktop-launch\.dev\desktop-home`，插件链接指向当前工作树；
   - 宿主进程命令行第 4 个参数是 `<派生根>\profiles\desktop`，派生根生成 `sessions`、`storages`、`.credentials.yaml`；
   - 插件确实激活：桌面版监听的端口上 `POST /api/projects/list`、`/api/cards/list` 返回 **401**（路由存在、要鉴权）；同机另一个监听端口返回 404——404 正是宿主半边未激活时的形态，两者能区分开；
   - 日常 profile 的 `package.json` sha256 前后一致，`node_modules/dsh-leader-kit` 始终不存在；
+  - 凭据继承：派生根的 `.credentials.yaml` 从只有 `records` 变成 `version: 1` + `refs: DEEPSEEK_API_KEY`，输出打印一行「凭据引用 日常 → 派生根（DEEPSEEK_API_KEY）」；同目录的 `records`（browser-session）原样保留，`records` 不参与合并；
   - 应用运行中重跑：报「正在运行」、退出 1、派生根 manifest 哈希不变（探活在派生之前）；
   - `--remove`：摘掉派生根的依赖与链接，日常 profile 哈希仍不变。
+- `inheritCredentialRefs` 搬出 `dev.mjs` 后用探针脚本验三种形态：源有 `refs` 时搬过来、目标已有同名键时不覆盖（`keys` 为空）、源不存在时不建目标文件。
 - 未验证：macOS 上的派生分支（本机无 macOS；两端共用同一段路径计算与 `open --env`，平台差异只在校验过的启动那一段）。

@@ -418,6 +418,8 @@ test('派生分支接线：worktree 内才派生，源固定成日常根', () =>
   assert.match(source, /assertSeparateHome\(\{ home: derived\.home, sourceHome: dailyPaths\.home \}\)/)
   // worktree 标记是文件、主 checkout 是目录——用它区分身份不起 git 子进程。
   assert.match(source, /function inGitWorktree\(worktree\) \{\s*\n\s*const marker = lstatSync\(join\(worktree, '\.git'\)/)
+  // 数据根独立则凭据也独立：派生时把源 HOME 的 refs 搬过来，否则一进界面就没 API key。
+  assert.match(source, /const credentials = inheritCredentialRefs\(\{\s*\n\s*credentialsPath: derived\.credentialsPath,\s*\n\s*sourceCredentialsPath: derived\.sourceCredentialsPath,/)
   // 派生根要先建好 profile 再进锁：进锁时才 mkdir 会晚一步看到别的来源。
   assert.ok(
     source.indexOf('prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })')
