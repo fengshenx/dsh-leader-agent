@@ -24,7 +24,7 @@ dsh-leader-kit —— dsh（DeepSeek Harness）的**仓外插件 bundle**：lead
 | 起开发实例、多 worktree 并行、构建与测试机制 | [docs/development.md](docs/development.md) |
 | worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/2026-10-23-dispatch-and-wakeup.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
 | 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/2026-10-27-project-bound-board.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/2026-11-02-spawn-then-message-and-card-context.md) |
-| 项目级提示词（`LEADER.md` / `SLOTS.md`） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
+| 项目级提示词（`LEADER.md` / `SLOTS.md`；旧名 `COORDINATOR.md` 只是兼容入口） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
 | 写浏览器 e2e 场景、跑 `npm run e2e`、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、场景模板、mock 标记约定、截图落点、断言纪律；脚本化不了的才走人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
@@ -44,6 +44,7 @@ scripts/            开发实例、worktree 工具、门禁（Agent Note 格式�
 docs/               长期文档（架构地图、已知限制、宿主能力边界、开发与构建、e2e 车道与人工取证）
 .agents/notes/      非平凡改动的决策记忆
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
+COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（Telov 等外部工具用）
 SLOTS.md            本仓作为项目时，执行者角色槽位（discuss / dev / review）
 ```
 
