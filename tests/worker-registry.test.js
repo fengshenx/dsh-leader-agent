@@ -94,50 +94,50 @@ test('登记表损坏时重建空表并保留备份', async () => {
   )
 })
 
-test('换协调者后改绑父会话，并留下去向痕迹', async () => {
+test('换 leader 后改绑父会话，并留下去向痕迹', async () => {
   const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })
-  await registry.register({ childId: 'child-1', parentSessionId: 'coordinator-old', name: '一' })
-  await registry.register({ childId: 'child-2', parentSessionId: 'coordinator-old', name: '二' })
-  await registry.register({ childId: 'child-3', parentSessionId: 'coordinator-other', name: '别家的' })
+  await registry.register({ childId: 'child-1', parentSessionId: 'leader-old', name: '一' })
+  await registry.register({ childId: 'child-2', parentSessionId: 'leader-old', name: '二' })
+  await registry.register({ childId: 'child-3', parentSessionId: 'leader-other', name: '别家的' })
 
-  const moved = await registry.reassignParent('coordinator-old', 'coordinator-new')
+  const moved = await registry.reassignParent('leader-old', 'leader-new')
   assert.deepEqual(moved.sort(), ['child-1', 'child-2'])
   const first = await registry.get('child-1')
-  assert.equal(first.parentSessionId, 'coordinator-new')
+  assert.equal(first.parentSessionId, 'leader-new')
   // 「谁派的工」不抹掉：历史父会话按顺序留在记录里
-  assert.deepEqual(first.reassignedFrom, ['coordinator-old'])
+  assert.deepEqual(first.reassignedFrom, ['leader-old'])
   // 别的父会话的工不动
-  assert.equal((await registry.get('child-3')).parentSessionId, 'coordinator-other')
+  assert.equal((await registry.get('child-3')).parentSessionId, 'leader-other')
   assert.equal((await registry.get('child-3')).reassignedFrom, undefined)
 
   // 再换一次：改绑幂等，已经是谁的不重复叠加
-  assert.deepEqual(await registry.reassignParent('coordinator-old', 'coordinator-new'), [])
-  await registry.reassignParent('coordinator-new', 'coordinator-third')
+  assert.deepEqual(await registry.reassignParent('leader-old', 'leader-new'), [])
+  await registry.reassignParent('leader-new', 'leader-third')
   const twice = await registry.get('child-1')
-  assert.equal(twice.parentSessionId, 'coordinator-third')
-  assert.deepEqual(twice.reassignedFrom, ['coordinator-old', 'coordinator-new'])
+  assert.equal(twice.parentSessionId, 'leader-third')
+  assert.deepEqual(twice.reassignedFrom, ['leader-old', 'leader-new'])
   // 重开实例读盘：改绑落了盘，不是内存里的假象
   const reopened = await createWorkerRegistry({ home }).get('child-2')
-  assert.equal(reopened.parentSessionId, 'coordinator-third')
-  assert.deepEqual(reopened.reassignedFrom, ['coordinator-old', 'coordinator-new'])
+  assert.equal(reopened.parentSessionId, 'leader-third')
+  assert.deepEqual(reopened.reassignedFrom, ['leader-old', 'leader-new'])
 })
 
 test('没有可改绑的记录时不写盘', async () => {
   const home = await makeTempDir('dsh-leader-kit-registry-')
   const registry = createWorkerRegistry({ home })
-  await registry.register({ childId: 'child-1', parentSessionId: 'coordinator-a', name: '工' })
+  await registry.register({ childId: 'child-1', parentSessionId: 'leader-a', name: '工' })
   const file = `${home}/dsh-leader-kit/workers.json`
   const { stat } = await import('node:fs/promises')
   const before = await stat(file)
 
-  // 换协调者会对每个退役 id 调一次改绑，命中 0 条是常态：不该整表重写一次
-  assert.deepEqual(await registry.reassignParent('coordinator-missing', 'coordinator-b'), [])
+  // 换 leader 会对每个退役 id 调一次改绑，命中 0 条是常态：不该整表重写一次
+  assert.deepEqual(await registry.reassignParent('leader-missing', 'leader-b'), [])
   // 写盘走「临时文件 + rename」，会换掉 inode；没写就还是同一个文件
   assert.equal((await stat(file)).ino, before.ino)
 
   // 真改到的时候照常落盘（对照组，防止用例本身失效）
-  assert.deepEqual(await registry.reassignParent('coordinator-a', 'coordinator-b'), ['child-1'])
+  assert.deepEqual(await registry.reassignParent('leader-a', 'leader-b'), ['child-1'])
   assert.notEqual((await stat(file)).ino, before.ino)
-  assert.equal((await createWorkerRegistry({ home }).get('child-1')).parentSessionId, 'coordinator-b')
+  assert.equal((await createWorkerRegistry({ home }).get('child-1')).parentSessionId, 'leader-b')
 })

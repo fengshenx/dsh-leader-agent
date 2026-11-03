@@ -39,26 +39,26 @@ function fakeService() {
     calls,
     async list() {
       calls.push(['list'])
-      return [{ id: 'p1', name: 'demo', directory: '/tmp/demo', coordinatorSessionId: 's1' }]
+      return [{ id: 'p1', name: 'demo', directory: '/tmp/demo', leaderSessionId: 's1' }]
     },
     async create({ directory, name }) {
       calls.push(['create', directory, name])
-      return { id: 'p2', name, directory, coordinatorSessionId: 's2' }
+      return { id: 'p2', name, directory, leaderSessionId: 's2' }
     },
     async remove(id) {
       calls.push(['remove', id])
       return {
-        project: { id, name: 'gone', directory: '/tmp/gone', coordinatorSessionId: 's3' },
+        project: { id, name: 'gone', directory: '/tmp/gone', leaderSessionId: 's3' },
         workspace: { removed: true },
       }
     },
     async rename(id, name) {
       calls.push(['rename', id, name])
-      return { id, name, directory: '/tmp/demo', coordinatorSessionId: 's1' }
+      return { id, name, directory: '/tmp/demo', leaderSessionId: 's1' }
     },
-    async replaceCoordinator(id) {
-      calls.push(['replaceCoordinator', id])
-      return { id, name: 'demo', directory: '/tmp/demo', coordinatorSessionId: 's4' }
+    async replaceLeader(id) {
+      calls.push(['replaceLeader', id])
+      return { id, name: 'demo', directory: '/tmp/demo', leaderSessionId: 's4' }
     },
     async sessionsByProject() {
       calls.push(['sessionsByProject'])
@@ -171,16 +171,16 @@ test('方法把调用转给项目服务', async () => {
   const remote = createProjectRemote({ service, cards, workers, ctx })
 
   assert.deepEqual(await remote.list(), [
-    { id: 'p1', name: 'demo', directory: '/tmp/demo', coordinatorSessionId: 's1' },
+    { id: 'p1', name: 'demo', directory: '/tmp/demo', leaderSessionId: 's1' },
   ])
   assert.deepEqual(await remote.create('/tmp/x', 'x'), {
-    id: 'p2', name: 'x', directory: '/tmp/x', coordinatorSessionId: 's2',
+    id: 'p2', name: 'x', directory: '/tmp/x', leaderSessionId: 's2',
   })
   assert.deepEqual(await remote.rename('p1', '新名'), {
-    id: 'p1', name: '新名', directory: '/tmp/demo', coordinatorSessionId: 's1',
+    id: 'p1', name: '新名', directory: '/tmp/demo', leaderSessionId: 's1',
   })
-  assert.deepEqual(await remote.replaceCoordinator('p1'), {
-    id: 'p1', name: 'demo', directory: '/tmp/demo', coordinatorSessionId: 's4',
+  assert.deepEqual(await remote.replaceLeader('p1'), {
+    id: 'p1', name: 'demo', directory: '/tmp/demo', leaderSessionId: 's4',
   })
   assert.deepEqual(await remote.sessionsByProject(), [
     { projectId: 'p1', sessionIds: ['s1', 's5'] },

@@ -3,18 +3,18 @@
  *
  * **项目是显式注册的实体**，不是从会话反查出来的目录。dsh 自带的 workspace 是
  * 「目录列表 + 按目录归组会话」，对应的是代码语境（目录、文件、git）；项目是编排
- * 语境（协调者会话、卡片、worker、手册），同一个目录可以挂多个项目，二者不合并。
+ * 语境（leader 会话、卡片、worker、手册），同一个目录可以挂多个项目，二者不合并。
  * 因此注册表独立于会话存储存在。
  *
  * 两条领域规则：
  *
  * - **目录不可改**：项目目录是项目身份的一部分，改目录等于换项目。存储层只接受
- *   `name`、`coordinatorSessionId`、`retiredCoordinatorSessionIds` 与 `workspaceId`
+ *   `name`、`leaderSessionId`、`retiredLeaderSessionIds` 与 `workspaceId`
  *   四个可变字段，其余字段原样保留。`workspaceId` 是插件自己注册的工作区 id——它
  *   标明了「这个工作区是我们的」，用户自己加的同目录工作区不会写进来。
- *   `retiredCoordinatorSessionIds` 是被换下的协调者会话，换下后它们作为项目里的
+ *   `retiredLeaderSessionIds` 是被换下的 leader 会话，换下后它们作为项目里的
  *   普通会话保留，项目列表按它把它们和 worker 列在一起。
- * - **协调者会话硬绑定**：项目与它的协调者会话是显式指针，不是「目录里最新的那个
+ * - **leader 会话硬绑定**：项目与它的 leader 会话是显式指针，不是「目录里最新的那个
  *   会话」这类软约定。
  *
  * 落盘位置在 dsh home 下的自有目录，与卡片库同域；不占用 session 事件流——仓外
@@ -38,8 +38,8 @@ const STORE_VERSION = 1
  */
 const MUTABLE_FIELDS = Object.freeze([
   'name',
-  'coordinatorSessionId',
-  'retiredCoordinatorSessionIds',
+  'leaderSessionId',
+  'retiredLeaderSessionIds',
   'workspaceId',
 ])
 
@@ -164,21 +164,21 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
     /**
      * 新建一条项目记录（不落盘）。
      *
-     * 落盘由调用方决定：建项目要先建协调者会话再一次性写入，失败时不留半条记录。
+     * 落盘由调用方决定：建项目要先建 leader 会话再一次性写入，失败时不留半条记录。
      *
      * @param {object} input - 建项输入
      * @param {string} input.name - 项目名
      * @param {string} input.directory - 项目目录绝对路径
-     * @param {string} [input.coordinatorSessionId] - 协调者会话 id
+     * @param {string} [input.leaderSessionId] - leader 会话 id
      * @returns {object} 项目记录
      */
-    draft({ name, directory, coordinatorSessionId, workspaceId }) {
+    draft({ name, directory, leaderSessionId, workspaceId }) {
       const now = Date.now()
       return {
         id: randomUUID(),
         name,
         directory,
-        ...coordinatorSessionId === undefined ? {} : { coordinatorSessionId },
+        ...leaderSessionId === undefined ? {} : { leaderSessionId },
         ...workspaceId === undefined ? {} : { workspaceId },
         createdAt: now,
         updatedAt: now,
@@ -212,13 +212,13 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
     },
 
     /**
-     * 按协调者会话 id 反查项目。
+     * 按 leader 会话 id 反查项目。
      * @param {string} sessionId - 会话 id
      * @returns {Promise<object | undefined>} 项目，不存在时 undefined
      */
-    async getByCoordinator(sessionId) {
+    async getByLeader(sessionId) {
       const store = await readStore(file, recoverFromCorruption)
-      return store.projects.find((item) => item.coordinatorSessionId === sessionId)
+      return store.projects.find((item) => item.leaderSessionId === sessionId)
     },
 
     /**
@@ -279,7 +279,7 @@ export function createProjectStore({ home, logger = () => {} } = {}) {
      * 落盘等于没改。
      *
      * @param {string} id - 项目 id
-     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、coordinatorSessionId、retiredCoordinatorSessionIds 与 workspaceId；或按当前记录算出待改字段的函数
+     * @param {object | ((current: object) => object)} updates - 待改字段，只接受 name、leaderSessionId、retiredLeaderSessionIds 与 workspaceId；或按当前记录算出待改字段的函数
      * @returns {Promise<object>} 更新后的项目
      */
     async update(id, updates) {

@@ -13,12 +13,12 @@ import {
   defaultProjectName,
   describeDeletionNotice,
   describeProjectRemoval,
-  isCoordinatorCurrent,
-  isCoordinatorRunning,
+  isLeaderCurrent,
+  isLeaderRunning,
   isProjectCurrent,
   isProjectOpenable,
   moveProjectBefore,
-  openCoordinatorSession,
+  openLeaderSession,
   planProjectRename,
   projectDropAnchor,
   projectDropPlan,
@@ -80,25 +80,25 @@ test('目录名当不了项目名时给出改名理由', () => {
   assert.equal(tooLong.error, '项目名过长（上限 200 字）')
 })
 
-test('协调者会话没了的项目不能直接打开', () => {
-  assert.equal(isProjectOpenable({ coordinatorSessionId: 'session-1', coordinatorAlive: true }), true)
-  assert.equal(isProjectOpenable({ coordinatorSessionId: 'session-1', coordinatorAlive: false }), false)
-  assert.equal(isProjectOpenable({ coordinatorSessionId: '', coordinatorAlive: true }), false)
-  assert.equal(isProjectOpenable({ coordinatorAlive: true }), false)
+test('leader 会话没了的项目不能直接打开', () => {
+  assert.equal(isProjectOpenable({ leaderSessionId: 'session-1', leaderAlive: true }), true)
+  assert.equal(isProjectOpenable({ leaderSessionId: 'session-1', leaderAlive: false }), false)
+  assert.equal(isProjectOpenable({ leaderSessionId: '', leaderAlive: true }), false)
+  assert.equal(isProjectOpenable({ leaderAlive: true }), false)
 })
 
 test('会话存在性未知时按可打开处理', () => {
-  assert.equal(isProjectOpenable({ coordinatorSessionId: 'session-1' }), true)
+  assert.equal(isProjectOpenable({ leaderSessionId: 'session-1' }), true)
 })
 
-test('项目下的会话列表不含协调者', () => {
+test('项目下的会话列表不含 leader', () => {
   const rows = selectProjectSessionRows({
-    sessionIds: ['s-coordinator', 's-worker'],
+    sessionIds: ['s-leader', 's-worker'],
     sessionRows: {
-      's-coordinator': { id: 's-coordinator' },
+      's-leader': { id: 's-leader' },
       's-worker': { id: 's-worker' },
     },
-    coordinatorSessionId: 's-coordinator',
+    leaderSessionId: 's-leader',
   })
   assert.deepEqual(rows.map((row) => row.id), ['s-worker'])
 })
@@ -107,7 +107,7 @@ test('会话列表还没同步到时先略过该会话', () => {
   const rows = selectProjectSessionRows({
     sessionIds: ['s-known', 's-unknown'],
     sessionRows: { 's-known': { id: 's-known' } },
-    coordinatorSessionId: undefined,
+    leaderSessionId: undefined,
   })
   assert.deepEqual(rows.map((row) => row.id), ['s-known'])
 })
@@ -120,7 +120,7 @@ test('已归档的会话不再列出——宿主的会话索引按磁盘扫，�
   const rows = selectProjectSessionRows({
     sessionIds: ['s-live', 's-archived'],
     sessionRows: { 's-live': { id: 's-live' }, 's-archived': { id: 's-archived' } },
-    coordinatorSessionId: undefined,
+    leaderSessionId: undefined,
     archivedSessionIds: new Set(['s-archived']),
   })
   assert.deepEqual(rows.map((row) => row.id), ['s-live'])
@@ -136,43 +136,43 @@ test('项目行收起时，任一会话行在跑就显示加载器', () => {
   assert.equal(showsProjectActivity({ expanded: false, rows: undefined }), false)
 })
 
-test('行首加载圈的合成判定：收起看并集，展开只认协调者', () => {
+test('行首加载圈的合成判定：收起看并集，展开只认 leader', () => {
   const busy = [{ id: 's-worker', running: true }]
   const calm = [{ id: 's-worker', running: false }]
   // 三种「亮」的组合各自一条独占判据：下面的接线用例把三个入参逐一钉在源码上，
   // 这里把三者的判定结果分开断言，任一路径失效都能指出是哪一组。
   assert.equal(
-    showsProjectActivity({ expanded: false, rows: busy, coordinatorRunning: false }),
+    showsProjectActivity({ expanded: false, rows: busy, leaderRunning: false }),
     true,
     '收起 + worker 在跑：行首代显（会话行被藏起来）',
   )
   assert.equal(
-    showsProjectActivity({ expanded: false, rows: calm, coordinatorRunning: true }),
+    showsProjectActivity({ expanded: false, rows: calm, leaderRunning: true }),
     true,
-    '收起 + 协调者在跑：它没有会话行，行首是唯一提示',
+    '收起 + leader 在跑：它没有会话行，行首是唯一提示',
   )
   assert.equal(
-    showsProjectActivity({ expanded: true, rows: calm, coordinatorRunning: true }),
+    showsProjectActivity({ expanded: true, rows: calm, leaderRunning: true }),
     true,
-    '展开 + 协调者在跑：仍然只有行首能表达',
+    '展开 + leader 在跑：仍然只有行首能表达',
   )
   assert.equal(
-    showsProjectActivity({ expanded: true, rows: busy, coordinatorRunning: false }),
+    showsProjectActivity({ expanded: true, rows: busy, leaderRunning: false }),
     false,
     '展开 + worker 在跑：会话行自带 spinner，行首不重复画',
   )
   assert.equal(
-    showsProjectActivity({ expanded: false, rows: busy, coordinatorRunning: true }),
+    showsProjectActivity({ expanded: false, rows: busy, leaderRunning: true }),
     true,
     '收起 + 两者都在跑',
   )
   assert.equal(
-    showsProjectActivity({ expanded: false, rows: calm, coordinatorRunning: false }),
+    showsProjectActivity({ expanded: false, rows: calm, leaderRunning: false }),
     false,
     '收起 + 都没跑',
   )
   assert.equal(
-    showsProjectActivity({ expanded: true, rows: calm, coordinatorRunning: false }),
+    showsProjectActivity({ expanded: true, rows: calm, leaderRunning: false }),
     false,
     '展开 + 都没跑',
   )
@@ -180,41 +180,41 @@ test('行首加载圈的合成判定：收起看并集，展开只认协调者',
 
 test('项目行展开后 worker 在跑不点亮行首——会话行自己带 spinner', () => {
   assert.equal(showsProjectActivity({ expanded: true, rows: [{ id: 's1', running: true }] }), false)
-  // 协调者不在会话行里，展开时它的运行态仍只能落在行首。
-  assert.equal(showsProjectActivity({ expanded: true, rows: [], coordinatorRunning: true }), true)
+  // leader 不在会话行里，展开时它的运行态仍只能落在行首。
+  assert.equal(showsProjectActivity({ expanded: true, rows: [], leaderRunning: true }), true)
 })
 
-test('目录行的加载器与渲染出来的会话行同源：归档会话与当前协调者不算', () => {
+test('目录行的加载器与渲染出来的会话行同源：归档会话与当前 leader 不算', () => {
   const rowsOf = (sessionRows) => selectProjectSessionRows({
-    sessionIds: ['s-coordinator', 's-worker', 's-archived'],
+    sessionIds: ['s-leader', 's-worker', 's-archived'],
     sessionRows,
-    coordinatorSessionId: 's-coordinator',
+    leaderSessionId: 's-leader',
     archivedSessionIds: new Set(['s-archived']),
   })
   const base = {
-    's-coordinator': { id: 's-coordinator', running: true },
+    's-leader': { id: 's-leader', running: true },
     's-worker': { id: 's-worker', running: false },
     's-archived': { id: 's-archived', running: true },
   }
-  // 在跑的是当前协调者（它没有会话行）与被归档的会话：只算会话行那一半时不亮。
+  // 在跑的是当前 leader（它没有会话行）与被归档的会话：只算会话行那一半时不亮。
   assert.equal(showsProjectActivity({
     expanded: false,
     rows: rowsOf(base),
-    coordinatorRunning: false,
+    leaderRunning: false,
   }), false)
   // 对照：同一批数据里把 worker 换成在跑，加载器点亮——上面那条的 false 是排除
   // 生效，不是判定恒为 false。
   assert.equal(showsProjectActivity({
     expanded: false,
     rows: rowsOf({ ...base, 's-worker': { id: 's-worker', running: true } }),
-    coordinatorRunning: false,
+    leaderRunning: false,
   }), true)
 })
 
-test('官方工作区树的排除集含协调者与全部 worker 会话', () => {
+test('官方工作区树的排除集含 leader 与全部 worker 会话', () => {
   const projects = [
-    { id: 'p1', coordinatorSessionId: 'session-c1' },
-    { id: 'p2', coordinatorSessionId: '' },
+    { id: 'p1', leaderSessionId: 'session-c1' },
+    { id: 'p2', leaderSessionId: '' },
   ]
   const sessionsByProject = new Map([
     ['p1', ['worker-a', 'worker-b']],
@@ -230,7 +230,7 @@ test('官方工作区树的排除集含协调者与全部 worker 会话', () => 
 test('没有项目或没有 worker 会话时排除集为空', () => {
   assert.equal(collectExcludedSessionIds([], new Map()).size, 0)
   assert.deepEqual(
-    [...collectExcludedSessionIds([{ id: 'p1', coordinatorSessionId: 'c' }], new Map())],
+    [...collectExcludedSessionIds([{ id: 'p1', leaderSessionId: 'c' }], new Map())],
     ['c'],
   )
 })
@@ -244,18 +244,18 @@ test('当前会话取主区域持有的那条', () => {
   assert.equal(currentSessionIdOf(undefined), undefined)
 })
 
-test('整行选中态只给协调者会话', () => {
-  const project = { coordinatorSessionId: 'session-coordinator' }
-  assert.equal(isCoordinatorCurrent(project, 'session-coordinator'), true)
+test('整行选中态只给 leader 会话', () => {
+  const project = { leaderSessionId: 'session-leader' }
+  assert.equal(isLeaderCurrent(project, 'session-leader'), true)
   // worker 会话被打开时选中态归它自己那一行，项目行只点亮文件夹。
-  assert.equal(isCoordinatorCurrent(project, 'session-worker'), false)
-  assert.equal(isCoordinatorCurrent(project, 'session-other'), false)
-  assert.equal(isCoordinatorCurrent(project, undefined), false)
-  assert.equal(isCoordinatorCurrent(project, ''), false)
-  assert.equal(isCoordinatorCurrent({}, 'session-coordinator'), false)
-  // 归档协调者在项目树里没有可点的行，整行不能亮。
+  assert.equal(isLeaderCurrent(project, 'session-worker'), false)
+  assert.equal(isLeaderCurrent(project, 'session-other'), false)
+  assert.equal(isLeaderCurrent(project, undefined), false)
+  assert.equal(isLeaderCurrent(project, ''), false)
+  assert.equal(isLeaderCurrent({}, 'session-leader'), false)
+  // 归档 leader 在项目树里没有可点的行，整行不能亮。
   assert.equal(
-    isCoordinatorCurrent(project, 'session-coordinator', new Set(['session-coordinator'])),
+    isLeaderCurrent(project, 'session-leader', new Set(['session-leader'])),
     false,
   )
 })
@@ -270,37 +270,37 @@ test('会话行把当前会话接线到 data-selected 与 aria-current', () => {
   assert.match(rowSource, /'aria-current':\s*selected\s*\?\s*'page'\s*:\s*undefined/)
 })
 
-test('协调者在运行时项目行显示运行态', () => {
-  const project = { coordinatorSessionId: 'session-coordinator' }
-  assert.equal(isCoordinatorRunning(project, { 'session-coordinator': { running: true } }), true)
-  assert.equal(isCoordinatorRunning(project, { 'session-coordinator': { running: false } }), false)
-  // worker 在跑不算：项目行只反映现任协调者，worker 各自的行上有自己的加载圈。
-  assert.equal(isCoordinatorRunning(project, { 'session-worker': { running: true } }), false)
-  // 会话列表还没同步回来、协调者已经没有会话行时按未运行处理。
-  assert.equal(isCoordinatorRunning(project, {}), false)
-  assert.equal(isCoordinatorRunning(project, undefined), false)
-  assert.equal(isCoordinatorRunning({}, { 'session-coordinator': { running: true } }), false)
-  assert.equal(isCoordinatorRunning({ coordinatorSessionId: '' }, { '': { running: true } }), false)
-  // 归档的协调者不算：与整行选中态（isCoordinatorCurrent）同一条口径，宿主的
+test('leader 在运行时项目行显示运行态', () => {
+  const project = { leaderSessionId: 'session-leader' }
+  assert.equal(isLeaderRunning(project, { 'session-leader': { running: true } }), true)
+  assert.equal(isLeaderRunning(project, { 'session-leader': { running: false } }), false)
+  // worker 在跑不算：项目行只反映现任 leader，worker 各自的行上有自己的加载圈。
+  assert.equal(isLeaderRunning(project, { 'session-worker': { running: true } }), false)
+  // 会话列表还没同步回来、leader 已经没有会话行时按未运行处理。
+  assert.equal(isLeaderRunning(project, {}), false)
+  assert.equal(isLeaderRunning(project, undefined), false)
+  assert.equal(isLeaderRunning({}, { 'session-leader': { running: true } }), false)
+  assert.equal(isLeaderRunning({ leaderSessionId: '' }, { '': { running: true } }), false)
+  // 归档的 leader 不算：与整行选中态（isLeaderCurrent）同一条口径，宿主的
   // 会话索引里还留着它的记录。
   assert.equal(
-    isCoordinatorRunning(
+    isLeaderRunning(
       project,
-      { 'session-coordinator': { running: true } },
-      new Set(['session-coordinator']),
+      { 'session-leader': { running: true } },
+      new Set(['session-leader']),
     ),
     false,
   )
 })
 
-test('协调者运行态接线到行首加载圈', () => {
+test('leader 运行态接线到行首加载圈', () => {
   // 按行匹配源码：Windows 检出会把换行转成 CRLF，先归一化。
   const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
-  // 三个入参逐一钉住，不写成松散匹配：只认 coordinatorRunning 的话，把 rows
-  // 改空或把 expanded 写死都还能通过，而渲染当场就退化成「只跟协调者走」。
+  // 三个入参逐一钉住，不写成松散匹配：只认 leaderRunning 的话，把 rows
+  // 改空或把 expanded 写死都还能通过，而渲染当场就退化成「只跟 leader 走」。
   assert.match(
     source,
-    /const leadActivity = showsProjectActivity\(\{\n\s*expanded,\n\s*rows: childSessions,\n\s*coordinatorRunning: isCoordinatorRunning\(project, sessionRows, archivedSessionIds\),\n\s*\}\)/,
+    /const leadActivity = showsProjectActivity\(\{\n\s*expanded,\n\s*rows: childSessions,\n\s*leaderRunning: isLeaderRunning\(project, sessionRows, archivedSessionIds\),\n\s*\}\)/,
   )
   // 加载圈画在槽位容器内部，且直接是宿主的 `StateDot`（ongoing）：轨道、呼吸弧、
   // 1.5s 周期与多圈同相都由基线 `ui-primitives` 自带。自写圆环在 10px 上会糊成
@@ -333,43 +333,43 @@ test('协调者运行态接线到行首加载圈', () => {
   assert.match(folderRule, /align-items: center/)
 })
 
-test('当前会话是协调者或项目下的 worker 时项目行有激活态', () => {
+test('当前会话是 leader 或项目下的 worker 时项目行有激活态', () => {
   const project = {
-    coordinatorSessionId: 'session-coordinator',
-    retiredCoordinatorSessionIds: ['session-retired'],
+    leaderSessionId: 'session-leader',
+    retiredLeaderSessionIds: ['session-retired'],
   }
   const sessions = ['session-worker', 'session-retired']
-  assert.equal(isProjectCurrent(project, sessions, 'session-coordinator'), true)
+  assert.equal(isProjectCurrent(project, sessions, 'session-leader'), true)
   assert.equal(isProjectCurrent(project, sessions, 'session-worker'), true)
 })
 
-test('退役协调者与归档会话打开时项目行不亮', () => {
+test('退役 leader 与归档会话打开时项目行不亮', () => {
   const project = {
-    coordinatorSessionId: 'session-coordinator',
-    retiredCoordinatorSessionIds: ['session-retired'],
+    leaderSessionId: 'session-leader',
+    retiredLeaderSessionIds: ['session-retired'],
   }
-  // 宿主把退役协调者与 worker 同列返回；归档会话也仍在会话索引里。
+  // 宿主把退役 leader 与 worker 同列返回；归档会话也仍在会话索引里。
   const sessions = ['session-worker', 'session-retired']
   assert.equal(isProjectCurrent(project, sessions, 'session-retired'), false)
   assert.equal(
     isProjectCurrent(project, sessions, 'session-worker', new Set(['session-worker'])),
     false,
   )
-  // 现任协调者被归档后项目树里没有这一行可点，同样不亮。
+  // 现任 leader 被归档后项目树里没有这一行可点，同样不亮。
   assert.equal(
-    isProjectCurrent(project, sessions, 'session-coordinator', new Set(['session-coordinator'])),
+    isProjectCurrent(project, sessions, 'session-leader', new Set(['session-leader'])),
     false,
   )
 })
 
 test('当前会话属于别的项目或主区域为空时项目行不亮', () => {
-  const project = { coordinatorSessionId: 'session-coordinator' }
-  const sessions = ['session-coordinator', 'session-worker']
+  const project = { leaderSessionId: 'session-leader' }
+  const sessions = ['session-leader', 'session-worker']
   assert.equal(isProjectCurrent(project, sessions, 'session-other'), false)
   assert.equal(isProjectCurrent(project, sessions, undefined), false)
   assert.equal(isProjectCurrent(project, sessions, ''), false)
-  // 会话归属还没同步回来：只有协调者那一条能判定。
-  assert.equal(isProjectCurrent(project, undefined, 'session-coordinator'), true)
+  // 会话归属还没同步回来：只有 leader 那一条能判定。
+  assert.equal(isProjectCurrent(project, undefined, 'session-leader'), true)
   assert.equal(isProjectCurrent(project, undefined, 'session-worker'), false)
 })
 
@@ -410,11 +410,11 @@ test('归档失败只在「会话还在跑」时要求确认', () => {
   assert.equal(isArchiveActiveRefusal(undefined), false)
 })
 
-test('打开协调者会先挂工作区再打开会话', async () => {
+test('打开 leader 会先挂工作区再打开会话', async () => {
   const calls = []
   const opened = []
-  const result = await openCoordinatorSession({
-    project: { id: 'p-1', coordinatorSessionId: 'session-1' },
+  const result = await openLeaderSession({
+    project: { id: 'p-1', leaderSessionId: 'session-1' },
     callRemote: async (method, args) => {
       calls.push([method, args])
       return { attached: true, workspaceId: 'ws-1' }
@@ -422,13 +422,13 @@ test('打开协调者会先挂工作区再打开会话', async () => {
     openSession: (sessionId) => opened.push(sessionId),
   })
   assert.deepEqual(result, { ok: true, workspaceId: 'ws-1', recreated: false, reconnected: 0 })
-  assert.deepEqual(calls, [['attachCoordinator', ['p-1']]])
+  assert.deepEqual(calls, [['attachLeader', ['p-1']]])
   assert.deepEqual(opened, ['session-1'])
 })
 
 test('工作区被删后重建：结果里带重建标记与归位数量', async () => {
-  const result = await openCoordinatorSession({
-    project: { id: 'p-1', coordinatorSessionId: 'session-1' },
+  const result = await openLeaderSession({
+    project: { id: 'p-1', leaderSessionId: 'session-1' },
     callRemote: async () => ({ attached: true, workspaceId: 'ws-2', recreated: true, reconnected: 3 }),
     openSession: () => {},
   })
@@ -437,8 +437,8 @@ test('工作区被删后重建：结果里带重建标记与归位数量', async
 
 test('挂不上工作区时不打开会话并报出原因', async () => {
   const opened = []
-  const result = await openCoordinatorSession({
-    project: { id: 'p-1', coordinatorSessionId: 'session-1' },
+  const result = await openLeaderSession({
+    project: { id: 'p-1', leaderSessionId: 'session-1' },
     callRemote: async () => ({ attached: false, reason: '当前宿主没有工作区服务' }),
     openSession: (sessionId) => opened.push(sessionId),
   })
@@ -449,8 +449,8 @@ test('挂不上工作区时不打开会话并报出原因', async () => {
 
 test('远程调用抛错时不打开会话并报出原因', async () => {
   const opened = []
-  const result = await openCoordinatorSession({
-    project: { id: 'p-1', coordinatorSessionId: 'session-1' },
+  const result = await openLeaderSession({
+    project: { id: 'p-1', leaderSessionId: 'session-1' },
     callRemote: async () => {
       throw new Error('通道断开')
     },
@@ -472,7 +472,7 @@ test('项目菜单只有一条删除入口，没有工作区也出现', () => {
   assert.equal(items.some((item) => item.id === 'remove-workspace'), false)
 })
 
-test('项目菜单不再重复「打开协调者会话」——点项目行就是打开', () => {
+test('项目菜单不再重复「打开 leader 会话」——点项目行就是打开', () => {
   const items = buildProjectMenuItems({ id: 'p1' }, menuHandlers())
   assert.equal(items.some((item) => item.id === 'open'), false)
   assert.deepEqual(items.map((item) => item.id), ['rename', 'replace', 'remove'])

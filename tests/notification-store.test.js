@@ -105,7 +105,7 @@ test('DSH_HOME 优先于默认家目录', () => {
   assert.equal(resolveDshHome({}, () => '/home/user'), join('/home/user', '.dsh'))
 })
 
-test('换协调者后只改未投递通知的接收者', async () => {
+test('换 leader 后只改未投递通知的接收者', async () => {
   const { store, home } = await createStore()
   try {
     await store.enqueue({ ...SAMPLE, id: 'note-pending', childId: 'child-1' })

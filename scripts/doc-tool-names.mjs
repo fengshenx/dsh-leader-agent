@@ -2,7 +2,7 @@
  * 注入给会话的文档里，反引号工具名的存在性判定。
  *
  * 判定只看形状：反引号里是 `snake_case` 就按工具名比对。不按「同行有没有调/用」
- * 过滤——工具清单那种整块表格（`playbooks/program.md` 的「协调者动作与工具」）
+ * 过滤——工具清单那种整块表格（`playbooks/program.md` 的「leader 动作与工具」）
  * 每行都没有这些字，过滤会漏掉最该守的几行。本仓代码是 JS，字段与变量都写
  * camelCase，文档里 `snake_case` 的反引号内容实际全是工具名。
  *
@@ -12,7 +12,7 @@
 const INLINE_CODE = /`([^`\n]+)`/g
 
 /** 会进会话提示词的文档：根目录两篇，加上 `PROMPT_SKILLS_DIR` 下全部 Markdown。 */
-export const PROMPT_DOCS = Object.freeze(['SLOTS.md', 'COORDINATOR.md'])
+export const PROMPT_DOCS = Object.freeze(['SLOTS.md', 'LEADER.md'])
 export const PROMPT_SKILLS_DIR = '.agents/skills'
 
 /** 至少一个下划线，才可能是工具名；文件名、命令与 camelCase 字段都不命中。 */

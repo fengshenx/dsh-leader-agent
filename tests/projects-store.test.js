@@ -17,67 +17,67 @@ async function makeHome() {
 test('项目记录落盘后可读回，字段齐全', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
   const stored = await store.get(draft.id)
   assert.equal(stored.name, 'alpha')
   assert.equal(stored.directory, '/work/alpha')
-  assert.equal(stored.coordinatorSessionId, 'session-1')
+  assert.equal(stored.leaderSessionId, 'session-1')
   assert.equal(typeof stored.createdAt, 'number')
   assert.equal(typeof stored.updatedAt, 'number')
 })
 
-test('只接受 name 与 coordinatorSessionId 两个可变字段', async () => {
+test('只接受 name 与 leaderSessionId 两个可变字段', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
   const updated = await store.update(draft.id, {
     name: 'beta',
-    coordinatorSessionId: 'session-2',
+    leaderSessionId: 'session-2',
     directory: '/work/other',
     id: 'forged',
   })
 
   assert.equal(updated.name, 'beta')
-  assert.equal(updated.coordinatorSessionId, 'session-2')
+  assert.equal(updated.leaderSessionId, 'session-2')
   assert.equal(updated.directory, '/work/alpha')
   assert.equal(updated.id, draft.id)
 })
 
-test('退役协调者列表可写，落盘后可读回', async () => {
+test('退役 leader 列表可写，落盘后可读回', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
-  await store.update(draft.id, { retiredCoordinatorSessionIds: ['session-1'] })
+  await store.update(draft.id, { retiredLeaderSessionIds: ['session-1'] })
   // 重开一个 store 实例读盘：写在内存里不算数
   const stored = await createProjectStore({ home }).get(draft.id)
-  assert.deepEqual(stored.retiredCoordinatorSessionIds, ['session-1'])
+  assert.deepEqual(stored.retiredLeaderSessionIds, ['session-1'])
 })
 
 test('update 传函数时按磁盘当前值算字段，并发追加不互相覆盖', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
   // 两次并发调用各读同一份快照再整体写回的话，后写的那次会把先写的覆盖掉；
   // 函数形态的读-改-写落在同一条串行链里，两次追加都要落盘。
   await Promise.all([
     store.update(draft.id, (current) => ({
-      retiredCoordinatorSessionIds: [...current.retiredCoordinatorSessionIds ?? [], 'session-1'],
+      retiredLeaderSessionIds: [...current.retiredLeaderSessionIds ?? [], 'session-1'],
     })),
     store.update(draft.id, (current) => ({
-      retiredCoordinatorSessionIds: [...current.retiredCoordinatorSessionIds ?? [], 'session-2'],
+      retiredLeaderSessionIds: [...current.retiredLeaderSessionIds ?? [], 'session-2'],
     })),
   ])
 
   const stored = await createProjectStore({ home }).get(draft.id)
-  assert.deepEqual(stored.retiredCoordinatorSessionIds, ['session-1', 'session-2'])
+  assert.deepEqual(stored.retiredLeaderSessionIds, ['session-1', 'session-2'])
   // 函数自身的属性（`name`）不能借白名单漏进记录
   assert.equal(stored.name, 'alpha')
 })
@@ -85,15 +85,15 @@ test('update 传函数时按磁盘当前值算字段，并发追加不互相覆�
 test('update 传函数时同样只接受白名单字段', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
   const updated = await store.update(draft.id, (current) => ({
-    coordinatorSessionId: `${current.coordinatorSessionId}-2`,
+    leaderSessionId: `${current.leaderSessionId}-2`,
     directory: '/work/other',
     id: 'forged',
   }))
-  assert.equal(updated.coordinatorSessionId, 'session-1-2')
+  assert.equal(updated.leaderSessionId, 'session-1-2')
   assert.equal(updated.directory, '/work/alpha')
   assert.equal(updated.id, draft.id)
 })
@@ -125,26 +125,26 @@ test('注册表结构非法时按损坏处理', async () => {
   assert.deepEqual(await store.list(), [])
 })
 
-test('按协调者会话反查项目', async () => {
+test('按 leader 会话反查项目', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
-  const found = await store.getByCoordinator('session-1')
+  const found = await store.getByLeader('session-1')
   assert.equal(found.id, draft.id)
-  assert.equal(await store.getByCoordinator('session-other'), undefined)
+  assert.equal(await store.getByLeader('session-other'), undefined)
 })
 
 test('删项目后反查不到', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', coordinatorSessionId: 'session-1' })
+  const draft = store.draft({ name: 'alpha', directory: '/work/alpha', leaderSessionId: 'session-1' })
   await store.insert(draft)
 
   const removed = await store.remove(draft.id)
   assert.equal(removed.id, draft.id)
-  assert.equal(await store.getByCoordinator('session-1'), undefined)
+  assert.equal(await store.getByLeader('session-1'), undefined)
   assert.equal(await store.remove(draft.id), undefined)
 })
 
@@ -218,22 +218,22 @@ test('把项目改成它自己当前的名字不算撞名', async () => {
   const store = createProjectStore({ home })
   const alpha = await store.insert(store.draft({ name: 'alpha', directory: '/work/a' }))
 
-  const updated = await store.update(alpha.id, { name: 'alpha', coordinatorSessionId: 'session-9' })
+  const updated = await store.update(alpha.id, { name: 'alpha', leaderSessionId: 'session-9' })
   assert.equal(updated.name, 'alpha')
-  assert.equal(updated.coordinatorSessionId, 'session-9')
+  assert.equal(updated.leaderSessionId, 'session-9')
 })
 
-test('只改协调者会话时不查名字，两个同名项目仍可各自改绑', async () => {
+test('只改 leader 会话时不查名字，两个同名项目仍可各自改绑', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
   const first = await store.insert(store.draft({ name: 'alpha', directory: '/work/a' }))
   const second = await store.insert(store.draft({ name: 'beta', directory: '/work/b' }))
 
-  await store.update(first.id, { coordinatorSessionId: 'session-1' })
-  const rebound = await store.update(second.id, { coordinatorSessionId: 'session-2' })
+  await store.update(first.id, { leaderSessionId: 'session-1' })
+  const rebound = await store.update(second.id, { leaderSessionId: 'session-2' })
 
   assert.equal(rebound.name, 'beta')
-  assert.equal(rebound.coordinatorSessionId, 'session-2')
+  assert.equal(rebound.leaderSessionId, 'session-2')
 })
 
 /**

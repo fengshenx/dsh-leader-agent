@@ -10,7 +10,7 @@ import { createBoardWatch } from '../src/client/project-board-monitor.js'
  * @returns {{ callRemote: Function, setCards: (cards: object[]) => void }} 假调用与卡片 setter
  */
 function createRemote({
-  project = { id: 'p1', name: '项目一', coordinatorSessionId: 'session-1' },
+  project = { id: 'p1', name: '项目一', leaderSessionId: 'session-1' },
   cards = [],
 } = {}) {
   let current = cards
@@ -78,9 +78,9 @@ test('会话不属于任何项目时不监视', async () => {
   assert.equal(revealed, 0)
 })
 
-test('协调者会话已失效时不监视：新卡不弹看板也不取卡', async () => {
+test('leader 会话已失效时不监视：新卡不弹看板也不取卡', async () => {
   const remote = createRemote({
-    project: { id: 'p1', name: '项目一', coordinatorSessionId: 'session-1', coordinatorAlive: false },
+    project: { id: 'p1', name: '项目一', leaderSessionId: 'session-1', leaderAlive: false },
     cards: [{ id: 'c1' }],
   })
   let revealed = 0
@@ -100,7 +100,7 @@ test('协调者会话已失效时不监视：新卡不弹看板也不取卡', as
   assert.equal(fetched, 0)
 })
 
-test('运行中协调者失效：复核后不再弹看板', async () => {
+test('运行中 leader 失效：复核后不再弹看板', async () => {
   const remote = createRemote({ cards: [{ id: 'c1' }] })
   let revealed = 0
   const watch = createBoardWatch({
@@ -111,16 +111,16 @@ test('运行中协调者失效：复核后不再弹看板', async () => {
   await watch.poll()
   // 复核间隔 15 轮；先跑 14 轮把计数推到复核点前
   for (let index = 0; index < 14; index += 1) await watch.poll()
-  remote.setProject({ id: 'p1', name: '项目一', coordinatorSessionId: 'session-1', coordinatorAlive: false })
+  remote.setProject({ id: 'p1', name: '项目一', leaderSessionId: 'session-1', leaderAlive: false })
   await watch.poll()
   remote.setCards([{ id: 'c1' }, { id: 'c2' }])
   await watch.poll()
   assert.equal(revealed, 0)
 })
 
-test('屏幕会话不是项目协调者时不监视：新卡不弹看板也不取卡', async () => {
+test('屏幕会话不是项目 leader 时不监视：新卡不弹看板也不取卡', async () => {
   const remote = createRemote({
-    project: { id: 'p1', name: '项目一', coordinatorSessionId: 'coordinator-1' },
+    project: { id: 'p1', name: '项目一', leaderSessionId: 'leader-1' },
     cards: [{ id: 'c1' }],
   })
   let revealed = 0
@@ -142,8 +142,8 @@ test('屏幕会话不是项目协调者时不监视：新卡不弹看板也不�
 
 test('换会话后重建基线：新会话的项目里已有的卡不弹看板', async () => {
   const projects = {
-    'session-1': { id: 'p1', name: '项目一', coordinatorSessionId: 'session-1' },
-    'session-2': { id: 'p2', name: '项目二', coordinatorSessionId: 'session-2' },
+    'session-1': { id: 'p1', name: '项目一', leaderSessionId: 'session-1' },
+    'session-2': { id: 'p2', name: '项目二', leaderSessionId: 'session-2' },
   }
   const remote = createRemote({ cards: [{ id: 'c1' }] })
   let revealed = 0

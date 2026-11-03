@@ -93,7 +93,7 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     }
 
     /**
-     * 建项目：建实体 + 建协调者会话 + 绑定。
+     * 建项目：建实体 + 建 leader 会话 + 绑定。
      * @param {string} directory - 项目目录绝对路径
      * @param {string} name - 项目名
      * @returns {Promise<object>} 建成的项目
@@ -106,7 +106,7 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
      * 删除项目：先移除插件为它注册的工作区，再删项目记录。
      *
      * 工作区删除只删注册，目录与全部会话日志保留，会话因此落到宿主工作区树的
-     * 「未分组」下；协调者会话本身也保留。
+     * 「未分组」下；leader 会话本身也保留。
      *
      * 「没有工作区可移除」（`skipped`：宿主没有工作区服务、项目没有插件注册的
      * 工作区、工作区已不在宿主里）不带 `reason`——那不是故障，客户端据此落到
@@ -154,16 +154,16 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     }
 
     /**
-     * 换新协调者会话并改绑。
+     * 换新 leader 会话并改绑。
      * @param {string} id - 项目 id
      * @returns {Promise<object>} 更新后的项目
      */
-    async replaceCoordinator(id) {
-      return this.projects.replaceCoordinator(id)
+    async replaceLeader(id) {
+      return this.projects.replaceLeader(id)
     }
 
     /**
-     * 确保协调者会话挂在项目目录对应的工作区上。
+     * 确保 leader 会话挂在项目目录对应的工作区上。
      *
      * 归属是为了分组：不归属就落官方左栏的「未分组」，而本仓把项目会话行藏了，
      * 那里只剩一棵空组头。目录还不是工作区时顺带注册一个（幂等）。
@@ -171,8 +171,8 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
      * @param {string} id - 项目 id
      * @returns {Promise<{attached: boolean, workspaceId?: string, reason?: string}>} 挂载结果
      */
-    async attachCoordinator(id) {
-      return this.projects.attachCoordinator(id)
+    async attachLeader(id) {
+      return this.projects.attachLeader(id)
     }
 
     /**
@@ -186,7 +186,7 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     /**
      * 解析某个会话所属的项目。
      *
-     * 判据与卡片归属同一套：协调者会话走项目注册表的指针，其它会话按 cwd 与项目
+     * 判据与卡片归属同一套：leader 会话走项目注册表的指针，其它会话按 cwd 与项目
      * 目录的 canonical 路径相等。
      *
      * @param {string} sessionId - 会话 id
@@ -224,7 +224,7 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     /**
      * 列某个项目的看板卡片。
      *
-     * 看板按项目取卡：一个项目一个看板，跨会话聚合（协调者建的卡与 worker 建的
+     * 看板按项目取卡：一个项目一个看板，跨会话聚合（leader 建的卡与 worker 建的
      * 卡在一处）。卡片真源在宿主的卡片库里，不从会话事件流重建。
      *
      * @param {string} projectId - 项目 id
@@ -237,9 +237,9 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     /**
      * 整体替换一张卡的链接条目。
      *
-     * 看板的写通道只有这一处：卡片其余字段仍归协调者工具，界面不越权改。
+     * 看板的写通道只有这一处：卡片其余字段仍归 leader 工具，界面不越权改。
      * 不传 `expectedRevision`——详情浮层拿的是打开瞬间的快照，用户编辑期间
-     * 协调者改过卡时，用快照版本号会稳定触发冲突，而用户在这里表达的意图就是
+     * leader 改过卡时，用快照版本号会稳定触发冲突，而用户在这里表达的意图就是
      * 「这些链接现在是这样」。
      *
      * `links` 来自浏览器，必须在这里按同一份共享判定重新校验：客户端校验只

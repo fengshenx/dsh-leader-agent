@@ -10,18 +10,18 @@
  * 折叠这一轮的 `assistant/message` 文本与终态。worker 不调用任何工具回报——这与
  * Telov 的 `<subagent-notification>`、以及宿主 subagent 的 `captureLocalResult()`
  * （同样从会话事件折叠产出与 stopReason）是同一个机制：产出与终态都由机制侧取，
- * 模型漏写一句话不会让协调者卡在等待里。
+ * 模型漏写一句话不会让 leader 卡在等待里。
  *
  * 唤醒走 dsh 自带的 agent 入口：`agent.followup()` 会「queue a follow-up turn and
  * wake the driver」，父会话空闲时由此开新 turn。这补上了 dsh 原生缺失的一环：
- * 「worker 结束 → 协调者自动被唤醒并继续」。
+ * 「worker 结束 → leader 自动被唤醒并继续」。
  *
  * 完成通知走 **next-turn** 边界（`followup`）：它是「下一个 turn 的一次输入」，
- * 语义上就该排进下一轮，而不是插进协调者当前这一步里。
+ * 语义上就该排进下一轮，而不是插进 leader 当前这一步里。
  *
  * 投递时机是「父会话空闲时」：宿主输入框上方的「消息队列」面板显示的是 inbox 的
  * next-turn 未消费项（`ui-conversation` 的 QueueDock 读 `inbox['next-turn']`）。
- * 协调者正忙时把通知投进去，它就会以「一条待发消息」的形态挂在那里——那是用户的
+ * leader 正忙时把通知投进去，它就会以「一条待发消息」的形态挂在那里——那是用户的
  * 输入队列，不是后台通知该待的地方。改为忙时先不投（通知留在落盘队列），检测到
  * 空闲再投：投递即被消费，队列面板不会看到它，唤醒时机与排进 next-turn 也几乎
  * 一样（两者都要等当前 turn 结束）。
@@ -29,7 +29,7 @@
  * 本模块不新增 session event 类型（仓外插件的硬约束），完成通知走自有落盘队列。
  *
  * 人下钻到 worker 会话直接对话时不经过本模块：那种轮次不会登记在飞记录，也就
- * 不会被结算，worker 不会因为人自己聊了几句去打扰协调者。
+ * 不会被结算，worker 不会因为人自己聊了几句去打扰 leader。
  *
  * @module dsh-leader-kit/host/dispatch
  */
@@ -80,7 +80,7 @@ export function buildNotificationText(record, outcome) {
     const summary = blocksToText(outcome.result?.output ?? [])
     lines.push(summary === '' ? '产物摘要：（worker 未产出文本）' : `产物摘要：\n${summary}`)
   }
-  lines.push('下一步：按协调者协议判断验收、返工或派新工。')
+  lines.push('下一步：按 leader 协议判断验收、返工或派新工。')
   return lines.join('\n').slice(0, NOTIFICATION_LIMIT)
 }
 
@@ -111,7 +111,7 @@ export function buildWorkerReport(outcome) {
  * @param {object} options.store - 通知落盘队列
  * @param {object} options.workers - worker 登记表（见 `worker-registry.js`）
  * @param {object} options.workerSessions - worker 会话管理器（见 `worker-sessions.js`）
- * @param {object} options.coordinatorIndex - 项目注册表（提供 `awaitIndex` 与 `isCoordinatorSession`）
+ * @param {object} options.leaderIndex - 项目注册表（提供 `awaitIndex` 与 `isLeaderSession`）
  * @param {number} [options.autoResumeLimit] - 连续自动续行上限
  * @param {number} [options.activeWorkerLimit] - 未归档 worker 数量上限
  * @param {(parentSessionId: string) => string | undefined} [options.resolveWorkerCwd] - 取 worker 的工作目录
@@ -130,7 +130,7 @@ export function createDispatcher({
   store,
   workers,
   workerSessions,
-  coordinatorIndex,
+  leaderIndex,
   autoResumeLimit = DEFAULT_AUTO_RESUME_LIMIT,
   activeWorkerLimit = DEFAULT_ACTIVE_WORKER_LIMIT,
   resolveWorkerCwd,
@@ -144,9 +144,9 @@ export function createDispatcher({
   logger = () => {},
 }) {
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
-  if (typeof coordinatorIndex?.awaitIndex !== 'function'
-    || typeof coordinatorIndex?.isCoordinatorSession !== 'function') {
-    throw new Error('dsh-leader-kit: createDispatcher 缺少 coordinatorIndex，无法校验协调者身份')
+  if (typeof leaderIndex?.awaitIndex !== 'function'
+    || typeof leaderIndex?.isLeaderSession !== 'function') {
+    throw new Error('dsh-leader-kit: createDispatcher 缺少 leaderIndex，无法校验 leader 身份')
   }
   // worker 会话是派工的唯一落点，漏传会让派工在运行到一半时炸。
   if (typeof workerSessions?.spawn !== 'function' || typeof workerSessions?.send !== 'function') {
@@ -372,7 +372,7 @@ export function createDispatcher({
    * 把等待中的通知投给已经空闲的父会话。
    *
    * 投递前先看通知还在不在落盘队列里：父会话重新打开时补投通道（`redeliverPending`）
-   * 可能已经投过同一条，重复投会让协调者收到两遍。
+   * 可能已经投过同一条，重复投会让 leader 收到两遍。
    *
    * @returns {Promise<void>} 处理完成
    */
@@ -526,26 +526,26 @@ export function createDispatcher({
   }
 
   /**
-   * 校验调用方当前仍是项目协调者。
+   * 校验调用方当前仍是项目 leader。
    *
-   * 工具面在 `agent/created` 一次性裁，而换协调者不会重建旧会话：退役的那个会话
+   * 工具面在 `agent/created` 一次性裁，而换 leader 不会重建旧会话：退役的那个会话
    * 手里仍留着 `message_worker` / `list_cards`，直到进程重启才按普通会话重裁。
-   * 所以「换下的协调者不再能指挥」只能落在调用时再判一次身份。
+   * 所以「换下的 leader 不再能指挥」只能落在调用时再判一次身份。
    *
-   * 判定先等一次索引重建结果：`isCoordinatorSession()` 在索引未就绪时一律放行
-   * （那是为了协调者首轮不至于没有工具），而放行意味着**任何**会话都被认成协调者。
+   * 判定先等一次索引重建结果：`isLeaderSession()` 在索引未就绪时一律放行
+   * （那是为了 leader 首轮不至于没有工具），而放行意味着**任何**会话都被认成 leader。
    * 高危操作不能建立在这个宽松判定上，读不出来就拒绝。
    *
    * @param {object} parent - 调用方 agent
    * @param {object} messages - 报错正文
    * @param {string} messages.pending - 索引读不出时的报错正文
-   * @param {string} messages.refused - 调用方不是协调者时的报错正文
+   * @param {string} messages.refused - 调用方不是 leader 时的报错正文
    * @returns {Promise<void>} 校验通过
    */
-  async function assertCoordinator(parent, { pending, refused }) {
-    const ready = await coordinatorIndex.awaitIndex()
+  async function assertLeader(parent, { pending, refused }) {
+    const ready = await leaderIndex.awaitIndex()
     if (!ready) throw new Error(pending)
-    if (!coordinatorIndex.isCoordinatorSession(parent?.id)) throw new Error(refused)
+    if (!leaderIndex.isLeaderSession(parent?.id)) throw new Error(refused)
   }
 
   /**
@@ -578,7 +578,7 @@ export function createDispatcher({
     const owner = typeof card.projectId === 'string' ? card.projectId : ''
     const scope = typeof project?.id === 'string' ? project.id : ''
     if (owner !== '' && owner !== scope) {
-      throw new Error(`spawn_worker: 卡片 ${cardId} 属于另一个项目，不能跨项目把它绑给 worker；请用本项目的卡片，或让那个项目的协调者派工`)
+      throw new Error(`spawn_worker: 卡片 ${cardId} 属于另一个项目，不能跨项目把它绑给 worker；请用本项目的卡片，或让那个项目的 leader 派工`)
     }
   }
 
@@ -599,17 +599,17 @@ export function createDispatcher({
    */
   async function message({ parent, sessionId, message, name, cardId, signal }) {
     // 退役会话不能借「我是它的父会话」继续下指令：换人时登记表里的归属已经改投
-    // 新协调者（见 `coordinator-handover`），这道身份校验挡的是「换人之前就在飞」
+    // 新 leader（见 `leader-handover`），这道身份校验挡的是「换人之前就在飞」
     // 的那个会话本身。
-    await assertCoordinator(parent, {
-      pending: 'message_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能给 worker 发消息',
-      refused: 'message_worker: 只有项目协调者能给 worker 发消息——这个会话已不是任何项目的协调者（换下的协调者降级为项目里的普通会话）',
+    await assertLeader(parent, {
+      pending: 'message_worker: 项目注册表尚未读出，无法确认 leader 身份，暂不能给 worker 发消息',
+      refused: 'message_worker: 只有项目 leader 能给 worker 发消息——这个会话已不是任何项目的 leader（换下的 leader 降级为项目里的普通会话）',
     })
     // 卡门禁：在跑的 worker 也不能被拉去干别的卡，否则同一条会话会把两卡的
     // 产物混在一起。
     await assertCardGateOpen(sessionId, cardId)
     // 登记表是跨进程真源；本进程刚派出、登记落盘失败的会话靠 `owners` 兜底，
-    // 否则同一个协调者在本轮里都投不进自己刚建的 worker。
+    // 否则同一个 leader 在本轮里都投不进自己刚建的 worker。
     const worker = await workers.get(sessionId) ?? owners.get(sessionId)
     if (worker === undefined) {
       throw new Error(`message_worker: 没有会话 ${sessionId} 的派工记录，它不是本协调体系派出的 worker`)
@@ -626,8 +626,8 @@ export function createDispatcher({
       parentSessionId: parent.id,
       signal,
     })
-    // 这一轮由协调者发起：登记在飞记录，worker 的 `turn/end` 到来时据此结算。
-    // 人自己下钻跟 worker 聊的轮次不走这里，也就不会打扰协调者。
+    // 这一轮由 leader 发起：登记在飞记录，worker 的 `turn/end` 到来时据此结算。
+    // 人自己下钻跟 worker 聊的轮次不走这里，也就不会打扰 leader。
     inflight.set(sessionId, {
       childId: sessionId,
       parentSessionId: parent.id,
@@ -656,7 +656,7 @@ export function createDispatcher({
    * worker、不产生模型调用。
    *
    * 归属判据与 `message` 同一套：登记表是跨进程真源，本进程的 `owners` 补窗口。
-   * 身份校验与派工同档——退役协调者手里仍留着这个工具，不能在调用时放行。
+   * 身份校验与派工同档——退役 leader 手里仍留着这个工具，不能在调用时放行。
    *
    * @param {object} options - 读取参数
    * @param {object} options.parent - 调用方 agent
@@ -665,9 +665,9 @@ export function createDispatcher({
    * @returns {Promise<{ sessionId: string, name: string, totalTurns: number, running: boolean, text: string }>} 回合视图
    */
   async function transcript({ parent, sessionId, turns }) {
-    await assertCoordinator(parent, {
-      pending: 'read_worker_session: 项目注册表尚未读出，无法确认协调者身份，暂不能读 worker 的会话',
-      refused: 'read_worker_session: 只有项目协调者能读 worker 的会话——这个会话已不是任何项目的协调者（换下的协调者降级为项目里的普通会话）',
+    await assertLeader(parent, {
+      pending: 'read_worker_session: 项目注册表尚未读出，无法确认 leader 身份，暂不能读 worker 的会话',
+      refused: 'read_worker_session: 只有项目 leader 能读 worker 的会话——这个会话已不是任何项目的 leader（换下的 leader 降级为项目里的普通会话）',
     })
     const worker = await workers.get(sessionId) ?? owners.get(sessionId)
     if (worker === undefined) {
@@ -688,7 +688,7 @@ export function createDispatcher({
       throw new Error(`read_worker_session: 读不到 worker ${sessionId} 的会话日志（可能还没跑过任何回合，或日志不可读）：${error instanceof Error ? error.message : String(error)}`)
     }
     // 空会话也是合法日志（`events` 是空数组），但形状不对说明后端契约变了：
-    // 静默当成空日志会让协调者以为 worker「什么都没做」。
+    // 静默当成空日志会让 leader 以为 worker「什么都没做」。
     if (!Array.isArray(snapshot?.events)) {
       throw new Error(`read_worker_session: 会话查询后端返回的日志形状不符（缺 events 数组），无法读 worker ${sessionId} 的会话`)
     }
@@ -706,7 +706,7 @@ export function createDispatcher({
   /**
    * 建一个 worker 会话并登记，**不投递任务、不产生模型调用**。
    *
-   * 开工由协调者随后的 `message` 触发。分成两步是为了让槽位绑定先落盘：第一条
+   * 开工由 leader 随后的 `message` 触发。分成两步是为了让槽位绑定先落盘：第一条
    * 任务请求组装时，角色槽位与卡片事实都能读到；否则首轮只能靠简报里的口头
    * 交代，role / card 上下文要晚一个请求才出现。
    *
@@ -728,9 +728,9 @@ export function createDispatcher({
       throw new Error('spawn_worker: cardId 与 slot 必须成对传入（要绑卡就两者都给，不绑就都不给）')
     }
     // 派工是唯一会真的拉起一个会话的操作，身份判定必须比工具面严一档。
-    await assertCoordinator(parent, {
-      pending: 'spawn_worker: 项目注册表尚未读出，无法确认协调者身份，暂不能派工',
-      refused: 'spawn_worker: 只有项目协调者能派工，请在左栏项目区块建项目并进入协调者会话',
+    await assertLeader(parent, {
+      pending: 'spawn_worker: 项目注册表尚未读出，无法确认 leader 身份，暂不能派工',
+      refused: 'spawn_worker: 只有项目 leader 能派工，请在左栏项目区块建项目并进入 leader 会话',
     })
     // 续聊是 worker 的既定能力：缺持久化后端（日志不落盘）或查询后端（冷恢复
     // 读不了日志）时 worker 只能跑一轮，拒绝派工而不是静默降级成一次性 worker。
@@ -769,16 +769,16 @@ export function createDispatcher({
         ].filter((line) => line !== '').join('\n'))
       }
     }
-    // worker 的工作目录由项目决定：协调者不能指定 worker 跑在哪，也不该让
+    // worker 的工作目录由项目决定：leader 不能指定 worker 跑在哪，也不该让
     // worker 跑到项目外面去。项目目录是绝对路径，worker 会话直接采用。
     const cwd = resolveWorkerCwd?.(parent.id)
-    // worker 与协调者同属项目工作区：不挂就落官方树的「未分组」，而它由项目区块
+    // worker 与 leader 同属项目工作区：不挂就落官方树的「未分组」，而它由项目区块
     // 呈现，两处都在就是重复。
     const workspaceId = await resolveWorkerWorkspaceId?.(parent.id)
     // 「呈现」（改名、挂工作区）推到绑定成功之后：改名会追加 `session/title`
     // 事件、让会话在磁盘上 materialize，先做就没有东西可回滚了。
     //
-    // 权限跟着会话一起交下去：宿主的默认 preset 不一定是协调者当前那套，而
+    // 权限跟着会话一起交下去：宿主的默认 preset 不一定是 leader 当前那套，而
     // worker 在后台跑，需要审批的调用没人应答。
     const { sessionId: childId, permission } = await workerSessions.spawn({
       cwd,
@@ -788,7 +788,7 @@ export function createDispatcher({
       permissionFrom: parent.session,
       deferPresentation: true,
     })
-    // 绑卡必须在返回前完成：协调者接下来投递的第一条消息就该带着角色与卡片事实。
+    // 绑卡必须在返回前完成：leader 接下来投递的第一条消息就该带着角色与卡片事实。
     // 绑不上就销毁刚建的会话——它还没 materialize，磁盘上不会留下半成品。
     if (cardId !== undefined && slot !== undefined) {
       if (typeof bindCardSlot !== 'function') {
@@ -815,7 +815,7 @@ export function createDispatcher({
     }
     // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
     owners.set(childId, { parentSessionId: parent.id, name })
-    // 派工落登记表：协调者可能在任何时刻（含本进程重启后）续聊，归属与父会话
+    // 派工落登记表：leader 可能在任何时刻（含本进程重启后）续聊，归属与父会话
     // 映射不能只活在内存里。任务正文此时还没有，等 `message` 投递后才有。
     try {
       await workers.register({
@@ -833,7 +833,7 @@ export function createDispatcher({
    * 把宿主的轮次结束原因写成一句能读的失败原因。
    *
    * 失败时摘要用终态原因而不是产物：失败轮次里的 assistant 文本往往只写到一半，
-   * 拿它当摘要会让协调者以为这一轮做了不少事。
+   * 拿它当摘要会让 leader 以为这一轮做了不少事。
    *
    * @param {object} reason - `turn/end` 的 `reason`
    * @returns {string} 失败原因
@@ -841,7 +841,7 @@ export function createDispatcher({
   function describeTurnFailure(reason) {
     switch (reason?.kind) {
       // `aborted.reason` 是对象（`{ kind: 'user' | 'parent' | 'hook' | … }`），
-      // 直接插值会渲染成 `[object Object]`——给协调者看的就是这句原因。
+      // 直接插值会渲染成 `[object Object]`——给 leader 看的就是这句原因。
       case 'aborted': return `被取消：${reason.reason?.kind ?? '未说明原因'}`
       case 'blocked': return '被阻断：这一轮被宿主拦下，没有开始'
       case 'max-tokens': return '输出达到 token 上限，这一轮没有正常收尾'
@@ -851,7 +851,7 @@ export function createDispatcher({
   }
 
   /**
-   * 结算一个 worker 的轮次：把这一轮的产物或失败原因交给协调者。
+   * 结算一个 worker 的轮次：把这一轮的产物或失败原因交给 leader。
    *
    * 产出取这一轮的 `assistant/message`，终态取 `turn/end` 的 `reason`——与宿主
    * subagent 的 `captureLocalResult()` 同源，不依赖 worker 主动交付。
@@ -896,7 +896,7 @@ export function createDispatcher({
   /**
    * 观察会话事件，在 worker 的轮次边界上结算。
    *
-   * 一个 turn 是 `agent.run()` 的一次调用（内部含多个 step），正好等于「协调者派的
+   * 一个 turn 是 `agent.run()` 的一次调用（内部含多个 step），正好等于「leader 派的
    * 这一轮」。人直接跟 worker 聊的轮次不进 `inflight`，因此不会被结算。
    *
    * @param {object} session - 追加事件的会话
@@ -954,7 +954,7 @@ export function createDispatcher({
     },
 
     /**
-     * 补投队列里属于某个父会话的通知（换协调者后的接管用）。
+     * 补投队列里属于某个父会话的通知（换 leader 后的接管用）。
      *
      * 与 `redeliverPending` 同一套投递路径，区别是只持有会话 id：接管的通知是刚
      * 改投过来的，而新会话可能早过了 `agent/created`（那一刻队列里还没它的事），
@@ -992,7 +992,7 @@ export function createDispatcher({
     },
 
     /**
-     * 换协调者：把按父会话归集的内存态改到接手的会话上。
+     * 换 leader：把按父会话归集的内存态改到接手的会话上。
      *
      * 三处都以父会话 id 为键，只改落盘归属的话，回报仍会投给退役会话：
      *

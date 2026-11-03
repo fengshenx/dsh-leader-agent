@@ -88,7 +88,7 @@ test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
 - **没有标记不猜**：既没有标记也没有进行中的脚本时返回 400 并写明原因，不会默默回一段文本把断言引到错误结论上。
 - 脚本比实际请求少一步时报错，不静默复用最后一步。
 - 会话标题生成是宿主自己的附带调用，它带着用户原文、会误命中标记；mock 按 system prompt 把它归为 `kind: 'title'` 并回固定文案，不消耗场景脚本。
-- **一轮只支持一个会话在请求模型**：脚本游标是一份全局的「最后命中的标记」，同一场景里两个会话（协调者 + worker）并行时，无标记的请求会续到别人那份脚本上。做派工场景前先按 session id 分游标（`mock-script.mjs` 的 `createScriptCursor`）。
+- **一轮只支持一个会话在请求模型**：脚本游标是一份全局的「最后命中的标记」，同一场景里两个会话（leader + worker）并行时，无标记的请求会续到别人那份脚本上。做派工场景前先按 session id 分游标（`mock-script.mjs` 的 `createScriptCursor`）。
 
 ### 断言纪律
 
@@ -176,8 +176,8 @@ await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>-<pid>/repl
 要点的按钮长在某个会话行上（归档、打开、续聊），而这行出现在左栏需要同时满足三个条件。少一条，界面上什么都不会出现，症状还都一样「等不到」。
 
 1. **只有登记过的 worker 会话进项目树**。`groupSessionsByProject()` 按调用方传入的 `isWorkerSession` 判身份，其余会话一律跳过（`src/host/projects/session-index.js`）——手工 New Session 造的普通会话永远不在项目树下，别指望在它上面点项目内的动作。要在项目树下取证，先让 worker 派工出来（worker 是普通根会话，会话头不带 `origin` 标记，只能按登记判定）。
-2. **派工只认项目协调者**。身份来自 `projects.json` 的 `coordinatorSessionId`，判定读的是进程内镜像（`src/host/projects/service.js` 的 `isCoordinatorSession()`，镜像由 `loadIndex()` 从注册表填充）。要换协调者：停机 → 改 `projects.json` → 重启，热改文件不会被读到。
-3. **mock 用首条用户消息判角色**。`firstUserText()` 含 `MOCK-WORKER-TASK` 就把该会话当 worker 首轮，直接吐文本、永不派工。所以协调者会话的第一条消息只能带场景标记（如 `MOCK-LONG-REPORT`），worker 标记由 mock 拼进派工 task 里。
+2. **派工只认项目 leader**。身份来自 `projects.json` 的 `leaderSessionId`，判定读的是进程内镜像（`src/host/projects/service.js` 的 `isLeaderSession()`，镜像由 `loadIndex()` 从注册表填充）。要换 leader：停机 → 改 `projects.json` → 重启，热改文件不会被读到。
+3. **mock 用首条用户消息判角色**。`firstUserText()` 含 `MOCK-WORKER-TASK` 就把该会话当 worker 首轮，直接吐文本、永不派工。所以 leader 会话的第一条消息只能带场景标记（如 `MOCK-LONG-REPORT`），worker 标记由 mock 拼进派工 task 里。
 
 路径形式不是坑：项目目录与会话 cwd 都过 `realpath`（`src/host/projects/service.js:23`），`/tmp/...` 与 `/private/tmp/...` 判成同一个目录，不要在这上面找原因。
 

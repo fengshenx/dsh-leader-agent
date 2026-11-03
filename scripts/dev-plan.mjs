@@ -476,7 +476,7 @@ export function corruptProfilePackageMessage({ packagePath, parseMessage, dshCom
  * 挡住「日常 profile 没装本插件」这个误用。
  *
  * `npm start` 起的是日常 `~/.dsh` 那套，插件加载与否只看该 profile 的 bundles。
- * 没装时 dsh 照常起来，只是右栏没有看板、协调者工具也不存在——看起来像插件坏了。
+ * 没装时 dsh 照常起来，只是右栏没有看板、leader 工具也不存在——看起来像插件坏了。
  *
  * @param {object} options - 选项
  * @param {string} options.profileDir - 日常 profile 目录，只用于报错定位
