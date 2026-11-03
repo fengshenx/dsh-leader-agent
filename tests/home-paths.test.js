@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { test } from 'node:test'
-import { expandHomePath, resolveDshHome } from '../src/host/home-paths.js'
+import { expandHomePath, resolveDshHome, resolveHomeFromEnv } from '../src/host/home-paths.js'
 
 // 家目录必须是本平台的绝对路径：Windows 上 POSIX 写法的 /home/user 是相对路径。
 const HOME = resolve('/home/user')
@@ -29,6 +29,18 @@ test('进程环境没有 HOME 时回落到 os.homedir()', (t) => {
     if (saved !== undefined) process.env.HOME = saved
   })
   assert.equal(resolveDshHome({}), join(homedir(), '.dsh'))
+})
+
+test('归一只对 DSH_HOME 有值分支生效，默认根由调用方给', () => {
+  // 开发实例的数据根默认在工作树内，不在家目录下。
+  const fallback = () => join(HOME, 'worktree', '.dev', 'home')
+  assert.equal(resolveHomeFromEnv(undefined, fallback, () => HOME), fallback())
+  assert.equal(resolveHomeFromEnv('', fallback, () => HOME), fallback())
+  assert.equal(resolveHomeFromEnv('   ', fallback, () => HOME), fallback())
+  assert.equal(resolveHomeFromEnv('/custom/dsh/', fallback, () => HOME), resolve('/custom/dsh'))
+  assert.equal(resolveHomeFromEnv('~/dsh', fallback, () => HOME), join(HOME, 'dsh'))
+  // 有值时完全走宿主口径，与 fallback 无关。
+  assert.equal(resolveHomeFromEnv('rel/dsh', fallback, () => HOME), resolve('rel/dsh'))
 })
 
 test('DSH_HOME 优先于家目录，并归一化成绝对路径', () => {

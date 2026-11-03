@@ -30,6 +30,20 @@ PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID
 
 新增 `src/host/home-paths.js`，导出与宿主同名的 `expandHomePath` 与 `resolveDshHome`；`notification-store.js` 不再自己解析，`scripts/desktop-plan.mjs` 的 `expandHomePath` 改为 re-export。桌面脚本里此前那份实现注释写着「照抄宿主同一套口径」，是同一规则的第二次实现；留两份迟早漂移，而它算错的是 desktop profile 的路径。
 
+### 归一化贯彻到脚本调用点
+
+`home-paths.js` 另导出 `resolveHomeFromEnv(rawHome, fallback, resolveHome)`：有值时走宿主口径，没值时用调用方给的默认根。宿主的默认根是 `~/.dsh`、开发实例是工作树内的 `.dev/home`，默认值不能写死进一个函数，但归一化只有一份。
+
+两个调用点此前各自拼原值：`scripts/start.mjs` 的 `process.env.DSH_HOME || join(homedir(), '.dsh')` 会把 `~/alt` 预检成 `<cwd>/~/alt`，宿主实际去 `~/alt`；`scripts/dev-plan.mjs` 的 `env.DSH_HOME ?? …` 是真 bug——`DSH_HOME=~/.dsh` 是 `assertSeparateHome` 注释里点名的「很自然」写法，不归一化时算出字面 `~` 目录，守卫沉默，派生逻辑把日常 profile 改写成自指死链。
+
+### 桌面脚本保留 trim，差异进 limitations
+
+`scripts/desktop-plan.mjs` 仍 trim 取值。它算出的绝对路径经 `--env DSH_HOME=` 交给 `open` 启动的应用，应用不再读原始值；首尾空白按手写笔误处理，比按相对路径算进 cwd 更接近本意。代价是同一个值在桌面侧与 CLI 侧有两套路径，记在 `docs/limitations.md` 的同名条目——卡 #4 要求残留差异有归属，不留在笔记里。
+
+### 回归守卫显式删 HOME
+
+`tests/home-paths.test.js` 的「用 `os.homedir()`」用例显式 `delete process.env.HOME` 再断言。不删的话 Linux CI 上 `HOME` 与 `os.homedir()` 相同，「回退到 `process.env.HOME`」也能通过，守不住 #97 修的 Windows 桌面端回归。
+
 ## 边界
 
 - 不 import 宿主包：`engines.dsh` 只承诺版本范围，内部包会随宿主发版漂移（理由见 `src/host/message.js` 头注释）。
@@ -40,12 +54,15 @@ PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID
 
 ## 验证
 
-- 新增 `tests/home-paths.test.js` 8 条用例，覆盖上表每一行；`tests/notification-store.test.js` 删掉 `DSH_HOME 优先于默认家目录`（它断言的「原样返回」正是被修掉的行为）。
+- 用例：`tests/home-paths.test.js` 9 条（含 `resolveHomeFromEnv`、显式删 `HOME` 的回落守卫）+ `tests/dev-plan.test.js` 新增 3 条（`~/.dsh` 守卫、相对路径、空白回落）；`tests/notification-store.test.js` 删掉 `DSH_HOME 优先于默认家目录`（它断言的「原样返回」正是被修掉的行为）。
 - 与宿主实现逐值对照：一次性脚本 import 本机 rc.5 的 `dsh-home-paths` 与本仓 `home-paths.js`，喂 18 个取值（`undefined`、`''`、`'   '`、`~`、`~/x`、`~\x`、`~user/x`、`rel/x`、`rel/../x`、`/x/`、`/x/./y/..`、`' /x '`、`C:\x`、`C:x`、`.`、`..`、`~/`、`~//x`），**逐条 SAME，diff=0**。脚本不入库。
+- 单测 **1040 / 通过 1031 / 失败 6 / 跳过 3**，失败集合与干净 `origin/main` 基线（1029 / 1020 / 6）逐条同名：4 条 Windows 下 POSIX 路径断言的 desktop-plan 存量失败 + 2 条环境相关（CRLF 骨架、扫描面）。
 - 双向验证（Windows）：
-  - 撤销归一化（`return configured`）：4 条红——绝对路径归一化、`~` 系列、`~user`、首尾空白。盘符用例在 Windows 上原值即正确，故未红（POSIX 上会红）。
-  - 撤销空白判空（`configured === ''`）：1 条红（空白回落）。
-  - 还原后 8 条全绿。
-- `npm run check`（本机）：笔记格式、工具名、文档预算、语法检查通过；覆盖率门禁因存量单测失败未执行。
-- 单测 1036 / 通过 1027 / 失败 6，失败集合与干净 `origin/main` 基线（1029 / 1020 / 6）逐条相同：4 条是 Windows 下 POSIX 路径断言的 desktop-plan 存量失败，2 条是 CRLF 与扫描面环境相关。
-- CI（Linux，Node 24 与 24.9 两个矩阵）两轮 `check` 全过，覆盖率门禁在那边跑到 100%；本机 `home-paths.js` 单跑 `--experimental-test-coverage` 是行覆盖 100%、分支 92.31%。
+  - 撤销归一化（`return configured`）：**9 红**（home-paths 5 + dev-plan 4，含 `~/.dsh` 守卫）。
+  - 撤销空白判空（`configured === ''`）：**3 红**。
+  - 撤销 `os.homedir()` 回退（默认改成 `() => process.env.HOME`）：**1 红**；把 `HOME` 设成与 `os.homedir()` 相同的值（模拟 Linux CI）**仍红**——修的正是「CI 上碰巧通过」那条。
+  - 还原后 66 条相关用例全绿。
+- 探针 `.telov/probe-dsh-home-paths.mjs`（不入库，只读）：`~/.dsh`→`<homedir>\.dsh`、`~/alt`→`<homedir>\alt`、`'   '`→`<homedir>\.dsh`、`rel/dev`→`<cwd>\rel\dev`；旧写法同样输入分别得字面 `~/.dsh` 与 `'   '`。dev 脚本 `DSH_HOME=~/.dsh` 时 home 与 sourceHome 同为 `<homedir>\.dsh` 且 `assertSeparateHome` 抛错。隔离用系统临时目录，不写真实 `~/.dsh`。
+- 真实 `~/.dsh` 前后一致：88 个文件，整树（路径 + 大小 + mtime）SHA256 前后同为 `5177920…`，根目录 mtime 不变，0 条变更。
+- `npm run check`：笔记格式 70 篇、工具名 14 篇、文档预算（limitations 6705/6900）、语法检查 99 个文件通过；覆盖率门禁因存量单测失败未执行（与基线同）。本机 `home-paths.js` 单跑 `--experimental-test-coverage` 行覆盖 100%。
+- CI（Linux，Node 24 与 24.9 两个矩阵）此前对同一实现结构两轮 `check` 全过，覆盖率门禁在那边执行。

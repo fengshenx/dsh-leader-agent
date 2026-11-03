@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   LEADER_KIT_PACKAGE, WEB_APP_BUNDLE, assertLeaderKitBundle, assertSeparateHome, assertWebBundle,
   corruptProfilePackageMessage, credentialRefBlocks, deriveProfilePackage, devWebBundleHint, mergeCredentialRefs,
@@ -46,8 +46,8 @@ test('DSH_HOME 与 DSH_HOME_SOURCE 都能覆盖', () => {
     homeDir: '/home/user',
     env: { DSH_HOME: '/tmp/dev-home', DSH_HOME_SOURCE: '/tmp/origin-home' },
   })
-  assert.equal(paths.home, '/tmp/dev-home')
-  assert.equal(paths.profileDir, join('/tmp/dev-home', 'profiles', 'web'))
+  assert.equal(paths.home, resolve('/tmp/dev-home'))
+  assert.equal(paths.profileDir, join(resolve('/tmp/dev-home'), 'profiles', 'web'))
   assert.equal(paths.sourceHome, '/tmp/origin-home')
 })
 
@@ -122,7 +122,7 @@ test('DSH_PROFILE 覆盖源 profile 名，两边的目录都跟着换', () => {
   })
   assert.equal(paths.profile, 'sdk')
   assert.equal(paths.sourceProfileDir, join(SOURCE_HOME, 'profiles', 'sdk'))
-  assert.equal(paths.profileDir, join('/tmp/dev-home', 'profiles', 'sdk'))
+  assert.equal(paths.profileDir, join(resolve('/tmp/dev-home'), 'profiles', 'sdk'))
 })
 
 test('DSH_PROFILE 传空串时落回 web', () => {
@@ -134,6 +134,28 @@ test('数据根与源 HOME 相同时拒绝，两处 profile 目录也不例外',
     () => assertSeparateHome({ home: '/home/user/.dsh', sourceHome: '/home/user/.dsh' }),
     /数据根与源 HOME 是同一个目录/,
   )
+})
+
+test('DSH_HOME 用 ~ 写法指向源 HOME 时同样拒绝', () => {
+  // 守卫注释里点名的「很自然」写法：不归一化时这里算成字面 `~` 目录，守卫沉默，
+  // 派生逻辑把日常 profile 改写成自指死链。
+  const homeDir = resolve('/home/user')
+  const paths = resolveDevPaths({ worktree: WORKTREE, homeDir, env: { DSH_HOME: '~/.dsh' } })
+  assert.equal(paths.home, join(homeDir, '.dsh'))
+  assert.throws(
+    () => assertSeparateHome({ home: paths.home, sourceHome: paths.sourceHome }),
+    /数据根与源 HOME 是同一个目录/,
+  )
+})
+
+test('相对 DSH_HOME 按发起命令的目录解析成绝对路径', () => {
+  const paths = resolveDevPaths({ worktree: WORKTREE, homeDir: '/home/user', env: { DSH_HOME: 'dev-home' } })
+  assert.equal(paths.home, resolve('dev-home'))
+})
+
+test('空白 DSH_HOME 按未设处理，落回工作树内的默认根', () => {
+  const paths = resolveDevPaths({ worktree: WORKTREE, homeDir: '/home/user', env: { DSH_HOME: '   ' } })
+  assert.equal(paths.home, join(WORKTREE, '.dev', 'home'))
 })
 
 test('数据根与源 HOME 不同时放行', () => {

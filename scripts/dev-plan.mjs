@@ -18,6 +18,7 @@
 
 import { realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { resolveHomeFromEnv } from '../src/host/home-paths.js'
 
 /** 插件包名：profile 里换成工作树链接的那个。 */
 export const LEADER_KIT_PACKAGE = 'dsh-leader-kit'
@@ -45,7 +46,9 @@ export const CREDENTIALS_FILE = '.credentials.yaml'
  */
 export function resolveDevPaths({ worktree, homeDir, env = {} }) {
   const sourceHome = env.DSH_HOME_SOURCE ?? join(homeDir, '.dsh')
-  const home = env.DSH_HOME ?? join(worktree, '.dev', 'home')
+  // 与宿主同一套归一化：`DSH_HOME=~/.dsh` 必须被判成日常根，否则 assertSeparateHome
+  // 会沉默，派生逻辑把日常 profile 改写成自指死链。
+  const home = resolveHomeFromEnv(env.DSH_HOME, () => join(worktree, '.dev', 'home'), () => homeDir)
   const profile = env.DSH_PROFILE === undefined || env.DSH_PROFILE === '' ? PROFILE_NAME : env.DSH_PROFILE
   const sourceProfileDir = join(sourceHome, 'profiles', profile)
   return {

@@ -13,6 +13,7 @@
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
 - **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样，以「一条待发消息」的形态挂在输入框上方的「消息队列」条里（对照实验：busy 时直接投，面板显示「2 queued messages」，把人的消息和 worker 回报混在一起）。代价是 leader 正忙时，回报要多等它这一轮结束（投递边界见 [笔记](../.agents/notes/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
 - **worker 头像在深色主题下轮廓弱**（既定取舍，不是待修项）。气泡底是前景色混出的 4% 一层，36% 的蓝紫色相落上去只有 1.35:1，块的外轮廓看不出边界；头像本身仍可辨。头像池只有 63 个 seed，worker 多时会有撞图（3 个约 4.7%，5 个约 15%），名字就在头像旁边，不影响身份识别。
+- **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`src/host/home-paths.js` 照抄宿主（判空用 trim、取值不 trim）；`scripts/desktop-plan.mjs` 取值也 trim——它算出的绝对路径要经 `--env DSH_HOME=` 交给 `open` 启动的应用，首尾空白按手写笔误处理，比按相对路径算进 cwd 更接近本意。代价是 `DSH_HOME=' /x '` 时桌面侧得 `/x`、CLI 宿主得 `<cwd>/ /x `，同一个值两套路径。
 
 ## worker 的控制面
 

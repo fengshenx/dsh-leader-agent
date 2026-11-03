@@ -227,6 +227,10 @@ export function planLinkAction({ exists, isSymbolicLink, sameTarget }) {
  * @returns {object} 数据根与 profile 内的文件路径
  */
 export function resolveDesktopPaths({ homeDir, cwd, env = {} }) {
+  // 这里取值也 trim，与 home-paths 的「判空 trim、取值不 trim」不同：算出的绝对
+  // 路径要经 `--env DSH_HOME=` 交给 open 启动的应用，应用不再读原始值；首尾空白
+  // 按手写笔误处理，比按相对路径算进 cwd 更接近本意。差异见 docs/limitations.md
+  // 的「桌面脚本的 DSH_HOME 比 CLI 多一次 trim」。
   const trimmed = String(env.DSH_HOME ?? '').trim()
   const configured = trimmed === '' ? null : trimmed
   const home = configured === null ? join(homeDir, '.dsh') : expandHomePath(configured, homeDir, cwd)

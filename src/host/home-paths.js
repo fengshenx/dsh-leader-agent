@@ -37,6 +37,25 @@ export function expandHomePath(input, homeDir, cwd = process.cwd()) {
 }
 
 /**
+ * 按宿主口径解析一个可由 `DSH_HOME` 覆盖的数据根。
+ *
+ * 有值时的规则与宿主逐条相同；没有值时用调用方给的默认根——本仓有两个数据根，
+ * 默认位置各不相同（宿主的家目录是 `~/.dsh`，开发实例是工作树内的 `.dev/home`），
+ * 所以默认值由调用方给，归一化只有一份。
+ *
+ * @param {string | undefined} rawHome - 原始 `DSH_HOME`，未设时传 undefined
+ * @param {() => string} fallback - 未设时返回默认根
+ * @param {() => string} [resolveHome] - 家目录解析器，默认 `os.homedir()`
+ * @returns {string} 数据根
+ */
+export function resolveHomeFromEnv(rawHome, fallback, resolveHome = homedir) {
+  const configured = typeof rawHome === 'string' ? rawHome : ''
+  // 宿主只用 trim 判空、取值仍用原值：带首尾空白时它算的是另一条路径，照抄才不分叉。
+  if (configured.trim() === '') return fallback()
+  return expandHomePath(configured, resolveHome())
+}
+
+/**
  * 解析 dsh home 目录。
  *
  * @param {object} [env] - 环境变量映射（只读 `DSH_HOME`）
@@ -44,8 +63,9 @@ export function expandHomePath(input, homeDir, cwd = process.cwd()) {
  * @returns {string} dsh home 绝对路径
  */
 export function resolveDshHome(env = process.env, resolveHome = homedir) {
-  const configured = typeof env.DSH_HOME === 'string' ? env.DSH_HOME : ''
-  // 宿主只用 trim 判空、取值仍用原值：带首尾空白时它算的是另一条路径，照抄才不分叉。
-  if (configured.trim() === '') return resolve(join(resolveHome(), DSH_HOME_DIR_NAME))
-  return expandHomePath(configured, resolveHome())
+  return resolveHomeFromEnv(
+    env.DSH_HOME,
+    () => resolve(join(resolveHome(), DSH_HOME_DIR_NAME)),
+    resolveHome,
+  )
 }
