@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   PROJECT_REMOTE_CONTRIBUTION,
   callProjectRemote,
+  codecFor,
   isProjectRemoteReady,
   mountProjectRemote,
   onProjectRemoteReady,
@@ -31,6 +32,15 @@ test('客户端贡献覆盖契约里的每个方法，wire 字段名与形参名
       Object.keys(PROJECT_REMOTE_METHODS[descriptor.method]),
     )
   }
+})
+
+test('未知类型一律抛错，原型链键也不会静默退回某个 codec', () => {
+  // 'toString' / 'valueOf' / 'constructor' 在普通对象字面量上查得到函数，
+  // 那样拼错的类型名会拿一个假 codec 继续跑；表用 Object.create(null) 起才抛。
+  for (const type of ['unknown', 'toString', 'valueOf', 'constructor']) {
+    assert.throws(() => codecFor(type), TypeError)
+  }
+  assert.equal(codecFor('string').mode, 'strict')
 })
 
 test('每个入参都有严格 codec：宿主拒绝没有严格 codec 的描述符', () => {

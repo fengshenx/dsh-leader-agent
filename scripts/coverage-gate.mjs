@@ -17,11 +17,21 @@
  * @returns {Map<string, { path: string, lines: number, branches: number, functions: number, uncovered: string }>} 仓内相对路径 → 读数
  */
 export function parseCoverageTable(text) {
+  const lines = text.split('\n')
+  // 只在报告区间里找表格：不收边的话，测试输出里任何形如「ℹ a | 1 | 2 | 3」的行
+  // 都会成为一条源文件读数——它不在 src 枚举里，却会污染「豁免出现在报告里」的
+  // 判定与 all files 的口径。缺标记时返回空表，由调用方按「没解析到表格」报错。
+  const start = lines.findIndex((line) => line.includes('start of coverage report'))
+  const end = start === -1
+    ? -1
+    : lines.findIndex((line, index) => index > start && line.includes('end of coverage report'))
+  if (start === -1 || end === -1) return new Map()
+
   /** 目录栈：表格用缩进表达层级，文件路径要自己拼。 */
   const stack = []
   const report = new Map()
 
-  for (const line of text.split('\n')) {
+  for (const line of lines.slice(start + 1, end)) {
     if (!line.startsWith('ℹ')) continue
     const parts = line.slice(1).split('|')
     if (parts.length < 4) continue

@@ -11,6 +11,7 @@ const manifest = JSON.parse(readFileSync(join(root, 'scripts', 'coverage-manifes
 /** 真实报告的形状：目录树缩进 + 无读数的目录行 + 表头与分隔线 + all files 汇总。 */
 const SAMPLE = [
   '✔ 某条测试 (0.5ms)',
+  'ℹ start of coverage report',
   'ℹ file            | line % | branch % | funcs % | uncovered lines',
   'ℹ ----------------------------------------------------------------',
   'ℹ scripts         |        |          |         | ',
@@ -49,6 +50,23 @@ test('解析：按目录树缩进还原完整路径，跳过表头、分隔线�
   assert.deepEqual([...report.keys()], ['scripts/doc-budget.mjs', 'src/host/dispatch.js', 'src/shared/projects.js'])
   assert.equal(report.get('src/host/dispatch.js').lines, 97.14)
   assert.equal(report.get('src/host/dispatch.js').uncovered, '153-154 212-213')
+})
+
+test('解析：报告区间之外的行不参与解析', () => {
+  const text = [
+    'ℹ start of coverage report',
+    'ℹ src             |        |          |         | ',
+    'ℹ  a.js           | 100.00 |   100.00 |  100.00 | ',
+    'ℹ end of coverage report',
+    // 测试输出里长得像表格的行：不收边就会被当成一条源文件读数
+    'ℹ fake.js         |   0.00 |     0.00 |    0.00 | ',
+  ].join('\n')
+  assert.deepEqual([...parseCoverageTable(text).keys()], ['src/a.js'])
+})
+
+test('解析：缺起止标记时返回空表，由调用方按契约错误报出', () => {
+  const text = ['ℹ src             |        |          |         | ', 'ℹ  a.js           | 100.00 |   100.00 |  100.00 | '].join('\n')
+  assert.equal(parseCoverageTable(text).size, 0)
 })
 
 test('解析：非表格输出与空行不影响结果', () => {
