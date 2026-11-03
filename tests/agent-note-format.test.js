@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { auditNotes } from '../scripts/agent-note-audit.mjs'
+import { auditNotes, auditReport } from '../scripts/agent-note-audit.mjs'
 import { checkLinks, checkNote } from '../scripts/agent-note-format.mjs'
 
 const PATH = 'implemented/feature/2026-11-02-sample-note.md'
@@ -139,6 +139,19 @@ test('围栏里的同名节不算重复', () => {
   assert.deepEqual(violationsOf({ text }), [])
 })
 
+test('四反引号围栏里的三反引号块仍是内容', () => {
+  const backtick = '# 甲\n\n## 背景\n\n````markdown\n```\n## 决策\n```\n````\n'
+  assert.match(violationsOf({ text: backtick }).join('\n'), /缺少 `## 决策` 节/)
+  const tilde = '# 甲\n\n## 背景\n\n~~~~markdown\n~~~\n## 决策\n~~~\n~~~~\n'
+  assert.match(violationsOf({ text: tilde }).join('\n'), /缺少 `## 决策` 节/)
+})
+
+test('不写状态行', () => {
+  const text = '# 甲\n\n**状态**：implemented\n\n## 背景\n\n## 决策\n'
+  assert.match(violationsOf({ text }).join('\n'), /路径即状态/)
+  assert.deepEqual(violationsOf({ text: '# 甲\n\n## 背景\n\n正文里提到 `**状态**` 行不算。\n\n## 决策\n' }), [])
+})
+
 test('笔记间链接必须可达', () => {
   const text = '# 甲\n\n## 背景\n\n见[另一篇](../architecture/2026-11-02-other.md)。\n\n## 决策\n'
   assert.deepEqual(checkLinks(text, () => true), [])
@@ -177,6 +190,23 @@ test('语料里有断链就报——门禁确实调了链接判定', () => {
 test('语料里缺节就报——门禁确实调了结构判定', () => {
   withCorpus({ 'implemented/feature/2026-11-02-a.md': '# 甲\n\n## 背景\n\n没有决策节。\n' }, (dir) => {
     assert.match(auditNotes(dir).violations.join('\n'), /缺少 `## 决策` 节/)
+  })
+})
+
+test('有违规时以 1 退出并把违规写到 stderr', () => {
+  withCorpus({ 'implemented/feature/2026-11-02-a.md': '# 甲\n\n## 背景\n\n没有决策节。\n' }, (dir) => {
+    const report = auditReport(auditNotes(dir))
+    assert.equal(report.exitCode, 1)
+    assert.equal(report.stream, 'error')
+    assert.match(report.lines.join('\n'), /缺少 `## 决策` 节/)
+  })
+})
+
+test('干净语料以 0 退出并报数', () => {
+  withCorpus({ 'implemented/feature/2026-11-02-a.md': IMPLEMENTED_TEXT }, (dir) => {
+    const report = auditReport(auditNotes(dir))
+    assert.equal(report.exitCode, 0)
+    assert.deepEqual(report.lines, ['verify-agent-note-format: 1 篇笔记格式合规（implemented 1）'])
   })
 })
 

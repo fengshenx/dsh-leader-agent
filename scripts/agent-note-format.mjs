@@ -23,7 +23,7 @@ const REQUIRED_SECTIONS = {
 }
 
 /** 围栏里的 `#` 是示例，不是文档结构。缩进三格以内都算围栏——列表项里也常写。 */
-const FENCE = /^ {0,3}(```|~~~)/
+const FENCE = /^ {0,3}(`{3,}|~{3,})/
 
 function proseLines(text) {
   let fence = null
@@ -31,9 +31,10 @@ function proseLines(text) {
   for (const line of text.split('\n')) {
     const matched = FENCE.exec(line)
     if (matched !== null) {
-      // 同种围栏才成对：三反引号块里出现的波浪线只是示例内容
-      if (fence === null) fence = matched[1]
-      else if (fence === matched[1]) fence = null
+      const marker = matched[1]
+      if (fence === null) fence = marker
+      // 闭合围栏要同字符且不短于开启的：4 个反引号块里嵌的 3 个反引号是内容
+      else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null
       continue
     }
     if (fence === null) kept.push(line)
@@ -83,6 +84,9 @@ export function checkNote(relPath, text) {
   }
 
   const lines = proseLines(text)
+  if (lines.some(line => line.startsWith('**状态**'))) {
+    violations.push('不要写 `**状态**` 行：路径即状态，双写必然与目录漂移')
+  }
   const titles = lines.filter(line => /^# \S/.test(line))
   if (titles.length === 0) {
     violations.push('缺少 H1 标题（第一行应为 `# 标题`）')

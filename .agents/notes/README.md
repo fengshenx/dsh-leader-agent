@@ -36,4 +36,4 @@
 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`（判定在 `scripts/agent-note-format.mjs`，
 读盘遍历在 `scripts/agent-note-audit.mjs`）
 校验：路径双轴与闭集、文件名、唯一 H1 在首行、首节 `## 背景`、按 lifecycle 的必需节、节名不重复、
-笔记间相对链接可达。根层的 `README.md` 与 `AGENTS.md` 是目录说明，不参与判定。
+行首不出现 `**状态**` 行、笔记间相对链接可达。根层的 `README.md` 与 `AGENTS.md` 是目录说明，不参与判定。
