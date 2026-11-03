@@ -31,6 +31,8 @@ npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文�
 
 **`npm run e2e -- <文件>` 不会缩小要跑的集合**：npm 把 `--` 后面的参数追加到 script 末尾，实际执行的是 `node --test "tests/e2e/*.e2e.js" <文件>`，脚本里的 glob 照旧展开，两个文件都会跑（实测 `tests 2`）。要单跑一个文件就绕过 npm script 直接调 `node --test`；改过 `src/client/` 时先自己 `npm run build:client`。
 
+**不加 `--test-force-exit`**：它会把漏清理从「挂住/超时变红」变成「绿着通过 + 留下孤儿进程」，挂住应当暴露；已知三处已由有界清理收干净，取舍见[清理上限笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
+
 前提：`dsh` 装好，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件——与 `npm run dev` 相同，缺任何一个都会当场报错并给出可照做的修法。Node 需要 22.15+：`session-logs.mjs` 用 `node:zlib` 的 zstd 解压（v22.15.0 加入），`node --test "tests/e2e/*.e2e.js"` 依赖 test runner 自带的 glob。旧版本上不是「跑不过」，而是 import 期就崩。
 
 ### 文件职责
@@ -54,10 +56,10 @@ tests/e2e-mock-script.test.js mock 纯函数
 ```js
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { launchE2E, waitFor, waitForLocator } from './harness.mjs'
+import { launchE2E, scenarioTimeout, waitFor, waitForLocator } from './harness.mjs'
 import { sessionLogsContain } from './session-logs.mjs'
 
-test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
+test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) => {
   // scripts 的键是标记名，值是这一轮请求依次要拿到的东西
   const e2e = await launchE2E({ scripts: { 'MOCK-XXX': [{ text: '回执' }] } })
   t.after(() => e2e.stop())
@@ -96,7 +98,7 @@ test('场景要证明的一句话', { timeout: 180_000 }, async (t) => {
 
 - **断言外部世界**：DOM 的 class、`getComputedStyle` 的具体属性、磁盘上的 JSON。不读 agent 的自述文本，不拿页面里的推理文字当证据。
 - **等状态，不睡时间**。`waitFor()` 轮询到条件成立；locator 用 `contenteditable="true"`、`data-*`、可见文本这类状态条件，让 playwright 自己等。
-- **等待预算按正常耗时给**。实测单场景 3–8 秒、元素 1–2 秒到位：首次启动 20 秒、元素状态 15 秒。写 60 秒/90 秒只会让失败多等一整分钟，还把「机器慢」与「等错了元素」混成同一个症状。慢机与 2 核 CI 用 `E2E_BUDGET_SCALE=1.5` 整体放大，不用改代码。
+- **等待预算按正常耗时给**。实测单场景 3–8 秒、元素 1–2 秒到位：首次启动 20 秒、元素状态 15 秒。写 60 秒/90 秒只会让失败多等一整分钟，还把「机器慢」与「等错了元素」混成同一个症状。慢机与 2 核 CI 用 `E2E_BUDGET_SCALE=1.5` 整体放大（测试级上限走 `scenarioTimeout()`，取同一个倍率）。
 - **失败要带读数**。元素等待走 `waitForLocator()`：失败时报 locator、目标元素读数（计数、`visible`、边界盒、`display` / `visibility` / `checkVisibility`、宽高）与页面读数（会话行、工作区行、插件元素计数）。目标读数用来分开「不在 DOM」「在 DOM 但 `display:none`」「在 DOM 但零尺寸」——只数 count 时这三种是同一句超时。读数自身限 2 秒：页面主线程卡死时退化成 `{ unavailable }`，不把失败拖到测试级超时。自定义读数用 `describePage()`。
 - **造状态用 seed**：目标状态直接写进数据文件（`<home>/dsh-leader-kit/cards.json`、`projects.json`），让界面去读。靠反复重启、反复点 UI 去凑瞬时态，永远对不齐。
 - **标识符必须来自本次运行**：端口、token、会话 id、数据根都从本次实例取，不硬编码上一轮残留的值。
@@ -121,7 +123,7 @@ await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>-<pid>/repl
 
 ### 失败诊断
 
-1. **先看耗时**：单场景正常 3–8 秒（全量约 10 秒）。跑了一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型：`lib/client.js` 没构建、会话行没渲染），不是机器慢。别用 `grep` / `head` 过滤输出，`TimeoutError` 里的 locator 就是线索。报错头是「等待失败：…」而不是「等待超时」时，先看页面或浏览器是不是已经关掉、崩了——那不是选择器的问题。
+1. **先看耗时**：单场景正常 3–8 秒（全量约 10 秒）。跑了一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型：`lib/client.js` 没构建、会话行没渲染），不是机器慢。别用 `grep` / `head` 过滤输出，`TimeoutError` 里的 locator 就是线索。报错头是「等待失败：…」而不是「等待超时」时，先看页面或浏览器是不是已经关掉、崩了——那不是选择器的问题。测试级上限 90 秒（`scenarioTimeout()`，随 `E2E_BUDGET_SCALE` 放大）。清理链上实例与 mock 卡住会变成带名字的失败，浏览器关闭超时只告警并继续（`closeBrowser()` 10 秒上限），不会无声挂住。
 2. 先看 `problems`（pageerror / console.error）。本仓出过「圆点不亮」查不出原因的情况，根因是三处空 `catch`：保留会话失败、订阅就绪失败，全都吞掉，界面上只剩一个空心圈。失败必须报告，且同一目标只报一次。
 3. 看 `instance.logs`（子进程 stdout/stderr 全量）与 `mock.requests`：模型请求到底有没有发出来、打到哪个端点、带没带标记。
 4. **区分「数据没到」与「渲染错了」**：落盘文件里有没有、DOM 里有没有，分开查；字段不在就是数据层的问题，不在渲染层。
@@ -154,7 +156,7 @@ await e2e.screenshot('reply')   // 存 .dev/e2e-artifacts/<场景名>-<pid>/repl
 - **禁 `networkidle`**：SSE 长连接下它永远不解析。
 - **禁单次瞬态 DOM 采样**：从流式输出到 React commit 的每一跳都可能合并 chunk，采样天然是竞态。
 - **禁固定 sleep**：等 readiness 事件、状态翻转或落盘条件。
-- **pageerror / console.error 即失败**：重连与历史重同步会把断掉的通路自愈掉，套件于是认证了坏 wire。
+- **pageerror / console.error 即失败**：重连与历史重同步会把断掉的通路自愈掉，套件于是认证了坏 wire。唯一例外是宿主的 session 引用释放，`watchProblems()` 按文案放行。
 - **端口用 `listen(0)`**：先扫空闲端口再绑定会与并发进程抢。
 - **默认不开重试**：重试只会把竞态藏起来。
 - **一次只改一个变量**：两个变量同时变，失败原因就分不开。
