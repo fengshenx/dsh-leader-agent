@@ -12,19 +12,27 @@
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const QUEUE_VERSION = 1
 
 /**
  * 解析 dsh home 目录。dsh 允许用 `DSH_HOME` 覆盖默认位置。
+ *
+ * 默认位置必须与宿主一致（宿主走 `os.homedir()`）：Windows 桌面端由资源管理器
+ * 启动，进程环境里没有 `HOME`，按 `process.env.HOME` 拼路径会让宿主半边在 apply
+ * 里抛 `ERR_INVALID_ARG_TYPE`，浏览器侧只剩客户端产物，所有 `projects/*` 调用都
+ * 变成 HTTP 404。
+ *
+ * @param {object} [env] - 环境变量映射（只读 `DSH_HOME`）
+ * @param {() => string} [resolveHome] - 家目录解析器，默认 `os.homedir()`
  * @returns {string} dsh home 绝对路径
  */
-export function resolveDshHome(env = process.env, homedir) {
+export function resolveDshHome(env = process.env, resolveHome = homedir) {
   const configured = env.DSH_HOME
   if (typeof configured === 'string' && configured.trim() !== '') return configured
-  const home = typeof homedir === 'function' ? homedir() : process.env.HOME
-  return join(home, '.dsh')
+  return join(resolveHome(), '.dsh')
 }
 
 /**
