@@ -12,7 +12,7 @@
  * @module dsh-leader-kit/host/leader-context
  */
 
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { SLOT_TEMPLATE_FILE } from './slots/slot-templates.js'
 
@@ -26,6 +26,18 @@ export const LEADER_CONTEXT_FILE = 'LEADER.md'
  * `COORDINATOR.md`，不退回就等于升级即静默失去手册注入。
  */
 export const LEGACY_LEADER_CONTEXT_FILE = 'COORDINATOR.md'
+
+/**
+ * 用户明确拒绝初始化后，模型在项目目录写下的标记文件（项目相对路径，正斜杠）。
+ *
+ * 拒绝是用户的一次性决定，不该每轮再问一次；而「拒绝过」这件事只有对话知道，
+ * 进程重启就丢了。落成项目目录里的空文件是最短的持久化：随项目走，换机器也在，
+ * 不需要另一套存储域与清理逻辑。删除该文件即恢复提示。
+ *
+ * 用正斜杠而不是 `join`：这个常量会原样出现在给模型看的提示里，`\` 在 Windows
+ * 上既是分隔符又是转义符，写进提示容易被读错。
+ */
+export const INIT_DECLINED_MARKER = '.dsh-leader-kit/init-declined'
 
 /** 注入项的上下文名。 */
 export const LEADER_CONTEXT_NAME = 'dsh-leader-kit:leader'
@@ -78,6 +90,8 @@ function readManual(file) {
  * 唯一有的那个文件，退回时记一条日志提醒改名——否则用户既看不到手册换名了，
  * 也不知道为什么新加的 `COORDINATOR.md` 还在生效。两版并存时以 `LEADER.md` 为准；
  * 内容不一致说明有人改了旧文件却没同步，同样报一条（旧文件已不参与注入）。
+ * 例外是**存在但只有空白**的新版：空文件不是手册，让它遮蔽旧名等于升级到空
+ * `LEADER.md` 就静默失去注入，所以照样回落到旧名。
  *
  * @param {string | undefined} directory - 项目目录绝对路径
  * @param {(message: string) => void} [logger] - 日志输出
@@ -95,21 +109,24 @@ export function loadLeaderManual(directory, logger = () => {}) {
   // 新版存在时也要看一眼旧名：两版并存且内容不同，说明有人改错了文件。旧文件的
   // 读失败不算故障——它已经不参与注入，静默即可。
   const second = readManual(legacy)
-  if (first.body !== undefined) {
-    if (second.body !== undefined
-      && first.body.trim() !== second.body.trim()
+  const primaryBody = first.body === undefined ? '' : first.body.trim()
+  const legacyBody = second.body === undefined ? '' : second.body.trim()
+  if (primaryBody !== '') {
+    if (legacyBody !== ''
+      && legacyBody !== primaryBody
       && !warnedShadowedLegacy.has(directory)) {
       warnedShadowedLegacy.add(directory)
       logger(`dsh-leader-kit: ${directory} 的 ${LEGACY_LEADER_CONTEXT_FILE} 与 ${LEADER_CONTEXT_FILE} 内容不一致；以 ${LEADER_CONTEXT_FILE} 为准，旧文件已不参与注入`)
     }
-    return first.body.trim()
+    return primaryBody
   }
-  if (second.body !== undefined) {
+  if (legacyBody !== '') {
     if (!warnedLegacyFallback.has(directory)) {
       warnedLegacyFallback.add(directory)
-      logger(`dsh-leader-kit: ${directory} 仍在使用旧名 ${LEGACY_LEADER_CONTEXT_FILE}；请改名为 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
+      const reason = first.body === undefined ? '不存在' : '是空的'
+      logger(`dsh-leader-kit: ${directory} 的 ${LEADER_CONTEXT_FILE} ${reason}，按旧名 ${LEGACY_LEADER_CONTEXT_FILE} 注入；请把内容迁到 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
     }
-    return second.body.trim()
+    return legacyBody
   }
   if (second.error !== undefined) {
     logger(`dsh-leader-kit: 读取 leader 手册失败（${legacy}）：${second.error instanceof Error ? second.error.message : String(second.error)}`)
@@ -122,33 +139,48 @@ export function loadLeaderManual(directory, logger = () => {}) {
  *
  * 引导卡只发一句自然的话（「这个项目还没配置，先讲讲怎么用」），作答要求放在
  * 运行时上下文里：长文本进提示词，对话里就只留一句用户可见的消息；文件建好后
- * 手册正文取代这段提示，不需要任何状态标记。
+ * 手册正文取代这段提示。
  *
  * 触发面限定在「用户问用法」：用户直接派活时不该被打断，所以提示里写清了
  * 只在被问到时按它回答。
  *
+ * 三种「没手册」要分开说：文件不存在、文件存在但只有空白、旧名手册有内容。
+ * 前两种问的是不同的事（建文件 / 补内容），第三种根本不该问——`loadLeaderManual`
+ * 会回落到旧名正文，走到这里只说明调用方绕开了它。
+ *
  * @param {string} directory - 项目目录绝对路径
- * @returns {string} 提示正文；手册读失败（文件存在但读不了）时为空串
+ * @returns {string} 提示正文；手册读失败（文件存在但读不了）或用户已拒绝初始化时为空串
  */
 export function renderInitializationHint(directory) {
   const leader = readManual(join(directory, LEADER_CONTEXT_FILE))
   // 文件存在但读不了不是「没初始化」：loadLeaderManual 已经记过日志，这里再提示
   // 会让用户去建一个已经存在的文件。
   if (leader.error !== undefined) return ''
+  if (leader.body !== undefined && leader.body.trim() !== '') return ''
+  const legacy = readManual(join(directory, LEGACY_LEADER_CONTEXT_FILE))
+  if (legacy.body !== undefined && legacy.body.trim() !== '') return ''
+  if (existsSync(join(directory, ...INIT_DECLINED_MARKER.split('/')))) return ''
   const slots = readManual(join(directory, SLOT_TEMPLATE_FILE))
   const hasSlots = slots.body !== undefined && slots.body.trim() !== ''
+  const missingLeader = leader.body === undefined
+  const slotsClause = hasSlots ? '' : `\`${SLOT_TEMPLATE_FILE}\`（执行者角色手册）`
   return [
     '## 项目待初始化',
     '',
-    hasSlots
-      ? `这个项目还没有 \`${LEADER_CONTEXT_FILE}\`（leader 工作方法）。`
-      : `这个项目还没有 \`${LEADER_CONTEXT_FILE}\`（leader 工作方法）与 \`${SLOT_TEMPLATE_FILE}\`（执行者角色手册）。`,
+    missingLeader
+      ? (hasSlots
+        ? `这个项目还没有 \`${LEADER_CONTEXT_FILE}\`（leader 工作方法）。`
+        : `这个项目还没有 \`${LEADER_CONTEXT_FILE}\`（leader 工作方法）与 ${slotsClause}。`)
+      : (hasSlots
+        ? `这个项目的 \`${LEADER_CONTEXT_FILE}\` 还是空的（只有空白），需要补上内容。`
+        : `这个项目的 \`${LEADER_CONTEXT_FILE}\` 还是空的（只有空白），也没有 ${slotsClause}。`),
     '',
     '用户第一次问这个项目怎么用、怎么开始，或问 dsh-leader-kit 是什么时，按这个顺序回答：',
     '',
     '1. 说明 dsh-leader-kit 怎么工作：你负责拆解目标、建任务卡、派工；worker 在各自的工作区干活并回报；用户在看板上跟进进度、审核与验收。一个任务一张卡，卡上标出执行者。',
     '2. 说明两份文件各解决什么，然后问用户是否现在初始化。',
     '3. 用户明确同意后，加载 `init-leader-kit` skill 并按它执行：目录里已有的文档先读，目录是空的就写带 TODO 的骨架，不要编造项目内容。',
+    `4. 用户明确说不需要初始化时，在项目目录建一个空文件 \`${INIT_DECLINED_MARKER}\`，此后这段提示不再出现；不要写别的内容，也不要删改用户已有的文件。`,
     '',
     '用户没同意前不要创建或修改任何文件；已经问过、用户还没回答时不要重复追问。用户直接派活时不要打断，按正常流程干活。',
   ].join('\n')

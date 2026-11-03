@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
+  INIT_DECLINED_MARKER,
   LEADER_CONTEXT_FILE,
   LEADER_CONTEXT_NAME,
   LEADER_CONTEXT_ORDER,
@@ -144,6 +145,60 @@ test('手册存在时注入正文，不再出现初始化提示', async () => {
     const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
     assert.match(text, /## leader 手册/)
     assert.doesNotMatch(text, /## 项目待初始化/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('LEADER.md 存在但只有空白时，提示说的是补内容而不是「还没有」', async () => {
+  const project = await createProject('  \n\n')
+  try {
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## 项目待初始化/)
+    assert.match(text, /`LEADER\.md` 还是空的（只有空白）/)
+    // 让模型去「建」一个已经存在的文件只会撞车。
+    assert.doesNotMatch(text, /还没有 `LEADER\.md`/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('只有旧名 COORDINATOR.md 时按旧名注入正文，不出现初始化提示', async () => {
+  const project = await createProject(undefined)
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。\n', 'utf8')
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## leader 手册/)
+    assert.match(text, /旧名时代的手册。/)
+    assert.doesNotMatch(text, /## 项目待初始化/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('LEADER.md 是空的、旧名手册有内容时回落到旧名，不当成没初始化', async () => {
+  const project = await createProject('\n \n')
+  try {
+    await writeFile(join(project.directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。\n', 'utf8')
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## leader 手册/)
+    assert.match(text, /旧名时代的手册。/)
+    assert.doesNotMatch(text, /## 项目待初始化/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('用户拒绝初始化后（标记文件存在）不再注入提示', async () => {
+  const project = await createProject(undefined)
+  try {
+    const before = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(before, /## 项目待初始化/)
+    await mkdir(join(project.directory, '.dsh-leader-kit'), { recursive: true })
+    await writeFile(join(project.directory, ...INIT_DECLINED_MARKER.split('/')), '', 'utf8')
+    assert.equal(renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory }), '')
+    // 提示里要写明写标记这件事，否则模型无从知道怎么让提示停下。
+    assert.ok(before.includes(INIT_DECLINED_MARKER))
   } finally {
     await project.cleanup()
   }
