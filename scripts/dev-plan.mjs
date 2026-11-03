@@ -45,9 +45,9 @@ export const CREDENTIALS_FILE = '.credentials.yaml'
  * @returns {object} 目录与文件路径
  */
 export function resolveDevPaths({ worktree, homeDir, env = {} }) {
-  const sourceHome = env.DSH_HOME_SOURCE ?? join(homeDir, '.dsh')
-  // 与宿主同一套归一化：`DSH_HOME=~/.dsh` 必须被判成日常根，否则 assertSeparateHome
-  // 会沉默，派生逻辑把日常 profile 改写成自指死链。
+  // 两个根走同一套归一化：`DSH_HOME=~/.dsh` 或 `DSH_HOME_SOURCE=~/.dsh` 都必须被判成
+  // 日常根，否则 assertSeparateHome 会沉默，派生逻辑把日常 profile 改写成自指死链。
+  const sourceHome = resolveHomeFromEnv(env.DSH_HOME_SOURCE, () => join(homeDir, '.dsh'), () => homeDir)
   const home = resolveHomeFromEnv(env.DSH_HOME, () => join(worktree, '.dev', 'home'), () => homeDir)
   const profile = env.DSH_PROFILE === undefined || env.DSH_PROFILE === '' ? PROFILE_NAME : env.DSH_PROFILE
   const sourceProfileDir = join(sourceHome, 'profiles', profile)

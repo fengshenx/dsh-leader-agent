@@ -48,7 +48,34 @@ test('DSH_HOME 与 DSH_HOME_SOURCE 都能覆盖', () => {
   })
   assert.equal(paths.home, resolve('/tmp/dev-home'))
   assert.equal(paths.profileDir, join(resolve('/tmp/dev-home'), 'profiles', 'web'))
-  assert.equal(paths.sourceHome, '/tmp/origin-home')
+  assert.equal(paths.sourceHome, resolve('/tmp/origin-home'))
+})
+
+test('DSH_HOME_SOURCE 用 ~ 写法指向日常根时同样拒绝', () => {
+  // 与 DSH_HOME 同一类风险：sourceHome 不归一化时 `~/.dsh` 与已归一化的 dev 根
+  // 比不出同一个目录，守卫沉默。
+  const homeDir = resolve('/home/user')
+  const paths = resolveDevPaths({
+    worktree: WORKTREE,
+    homeDir,
+    env: { DSH_HOME: '~/.dsh', DSH_HOME_SOURCE: '~/.dsh' },
+  })
+  assert.equal(paths.sourceHome, join(homeDir, '.dsh'))
+  assert.throws(
+    () => assertSeparateHome({ home: paths.home, sourceHome: paths.sourceHome }),
+    /数据根与源 HOME 是同一个目录/,
+  )
+})
+
+test('DSH_HOME_SOURCE 的相对路径与空白也按同一口径归一化', () => {
+  assert.equal(
+    resolveDevPaths({ worktree: WORKTREE, homeDir: '/home/user', env: { DSH_HOME_SOURCE: 'origin-home' } }).sourceHome,
+    resolve('origin-home'),
+  )
+  assert.equal(
+    resolveDevPaths({ worktree: WORKTREE, homeDir: '/home/user', env: { DSH_HOME_SOURCE: '   ' } }).sourceHome,
+    join('/home/user', '.dsh'),
+  )
 })
 
 test('派生 package.json 把插件依赖换成工作树链接，其余依赖照抄', () => {

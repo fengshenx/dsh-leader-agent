@@ -4,16 +4,16 @@
 
 ## 宿主语义与运行形态
 
-- **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即被销毁，届时没有载体接收完成通知——这是宿主语义，不是本 bundle 的缺陷。
-- **报告结算依赖轮次正常结束**：结算点在宿主的 `turn/end` 事件上。进程在 worker 跑完之前被杀，那一轮就不会结算（在飞表在内存里，重启即空），leader 也就收不到这次通知；重启后它会看到 worker 会话还在，可以自己打开看或续聊。订阅 `session/event` 不做运行期能力探测——cordis 的 `Context` 永远有 `on`，而宿主低于 `engines.dsh` 下限时本来就没有这个事件；下限 rc.2 已提供 `session/event` 与 `turn/end`，这是版本契约，不是装配期能判定的错误。
+- **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即销毁，没有载体接收完成通知——这是宿主语义，不是本 bundle 的缺陷。
+- **报告结算依赖轮次正常结束**：结算点在宿主的 `turn/end` 事件上。进程在 worker 跑完之前被杀，那一轮就不会结算（在飞表在内存里，重启即空），leader 也就收不到这次通知；重启后它会看到 worker 会话还在，可以自己打开看或续聊。订阅 `session/event` 不做能力探测：`Context` 永远有 `on`，下限 rc.2 已提供该事件与 `turn/end`，这是版本契约。
 - **不能新增 session event 类型**：dsh 要求仓外事件带 `ignorable` 标记且不进读路径，因此卡片与通知状态走自有落盘文件。
-- **项目级手册没有 watcher，改动只在下一次模型请求生效**。正在跑的那一轮不会变；两者都是增量信息，不生成兜底正文（协议层 skill 已覆盖通用方法）。leader 手册只对项目注册表里指到该会话的 leader 生效——项目索引还没重建完的那一轮不注入，下一轮补上。求值机制与缺失时的处理见[项目级提示词与协议层](architecture.md#项目级提示词与协议层)。
-- **历史消息不追溯**。改造之前发出的通知在 session log 里就是普通用户消息，重放时仍按老形态渲染（右对齐、无头像）。
-- **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-leader-kit/worker-report`），因此会话自动标题不取它、turn 摘要 prompt 不取它、markdown 转录导出会跳过它。换来的是它不会被误当成用户说的话——标题、摘要、导出这三处都只认真人输入。
+- **项目级手册没有 watcher，改动只在下一次模型请求生效**。正在跑的那一轮不会变；两者都是增量信息，不生成兜底正文（协议层 skill 已覆盖通用方法）。leader 手册只对项目注册表里指到该会话的 leader 生效——项目索引还没重建完的那一轮不注入，下一轮补上。机制与缺失处理见[项目级提示词与协议层](architecture.md#项目级提示词与协议层)。
+- **历史消息不追溯**。改造前发出的通知在 session log 里就是普通用户消息，重放仍按老形态渲染（右对齐、无头像）。
+- **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-leader-kit/worker-report`），因此这三处全部跳过它，也不会被误当成用户说的话。
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
-- **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样，以「一条待发消息」的形态挂在输入框上方的「消息队列」条里（对照实验：busy 时直接投，面板显示「2 queued messages」，把人的消息和 worker 回报混在一起）。代价是 leader 正忙时，回报要多等它这一轮结束（投递边界见 [笔记](../.agents/notes/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
+- **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样挂进输入框上方的「消息队列」条（实测 busy 时直接投会显示「2 queued messages」，与人的消息混在一起）。代价是 leader 正忙时回报要多等这一轮（边界见 [笔记](../.agents/notes/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
 - **worker 头像在深色主题下轮廓弱**（既定取舍，不是待修项）。气泡底是前景色混出的 4% 一层，36% 的蓝紫色相落上去只有 1.35:1，块的外轮廓看不出边界；头像本身仍可辨。头像池只有 63 个 seed，worker 多时会有撞图（3 个约 4.7%，5 个约 15%），名字就在头像旁边，不影响身份识别。
-- **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`src/host/home-paths.js` 照抄宿主（判空用 trim、取值不 trim）；`scripts/desktop-plan.mjs` 取值也 trim——它算出的绝对路径要经 `--env DSH_HOME=` 交给 `open` 启动的应用，首尾空白按手写笔误处理，比按相对路径算进 cwd 更接近本意。代价是 `DSH_HOME=' /x '` 时桌面侧得 `/x`、CLI 宿主得 `<cwd>/ /x `，同一个值两套路径。
+- **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`scripts/desktop-plan.mjs` 取值 trim（`home-paths.js` 照抄宿主：判空 trim、取值不 trim），因为它算出的绝对路径要经 `--env DSH_HOME=` 交给应用。代价：`DSH_HOME=' /x '` 在桌面侧得 `/x`、CLI 侧得 `<cwd>/ /x `。
 
 ## worker 的控制面
 
