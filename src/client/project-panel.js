@@ -301,8 +301,9 @@ export function ProjectPanel(props) {
     return counts
   }, [workspaceItems, excludedSessionIds, archivedSessionIds, sessionRows, currentSessionId])
 
-  // 组头要不要藏，只能按会话快照判：宿主把未分组的组头与会话行分在不同层，DOM 上
-  // 从组头查不到自己的行，早先按 DOM 判空等于无条件藏组头（未分组整组消失）。
+  // 组头要不要藏只按会话快照判：判据只问「剩下的会话是不是全在排除集里」，与宿主
+  // 怎么排版无关。早先按 DOM 判空，押在「组头所在容器里能查到自己的行」上——折叠、
+  // 渲染时机一变就可能落空，而落空等于把整个「未分组」藏掉。
   const hideUngrouped = useMemo(() => shouldHideUngroupedHeader({
     sessionRows,
     workspaceItems,

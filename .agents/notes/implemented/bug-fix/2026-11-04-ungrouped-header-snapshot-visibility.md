@@ -4,9 +4,9 @@
 
 用户报告：删掉项目目录或工作区后会话「消失」，卸载插件「未分组」就回来。上一次修复（#105）只处理了「项目目录失效后仍排除它的会话」这条，判据仍是 DOM：从 `[data-row-key="workspace:"]` 往上找分组容器，数容器里的会话行，全被隐藏才藏组头。
 
-在 rc.5 的真实数据上验证这条判据不成立。宿主把未分组的组头与会话行分在不同层，`groupSectionOf(header)` 找不到「直接子元素里有 `overflow:` 按钮」的容器时回落到 `header.parentElement`（宿主 `HoverCard` 包出来的 `span`），那个容器里永远没有会话行；再叠上折叠（每组只渲染 5 行 + 展开按钮）与渲染时机，`querySelectorAll('[data-row-key^="session:"]')` 恒为空，判空恒为真。结果是**无条件给组头加 `display: none !important`**——用户看到的是未分组整组消失，卸载插件就回来。
+问题在于这条判据把正确性押在宿主的排版上：它先要找到「直接子元素里有 `overflow:` 按钮」的分组容器，找不到就回落到 `header.parentElement`，然后数那个容器里的会话行。审查在 `0.2.1-rc.5` 与 rc.2 的短列表上复测（未分组 1 条会话、6 条折叠两种状态），组头都挂在 `groupSection` 上、判据都准——**没有复现出「容器里恒空」**。但成立与否取决于宿主的层数、折叠时机与渲染顺序，而一旦容器里查不到行，结论就是**无条件给组头加 `display: none !important`**：用户看到未分组整组消失，卸载插件就回来。方向错了，判据就不该建在这个前提上。
 
-实测读数：修复前组头 `class` 带 `dsh-leader-kit-empty-ungrouped`、`display: none`，而未分组的 `groupSection` 里确实有 0 行可查；同一页面里宿主自己的会话列表（`/api/session/list`）返回 285 条、9 条 `cwd` 指向被删目录且 `blank=false`——数据在，只是 DOM 上查不到。
+现场数据（`/api/session/list` 285 条、9 条 `cwd` 指向被删目录且 `blank=false`）说明会话本身都在，缺的是入口；而「组里只剩被排除的会话时藏组头」本来就是 `limitations.md` 写明的本意，不是判据失效。所以这次不追具体哪一版排版触发了它，直接把判据与排版解耦。
 
 ## 决策
 
@@ -40,5 +40,5 @@ DOM 上只留一条保护：还有可见的「展开其余 N 个会话」就不�
 
 - 单测：`tests/workspace-exclusion.test.js` 32 条（新增「未分组里剩下的会话全在排除集里才藏组头」「未分组里没有会话、或快照还没到时都不藏组头」「子代理与已归档的会话不参与组头判定」「组头容器里查不到行也按会话快照保留组头」）、`tests/project-panel.test.js` 47 条（新增 `sameProjectList` 的等价判定，含目录失效、顺序变化与旧版宿主无字段）、`tests/projects-service.test.js` 52 条（`directoryUsable` 标注）。`npm run check`：1049 用例通过 / 17 跳过，71 个源文件、55 个被加载、47 个行覆盖 100%；`src/client/workspace-exclusion.js` 行覆盖 85.42%，门槛 84 → 85。
 - e2e：`tests/e2e/ungrouped-header.e2e.js` 走界面删工作区造松散会话，断言未分组组头无 `dsh-leader-kit-empty-ungrouped`、`display` 不是 `none`、会话行可见。单跑 3.1 秒；全量串行 6 条全绿。
-- 双向验证：让 `shouldHideUngroupedHeader` 恒返回 true（等价于旧的行为）→ e2e 在「未分组里还有会话时不能给组头加隐藏类」变红（`true !== false`）→ 还原 → 变绿。
+- 双向验证：让 `shouldHideUngroupedHeader` 恒返回 true（复现「无条件藏组头」这个失效方向）→ e2e 在「未分组里还有会话时不能给组头加隐藏类」变红（`true !== false`）→ 还原 → 变绿。
 - `project-directory-gone.e2e.js` 去掉删目录后手工派发的 `focus` 事件后仍然通过（7.6 秒），证明轮询真的兜住了这件事；把轮询间隔调到 60 秒，同一条用例 30 秒超时变红。
