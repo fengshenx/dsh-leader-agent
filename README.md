@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/logo-en-dark.svg">
-    <img src="docs/assets/readme/logo-en.svg" alt="dsh-leader-kit: a Leader fanning out to several workers, with a project board on the right" width="560">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-en-dark.svg">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-kit: a Leader fanning out to several workers, with a project board on the right" width="560">
   </picture>
 </p>
 
@@ -42,7 +42,7 @@ Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`
 
 **GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-kit` and click **Install**:
 
-<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-kit" width="880">
+<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-kit" width="880">
 
 **CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
 
@@ -72,7 +72,7 @@ For pinning a version, removing it, development installs, or trying it without a
 ## Preview
 
 <div align="center">
-  <img src="docs/assets/readme/board.png" alt="dsh-leader-kit: the project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/board.png" alt="dsh-leader-kit: the project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
 </div>
 
 Left: projects and the workers each Leader spawned. Center: the Leader's session — the task, the dispatch, the worker reporting back, the verdict. Right: the delivery board for the project, with one card per task and a slot chip per executor. You can see the agents that are working, click one to drill into its session and talk to it directly, without going through the Leader.

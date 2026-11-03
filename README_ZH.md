@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/logo-zh-dark.svg">
-    <img src="docs/assets/readme/logo-zh.svg" alt="dsh-leader-kit：Leader 扇出到多个 worker，右侧是项目看板" width="560">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-zh-dark.svg">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-kit：Leader 扇出到多个 worker，右侧是项目看板" width="560">
   </picture>
 </p>
 
@@ -42,7 +42,7 @@
 
 **图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-kit` 后点「安装」：
 
-<img src="docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-kit" width="880">
+<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-kit" width="880">
 
 **命令行安装**：系统 `dsh` 拒绝管理 desktop profile，要用桌面安装自带的 CLI：
 
@@ -72,7 +72,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 ## 预览
 
 <div align="center">
-  <img src="docs/assets/readme/board.png" alt="dsh-leader-kit：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/board.png" alt="dsh-leader-kit：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
 </div>
 
 左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。你能看到正在工作的 Agent，点击即可下钻到它的会话，绕开 Leader 直接和它对话。
