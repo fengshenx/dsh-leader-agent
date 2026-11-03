@@ -50,7 +50,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 - leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；
 - `create_card` 只给 leader：建卡与派工是 leader 的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、leader 建卡（普通会话为什么一并收掉见[已知限制](limitations.md#看板与卡片)）。
-- `update_card` 给 leader 与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。工具面在会话创建时一次裁完，换 leader 不重建旧会话，所以每次写入按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title`——完成、重开与换执行者归 leader，规格与标题是验收锚点，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡两面都关。退役者的写卡边界见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/2026-11-02-card-write-tools-scope.md)。
+- `update_card` 给 leader 与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。工具面在会话创建时一次裁完，换 leader 不重建旧会话，所以每次写入按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title`——完成、重开与换执行者归 leader，规格与标题是验收锚点，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡两面都关。退役者的写卡边界见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/implemented/simplification/2026-11-02-card-write-tools-scope.md)。
 
 实现在 `src/host/tools/gate.js`，用宿主的 `tools.restrict({ deny })`，对 `agent.ctx` 调一次；已发布版本里 `tools.register()` 不接受按步条件，所以只能在会话创建时做。leader 身份来自项目注册表——**索引重建完成前不裁**，此时问不出谁是 leader，而少给工具会让 leader 首轮干不成活。
 
@@ -62,7 +62,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 ## 项目与会话归属
 
-项目是**显式注册的实体，不是目录**。一条项目记录有名字、目录，并绑定一个 leader 会话（`projects.json` 的 `leaderSessionId`）。它与 dsh 的「工作区」不是同一层语义：工作区管代码语境（目录 + 会话归组），项目管编排语境（leader / 卡 / worker / 手册），同一个目录可以挂多个项目，两者不合并（见[项目作用域与角色槽位](../.agents/notes/2026-10-23-project-scope-and-role-slots.md)）。
+项目是**显式注册的实体，不是目录**。一条项目记录有名字、目录，并绑定一个 leader 会话（`projects.json` 的 `leaderSessionId`）。它与 dsh 的「工作区」不是同一层语义：工作区管代码语境（目录 + 会话归组），项目管编排语境（leader / 卡 / worker / 手册），同一个目录可以挂多个项目，两者不合并（见[项目作用域与角色槽位](../.agents/notes/implemented/architecture/2026-10-23-project-scope-and-role-slots.md)）。
 
 服务层语义：
 
@@ -104,7 +104,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 | 文件 | 内容 |
 |---|---|
-| `projects.json` | 项目注册表：名字、目录、leader 会话、退役 leader 会话列表、自建工作区 id；数组顺序即左栏显示顺序（拖拽改，见[笔记](../.agents/notes/2026-11-02-project-row-drag-order.md)） |
+| `projects.json` | 项目注册表：名字、目录、leader 会话、退役 leader 会话列表；数组顺序即左栏显示顺序（拖拽改，见[笔记](../.agents/notes/implemented/feature/2026-11-02-project-row-drag-order.md)） |
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
 | `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
@@ -172,4 +172,4 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ## 协作与文档机制
 
-本仓的长期记忆分三层，各管一件事：常驻规则在 `AGENTS.md`（每个任务都适用的铁律与按任务查阅入口），决策记忆在 `.agents/notes/`（非平凡改动的永久决策与边界），长期文档在 `docs/`（架构、限制、宿主能力边界、开发与取证）。分层规则、编辑纪律与文档预算见 [AGENTS.md 的编辑本文件与文档分层](../AGENTS.md#编辑本文件与文档分层)。
+本仓的长期记忆分三层，各管一件事：常驻规则在 `AGENTS.md`（每个任务都适用的铁律与按任务查阅入口），决策记忆在 `.agents/notes/{lifecycle}/{class}/`（非平凡改动的永久决策与边界，取值见[目录 README](../.agents/notes/README.md)），长期文档在 `docs/`（架构、限制、宿主能力边界、开发与取证）。分层规则、编辑纪律与文档预算见 [AGENTS.md 的编辑本文件与文档分层](../AGENTS.md#编辑本文件与文档分层)。
