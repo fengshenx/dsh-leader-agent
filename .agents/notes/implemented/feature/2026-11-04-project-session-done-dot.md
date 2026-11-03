@@ -16,12 +16,16 @@
 
 ### tracker 随订阅 effect 同生命周期
 
-实例化放在订阅 `useEffect` 里而不是组件顶层：订阅重挂（宿主重连）即重新开始跟踪，不把上一轮连接里看到的运行态当成这一轮的完成跳变。
+实例化放在订阅 `useEffect` 里而不是组件顶层：订阅重建即重新开始跟踪，不把上一轮里看到的运行态当成这一轮的完成跳变。
+
+### 订阅只在挂载时建立一次，props 经 ref 解引用
+
+`getSessions` / `refreshSessionIndex` 都是 slot inject 的内联函数，宿主每次重渲染 occupant 都换新引用；把它们放进订阅 effect 的依赖，等于让宿主任何一次重渲染（实测：会话标题晚到就够）把订阅重挂——完成未读投影随之清零，跑完的绿点凭空消失。修复为 effect 依赖恒空、取值经 `useRef` 走最新一份；挂载早于会话服务就绪时轮询补挂（10 秒拿不到就 console.error，Fail Loud）。接线断言钉住这三件事（ref 存在、tracker 在 effect 内、依赖恒空）。
 
 ## 边界
 
 - 只有两档。官方的「待审批 / 待回答」橙点与子会话档来自 ui-session 的进程内投影与 pending 域服务，插件拿不到这两路状态，无从表达。
-- 投影是单窗口进程内的：刷新或重连后从头开始，挂载前已空闲的会话不亮绿点。官方侧栏的完成提醒同为进程内投影，两边口径一致。
+- 投影是单窗口进程内的：刷新或组件卸载后从头开始，挂载前已空闲的会话不亮绿点。官方侧栏的完成提醒同为进程内投影，两边口径一致。
 - 宿主事件路径里「列表基线 pending 期间首见空闲也算完成」的分支（`observeRunning` 的 `beforeBaseline`）不适用：插件只消费列表快照，观察不到基线之前的事件。
 - 行提示走 title 后缀（「已完成，待查看」）：本仓会话行没有官方那套悬停卡，title 是唯一说明位。
 
@@ -30,7 +34,8 @@
 - `tests/session-completion.test.js` 8 例：首见不标记、完成跳变标记、完成时在主视图不标记、标记后打开清除且切走不重点、循环派工再标记、空闲快照不丢不补、ready 前后消失清理差异、缺 phase 容错。
 - 双向验证：删掉 `unread.add(id)` 核心行 → 5 例红（完成跳变相关全挂）→ 还原 → 8 例绿。
 - `tests/project-panel.test.js` 补两处接线断言：渲染档位嵌套三元（ongoing 先于 done）、tracker 在订阅 effect 内实例化且结果只经 `row.completed` 一条通道进渲染；全套单测 1051 例 0 fail。
-- `tests/e2e/session-done-dot.e2e.js`（真实宿主 + mock）守完整时序：重启后已空闲的 worker 不凭空亮点 → running 圈出现后切到 leader → 完成跳变点亮绿点（title 带「已完成，待查看」）→ 打开熄灭。worker 靠 seed 登记表（`workers.json`）进项目树——归属判据是「目录 + worker 登记表」，工作区新建的普通会话不算。时序上 mock 加了 `stepDelayMs`（`mock-llm.mjs` 新参数，默认 0 不影响其他场景）：本地一轮只有几毫秒，「等 running 再切走」的两次页面动作插不进窗口，绿点判定是时序敏感的一次性跳变，错过不会重来。
+- `tests/e2e/session-done-dot.e2e.js`（真实宿主 + mock）守完整时序：重启后已空闲的 worker 不凭空亮点 → running 圈出现后切到 leader（等行退出选中态确证视图释放）→ 完成跳变点亮绿点（title 带「已完成，待查看」）→ 打开熄灭。worker 靠 seed 登记表（`workers.json`）进项目树——归属判据是「目录 + worker 登记表」，工作区新建的普通会话不算。元素等待统一走 `waitForLocator`（预算随 #104 纪律，失败自动带页面读数），另补 mock 请求数与实例日志尾取证。订阅重挂修复后单场景连跑三轮全绿（8.5s 量级）。
+- mock 的 `stepDelayMs`（`mock-llm.mjs` 新参数，默认 0 不影响其他场景）给「等 running 圈再切走」留动作窗口。取值 1.5 秒是实测边界：本地一轮只有几毫秒，动作插不进窗口；但 3 秒会踩中宿主对 SSE 首事件的超时阈值——请求被 abort 重发、脚本耗尽变 400，轮次起不来（ongoing 都不出现），场景看似随机挂。
 - 场景偶发红在宿主已知竞态 `Sidebar Session opening failed … reference is released`（`SidebarSessionView.dispose` 抛出，栈里无插件帧，2026-11-03 decoupled 笔记有记录）。与那次「保持原样」的决策不同，本场景一个来回切三次视图，把该竞态的命中率放大到损害套件可用性（并发跑三连挂、串行也间歇红），因此在本场景窄豁免这一条消息样式（`HOST_VIEW_DISPOSE_NOISE`），其余 console.error 仍即失败。
 - e2e 套件改**逐文件串行**（`package.json` 的 `e2e` 用 for 循环逐个 `node --test`）：node --test 跨文件并发在本地同时拉起 4 个 dsh 实例 + 4 个 chromium，负载把时序余量打穿，同一场景在不同步骤随机挂（done 不亮、ongoing 不出现各出现过）；`--test-concurrency=1` 则触发 node:test runner 的「Promise resolution is still pending」文件级误挂（三个场景文件 11 秒内全挂），不可用。串行后全套稳定。
 - `npm run check` 全绿（含新文件覆盖率 100% 与文档预算）。

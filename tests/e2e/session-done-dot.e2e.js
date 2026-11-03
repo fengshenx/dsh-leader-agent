@@ -16,7 +16,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { waitFor } from './harness.mjs'
+import { waitFor, waitForLocator } from './harness.mjs'
 
 /** 场景标记：一个标记只表达一个场景，两段各一轮。 */
 const MARKER_FIRST = 'MOCK-E2E-DONE-DOT-FIRST'
@@ -116,7 +116,7 @@ function collectProblems(page, problems) {
   })
 }
 
-test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 300_000 }, async (t) => {
+test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-done-dot-'))
   const mock = await startMockProvider({
     // 第二轮要在「执行中」窗口里完成页面动作（等 running 圈、切到 leader、等
@@ -149,26 +149,25 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 300_000 
   collectProblems(bootstrapPage, problems)
   await bootstrapPage.goto(first.url, { waitUntil: 'domcontentloaded' })
   const composer = bootstrapPage.locator('div[role="textbox"][contenteditable="true"]').first()
-  await composer.waitFor({ state: 'visible', timeout: 60_000 })
+  await waitForLocator(composer, { description: '输入框', timeoutMs: 20_000 })
 
   const leader = firstSession(first.home)
   assert.notEqual(leader, null, '宿主启动后应有一个落盘的空会话')
 
   // 在工作区新建一条会话当 worker：新会话与 leader 同属实例目录，归属按目录判定。
   const workspaceRow = bootstrapPage.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
-  await workspaceRow.waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(workspaceRow, { description: '默认工作区行' })
   await workspaceRow.hover()
   await workspaceRow.locator('button[aria-label*="新建会话"]').first().click({ force: true })
   await waitFor({
     description: '新建会话成为当前会话',
     check: async () => (await currentSessionId(bootstrapPage)) !== null && (await currentSessionId(bootstrapPage)) !== leader.id,
-    timeoutMs: 30_000,
   })
 
   await composer.click()
   await composer.fill(`${MARKER_FIRST} 收工即可`)
   await composer.press('Enter')
-  await bootstrapPage.getByText('第一轮回执').first().waitFor({ state: 'visible', timeout: 90_000 })
+  await waitForLocator(bootstrapPage.getByText('第一轮回执').first(), { description: '第一轮回复上屏' })
   const workerId = await currentSessionId(bootstrapPage)
   assert.equal(typeof workerId, 'string', '应当能读到 worker 会话 id')
   await bootstrapContext.close()
@@ -190,10 +189,10 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 300_000 
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
 
   const projectRow = page.locator('.dsh-leader-kit-project-row').first()
-  await projectRow.waitFor({ state: 'visible', timeout: 60_000 })
+  await waitForLocator(projectRow, { description: '项目行', timeoutMs: 20_000 })
   await projectRow.locator('button[aria-label="展开会话"]').click()
   const workerRow = page.locator(`.dsh-leader-kit-session-row[data-session-id="${worker.id}"]`)
-  await workerRow.waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(workerRow, { description: '项目树里的 worker 会话行' })
   assert.equal(
     await workerRow.locator('[data-state]').count(),
     0,
@@ -204,47 +203,31 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 300_000 
   // 完成时 worker 不在主视图，绿点必须点亮。
   await workerRow.click()
   const secondComposer = page.locator('div[role="textbox"][contenteditable="true"]').first()
-  await secondComposer.waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(secondComposer, { description: 'worker 会话的输入框' })
   await secondComposer.click()
   await secondComposer.fill(`${MARKER_SECOND} 收工即可`)
   await secondComposer.press('Enter')
-  await workerRow.locator('[data-state="ongoing"]').waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(workerRow.locator('[data-state="ongoing"]'), { description: 'worker 行的运行中加载圈' })
 
   await projectRow.click()
-  await page.locator('.dsh-leader-kit-guide-card').waitFor({ state: 'visible', timeout: 30_000 })
+  await waitForLocator(page.locator('.dsh-leader-kit-guide-card'), { description: 'leader 欢迎卡（切走完成）' })
   // leader 的欢迎卡出现不等于 worker 已退出主视图：宿主的视图释放链是异步的，
   // worker 的 mainView retain 没清零前完成跳变会被当作「有人看着」而不点亮。
   // 行失去选中态（选中态与投影读的是同一份 retainedBy 快照）才是切走完成的确证。
   await waitFor({
     description: 'worker 会话行退出选中态（主视图 retain 已释放）',
     check: async () => (await workerRow.getAttribute('data-selected')) !== 'true',
-    timeoutMs: 20_000,
   })
   try {
-    await waitFor({
-      description: '完成跳变点亮绿点',
-      check: async () => (await workerRow.locator('[data-state="done"]').count()) > 0,
-      timeoutMs: 30_000,
-    })
+    await waitForLocator(workerRow.locator('[data-state="done"]'), { description: '完成跳变点亮的绿点' })
   } catch (error) {
-    // 现场取证：区分「行还在但没亮点」（投影或渲染断了）与「行/列表没了」
-    // （面板重挂丢展开态）——locator 超时信息里两者长一个样。
-    const observed = await page.evaluate((id) => {
-      const row = document.querySelector(`.dsh-leader-kit-session-row[data-session-id="${id}"]`)
-      return {
-        rowAttached: row !== null,
-        states: row === null ? [] : [...row.querySelectorAll('[data-state]')].map((node) => node.getAttribute('data-state')),
-        rowTitle: row?.getAttribute('title') ?? null,
-        projectExpanded: document.querySelector('.dsh-leader-kit-project-lead')?.getAttribute('aria-expanded') ?? null,
-        sectionAttached: document.querySelector('.dsh-leader-kit-project-section') !== null,
-      }
-    }, worker.id)
+    // 页面读数 waitForLocator 已带；这里补它拿不到的两样——mock 收到的 scenario
+    // 请求数（>2 说明宿主重发了请求、脚本耗尽变 400，轮次起不来）与实例日志尾。
     const scenarioRequests = mock.requests.filter((request) => request.kind === 'scenario')
-    const instanceTail = instance.logs.join('').slice(-2000)
     throw new Error(
-      `${error instanceof Error ? error.message : String(error)}；现场：${JSON.stringify(observed)}`
-      + `；scenario 请求数：${scenarioRequests.length}`
-      + `；实例日志尾：${instanceTail}`,
+      `${error instanceof Error ? error.message : String(error)}；scenario 请求数：${scenarioRequests.length}；`
+      + `实例日志尾：${instance.logs.join('').slice(-1500)}`,
+      { cause: error },
     )
   }
 
@@ -258,7 +241,7 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 300_000 
   const titleWithDot = await workerRow.getAttribute('title')
   assert.match(titleWithDot ?? '', /已完成，待查看$/, '绿点亮着时行 title 应说明完成待查看')
   await workerRow.click()
-  await workerRow.locator('[data-state="done"]').waitFor({ state: 'detached', timeout: 30_000 })
+  await waitForLocator(workerRow.locator('[data-state="done"]'), { description: '绿点随打开熄灭', state: 'detached' })
   assert.doesNotMatch(
     await workerRow.getAttribute('title') ?? '',
     /已完成，待查看/,
