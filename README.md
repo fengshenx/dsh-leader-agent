@@ -98,6 +98,17 @@ The profile must be named `web`. The plugin manifest declares `platform: web`, a
 
 `engines.dsh` declares the supported range (currently `>=0.2.1-rc.2 <0.3.0`); install and startup are refused outside it. dsh is in developer preview, so this range has to track it. Inside this repository you can run `npm start`: it builds `lib/client.js` first (the file is not committed, and a missed build still starts the instance with an empty right panel), then starts `dsh web` after checking that dsh is available and the daily profile has this plugin installed.
 
+### Desktop (DeepSeek Harness Desktop)
+
+Desktop is an Electron shell around the complete Web application with its own profile at `$DSH_HOME/profiles/desktop` — packages and activation are separate from the `web` profile above, so a plugin installed into `web` is invisible there. One command inside this repository mounts the current checkout and launches the app:
+
+```sh
+npm run desktop              # write the desktop profile, rebuild the client bundle, launch the app
+npm run desktop -- --remove  # unmount
+```
+
+The script writes `dsh-leader-kit: link:<current directory>`, so code changes take effect on the next launch. Desktop reads the profile only at startup: quit the app completely first (closing the window just hides it), and only one worktree version can be mounted at a time; `--remove` only unmounts what this worktree mounted, and refuses another worktree's or the plugin manager's install. Without the script, add the repository's absolute path through the app's plugin manager. Both sides share sessions, projects, and cards under `~/.dsh`, but keep their own plugin packages and activation. `DSH_HOME` must be absolute or start with `~/`: the app is launched by `open` and resolves relative paths against its own directory. The script passes the absolute data root to the app via `open --env`, so non-default roots work too.
+
 ### Five steps
 
 1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is created immediately and bound to a coordinator session; clicking the project row opens that Leader (a workspace the plugin registered and you deleted is recreated on the click, with the sessions put back). Selection comes in two layers: the whole row only lights up for the current Leader session, while opening a worker lights the folder at the row start and puts the row highlight on that worker's own session row. The slot at the row start is a folder icon by default: while the Leader is running it becomes a spinner (the Leader has no row of its own, so this holds whether the project is expanded or collapsed), and when the project is collapsed with a worker running under it, it becomes a spinner too — once expanded, each worker carries its own spinner.
@@ -172,6 +183,7 @@ Dev instance overrides and credentials handling, worktree cleanup guards, build 
 | Document | Contents |
 |---|---|
 | [AGENTS.md](AGENTS.md) | Repository rules and the task-routed reading index |
+| [docs/getting-started.md](docs/getting-started.md) | Walkthrough (Chinese): prerequisites, adding a project and its Leader, the two project files, one card from creation to drill-down |
 | [docs/usage.md](docs/usage.md) | Full interaction for dispatch, follow-ups, cards, board, project management, slots and manuals |
 | [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, host-contract landing spots |
 | [docs/limitations.md](docs/limitations.md) | Full known limitations and trade-offs |
