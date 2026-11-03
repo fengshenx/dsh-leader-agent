@@ -1,5 +1,5 @@
 {
-  "AGENTS.md": 4200,
+  "AGENTS.md": 4280,
   "README.md": 3506,
   "README_ZH.md": 5250,
   "LEADER.md": 1390,
@@ -7,7 +7,7 @@
   "SLOTS.md": 900,
   "docs/architecture.md": 5400,
   "docs/limitations.md": 6750,
-  "docs/development.md": 2500,
+  "docs/development.md": 2550,
   "docs/capability-gaps.md": 16800,
   "docs/usage.md": 5350,
   "docs/getting-started.md": 2165,

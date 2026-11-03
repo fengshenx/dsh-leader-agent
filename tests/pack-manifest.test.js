@@ -145,6 +145,22 @@ test('files 放宽到 .agents/** 时，notes 与新增目录仍被拦', () => {
   assert.deepEqual(missing, [])
 })
 
+test('.telov 是工作区运维目录，整棵子树都不该进包', () => {
+  // 今天靠 files 白名单兜住（.telov/ 不在名单里）；白名单哪天放宽，这里是第二道
+  // 防线。发版 skill 只服务本仓维护者，装到用户 node_modules 里没有用处。
+  const forbidden = [
+    '.telov/skills/release/SKILL.md',
+    '.telov/mcp.json',
+  ]
+  for (const path of forbidden) assert.equal(isForbiddenPath(path), true, `${path} 应被拦下`)
+
+  const { forbidden: caught } = checkPackEntries({
+    entries: ['index.js', '.telov/skills/release/SKILL.md'],
+    required: [],
+  })
+  assert.deepEqual(caught, ['.telov/skills/release/SKILL.md'])
+})
+
 test('发布包要用的路径不被误判', () => {
   const legit = [
     'src/host/index.js',
