@@ -35,11 +35,11 @@ trusted publishing 要求包在 registry 上已存在才能登记（npm/cli#8544
 - **tag 不能在分支上打**：`publish.yml` 仍校验 tag 提交在 `origin/main` 上；在 worktree 里 bump 要用 `npm version --no-git-tag-version`，否则会留下一个指向分支提交的本地 tag。
 - **OIDC 仍要求仓库公开**：provenance 与 trusted publishing 的可用性都依赖这个前提，`package.json` 的 `repository` 也必须与 GitHub 仓库一致。
 - **本地发布同样跑门禁**：`prepublishOnly` = `release:check`；`npm publish <tarball>` 不跑生命周期脚本，会整段跳过。
-- **`AGENTS.md` 天花板 4200 → 4280，`docs/development.md` 保持 2500**：详细步骤搬进 skill，development 只留链路契约（改后 2372，余量 5.1%）；AGENTS.md 新增两处发版入口（改后 3846），按 10% 余量重算到 4280。
+- **`AGENTS.md` 天花板 4200 → 4280，`docs/development.md` 2500 → 2550**：详细步骤搬进 skill，development 只留链路契约（补首发顺序后 2379，2500 只剩 4.84% 余量、低于本仓 5% 规矩，且门禁只判超限不判贴线，所以按 6.7% 重算到 2550）；AGENTS.md 新增两处发版入口（改后 3846），按 10% 余量重算到 4280。
 
 ## 验证
 
-- `npm run check` 全绿：65 篇笔记格式合规、**12 篇**文档工具名全部存在（新增的一篇是 `.telov/skills/release/SKILL.md`）、13 篇 standing docs 都在天花板内（AGENTS.md 3846/4280、`docs/development.md` 2372/2500）、语法 96 个文件、976 用例通过（16 skip）、覆盖率门禁通过。
+- `npm run check` 全绿：65 篇笔记格式合规、**12 篇**文档工具名全部存在（新增的一篇是 `.telov/skills/release/SKILL.md`）、13 篇 standing docs 都在天花板内（AGENTS.md 3846/4280、`docs/development.md` 2379/2550）、语法 96 个文件、977 用例通过（16 skip）、覆盖率门禁通过。
 - 两处新门禁都做了双向验证：`PROMPT_SKILLS_DIRS` 回退成只含 `.agents/skills`，新增的扫描面用例变红；撤掉 `/^\.telov\//`，打包黑名单用例变红；各自还原后全绿（两个文件 22 例）。
 - `npm run verify:pack`：86 个文件（未压缩 994 kB），必需项齐全、无开发残留、装机 smoke 通过。加 `.telov/` 不改变包内容——它本来就不在 `files` 白名单里。
 - **OIDC 发布路径未在本仓验证**：需要包已在 npm 上存在并登记 trusted publisher，只能由首次真实 tag 发布证明。本地能验的是 workflow 语法与 tag 前置校验；首次发布后把 CI 读数回填到本文件。
