@@ -38,7 +38,7 @@ docs/development.md: 2530 / 2600，余量 2.77%，要求 ≥5%——抬到 2657�
 - `AGENTS.md` 4280 → 4350：本 PR 在分层节补了「多余量也会红」的规矩（3899 单位），按 10% 需 4289；留到 4350 是因为这份每轮都在改。
 - `docs/development.md` 2660 → 2790：补了文档体量门禁的说明（2630 单位），按 5% 需 2762。
 
-`docs/architecture.md`（5315/5600）与 `docs/capability-gaps.md`（15091/16800）按新口径都已达标，但按利用率分别只有 5.09% 与 10.17%，同样贴线——本 PR 不扩面，留着下一轮处理。
+`docs/architecture.md` 与 `docs/capability-gaps.md` 在两个口径下都已达标（按实际值最低 5.36%，按利用率最低 5.09%），本 PR 未动它们。
 
 ## 边界
 
@@ -53,5 +53,5 @@ docs/development.md: 2530 / 2600，余量 2.77%，要求 ≥5%——抬到 2657�
 - 单测 `tests/doc-budget.test.js` 18 例（新增 7 例）：5.00% 绿 / 4.99% 红；`AGENTS.md` 10.00% 绿 / 9.99% 红；`capability-gaps.md` 同门槛；空文件不除零；`bad-ceiling` 不叠报 `tight`；`recommendedCeiling` 抬到恰好绿、少一个单位就红（四组边界含 1 与 7 这种小值）；`headroomOf` 与实际值口径一致、与利用率口径可区分；`formatBudgetRow` 的 `TIGHT` 标签。
 - 真实清单用例：读全部 standing docs 现算体量，任一篇余量不足即红——这条是本 PR 的永久回归，替代人工核对。
 - 双向验证一（撤判定）：把 `checkBudgets` 的 tight 分支改回 `units <= ceiling ? 'ok' : 'over'`，4 例红（判定分档、5% 边界、10% 边界、建议值边界）；还原后 18 例全绿。
-- 双向验证二（真实数据）：临时把 `doc-budgets.json` 的 `docs/development.md` 改成 2600，真实清单用例红，门禁输出 `2530 / 2600，余量 2.77%，要求 ≥5%——抬到 2657，或压到 2476 个单位以内`；还原后全绿。
-- 现状读数：13 篇 standing docs 余量全部达标。按实际值最低的是 `docs/architecture.md` 5.36%，按利用率最低的也是它（5.09%）。
+- 双向验证二（真实数据）：临时把 `doc-budgets.json` 的 `docs/development.md` 改成 2700（高于实际值 2630，走 `tight` 而不是 `over`），真实清单用例红，门禁输出 `2630 / 2700，余量 2.66%（当前值），要求 ≥5%——抬到 2762，或压到 2571 个单位以内`；还原后全绿。
+- 现状读数：13 篇 standing docs 在两个口径下全部达标。按实际值最低的是 `docs/architecture.md` 5.36%，按利用率最低的也是它 5.09%（≥5%）；`AGENTS.md` 11.57% / 10.37%，`docs/capability-gaps.md` 11.32% / 10.17%，都在 10% 之上。

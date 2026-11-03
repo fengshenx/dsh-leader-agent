@@ -64,16 +64,16 @@ for (const path of unregistered) {
 }
 for (const failure of failures) {
   if (failure.status === 'over') {
-    const percent = Math.round(failure.headroom * 100)
+    const required = Math.round(failure.headroom * 100)
     console.error(
-      `  ${failure.path}: ${failure.units} 个单位超过天花板 ${failure.ceiling}——先搬到对的层，再压缩；` +
-        `抬到 ${failure.recommended}（余量 ${percent}%）要在 PR 里写明理由`,
+      `  ${failure.path}: ${failure.units} 个单位超过天花板 ${failure.ceiling}（超 ${failure.units - failure.ceiling}）——` +
+        `先搬到对的层，再压缩；抬到 ${failure.recommended}（留足 ${required}% 余量）要在 PR 里写明理由`,
     )
   } else if (failure.status === 'tight') {
-    const percent = Math.round(failure.headroom * 100)
+    const required = Math.round(failure.headroom * 100)
     const current = (headroomOf(failure) * 100).toFixed(2)
     console.error(
-      `  ${failure.path}: ${failure.units} / ${failure.ceiling}，余量 ${current}%，要求 ≥${percent}%——` +
+      `  ${failure.path}: ${failure.units} / ${failure.ceiling}，余量 ${current}%（当前值），要求 ≥${required}%——` +
         `抬到 ${failure.recommended}，或压到 ${maxUnitsFor(failure.ceiling, failure.headroom)} 个单位以内`,
     )
   } else if (failure.status === 'missing') {
