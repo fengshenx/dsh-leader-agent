@@ -41,5 +41,6 @@
 
 - `tests/leader-context.test.js`：新增「项目还没有手册时注入初始化提示」（断言含 `## 项目待初始化`、`init-leader-kit`、`不要创建或修改任何文件`、`用户直接派活时不要打断`）、「已有 `SLOTS.md` 只缺 `LEADER.md` 时措辞不同」、「手册存在时不出现初始化提示」；原「缺失返回空串」改为只断言 `loadLeaderManual`。
 - `tests/guide-card-logic.test.js`：新增「开场正文只发一句触发语」——断言两句 `guide.intro.prompt` 都含 `dsh-leader-kit`、不含 `LEADER.md`、长度小于 80。
-- `tests/skills.test.js` / `tests/leader-wiring.test.js` / `tests/pack-manifest.test.js`：skill 名单与包内路径同步为 `init-leader-kit`。
-- `npm run check`：998 用例通过（16 跳过），98 文件语法通过，13 篇 standing docs 在预算内。
+- `tests/skills.test.js` / `tests/leader-wiring.test.js` / `tests/pack-manifest.test.js`：skill 名单与包内路径同步为 `init-leader-kit`；新增「初始化骨架默认只含 dev 与 review 两个槽位」。
+- `tests/slots.test.js`：新增「默认槽位只有 dev 与 review」，锁住回落口径（讨论由 leader 自己做，不占槽位）。
+- `npm run check`：1000 用例通过（16 跳过），98 文件语法通过，13 篇 standing docs 在预算内。

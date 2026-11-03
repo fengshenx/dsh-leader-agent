@@ -21,9 +21,10 @@
 export const SLOT_LOCALE_NAMESPACE = 'dsh-leader-kit'
 
 /**
- * 内置槽位名到字典键。
+ * 槽位名到字典键。
  *
- * 与 `DEFAULT_SLOT_NAMES` 的三个角色对齐；新增内置槽位时两处一起改。
+ * 内置槽位（`DEFAULT_SLOT_NAMES`）在这里必须有键；`discuss` 不在默认槽位里，
+ * 保留翻译是为了项目自己加同名槽位时仍显示中文。新增内置槽位时两处一起改。
  */
 export const SLOT_LABEL_KEYS = Object.freeze({
   discuss: 'slot.discuss',

@@ -12,7 +12,7 @@ whenToUse: 项目还没有 LEADER.md / SLOTS.md，或需要把约定与角色手
 |---|---|---|
 | `AGENTS.md` | 工程约定（语言、注释、测试、提交流程） | 所有会话 |
 | `LEADER.md` | 这个项目的 leader 怎么指挥：职责边界、派工、验收、硬约束 | 项目的 leader 会话，每轮注入 |
-| `SLOTS.md` | 执行者角色（discuss / dev / review）各自怎么做 | 被卡片绑到槽位的会话 |
+| `SLOTS.md` | 执行者角色（dev / review）各自怎么做 | 被卡片绑到槽位的会话 |
 
 ## 一、先看目录现状
 
@@ -46,8 +46,8 @@ dsh 读取 `AGENTS.md` 作为系统提示段落，写入后立即对模型生效
 
 ## 四、写 SLOTS.md
 
-1. 读 `references/SLOTS.md`，得到骨架：frontmatter 声明 `discuss` / `dev` / `review` 三个槽位，正文按 `## <槽位名>` 分节。
-2. 按项目需要调整槽位（可以增删，frontmatter 与正文章节要同步）。
+1. 读 `references/SLOTS.md`，得到骨架：frontmatter 声明 `dev` / `review` 两个槽位，正文按 `## <槽位名>` 分节。
+2. 按项目需要调整槽位（可以增删，frontmatter 与正文章节要同步）。需要单独的需求讨论角色，再加一节 `## discuss`。
 3. 每节写这个项目对这类角色的具体要求：开工前读什么、改动范围、验证方式、审查判据。不写通用道理。
 4. 写到项目根目录的 `SLOTS.md`。已存在就先读再改。
 

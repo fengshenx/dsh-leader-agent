@@ -62,7 +62,7 @@ README 给最短路径，[使用手册](usage.md) 给每个动作的完整边界
 
 ### `SLOTS.md`：定义每个角色怎么干活
 
-顶部 frontmatter 声明显示名，正文按槽位分节；没写这个文件时回落内置三角色（`discuss` / `dev` / `review`），正文为空。
+顶部 frontmatter 声明显示名，正文按槽位分节；没写这个文件时回落内置两角色（`dev` / `review`），正文为空。
 
 ```md
 ---

@@ -32,6 +32,13 @@ test('候选带可加载的正文与目录资源基址', async () => {
   assert.doesNotMatch(definition.content, /^\s*---\s*$/m)
 })
 
+test('初始化骨架默认只含 dev 与 review 两个槽位', async () => {
+  const text = await readFile(join(skillsRoot, 'init-leader-kit', 'references', 'SLOTS.md'), 'utf8')
+  assert.match(text, /^slots:\n  dev:/m)
+  assert.match(text, /^## review$/m)
+  assert.doesNotMatch(text, /^## discuss$/m)
+})
+
 test('未知候选返回 undefined', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
   const definition = await provider.get({ locator: { directory: '/nonexistent' } })

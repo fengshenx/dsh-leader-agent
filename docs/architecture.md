@@ -127,7 +127,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**。重新打开不恢复绑定——那是新的指派，要显式再绑一次。投递门禁按绑定卡的 `status === 'active'` 判断；同时挂多张 `active` 卡一律拒绝投递（角色注入只按一张卡算），要把卡先收敛到一张。名册到顶给候选时，挂卡 worker 单列、不当作可复用。
 
-`SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认三角色 `discuss` / `dev` / `review`。
+`SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
 协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-kit/.agents/skills/`）。这个路径同时是 dsh 的项目级 skill 目录：任何项目在自己的 `.agents/skills/` 放同名副本即可覆盖，项目副本优先——dsh 的 skill 发现按来源层级取优，项目级 rank 200 低于 bundle 的 600。
 
