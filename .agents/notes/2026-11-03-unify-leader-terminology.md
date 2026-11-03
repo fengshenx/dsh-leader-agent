@@ -16,6 +16,7 @@
 - 领域标识随之改名：`coordinatorSessionId` → `leaderSessionId`、`retiredCoordinatorSessionIds` → `retiredLeaderSessionIds`、`isCoordinatorSession` → `isLeaderSession` 等
 - 文件名：`src/host/coordinator-context.js` → `leader-context.js`、`coordinator-handover.js` → `leader-handover.js`、`src/client/coordinator-*.js` → `leader-*.js`，对应测试文件同名调整
 - 文档预算表与提示词文档扫描面同步换成 `LEADER.md`
+- 并行落地的 #82（覆盖率门禁）与 #85（桌面版挂载）带进来的新文件一并改名：`docs/getting-started.md`、桌面段与安装教程、`scripts/coverage-manifest.json` 里的 `leader-view.js` 路径、以及测试里的 `attachLeader` / `leaderSessionIndex` / `watchLeaderSessions`
 
 ### 落盘字段只写新键，读取退回旧键
 
@@ -42,12 +43,14 @@
 
 ## 验证
 
-- `npm run check` 全绿：920 例（904 pass / 16 skip / 0 fail）；文档预算 12 篇都在天花板内，四项重算后余量 AGENTS 10.0% / `capability-gaps` 10.0% / README 5.1% / `development` 5.0%。
+- `npm run check` 全绿（15s）：964 例通过 / 16 skip / 0 fail；覆盖率门禁 68 个源文件、53 个被单测加载、其中 45 个行覆盖 100%、15 个登记为单测不可加载；13 篇 standing docs 都在天花板内。
+- 文档预算：合并 #85 的 `docs/getting-started.md` 后重新登记，`README.md` 与 `docs/getting-started.md` 按 ≥5% 重算（5.02% / 5.03%），AGENTS 11.29% 与 `capability-gaps` 11.03% 满足 ≥10%，`LEADER.md` 与兼容 shim `COORDINATOR.md` 都在清单里（shim 只登记、不承载规则）。
 - `npm run build:client` 重建 `lib/client.js`。
 - 替换后对全仓（排除历史笔记、`lib/`、`.dev/`、`.worktrees/`）grep `coordinator|Coordinator|COORDINATOR|协调者`，只余两处有意保留的历史专名与读取退回用的旧键/旧文件名。
+- 合并 #85 后复扫一次，除历史笔记外全部命中都属有意保留：兼容 shim 自身与指向它的说明（根目录 `COORDINATOR.md`、`AGENTS.md`、`README{,_ZH}.md`、`docs/usage.md`、`docs/getting-started.md`、`doc-budgets.json`）、读取退回的旧键与旧文件名（`projects/store.js`、`leader-context.js` 及三个测试文件）、`docs/capability-gaps.md` 里的历史包名 `dsh-coordinator`。`.agents/notes/` 的旧词属历史记录（含 #82 的 `coverage-gate.md` 提到旧文件名），不改。
 - 锚点检查：`playbooks/program.md#leader-动作与工具` 修正为 GitHub 锚点格式（空格转连字符）。
 - 兼容性用例（新增）：
   - `tests/projects-store.test.js`「旧字段名的注册表仍能读出 leader 与退役列表，写回只留新字段」：老格式 `projects.json` → `getByLeader` 命中、列表字段归一化、`update()` 后落盘无旧键；「新旧字段同时存在时以新字段为准」。
   - `tests/projects-service.test.js`「旧字段名的注册表仍能恢复 leader 身份与工具面」：真实 store + `loadIndex()` → `isLeaderSession=true`、`directoryOfLeader` 有值、`deniedToolsFor` 返回 leader 的禁用集（不含 `spawn_worker`）。
-  - `tests/leader-context.test.js`「手册文件名写死为 LEADER.md」「两版都在时以 LEADER.md 为准」「只有旧名 COORDINATOR.md 时退回读取，并提示改名」「两版手册都在且内容一致时不提示」「两版内容不一致时提示以 LEADER.md 为准，且每个目录只报一次」「旧名退回提示每个目录只报一次」。
+  - `tests/leader-context.test.js`「手册文件名写死为 LEADER.md」「两版都在时以 LEADER.md 为准」「只有旧名 COORDINATOR.md 时退回读取，并提示改名」「两版手册都在且内容一致时不提示」「两版内容不一致时提示以 LEADER.md 为准，且每个目录只报一次」「旧名退回提示每个目录只报一次」「新版缺失、旧名位置读失败时返回空串并记日志」。
 - 双向验证：撤掉 `readStore()` 的旧键归一化 → store 与 service 两条用例变红（2 fail）；撤掉手册退回分支 → 旧名用例变红（1 fail）；把 `LEADER_CONTEXT_FILE` 常量改回 `COORDINATOR.md` → 3 条用例变红（改名前这一操作是 8/8 全绿）；撤掉旧名提示的目录去重 → 「每个目录只报一次」变红（1 fail）；撤掉内容不一致提示 → 对应用例变红（1 fail）。还原后 96 例全绿（三个测试文件），手册测试文件 14 例全绿。
