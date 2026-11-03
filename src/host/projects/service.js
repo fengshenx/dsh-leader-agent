@@ -504,7 +504,7 @@ export function createProjectService({
      *
      * 归属是为了分组：官方左栏按工作区归组会话，不归属就落「未分组」，而本仓把
      * 项目会话行藏了，那里只剩一棵空组头（见
-     * `.agents/notes/2026-11-02-project-owns-workspace.md`）。目录还不是工作区时
+     * `.agents/notes/implemented/architecture/2026-11-02-project-owns-workspace.md`）。目录还不是工作区时
      * 这里顺带注册一个——注册是幂等的，宿主侧已有同名工作区就直接复用。
      *
      * 工作区被用户删掉后再点项目行会走到这里：重建一个（`recreated`）并把 leader、

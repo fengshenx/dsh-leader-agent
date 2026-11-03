@@ -1,12 +1,26 @@
 /**
- * Agent Note 的结构判定：文件名、唯一 H1、首节必须是背景、必须有决策节、节名不重复。
+ * Agent Note 的结构判定：路径双轴（lifecycle × class）、文件名、唯一 H1、
+ * 首节必须是背景、按 lifecycle 要求的必需节、节名不重复、笔记间链接可达。
  * 正文写什么不在这层判——那要人读。
  */
 
 const NAME = /^(\d{4})-(\d{2})-(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/
 
 const FIRST_SECTION = '背景'
-const REQUIRED_SECTIONS = ['决策']
+
+/** 状态轴。`archived` 只作历史记录，不再指导当前行为。 */
+export const LIFECYCLES = ['proposed', 'implemented', 'rejected', 'archived']
+
+/** 类型轴。归属口径见 AGENTS.md 的「提交与 PR」一节。 */
+export const CLASSES = ['feature', 'bug-fix', 'simplification', 'architecture', 'process', 'testing']
+
+/** 进 archived 的都是一度 implemented 的文件，归档只移动路径、不改正文。 */
+const REQUIRED_SECTIONS = {
+  proposed: ['提案', '验收标准'],
+  implemented: ['决策'],
+  rejected: ['提案', '否决理由'],
+  archived: ['决策'],
+}
 
 /** 围栏里的 `#` 是示例，不是文档结构。 */
 function proseLines(text) {
@@ -33,12 +47,28 @@ function isRealDate(year, month, day) {
 }
 
 /**
- * @param {string} name 文件名（不含目录）
+ * @param {string} relPath 相对 `.agents/notes/` 的 POSIX 路径
  * @param {string} text 文件全文
  * @returns {string[]} 违规项，空数组表示合规
  */
-export function checkNote(name, text) {
+export function checkNote(relPath, text) {
   const violations = []
+
+  const segments = relPath.split('/')
+  const name = segments.at(-1) ?? ''
+  const lifecycle = segments.length === 3 ? segments[0] : null
+  const klass = segments.length === 3 ? segments[1] : null
+
+  if (segments.length !== 3) {
+    violations.push(`路径必须是 \`{lifecycle}/{class}/文件名.md\`（现在是 \`${relPath}\`）`)
+  } else {
+    if (!LIFECYCLES.includes(lifecycle)) {
+      violations.push(`未知 lifecycle \`${lifecycle}\`，只认 ${LIFECYCLES.join(' / ')}`)
+    }
+    if (!CLASSES.includes(klass)) {
+      violations.push(`未知 class \`${klass}\`，只认 ${CLASSES.join(' / ')}`)
+    }
+  }
 
   const matched = NAME.exec(name)
   if (matched === null) {
@@ -65,12 +95,34 @@ export function checkNote(name, text) {
   if (sections[0] !== FIRST_SECTION) {
     violations.push(`第一节必须是 \`## ${FIRST_SECTION}\`（现在是 \`## ${sections[0]}\`）`)
   }
-  for (const section of REQUIRED_SECTIONS) {
-    if (!sections.includes(section)) violations.push(`缺少 \`## ${section}\` 节`)
+  for (const section of REQUIRED_SECTIONS[lifecycle] ?? REQUIRED_SECTIONS.implemented) {
+    if (!sections.includes(section)) violations.push(`缺少 \`## ${section}\` 节（${lifecycle ?? 'implemented'} 要求）`)
   }
   for (const section of new Set(sections)) {
     const count = sections.filter(candidate => candidate === section).length
     if (count > 1) violations.push(`\`## ${section}\` 出现了 ${count} 次`)
+  }
+
+  return violations
+}
+
+/**
+ * 笔记里的 Markdown 相对链接必须落到存在的文件上：迁移目录时漏改的链接靠这条兜底。
+ * 路径解析交给调用方（它知道笔记的绝对位置），本函数只负责遍历与报错。
+ * @param {string} text 文件全文
+ * @param {(url: string) => boolean} isReachable 链接目标是否存在
+ * @returns {string[]} 违规项
+ */
+export function checkLinks(text, isReachable) {
+  const violations = []
+
+  for (const line of proseLines(text)) {
+    for (const match of line.matchAll(/\]\(([^)\s]+)\)/g)) {
+      const url = match[1]
+      if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('#')) continue
+      if (!url.split('#')[0].endsWith('.md')) continue
+      if (!isReachable(url)) violations.push(`链接目标不存在：\`${url}\``)
+    }
   }
 
   return violations

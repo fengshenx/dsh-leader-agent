@@ -181,7 +181,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **事件窗口是分页的**：初始只装最近一页，`SessionEventWindow.hasMore` 标志更早历史未加载。面板必须驱动 `SessionFace.loadOlder()` 逐页加载到没有更早历史再重放投影，否则早期建卡/改卡不在窗口内；更糟的是窗口内若恰有 `list_cards` 的全量投影，它本应是完整列表，却被当成窗口内的部分视图看待，破坏「全量投影是权威快照」的前提。`loadOlder` 失败时宿主只记日志不抛错，故翻页设了上限（20 页），到顶则标注「仅显示已加载的历史片段」。
 
-**P5 已绕开这条路线**：看板改成项目维度后，数据源从会话事件流换成宿主的卡片库（见[看板按项目组织](../.agents/notes/2026-10-27-project-bound-board.md)）。事件流跨不了会话（worker 建的卡不在 leader 的窗口里），也扛不住宿主回收（窗口丢了卡就没了）。上面两段记录的是走这条路要付的代价，留作背景；本仓不再重放事件。
+**P5 已绕开这条路线**：看板改成项目维度后，数据源从会话事件流换成宿主的卡片库（见[看板按项目组织](../.agents/notes/implemented/feature/2026-10-27-project-bound-board.md)）。事件流跨不了会话（worker 建的卡不在 leader 的窗口里），也扛不住宿主回收（窗口丢了卡就没了）。上面两段记录的是走这条路要付的代价，留作背景；本仓不再重放事件。
 
 ### 21. `ctx.sessions.list()` 只返回 live session——从会话推导的列表会随重启漂移
 
@@ -245,7 +245,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 方法的形参名就是 wire 字段名，宿主按源码解析形参，客户端必须传同名字段，多一个少一个都会被 `gateway/arguments-invalid` 拒掉；
 - 客户端侧 `$mount` 的贡献里每个入参都要带 strict codec（`requireStrictInputs` 会拒收没有 strict codec 的描述符），宿主侧的 SRC 描述符则一律 `src-json`。
 
-**影响**：浏览器侧 → 宿主侧的调用不必自建 Web 路由（那条路要自己处理同源校验与错误形状，鉴权弱于官方 `/api`），也不必装 dsh 内部包（装它会被宿主的 peer/engines 校验卡住）。本仓取 Typert SRC 通道，见[项目作用域与角色槽位](../.agents/notes/2026-10-23-project-scope-and-role-slots.md)。代价是手写的协议形状与宿主版本耦合——宿主改标记契约时本仓要同步改。
+**影响**：浏览器侧 → 宿主侧的调用不必自建 Web 路由（那条路要自己处理同源校验与错误形状，鉴权弱于官方 `/api`），也不必装 dsh 内部包（装它会被宿主的 peer/engines 校验卡住）。本仓取 Typert SRC 通道，见[项目作用域与角色槽位](../.agents/notes/implemented/architecture/2026-10-23-project-scope-and-role-slots.md)。代价是手写的协议形状与宿主版本耦合——宿主改标记契约时本仓要同步改。
 
 ### 27. 左栏没有与工作区并列的区块槽——第三方只能靠 DOM 注入取位
 
