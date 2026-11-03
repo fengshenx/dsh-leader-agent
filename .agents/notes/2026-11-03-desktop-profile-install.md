@@ -31,7 +31,7 @@
 - 依赖条目已有本插件但说明符不是当前目录时直接报错：那可能是插件管理装的版本，或另一个工作树挂上去的，覆盖要由人决定。
 - `node_modules/dsh-leader-kit` 已存在时只接受两种状态：不是符号链接（插件管理装的实体目录）拒绝；符号链接但指向别的工作树也拒绝。后一种是审查阶段补的——原实现对「指向别处」直接 `rm` 再重建，等于把别人的安装悄无声息顶掉，与上面那条 manifest 守卫的语义不一致。判定收敛成纯函数 `planLinkAction`（`create` / `keep` / `refuse`），IO 只执行结论。
 - **先建链接、再写 manifest**：链接被别人的安装挡住时立刻失败，manifest 保持原样。反过来会留下「bundles 里声明了 `dsh-leader-kit`、`node_modules` 却是插件管理的实体目录」的坏状态（实测确认：拒绝时 manifest 已被改写）。链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑按 `kept` 处理，宿主也不会加载它。
-- 桌面应用运行中拒绝写入：宿主只在启动时读 profile，写入不生效，还可能和应用自己的插件管理撞上。探活依赖 `plutil` 读 `Info.plist` 再 `pgrep -x`，只在 macOS 上做；Linux 与 Windows 都返回「探不了」，脚本照样写完 profile 并提示手动启动——不要在 Linux 上调一个不存在的 `plutil` 把整条命令卡死。
+- 桌面应用运行中拒绝写入：宿主只在启动时读 profile，写入不生效，还可能和应用自己的插件管理撞上。macOS 的探活依赖 `plutil` 读 `Info.plist` 再 `pgrep -x`；Linux 返回「探不了」，脚本照样写完 profile 并提示手动启动——不要在 Linux 上调一个不存在的 `plutil` 把整条命令卡死。Windows 的探活与启动后来补上，见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)。
 - **进程名取自 `.app` 的 `Info.plist`（`CFBundleExecutable`）**，不按包文件名猜：`Lark.app` 的进程是 `Feishu`，带版本号的快照（`DeepSeek Harness 0.2.1.app`）同理。取不到 `.app`、读不到 plist 或缺 `CFBundleExecutable` 时直接报错退出——猜一个名字会漏判运行态，进而写坏 profile。`open -a` 收的是解析后的 `.app` 绝对路径，不是 `DSH_DESKTOP_APP` 原值。
 - **两把锁都要认**：`<profile>/lock` 是桌面应用自己的那把——`resolveDesktopPaths` 的 `lock` 字段，`DesktopProjectManager.withLock` 用 `openSync(..., 'wx')` 建它并写入自己的 PID，`applyRelease()` / `disableAllPlugins()` 都走它；`package.json.lock` 是宿主的 `dsh-atomic-write` 在写 manifest 时用的 `<file>.lock` 兄弟文件。第一版只查了后者，判断错了：`<profile>/lock` 平时不存在（操作完就删），不等于没有。
   - `<profile>/lock` 按持有者进程判活：PID 读不出或非法时与宿主一样当「活跃」拒绝；PID 已退出（`ESRCH`）是陈旧锁——脚本删掉它后自己接管（与宿主 `withLock` 的行为一致），只在输出里说明一句。
@@ -56,7 +56,7 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
 - 同一时刻只能挂一个工作树版本：desktop profile 只有一份，已挂别的工作树时会被拒绝，要换先 `--remove`。多工作树并行验证仍用 `npm run dev`。
 - macOS 的进程名在 `p_comm` 里截断到 16 字符，应用名超过 16 字符时 `pgrep -x` 仍可能漏判（默认名「DeepSeek Harness」正好 16）。没改用 `pgrep -f`：它匹配整条命令行，编辑器开着同名路径就会误判，宁可漏判时靠人按 ⌘Q。
 - 不支持用 `DSH_HOME` 起一个隔离的桌面实例：App 固定读该变量下的 `profiles/desktop`，而 Desktop 的更新、账号与窗口状态在 Electron userData 下，与 profile 数据根不是一回事。隔离验证继续走 web 形态的开发实例。
-- Windows 上不探进程、不自动拉起应用，脚本只完成 profile 写入并提示手动启动。
+- 本轮 Windows 上不探进程、不自动拉起应用（后来补上，见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)）；Linux 仍是只完成 profile 写入并提示手动启动。
 - 桌面版的插件包与激活状态和 CLI 分开，但会话、项目、卡片数据在同一个 `$DSH_HOME` 下共享。
 
 ## 验证
@@ -94,4 +94,4 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
 - 实机（macOS，桌面版 0.2.1-rc.5）：`npm run desktop` 写入 `~/.dsh/profiles/desktop/package.json`（依赖 `link:/…/.worktrees/desktop-launcher`、bundles 末尾 `dsh-leader-kit`）并建链接；应用正常启动，Host 进程以 `profiles/desktop` 为参数加载，无致命错误。
 - 应用运行中重跑 `npm run desktop` 被拒绝（`DeepSeek Harness 正在运行，profile 只在启动时读入`），profile 未被改动。
 - `dsh --profile desktop --help` 返回 `profile "desktop" is managed exclusively by the Electron application`，确认无法用 CLI 形态替代验证。
-- 未验证：非 macOS 平台的探活与「请手动启动」分支——脚本按 `process.platform !== 'darwin'` 直接返回「探不了」，本轮只在 macOS 上跑过；Windows 的 `~\` 展开与 junction `rmdir` 拆除同样只有用例与既有约定背书，没有真机读数。
+- 未验证：非 macOS 平台的探活与「请手动启动」分支——本轮只在 macOS 上跑过。Windows 的探活、启动与 junction 拆除后来在真机上补齐，读数见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)；Linux 仍只有「探不了」一条。

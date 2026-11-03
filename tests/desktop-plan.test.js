@@ -2,11 +2,12 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import {
-  DESKTOP_PROFILE, desktopLinkSpec, expandHomePath, looksLikeAppPath, parseBundleExecutable,
-  planDesktopDisable, planDesktopEnable, planDshHomeEnv, planLinkAction, planProfileLockAction,
-  resolveDesktopPaths, resolveHomePathsOrThrow,
+  DESKTOP_PROFILE, desktopLinkSpec, desktopPathsOf, derivedDesktopHome, expandHomePath, installedSpecOf,
+  looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable, planDesktopEnable,
+  planDesktopHome, planDshHomeEnv, planLinkAction, planProfileLockAction, resolveDesktopPaths,
+  resolveHomePathsOrThrow, windowsExeCandidates,
 } from '../scripts/desktop-plan.mjs'
 import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
@@ -41,7 +42,7 @@ test('桌面 profile 固定在 ~/.dsh/profiles/desktop', () => {
 })
 
 test('DSH_HOME 覆盖数据根，空串按未设处理', () => {
-  assert.equal(resolveDesktopPaths({ homeDir: HOME, env: { DSH_HOME: '/data/home' } }).home, '/data/home')
+  assert.equal(resolveDesktopPaths({ homeDir: HOME, env: { DSH_HOME: '/data/home' } }).home, resolve('/data/home'))
   assert.equal(resolveDesktopPaths({ homeDir: HOME, env: { DSH_HOME: '  ' } }).home, join(HOME, '.dsh'))
 })
 
@@ -131,21 +132,21 @@ test('进程名取自 Info.plist 的 CFBundleExecutable，不按包文件名猜'
 })
 
 test('DSH_HOME 按宿主口径展开 ~ 与相对路径', () => {
-  assert.equal(expandHomePath('~/data', HOME, '/work'), join(HOME, 'data'))
-  assert.equal(expandHomePath('~', HOME, '/work'), HOME)
-  assert.equal(expandHomePath('rel/home', HOME, '/work'), '/work/rel/home')
-  assert.equal(expandHomePath('/abs/home', HOME, '/work'), '/abs/home')
+  assert.equal(expandHomePath('~/data', HOME, '/work'), resolve(HOME, 'data'))
+  assert.equal(expandHomePath('~', HOME, '/work'), resolve(HOME))
+  assert.equal(expandHomePath('rel/home', HOME, '/work'), resolve('/work', 'rel/home'))
+  assert.equal(expandHomePath('/abs/home', HOME, '/work'), resolve('/abs/home'))
   // Windows 上的 ~\ 与 ~/ 等价。
-  assert.equal(expandHomePath('~\\data', HOME, '/work'), join(HOME, 'data'))
+  assert.equal(expandHomePath('~\\data', HOME, '/work'), resolve(HOME, 'data'))
   // 只认开头的 ~：路径中间的 ~ 是普通字符。
-  assert.equal(expandHomePath('/work/~x', HOME, '/work'), '/work/~x')
+  assert.equal(expandHomePath('/work/~x', HOME, '/work'), resolve('/work/~x'))
   assert.equal(
     resolveDesktopPaths({ homeDir: HOME, cwd: '/work', env: { DSH_HOME: '~/dsh' } }).profileDir,
-    join(HOME, 'dsh', 'profiles', DESKTOP_PROFILE),
+    join(resolve(HOME, 'dsh'), 'profiles', DESKTOP_PROFILE),
   )
   assert.equal(
     resolveDesktopPaths({ homeDir: HOME, cwd: '/work', env: { DSH_HOME: 'data' } }).home,
-    '/work/data',
+    resolve('/work', 'data'),
   )
 })
 
@@ -193,7 +194,7 @@ test('相对 DSH_HOME 拒绝：open 启动的应用拿不到这个 shell 的 cwd
   assert.equal(planDshHomeEnv('   '), 'unset')
   assert.equal(
     resolveDesktopPaths({ homeDir: HOME, env: { DSH_HOME: '  /data/dsh  ' } }).home,
-    '/data/dsh',
+    resolve('/data/dsh'),
   )
 })
 
@@ -203,6 +204,72 @@ test('DSH_DESKTOP_APP：裸 .app 名是名字，不是相对路径', () => {
   assert.equal(looksLikeAppPath('/Applications/DeepSeek Harness.app'), true)
   assert.equal(looksLikeAppPath('~/Applications/Probe.app'), true)
   assert.equal(looksLikeAppPath('C:\\Apps\\Probe.app'), true)
+})
+
+test('Windows：裸名按 electron-builder 的每用户安装布局展开 exe 候选', () => {
+  const env = {
+    LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local',
+    ProgramFiles: 'C:\\Program Files',
+    'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+  }
+  const candidates = windowsExeCandidates({ appName: 'DeepSeek Harness', env, homeDir: HOME })
+  // 每用户安装（宿主 NSIS 的 perMachine: false）排第一，全机安装位置只做兜底。
+  assert.deepEqual(candidates, [
+    join(env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe'),
+    join(env.ProgramFiles, 'DeepSeek Harness', 'DeepSeek Harness.exe'),
+    join(env['ProgramFiles(x86)'], 'DeepSeek Harness', 'DeepSeek Harness.exe'),
+  ])
+})
+
+test('Windows：带 .exe 的裸名先剥扩展名，missing 的根直接跳过', () => {
+  const env = { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }
+  // 剥扩展名再拼目录名，不会得到 DeepSeek Harness.exe.exe。
+  assert.deepEqual(
+    windowsExeCandidates({ appName: 'DeepSeek Harness.exe', env, homeDir: HOME }),
+    [join(env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe')],
+  )
+  // 缺 LOCALAPPDATA 时跳过那条根，其余照常。
+  assert.deepEqual(
+    windowsExeCandidates({ appName: 'Probe', env: { ProgramFiles: 'C:\\Program Files' }, homeDir: HOME }),
+    [join('C:\\Program Files', 'Probe', 'Probe.exe')],
+  )
+  // 空串不能拼成相对路径 `Programs\…`：候选列表承诺绝对路径。
+  assert.deepEqual(
+    windowsExeCandidates({ appName: 'Probe', env: { LOCALAPPDATA: '  ' }, homeDir: HOME }),
+    [],
+  )
+})
+
+// 路径形态编码的是 Windows 的绝对路径语义：POSIX 上 resolve 会把 `C:\Apps\…`
+// 当成相对路径改写，断言只在 win32 上有意义。
+test('Windows：exe 路径与安装目录只认给的那一处', { skip: process.platform !== 'win32' && 'Windows 路径语义' }, () => {
+  const env = { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }
+  const exe = join('C:\\Apps', 'Probe', 'Probe.exe')
+  assert.deepEqual(windowsExeCandidates({ appName: exe, env, homeDir: HOME }), [exe])
+  // 安装目录：补上同名 exe，不回退默认安装位置。
+  assert.deepEqual(
+    windowsExeCandidates({ appName: join('C:\\Apps', 'Probe'), env, homeDir: HOME }),
+    [exe],
+  )
+  // ~ 开头的路径展开到家目录，Windows 的 `~\` 与 `~/` 等价。
+  assert.deepEqual(
+    windowsExeCandidates({ appName: '~\\Apps\\Probe.exe', env, homeDir: HOME }),
+    [resolve(HOME, 'Apps', 'Probe.exe')],
+  )
+})
+
+test('tasklist 的 CSV 输出解析成进程名，不依赖系统语言', () => {
+  const output = [
+    '"DeepSeek Harness.exe","4242","Console","1","246,344 K"',
+    '"docker.exe","88","Services","0","1,000 K"',
+    '',
+  ].join('\r\n')
+  // 内存列自带逗号，只能取行首那个引号字段。
+  assert.deepEqual(parseTasklistImages(output), ['DeepSeek Harness.exe', 'docker.exe'])
+  // 没有匹配时打的是本地化提示行：英文与中文都不能被当成进程名。
+  assert.deepEqual(parseTasklistImages('INFO: No tasks are running which match the specified criteria.\r\n'), [])
+  assert.deepEqual(parseTasklistImages('信息: 没有运行的任务匹配指定标准。\r\n'), [])
+  assert.deepEqual(parseTasklistImages(''), [])
 })
 
 test('宿主 <profile>/lock 按持有者进程判活：活跃拒绝、已退出放行', () => {
@@ -220,8 +287,9 @@ test('宿主 <profile>/lock 按持有者进程判活：活跃拒绝、已退出�
 
 test('摘除不依赖桌面应用是否存在，且实体目录占位时整单拒绝', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  // 探活在挂载分支里；--remove 分支要先返回。
-  assert.ok(source.indexOf("if (remove) {") < source.indexOf('desktopAppRunning(appBundle)'))
+  // 探活在挂载分支里；--remove 分支要先返回。找不到应用同样只在挂载分支报错。
+  assert.ok(source.indexOf("if (remove) {") < source.indexOf('const running = desktopAppRunning(target, process.env)'))
+  assert.ok(source.indexOf("if (remove) {") < source.indexOf('throw new Error(missingAppMessage())'))
   // 实体目录 + manifest 有本插件记录：拒绝，不写 manifest。
   assert.match(source, /state === 'foreign' && planned/)
   assert.ok(source.indexOf("state === 'foreign' && planned") < source.indexOf('writeManifest(paths.packagePath, next)'))
@@ -240,16 +308,40 @@ test('启动接线：open 收 .app 绝对路径，数据根用 --env 显式传',
   // open 不做 shell 展开，也不该让它按自己的 cwd 解析相对 DSH_HOME。
   assert.match(source, /'--env', `DSH_HOME=\$\{dshHome\}`, '-a', bundle/)
   assert.doesNotMatch(source, /args: \['-a', appName\]/)
-  assert.match(source, /launchDesktopApp\(appBundle, \{ dshHome: paths\.home \}\)/)
+  assert.match(source, /function openMacApp\(bundle, dshHome\)/)
+  assert.match(source, /launchDesktopApp\(target, \{ dshHome: paths\.home \}\)/)
+})
+
+test('Windows 启动：detached 起 exe，DSH_HOME 进子进程环境', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // 单实例应用 + 已运行实例：新进程会自己退出，所以既要探活，也要把环境显式带给它。
+  assert.match(source, /async function spawnWindowsApp\(exePath, dshHome\)/)
+  assert.match(source, /env: \{ \.\.\.process\.env, DSH_HOME: dshHome \}/)
+  assert.match(source, /detached: true/)
+  // npm run 的 shell 先退出，不脱离会把应用一起收走。
+  assert.match(source, /child\.unref\(\)/)
+  // 只有 'spawn' 事件能证明进程创建成功；ENOENT / EACCES 走 error。
+  assert.match(source, /child\.once\('spawn', resolve\)/)
+})
+
+test('Windows 探活：tasklist 走绝对路径 + CSV，不按表格输出比对', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  // 表格模式的 Image Name 会截断，CSV 不会；tasklist 也不依赖 PATH。
+  assert.match(source, /'system32', 'tasklist\.exe'/)
+  assert.match(source, /args: \['\/FO', 'CSV', '\/NH'\]/)
+  assert.match(source, /parseTasklistImages\(probe\.stdout\)/)
+  // SystemRoot 与定位用的 env 是同一来源，不各读一份 process.env。
+  assert.match(source, /const tasklist = join\(env\.SystemRoot/)
+  assert.match(source, /if \(target\.kind === 'exe'\) return windowsAppRunning\(target\.path, env\)/)
 })
 
 test('启动 fail closed：探不到运行态不启动，open 有 stderr 不当成功', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
   // 校验必须真接在 main 的第一行，不能在 if 里被短路掉。
-  assert.match(source, /const paths = resolveHomePathsOrThrow\(\{/)
-  // 已运行实例收不到 --env（rc 仍 0），所以探活拿不到结论时不能自动启动。
-  assert.match(source, /process\.platform === 'darwin' && running === null/)
-  assert.ok(source.indexOf("running === null") < source.indexOf('launchDesktopApp(appBundle'))
+  assert.match(source, /const dailyPaths = resolveHomePathsOrThrow\(\{/)
+  // 已运行实例收不到 --env（rc 仍 0），Windows 的单实例冲突同样静默，探不到就不能赌。
+  assert.match(source, /target\.kind !== 'unsupported' && running === null/)
+  assert.ok(source.indexOf("running === null") < source.indexOf('await launchDesktopApp(target'))
   // open 成功是静默的：stderr 非空说明环境没送到。
   assert.match(source, /const complaint = \(result\.stderr \?\? ''\)\.trim\(\)/)
   assert.match(source, /result\.status !== 0 \|\| complaint !== ''/)
@@ -282,7 +374,94 @@ test('DSH_HOME 的两种非法写法在解析入口就抛（行为级，走真�
     /是相对路径/,
   )
   // 合格的写法照常解析，首尾空白被 trim 掉。
-  assert.equal(resolveHomePathsOrThrow({ rawHome: ' /tmp/x ', homeDir: HOME }).home, '/tmp/x')
+  assert.equal(resolveHomePathsOrThrow({ rawHome: ' /tmp/x ', homeDir: HOME }).home, resolve('/tmp/x'))
   assert.equal(resolveHomePathsOrThrow({ rawHome: '', homeDir: HOME }).home, join(HOME, '.dsh'))
-  assert.equal(resolveHomePathsOrThrow({ rawHome: '~/dsh', homeDir: HOME }).home, join(HOME, 'dsh'))
+  assert.equal(resolveHomePathsOrThrow({ rawHome: '~/dsh', homeDir: HOME }).home, resolve(HOME, 'dsh'))
+})
+
+test('派生根落在工作树内的 .dev/desktop-home，形状与日常根一致', () => {
+  const home = derivedDesktopHome({ worktree: WORKTREE })
+  assert.equal(home, join(WORKTREE, '.dev', 'desktop-home'))
+  const paths = desktopPathsOf(home)
+  assert.equal(paths.home, home)
+  assert.equal(paths.profileDir, join(home, 'profiles', DESKTOP_PROFILE))
+  assert.equal(paths.linkPath, join(home, 'profiles', DESKTOP_PROFILE, 'node_modules', LEADER_KIT_PACKAGE))
+  // 与 npm run dev 的 .dev/home 不同目录：共用数据根会让两个实例互相写会话与卡片。
+  assert.notEqual(home, join(WORKTREE, '.dev', 'home'))
+})
+
+test('主 checkout 用日常根，worktree 一律派生', () => {
+  assert.deepEqual(planDesktopHome({ inWorktree: false }), { mode: 'daily', owner: null })
+  // 主 checkout 里日常 profile 挂着别处时不在这里放行：由 planDesktopEnable 拒绝。
+  assert.deepEqual(
+    planDesktopHome({ inWorktree: false, installedSpec: 'link:/work/repo' }),
+    { mode: 'daily', owner: null },
+  )
+  assert.deepEqual(planDesktopHome({ inWorktree: true }), { mode: 'derived', owner: null })
+  // 派生分支把日常那份挂的是谁带出去，只用于提示，不参与判定。
+  assert.deepEqual(
+    planDesktopHome({ inWorktree: true, installedSpec: 'link:/work/repo' }),
+    { mode: 'derived', owner: 'link:/work/repo' },
+  )
+  assert.deepEqual(
+    planDesktopHome({ inWorktree: true, installedSpec: '' }),
+    { mode: 'derived', owner: null },
+  )
+})
+
+test('派生分支接线：worktree 内才派生，源固定成日常根', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  assert.match(source, /planDshHomeEnv\(rawHome\) === 'unset'/)
+  assert.match(source, /planDesktopHome\(\{ inWorktree: inGitWorktree\(worktree\), installedSpec \}\)/)
+  assert.match(source, /prepareDerivedPaths\(\{ worktree, homeDir, dailyPaths, dailyManifest \}\)/)
+  assert.match(source, /env: \{ DSH_HOME: home, DSH_PROFILE: DESKTOP_PROFILE, DSH_HOME_SOURCE: dailyPaths\.home \}/)
+  assert.match(source, /assertSeparateHome\(\{ home: derived\.home, sourceHome: dailyPaths\.home \}\)/)
+  // worktree 标记是文件、主 checkout 是目录——用它区分身份不起 git 子进程。
+  assert.match(source, /function inGitWorktree\(worktree\) \{\s*\n\s*const marker = lstatSync\(join\(worktree, '\.git'\)/)
+  // 数据根独立则凭据也独立：派生时把源 HOME 的 refs 搬过来，否则一进界面就没 API key。
+  assert.match(source, /const credentials = inheritCredentialRefs\(\{\s*\n\s*credentialsPath: derived\.credentialsPath,\s*\n\s*sourceCredentialsPath: derived\.sourceCredentialsPath,/)
+  // 派生根要先建好 profile 再进锁：进锁时才 mkdir 会晚一步看到别的来源。
+  // 只在挂载分支里要求这个顺序——摘除分支不派生（见下一条用例）。
+  const mountAt = source.indexOf('const derived = useDerived')
+  assert.notEqual(mountAt, -1, '找不到挂载分支的派生调用')
+  assert.ok(
+    source.indexOf('prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })', mountAt)
+    < source.indexOf('withProfileLock(paths, () => {', mountAt),
+  )
+  // 显式 DSH_HOME 时不派生：那条根是用户指定的，另找地方会让「我指定的目录没生效」。
+  assert.match(source, /: \{ mode: 'daily', owner: null \}/)
+})
+
+test('派生只影响数据根：日常 profile 的说明符与链接一个都不写', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  const derivedBody = source.slice(
+    source.indexOf('function prepareDerivedPaths('),
+    source.indexOf('async function main()'),
+  )
+  // 派生只读日常根（dailyPaths / dailyManifest），不出现对 dailyPaths 的写操作。
+  assert.match(derivedBody, /prepareProfileDir\(/)
+  assert.doesNotMatch(derivedBody, /writeFileSync|rmSync|symlinkSync\(/)
+  assert.doesNotMatch(derivedBody, /dailyPaths\.linkPath/)
+})
+
+test('摘除分支不派生：只算派生根路径，根为空时不建目录也不复制凭据', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  const removeAt = source.indexOf('if (remove) {')
+  const removeBody = source.slice(removeAt, source.indexOf('\n  if (dailyManifest === null) {', removeAt))
+  assert.ok(removeAt !== -1 && removeBody !== '', '找不到摘除分支')
+  // 派生带副作用（建目录、重写 manifest、复制凭据），摘除只能算路径。
+  assert.doesNotMatch(removeBody, /prepareDerivedPaths/)
+  assert.match(removeBody, /derivedDesktopPaths\(\{ worktree \}\)/)
+  // 判「有没有可摘的」只看目标根自己，没有就是空操作。
+  assert.match(removeBody, /if \(!existsSync\(paths\.packagePath\)\)/)
+  // 摘除不受日常 profile 是否存在影响：那条检查只拦挂载分支。
+  assert.ok(removeAt < source.indexOf('if (dailyManifest === null) {'))
+})
+
+test('已装来源的说明符按链接原样取出，供派生判定用', () => {
+  assert.equal(installedSpecOf(desktopPackage()), null)
+  assert.equal(
+    installedSpecOf(desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: 'link:/work/repo' } })),
+    'link:/work/repo',
+  )
 })

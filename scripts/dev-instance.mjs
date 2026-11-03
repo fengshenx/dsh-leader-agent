@@ -9,10 +9,11 @@
  */
 
 import {
-  copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync,
+  copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
-import { COPIED_PROFILE_FILES, deriveProfilePackage, parseWebUrlLine, planNodeModules } from './dev-plan.mjs'
+import { dirname, join } from 'node:path'
+import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
+import { COPIED_PROFILE_FILES, deriveProfilePackage, mergeCredentialRefs, parseWebUrlLine, planNodeModules } from './dev-plan.mjs'
 import { commandLaunchError, spawnCommand } from './spawn-command.mjs'
 
 /**
@@ -69,6 +70,38 @@ export function prepareProfileDir({ worktree, paths, sourcePackage }) {
     rmSync(linkPath, { recursive: true, force: true })
     symlinkSync(target, linkPath, 'junction')
   }
+}
+
+/**
+ * 从源 HOME 的凭据文件继承 `refs`，返回新增的键名。
+ *
+ * 派生实例的数据根是独立的，凭据文件也跟着独立，新数据根第一次起实例要在界面上
+ * 重填 API key。只搬 `refs`（按环境变量名存的密钥），不搬 `records`：账号授权带
+ * 刷新令牌，两个实例各持一份会互相踢掉登录。目标里已有的条目不动。
+ *
+ * 读-改-写在宿主同一把写者锁里做：正在运行的实例可能同时在改这份文件，锁外的
+ * 读-改-写会把它刚保存的值盖回去。写入走临时文件 + rename，替换后的权限位是 600，
+ * 没有先落盘再 chmod 的可读窗口。
+ *
+ * `npm run dev`（`profiles/web`）与 `npm run desktop` 的派生数据根共用这一份：
+ * 两边都是「换一个数据根验证本地改动」，凭据处理必须一致。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.credentialsPath - 目标数据根的 `.credentials.yaml`
+ * @param {string} options.sourceCredentialsPath - 源 HOME 的 `.credentials.yaml`
+ * @returns {{ keys: string[], notice: string | null }} 新增的键名与本次不合并的原因
+ */
+export function inheritCredentialRefs({ credentialsPath, sourceCredentialsPath }) {
+  if (!existsSync(sourceCredentialsPath)) return { keys: [], notice: null }
+  const sourceText = readFileSync(sourceCredentialsPath, 'utf8')
+  // 写者锁是目标文件的同目录兄弟，锁的独占创建要求父目录已存在。
+  mkdirSync(dirname(credentialsPath), { recursive: true, mode: 0o700 })
+  return withFileLockSync(credentialsPath, () => {
+    const targetText = existsSync(credentialsPath) ? readFileSync(credentialsPath, 'utf8') : null
+    const { text, keys, notice } = mergeCredentialRefs({ sourceText, targetText })
+    if (text !== null) writeFileAtomicSync(credentialsPath, text, { mode: 0o600, dirMode: 0o700 })
+    return { keys, notice }
+  })
 }
 
 /**
