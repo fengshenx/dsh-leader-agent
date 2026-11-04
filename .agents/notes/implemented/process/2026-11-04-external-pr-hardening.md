@@ -8,7 +8,11 @@
 
 ### required check 只认聚合 job `ci-ok`
 
-矩阵按 Node 版本展开成 `check (24.9.0)` / `check (24)` 两个 check 名。分支规则可以登记多个，但改 matrix 的当天旧名字就消失了，所有 PR 会一直等一个不会再出现的 check（显示 expected，无法合并）。`ci-ok` 用 `needs: check` + `if: always()` + 显式判 `needs.check.result`：矩阵失败或取消都变成一次明确的失败，也不会因为 job 被 skip 而留下无法解释的 pending。
+矩阵按 Node 版本展开成 `check (24.9.0)` / `check (24)` 两个 check 名。分支规则可以登记多个，但改 matrix 的当天旧名字就消失了，所有 PR 会一直等一个不会再出现的 check（显示 expected，无法合并）。`ci-ok` 用 `needs: check` + `if: always()` + 显式判 `needs.check.result`，作用是 `check` 失败时它仍会执行并 `exit 1`，把矩阵失败落成 required check 上一次明确的 failure。
+
+**`always()` 是合并安全边界，不能省。** 没有它，`check` 失败时 `ci-ok` 会被 skip；而 GitHub 把 skipped 的 required check 计为 **success**、不挡合并——门禁会静默放行，而不是留下 pending。
+
+run 级取消走的是另一条路径：`ci-ok` 排在两个 `check` 之后，取消时通常还没开始（已在跑的也会被标成 cancelled），不会执行 `exit 1`，该 SHA 上是 cancelled / 缺失而非 failure。取消同样**不产生 success**，合并仍被挡，但最新 SHA 被取消后要重跑。会让 check 停在 pending 的是 workflow 级 skip（`[skip ci]`、path/branch filter），同样只能等重跑解除。
 
 ### CI 并发只在 PR 上取消
 
@@ -29,4 +33,4 @@
 
 - `npm run check` 全绿：82 篇笔记格式合规、14 篇文档工具名存在、14 篇 standing docs 都在天花板内（`SECURITY.md` 387 / 410）、语法 100 个文件、1063 用例通过（17 skip）、覆盖率门禁通过（55 个被单测加载，47 个行覆盖 100%）。
 - 四个 YAML（`ci.yml` 与三个 issue 模板）本地解析通过。
-- **workflow 语义与 Issue Form 字段没有本地用例覆盖**：required check 与并发取消要等第一次真实 PR 才能在 GitHub 上验到，Issue Form 的 schema 由 GitHub 上传时校验。合并前不要把这两项当成已验证。
+- **workflow 语义与 Issue Form 字段没有本地用例覆盖**，只能靠 GitHub 上的真实 run 验。`ci-ok` 的聚合行为与 check 名已在 head `dcaa38d` 的 run `41780858764` 上验到：`check (24)` / `check (24.9.0)` / `ci-ok` 全 success。并发取消还没有真实触发过，取消后 `ci-ok` 的确切状态（cancelled 还是 expected）也未复现；Issue Form 的 schema 由 GitHub 上传时校验。这些不要当成已被本地用例覆盖。
