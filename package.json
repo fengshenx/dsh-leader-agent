@@ -1,6 +1,6 @@
 {
   "name": "dsh-leader-agent",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Leader-driven dispatch for DeepSeek Harness: protocol skills, project bootstrap, and a delivery board.",
   "type": "module",
   "main": "index.js",
