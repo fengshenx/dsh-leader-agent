@@ -1,6 +1,6 @@
 # 浏览器侧证据：e2e 车道与人工取证
 
-`npm run check` 只覆盖纯函数与落盘逻辑；圆点档位、折叠水位、浮层位置这类东西，只有把应用真跑起来才能证明。能写成断言的行为一律走 **e2e 车道**（`npm run e2e`），只有脚本化不了的部分才走[人工取证](#人工取证没有可脚本化断言时)，且必须在 PR 里标注「未 GUI 实测」或写明测了什么。写场景的方法与纪律（断言、诊断、双向验证、搭场景）见 [e2e-scenarios 技能](../.agents/skills/e2e-scenarios/SKILL.md)；车道为什么长这样、7 条从宿主搬来的确定性规则，见[宿主方案笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-host-approach-and-determinism.md)。
+`npm run check` 只覆盖纯函数与落盘逻辑；圆点档位、折叠水位、浮层位置这类东西，只有把应用真跑起来才能证明。能写成断言的行为一律走 **e2e 车道**（`npm run e2e`），只有脚本化不了的部分才走[人工取证](#人工取证没有可脚本化断言时)，且必须在 PR 里标注「未 GUI 实测」或写明测了什么。写场景的方法与纪律（断言、诊断、双向验证、搭场景）见 [e2e-scenarios 技能](../.telov/skills/e2e-scenarios/SKILL.md)；车道为什么长这样、7 条从宿主搬来的确定性规则，见[宿主方案笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-host-approach-and-determinism.md)。
 
 规则清单（细节与理由在笔记）：禁 `networkidle`；禁单次瞬态 DOM 采样；禁固定 sleep；pageerror / console.error 即失败；端口用 `listen(0)`；默认不开重试；一次只改一个变量。
 
@@ -93,7 +93,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 ### 失败诊断
 
-先看耗时：单场景正常 3–8 秒（全量约 10 秒），跑一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型是 `lib/client.js` 没构建、会话行没渲染），不是机器慢。其余按[技能的失败诊断一节](../.agents/skills/e2e-scenarios/SKILL.md#失败诊断)：先看 `problems`（pageerror / console.error），再看 `instance.logs` 与 `mock.requests`，区分「数据没到」与「渲染错了」；一次性日志优于每帧日志。测试级上限 90 秒（`scenarioTimeout()`），清理链上实例与 mock 卡住会变成带名字的失败。
+先看耗时：单场景正常 3–8 秒（全量约 10 秒），跑一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型是 `lib/client.js` 没构建、会话行没渲染），不是机器慢。其余按[技能的失败诊断一节](../.telov/skills/e2e-scenarios/SKILL.md#失败诊断)：先看 `problems`（pageerror / console.error），再看 `instance.logs` 与 `mock.requests`，区分「数据没到」与「渲染错了」；一次性日志优于每帧日志。测试级上限 90 秒（`scenarioTimeout()`），清理链上实例与 mock 卡住会变成带名字的失败。
 
 ### 不覆盖
 
@@ -108,7 +108,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 1. **先写断言**：能进单测的先写单测并看它变红，再改实现。
 2. **起隔离实例**：`DSH_HOME` 指独立目录、端口独占；token 每次启动都变，从启动日志取出写入文件，**只打印长度**。
 3. **场景用标记驱动**：`MOCK-<场景名>` 写在用户输入里，本地 mock 按标记返回固定序列；一个标记只表达一个场景，标记名与用例名对得上。
-4. **断言与双向验证**照 [e2e-scenarios 技能](../.agents/skills/e2e-scenarios/SKILL.md)：读外部世界，撤掉修复必须变红。
+4. **断言与双向验证**照 [e2e-scenarios 技能](../.telov/skills/e2e-scenarios/SKILL.md)：读外部世界，撤掉修复必须变红。
 5. **清理**：kill 端口、删探针脚本；截图与临时数据不入库。
 
 无头浏览器里弹不出的原生控件（目录选择器、系统文件对话框）只能单测 + 样式注入核验，PR 里写明「未 GUI 实测」，见[不覆盖](#不覆盖)。

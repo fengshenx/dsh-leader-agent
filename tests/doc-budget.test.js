@@ -77,13 +77,13 @@ test('判定：loose 的建议值按当前值留 5% 余量', () => {
   assert.equal(result.suggestedCeiling, 3169)
 })
 
-test('判定：units 为 0 或极小时不除零，建议值仍是可落地的最小正整数', () => {
+test('判定：空文档判 ok；units 极小时建议值仍可落地', () => {
   const results = checkBudgets([
     { path: 'empty.md', ceiling: 5, units: 0 },
     { path: 'tiny.md', ceiling: 2, units: 1 },
   ])
-  assert.deepEqual(results.map((result) => result.status), ['loose', 'loose'])
-  assert.deepEqual(results.map((result) => result.suggestedCeiling), [1, 1])
+  assert.deepEqual(results.map((result) => result.status), ['ok', 'loose'])
+  assert.equal(results[1].suggestedCeiling, 1)
   // 按建议值改完不能再触发 loose
   const [fixed] = checkBudgets([{ path: 'tiny.md', ceiling: 1, units: 1 }])
   assert.equal(fixed.status, 'ok')
@@ -94,8 +94,9 @@ test('判定：bad-ceiling / missing / over 优先于 loose', () => {
     { path: 'bad.md', ceiling: 0, units: 1 },
     { path: 'missing.md', ceiling: 9999, units: null },
     { path: 'over.md', ceiling: 100, units: 120 },
+    { path: 'loose.md', ceiling: 4000, units: 3018 },
   ])
-  assert.deepEqual(results.map((result) => result.status), ['bad-ceiling', 'missing', 'over'])
+  assert.deepEqual(results.map((result) => result.status), ['bad-ceiling', 'missing', 'over', 'loose'])
 })
 
 test('输出行带状态、读数与天花板', () => {
