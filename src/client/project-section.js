@@ -5,8 +5,8 @@
  * 列表；leader 会话的入口在行的「更多」菜单里（项目名不再承担两个动作）。
  *
  * 排版对齐宿主的工作区浏览：小节标题用同一套行高与三级标签色，项目行用工作区
- * 行的高度、内边距、圆角与 hover 反馈；行首槽位与官方工作区行同款——平时是九宫格
- * （替代宿主的目录图标，免得「项目」与「工作区」在侧边栏里同形），悬停整行时换成
+ * 行的高度、内边距、圆角与 hover 反馈；行首槽位与官方工作区行同款——平时是宿主应用格子图标
+ * `apps-add-outline`（替代宿主的目录图标，免得「项目」与「工作区」在侧边栏里同形），悬停整行时换成
  * 展开箭头，展开时箭头旋转朝下。图标是自带的内联路径
  * （宿主 web 端运行时没有 sprite，见 `icons.js`）。
  *
@@ -154,7 +154,7 @@ const STYLE_TEXT = `
   font-size: 14px;
   line-height: 20px;
 }
-/* 行首槽位：默认九宫格（项目行就是 leader 会话的入口），悬停整行时换成展开箭头
+/* 行首槽位：默认应用格子图标（项目行就是 leader 会话的入口），悬停整行时换成展开箭头
    （与官方工作区行同款）。里面的图标与加载圈都是 SVG：不把这层撑成 flex 的话，
    SVG 按行盒基线排，圈会比行中心高 1.5px（34px 行实测）。类名沿用 -folder 后缀：
    槽位位置与宿主工作区行的目录图标同源，改字形不改槽位。 */
@@ -176,7 +176,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
-/* 行首加载圈：本组有活动时替换九宫格（尺寸与位置仍占行首槽位）。收起时
+/* 行首加载圈：本组有活动时替换行首图标（尺寸与位置仍占行首槽位）。收起时
    任一会话行在跑、或 leader 自己在跑；展开后只剩 leader——其它会话行自己带
    spinner，不重复画同一个状态。悬停规则对槽位容器生效，箭头照常盖住它。
    圈本身是宿主的 StateDot（state: 'ongoing'）：轨道、呼吸弧、1.5s 周期与页面
@@ -678,7 +678,7 @@ function dropHalfOf(event) {
 }
 
 /**
- * 一个项目行：行首九宫格、项目名，悬停整行时行首换成展开箭头、右端露出操作按钮。
+ * 一个项目行：行首应用格子图标、项目名，悬停整行时行首换成展开箭头、右端露出操作按钮。
  *
  * 点行打开该项目的 leader 会话；点行首槽位折叠/展开该项目下的会话列表。leader 不在
  * 子会话列表里——它的入口就是这一行，重复列出会让入口含糊。
@@ -817,7 +817,7 @@ function ProjectRow(props) {
           { className: 'dsh-leader-agent-project-lead-folder' },
           leadActivity
             ? createElement(StateDot, { state: 'ongoing' })
-            : productIcon('apps-grid-fill', { size: 16 }),
+            : productIcon('apps-add-outline', { size: 16 }),
         ),
         createElement(
           'span',

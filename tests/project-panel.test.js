@@ -317,13 +317,13 @@ test('leader 在运行时项目行显示运行态', () => {
 test('项目行首换成九宫格，不再引用目录字形', () => {
   const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
   const icons = readFileSync(iconsPath, 'utf8')
-  // 渲染：项目行首固定走九宫格，展开与否不再换字形（状态交给悬停箭头与子行）。
-  assert.match(source, /productIcon\('apps-grid-fill', \{ size: 16 \}\)/)
+  // 渲染：项目行首固定走宿主的应用格子图标，展开与否不再换字形（状态交给悬停箭头与子行）。
+  assert.match(source, /productIcon\('apps-add-outline', \{ size: 16 \}\)/)
   assert.doesNotMatch(source, /productIcon\(expanded \? 'folder-open' : 'folder-close'/)
   // 分区标题仍是宿主的打开文件夹：那是分区的图标，不是单个项目的入口。
   assert.match(source, /productIcon\('folder-open-outline', \{ size: 16 \}\)/)
-  // 字形表里删掉只被项目行首使用的两个目录字形，九宫格在表里。
-  assert.match(icons, /'apps-grid-fill':/)
+  // 字形表里删掉只被项目行首使用的两个目录字形，行首用的字形在表里。
+  assert.match(icons, /'apps-add-outline':/)
   assert.doesNotMatch(icons, /'folder-close':/)
   assert.doesNotMatch(icons, /'folder-open':/)
 })

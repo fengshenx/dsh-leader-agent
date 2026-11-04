@@ -124,11 +124,11 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
 
   const row = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(row, { description: '项目行出现在左栏', timeoutMs: 20_000 })
-  // 行首是九宫格（9 个方块），不是宿主工作区树的目录字形（2–3 条 path）。
+  // 行首是宿主应用格子图标 apps-add-outline（三个方格 + 一条加号），不是目录字形。
   assert.equal(
     await row.locator('.dsh-leader-agent-project-lead-folder svg path').count(),
-    9,
-    '项目行首应当是九宫格',
+    4,
+    '项目行首应当是应用格子图标',
   )
   await row.click()
 
