@@ -9,6 +9,12 @@
 /** CJK 统一表意文字（含扩展 A 与兼容区）。 */
 const CJK_PATTERN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/gu
 
+/** 天花板超过当前值的这个倍数，说明余量已经大到不再约束体量，报 `loose`。 */
+export const LOOSE_RATIO = 1.12
+
+/** 重设天花板时按当前值留的余量：至少 5%，避免改一次就撞线。 */
+const HEADROOM_RATIO = 1.05
+
 /**
  * 数一份文档的体量。
  *
@@ -23,10 +29,28 @@ export function countDocUnits(text) {
 }
 
 /**
- * 判定清单里每一项是否落在天花板内。
+ * 按当前值与 5% 余量算建议天花板。
+ *
+ * `units` 很小时「5% 余量」与「12% 上限」之间可能没有整数解（如 1 个单位），
+ * 这时取能落地的最小值；返回值为正整数。
+ *
+ * @param {number} units - 当前体量单位数（调用方保证 > 0）
+ * @returns {number} 建议天花板（正整数）
+ */
+function recommendedCeiling(units) {
+  const target = Math.ceil(units * HEADROOM_RATIO)
+  const upper = Math.floor(units * LOOSE_RATIO)
+  return Math.min(target, upper)
+}
+
+/**
+ * 判定清单里每一项是否落在天花板内，并检查余量是否过大。
+ *
+ * 状态优先级：`bad-ceiling` / `missing` 是结构性错误，先报；`over` 是超限；
+ * 然后是 `loose`——天花板仍高于当前值，但超过 12% 说明它已经不约束体量。
  *
  * @param {Array<{ path: string, ceiling: number, units: number | null }>} entries - 待判定项，`units` 为 null 表示文件不存在
- * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' }>} 判定结果
+ * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose', suggestedCeiling?: number }>} 判定结果
  */
 export function checkBudgets(entries) {
   return entries.map(({ path, ceiling, units }) => {
@@ -34,7 +58,13 @@ export function checkBudgets(entries) {
       return { path, ceiling, units, status: 'bad-ceiling' }
     }
     if (units === null) return { path, ceiling, units: null, status: 'missing' }
-    return { path, ceiling, units, status: units <= ceiling ? 'ok' : 'over' }
+    if (units > ceiling) return { path, ceiling, units, status: 'over' }
+    // 空文档不占预算，也不会囤配额：判 ok，避免建议值永远不收敛。
+    if (units === 0) return { path, ceiling, units, status: 'ok' }
+    if (ceiling / units > LOOSE_RATIO) {
+      return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units) }
+    }
+    return { path, ceiling, units, status: 'ok' }
   })
 }
 
@@ -58,11 +88,12 @@ export function findUnregisteredDocs(registered, discovered) {
 /**
  * 渲染判定结果的一行。
  *
- * @param {{ path: string, ceiling: number, units: number | null, status: string }} result - 单项判定结果
+ * @param {{ path: string, ceiling: number, units: number | null, status: string, suggestedCeiling?: number }} result - 单项判定结果
  * @returns {string} 对齐后的单行输出
  */
 export function formatBudgetRow(result) {
-  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ' }[result.status]
+  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE' }[result.status]
   const units = result.units === null ? '—' : String(result.units)
-  return `${label}  ${units.padStart(6)} / ${String(result.ceiling).padEnd(6)} ${result.path}`
+  const suggestion = result.status === 'loose' ? `  → 建议 ${result.suggestedCeiling}` : ''
+  return `${label}  ${units.padStart(6)} / ${String(result.ceiling).padEnd(6)} ${result.path}${suggestion}`
 }

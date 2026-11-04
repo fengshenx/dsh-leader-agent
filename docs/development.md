@@ -36,7 +36,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 ## 测试与构建
 
-只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法与断言纪律见 [e2e-testing.md](e2e-testing.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
+只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
 
 覆盖率门禁 `npm run test:coverage`（`npm run check` 末尾跑的就是它）判 `src` 下 per-file 行覆盖：没登记门槛的文件要求 100%，存量欠账按整数记在 `scripts/coverage-manifest.json` 的 `thresholds`，掉到门槛以下变红，涨出门槛会提示抬高。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由（客户端组件由 e2e 覆盖）——新增 `src` 文件既不进报告也不登记同样变红。只判行覆盖：分支与函数覆盖率既不设门槛，也不进门禁输出。
 
@@ -48,6 +48,6 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 包内容判定不复刻 npm 的收录规则（`files` 前缀、dot 目录、`.gitignore` 都在 npm 里）：`npm pack` 打真实 tarball，用它的清单与 `scripts/pack-manifest.mjs` 的判定比对——必需集从 `main` / `exports` / `dsh.bundle.patch` 与 `files` 里的固定路径推导，skill 与 locale 由磁盘枚举，`.agents/` 只放行 `skills/` 前缀。清单过后把 tarball 装进临时目录按包名加载一遍（包入口导出、`src/host/**` 与 `src/shared/**` 逐文件 import、`lib/client.js` 外壳与 patch 文件）：`files` 收窄成 `["src/host/**"]` 时 `src/shared/*` 没进包、装上即 `ERR_MODULE_NOT_FOUND`。
 
-发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致、提交在 `origin/main` 上（`git merge-base --is-ancestor`），再以 trusted publishing（OIDC）发布并建 GitHub Release；`ci.yml` 跑同一条 `release:check`（node 取 `24.9.0` 与最新 `24` 两档），发布 job 握着 OIDC 身份与 `contents: write`，所以 `actions/*` 都 pin 到 commit SHA。预发布走 `next` dist-tag，Release 标 prerelease。步骤与失败处理见 [release skill](../.telov/skills/release/SKILL.md)。
+发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致、提交在 `origin/main` 上（`git merge-base --is-ancestor`），再以 trusted publishing（OIDC）发布并建 GitHub Release；`ci.yml` 跑同一条 `release:check`（node 取 `24.9.0` 与最新 `24` 两档），发布 job 握着 OIDC 身份与 `contents: write`，所以 `actions/*` 都 pin 到 commit SHA。预发布走 `next` dist-tag，Release 标 prerelease。步骤与失败处理见 [发版手册](release.md)。
 
-认证不落 secret：Trusted Publisher 登记本仓与 `publish.yml`，勾选允许 `npm publish`（预发布再勾 `npm dist-tag`），登记后 2 天内要有新版本真走 OIDC，否则过期。**首次发布是例外**：包不存在时无法登记，须本机交互式 `npm publish`（2FA OTP，无 provenance），随后 bump 新版本打 tag——首发版本已在 registry，推它的 tag 会被幂等守卫跳过；改名同理（trusted publisher 绑包名，旧包 `deprecate` 手工做）。步骤见 [release skill](../.telov/skills/release/SKILL.md)。
+认证不落 secret：Trusted Publisher 登记本仓与 `publish.yml`，勾选允许 `npm publish`（预发布再勾 `npm dist-tag`），登记后 2 天内要有新版本真走 OIDC，否则过期。**首次发布是例外**：包不存在时无法登记，须本机交互式 `npm publish`（2FA OTP，无 provenance），随后 bump 新版本打 tag——首发版本已在 registry，推它的 tag 会被幂等守卫跳过；改名同理（trusted publisher 绑包名，旧包 `deprecate` 手工做）。步骤见 [发版手册](release.md)。

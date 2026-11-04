@@ -140,7 +140,7 @@ Three things, each covering one layer. All of them contribute prompt text only a
 
 `LEADER.md` and `SLOTS.md` are evaluated before every model request and appended only when their text changes, so a change takes effect on the next request and nothing gets injected twice. The `leader-mode` skill takes a different path — the model loads it through the `skill` tool on demand, which is why the step above says load rather than configure. The target project's own `AGENTS.md` is read by the host's agent-instructions as a system-prompt section. Closing a card (`done` / `archived`) releases its executor: the slot binding and the card facts stop being injected together.
 
-The plugin only reads `LEADER.md`. A `COORDINATOR.md` that merely points at it is a compatibility shim for external tools such as Telov that still look for the old file name; it is never injected, and you do not need it otherwise.
+The plugin only reads `LEADER.md`. A `COORDINATOR.md` that merely points at it is a compatibility shim for external tools that still look for the old file name; it is never injected, and you do not need it otherwise.
 
 Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default two roles `dev` / `review`.
 
@@ -192,7 +192,7 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 | [docs/limitations.md](docs/limitations.md) | Full known limitations and trade-offs |
 | [docs/development.md](docs/development.md) | Dev environment, instances, build contract, test policy |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, assertion discipline) and manual evidence rules |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, screenshots) and manual evidence rules; assertion discipline and failure diagnosis live in `.agents/skills/e2e-scenarios/` |
 | [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
 

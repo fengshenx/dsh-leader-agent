@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# 同一 PR 连续推送时取消旧 run：两个矩阵跑完后，先发的旧结论可能后完成，
+# 把最新一次推送的结果盖掉。main 的 push 不取消——判定合并结果的就是跑完的那次。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -30,3 +36,18 @@ jobs:
 
       # 与发版同一条链路：门禁、客户端构建、发布包内容。PR 上就拦住「发出去缺文件」。
       - run: npm run release:check
+
+  # 分支规则的 required check 只认这一个名字。矩阵按 Node 版本展开成
+  # `check (24.9.0)` / `check (24)`，直接把它们设成必需项的话，改 matrix 的当天
+  # 门禁名就跟着漂移，所有 PR 会一直等一个不会再出现的 check。
+  ci-ok:
+    name: ci-ok
+    needs: check
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          if [ "${{ needs.check.result }}" != "success" ]; then
+            echo "matrix job 结果：${{ needs.check.result }}" >&2
+            exit 1
+          fi

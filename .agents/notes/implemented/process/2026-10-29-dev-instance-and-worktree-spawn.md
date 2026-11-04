@@ -27,7 +27,7 @@
 
 **`npm run check` 的语法检查扩到 `scripts/` 与 `build/`**。原来只查 `index.js` 与 `src/**/*.js`，新增的 `.mjs` 脚本就落在门禁外面。
 
-**AGENTS.md 存在，是为了让这些宿主约束在下一个会话里可见**。「宿主 API 按 `engines.dsh` 下限挑」这条规则是靠一次 `TypeError`（`definitions()` 在 0.2.1-rc.2 上不存在，落在 `agent/created` 上）换来的；它必须写在新会话一定会读的地方，而不是埋在 `/tmp` 或某次对话里。结构参照 Telov 的 AGENTS.md：核心铁律 → 按任务查阅 → 目录 → 常用命令 → 测试 → 风格 → 宿主契约 → 提交与 PR，每条自包含或一行断言加链接。
+**AGENTS.md 存在，是为了让这些宿主约束在下一个会话里可见**。「宿主 API 按 `engines.dsh` 下限挑」这条规则是靠一次 `TypeError`（`definitions()` 在 0.2.1-rc.2 上不存在，落在 `agent/created` 上）换来的；它必须写在新会话一定会读的地方，而不是埋在 `/tmp` 或某次对话里。结构参照同类工具的 AGENTS.md：核心铁律 → 按任务查阅 → 目录 → 常用命令 → 测试 → 风格 → 宿主契约 → 提交与 PR，每条自包含或一行断言加链接。
 
 ## 验证
 

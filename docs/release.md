@@ -1,10 +1,6 @@
----
-name: release
-description: 本仓发版手册：定版本号、bump、跑 release:check、开 PR、合并后打 tag 触发 CI 发布；含首次发布与失败处理。当用户要求「发版」「发布 npm 包」「bump 版本」「打个 tag」时使用。
-whenToUse: 需要把 dsh-leader-agent 的新版本发布到 npm，或排查发版失败时。
----
-
 # 发版
+
+维护者专用：不随 npm 包发布，也不进入会话提示词；入口在 `AGENTS.md` 的按任务查阅表。
 
 目标：让 `npm publish` 只由 tag 触发，版本号、门禁、tag 三者严格对齐。发布不可回收，任何一步没把握就停下来问用户。
 

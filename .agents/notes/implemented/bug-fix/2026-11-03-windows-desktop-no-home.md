@@ -51,6 +51,6 @@ export function resolveDshHome(env = process.env, resolveHome = homedir) {
 - 端到端：临时数据根、进程环境无 `HOME`/`DSH_HOME`、`USERPROFILE` 指向临时根，起真实 `dsh web` 后走 `/connect` 换 cookie，再 `POST /api/projects/list` 与 `POST /api/projects/create`。修复前两条都是 **404 `not found`**，启动日志里是背景那一段 `1 entry did not activate` 与 TypeError；修复后两条都是 **200**（`list` 返回 `ok:true, value:[]`，`create` 返回业务错误「项目目录不能为空」，因为请求体给的是空 `args`），无警告。**警告在就绪行之后才打印**，拿到访问地址那一刻读日志会读到空。
 - 全量单测 **1030 tests / 1021 pass / 6 fail**；干净 `origin/main`（`e286870`）**1029 / 1020 / 同一 6 条**，都是本机 Windows 的既有失败，与本次改动无关：
   - `desktop-plan` 四条，断言写死 POSIX 绝对路径（如 `expected: '/data/dsh'`，Windows 上得到 `C:\data\dsh`）：`DSH_HOME 覆盖数据根，空串按未设处理`、`DSH_HOME 按宿主口径展开 ~ 与相对路径`、`相对 DSH_HOME 拒绝：open 启动的应用拿不到这个 shell 的 cwd`、`DSH_HOME 的两种非法写法在解析入口就抛（行为级，走真实路径解析）`。
-  - `doc-tool-names`：`.telov/skills 也在扫描面内：运维 skill 写错工具名同样会红`。
+  - `doc-tool-names`：扫描面相关的那条用例（该用例已随工作区目录迁出被替换，不再是同一份）。
   - `skills`：`初始化骨架默认只含 dev 与 review 两个槽位`（`\r\n` 与 `/^slots:\n  dev:/m` 不匹配）。
 - `npm run check` 前四步全绿（`verify-agent-note-format` 70 篇、`verify-doc-tool-names` 14 篇、`verify-doc-budgets` 13 篇、`check-syntax` 98 文件）；第五步 `verify-coverage` 因上面 6 条既有失败拒绝执行（`单测未通过（退出码 1），覆盖率门禁未执行`），干净 `origin/main` 同样如此。直接读覆盖率补证：`node --test --experimental-test-coverage`，`notification-store.js` 行覆盖 **100.00%**（分支 90.48%、函数 86.96%），基线同为 100.00%，不回归。

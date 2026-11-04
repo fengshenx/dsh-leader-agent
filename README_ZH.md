@@ -142,7 +142,7 @@ dsh plugin --profile web add dsh-leader-agent
 
 `LEADER.md` 与 `SLOTS.md` 在每次模型请求前求值、正文变化才追加：改动在下一个请求生效，没变的轮次不重复注入。`leader-mode` skill 走的是另一条路——模型按需调 `skill` 工具加载，所以上面第 2 步写的是「加载」而不是「配置」。目标项目自己的 `AGENTS.md` 由宿主的 agent-instructions 读成系统提示段落。卡片转为 `done` / `archived` 即释放执行者——槽位绑定与卡片事实一起停止注入。
 
-插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给 Telov 等仍按旧文件名找 leader 手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
+插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给仍按旧文件名找 leader 手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
 
 槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
@@ -194,7 +194,7 @@ npm run e2e                       # 浏览器 e2e
 | [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |
 | [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、断言纪律）与人工取证规范 |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、截图）与人工取证规范；断言纪律与失败诊断见 `.agents/skills/e2e-scenarios/` |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
 

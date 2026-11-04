@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { SKILLS_DIR } from '../src/host/index.js'
@@ -14,7 +14,7 @@ test('发现 bundle 内全部 skill', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const candidates = await provider.list()
   const names = candidates.map(candidate => candidate.name).sort()
-  assert.deepEqual(names, ['init-leader-agent', 'leader-mode'])
+  assert.deepEqual(names, ['e2e-scenarios', 'init-leader-agent', 'leader-mode'])
 })
 
 test('候选带可加载的正文与目录资源基址', async () => {
@@ -62,17 +62,27 @@ test('目录里没有 SKILL.md 时跳过，不当作 skill', async () => {
   }
 })
 
-test('协议层引用的是 bundle 内的相对路径', async () => {
+test('bundle skill 的相对链接都落在 .agents/skills 内', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const candidates = await provider.list()
-  const target = candidates.find(candidate => candidate.name === 'leader-mode')
-  const definition = await provider.get(target)
-  const links = [...definition.content.matchAll(/\]\(([^)]+)\)/g)].map(match => match[1])
-  const relativeLinks = links.filter(link => !link.startsWith('http'))
-  assert.ok(relativeLinks.length > 0, '协议层应有相对链接')
-  for (const link of relativeLinks) {
-    const resolved = join(target.resourceBase.path, link.split('#')[0])
-    const { access } = await import('node:fs/promises')
+  assert.ok(candidates.length > 0, '应至少发现一个 bundle skill')
+  const { access } = await import('node:fs/promises')
+  const links = []
+  for (const candidate of candidates) {
+    const definition = await provider.get(candidate)
+    for (const match of definition.content.matchAll(/\]\(([^)]+)\)/g)) {
+      if (!match[1].startsWith('http')) links.push({ candidate, link: match[1] })
+    }
+  }
+  assert.ok(links.length > 0, 'bundle skill 应有相对链接')
+  for (const { candidate, link } of links) {
+    const resolved = resolve(candidate.resourceBase.path, link.split('#')[0])
+    const inside = relative(skillsRoot, resolved)
+    // 随包发布的 skill 只能引用包内文件；包里的 docs/ 与 .agents/notes/ 不存在。
+    assert.ok(
+      !inside.startsWith('..') && !isAbsolute(inside),
+      `${candidate.name}: 链接 ${link} 解析到 ${resolved}，越出 ${skillsRoot}`,
+    )
     await access(resolved)
   }
 })

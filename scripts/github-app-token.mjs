@@ -2,8 +2,8 @@
  * 为 GitHub App 生成 installation access token（默认 1 小时有效），用于以 bot 身份
  * 发 PR 评论。用法、身份边界与防错理由见 AGENTS.md「用 bot 身份发评论」。
  *
- * 本机工具：读 `~/.telov/github-app.env`（`GITHUB_APP_ID` /
- * `GITHUB_APP_INSTALLATION_ID`）与 `~/.telov/github-app.pem`，凭据不入库。
+ * 本机工具：读 `~/.dsh-leader-agent/github-app.env`（`GITHUB_APP_ID` /
+ * `GITHUB_APP_INSTALLATION_ID`）与 `~/.dsh-leader-agent/github-app.pem`，凭据不入库。
  *
  *   TOKEN=$(node scripts/github-app-token.mjs) && GH_TOKEN="$TOKEN" gh pr comment <n> --body-file /tmp/review.md
  *
