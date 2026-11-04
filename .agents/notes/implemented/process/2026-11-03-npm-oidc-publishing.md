@@ -12,7 +12,7 @@ npm 2026-07-08 宣布弃用 bypass-2FA 的 granular access token，分两步落�
 
 trusted publishing 要求包在 registry 上已存在才能登记（npm/cli#8544 仍开放）。首发因此只能二选一：本机 `npm login` 后 `npm publish`（真实 2FA OTP），或建 stage-only token 走 `npm stage publish` 再人工 `npm stage approve`。
 
-选前者：一次性操作，不需要在仓库或 CI 里留任何 token，也不给自己加一道 stage 审批；代价是首个版本没有 provenance（npm 只在 OIDC/CI 下生成），从第二个版本起由 CI 补上。stage 路线写进发版 skill 作为备选，给不想在维护者机器上 `npm login` 的场合。
+选前者：一次性操作，不需要在仓库或 CI 里留任何 token，也不给自己加一道 stage 审批；代价是首个版本没有 provenance（npm 只在 OIDC/CI 下生成），从第二个版本起由 CI 补上。stage 路线写进发版手册作为备选，给不想在维护者机器上 `npm login` 的场合。
 
 **登记 trusted publisher 之后必须再发一个未发布的版本**（如 0.1.1），不能把首发版本本身推成 tag。`publish.yml` 的发布步骤带「版本已存在就跳过」守卫，推 `v0.1.0` 会在打印「已发布，跳过 npm publish」后 exit 0：workflow 绿色，OIDC 一次都没跑，trusted publisher 配置 2 天后静默过期，而 CI 读数与成功发布完全一样。首发版本天然已存在，所以首发之后必须有一个新版本真走一遍 OIDC。
 
@@ -37,7 +37,7 @@ trusted publishing 要求包在 registry 上已存在才能登记（npm/cli#8544
 - **tag 不能在分支上打**：`publish.yml` 仍校验 tag 提交在 `origin/main` 上；在 worktree 里 bump 要用 `npm version --no-git-tag-version`，否则会留下一个指向分支提交的本地 tag。
 - **OIDC 仍要求仓库公开**：provenance 与 trusted publishing 的可用性都依赖这个前提，`package.json` 的 `repository` 也必须与 GitHub 仓库一致。
 - **本地发布同样跑门禁**：`prepublishOnly` = `release:check`；`npm publish <tarball>` 不跑生命周期脚本，会整段跳过。
-- **`AGENTS.md` 天花板 4200 → 4280，`docs/development.md` 2500 → 2550**：详细步骤搬进 skill，development 只留链路契约（补首发顺序后 2379，2500 只剩 4.84% 余量、低于本仓 5% 规矩，且门禁只判超限不判贴线，所以按 6.7% 重算到 2550）；AGENTS.md 新增两处发版入口（改后 3846），按 10% 余量重算到 4280。
+- **`AGENTS.md` 天花板 4200 → 4280，`docs/development.md` 2500 → 2550**：详细步骤搬进发版手册，development 只留链路契约（补首发顺序后 2379，2500 只剩 4.84% 余量、低于本仓 5% 规矩，且门禁只判超限不判贴线，所以按 6.7% 重算到 2550）；AGENTS.md 新增两处发版入口（改后 3846），按 10% 余量重算到 4280。
 
 ## 验证
 

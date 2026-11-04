@@ -41,5 +41,5 @@ User-Agent 从 App 名改成 `dsh-leader-agent`（它只是 HTTP 头，不是身
 ## 验证
 
 - `npm run check` 全绿：85 篇笔记格式合规（相对基线 +1）、15 篇文档工具名全部存在（相对基线不变：`docs/release.md` 顶替原工作区 skill 一篇）、15 篇 standing docs 都在天花板内（新增 `docs/release.md` 1390/1460，余量 5%）、语法 100 个文件、1070 用例通过（17 skip）、覆盖率门禁通过。
-- 四条双向验证：`PROMPT_SKILLS_DIRS` 临时改回旧目录 → 扫描面用例红（pass 8 / fail 2）；撤掉通用点前缀判定 → 点目录用例红（pass 10 / fail 2）；`docs/release.md` 从 `MAINTAINER_DOCS` 拿掉 → 对应用例红（pass 9 / fail 1）；删掉 `docs/release.md` 而保留笔记里的链接 → note 格式门禁 exit 1（链接目标不存在）。各自还原后全绿。
+- 四条双向验证：`PROMPT_SKILLS_DIRS` 临时改回旧目录 → 扫描面用例红（pass 8 / fail 2）；把通用点前缀判定退回旧的 `.agents/` 专用判定 → 点目录用例红（pass 10 / fail 2），整行删除 → pass 7 / fail 5；`docs/release.md` 从 `MAINTAINER_DOCS` 拿掉 → 对应用例红（pass 9 / fail 1）；删掉 `docs/release.md` 而保留笔记里的链接 → note 格式门禁 exit 1（链接目标不存在）。各自还原后全绿。
 - `npm run build:client && npm run verify:pack`：包里 92 个文件，必需项齐全、无开发残留、装机 smoke 通过；`npm pack --dry-run --json` 的清单与迁移前（最新 `main`）逐项相同。
