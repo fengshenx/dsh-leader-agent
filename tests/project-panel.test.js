@@ -314,7 +314,7 @@ test('leader 在运行时项目行显示运行态', () => {
   )
 })
 
-test('项目行首换成九宫格，不再引用目录字形', () => {
+test('项目行首改用宿主应用格子字形，不再引用目录字形', () => {
   const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
   const icons = readFileSync(iconsPath, 'utf8')
   // 渲染：项目行首固定走宿主的应用格子图标，展开与否不再换字形（状态交给悬停箭头与子行）。
