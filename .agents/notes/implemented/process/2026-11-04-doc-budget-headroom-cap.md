@@ -12,7 +12,7 @@ standing docs 的体量门禁只判 `units <= ceiling`，天花板只升不降�
 
 ### 建议值按 5% 余量、并被 12% 上限夹住
 
-`recommendedCeiling(units)` 取 `min(ceil(units × 1.05), floor(units × 1.12))`，再兜底到 ≥1。通常就是当前值 + 5%；`units` 小于 9 时两个约束之间没有整数解，取能落地的较小值。`units` 为 0 的文档直接判 `ok`：空文档既不占预算也不会囤配额，若判 `loose` 建议值永远收不敛。失败文案与 `--list` 行都带上建议值。
+`recommendedCeiling(units)` 取 `min(ceil(units × 1.05), floor(units × 1.12))`，`units > 0` 时结果天然 ≥1。通常就是当前值 + 5%；`units` 小于 9 时两个约束之间没有整数解，取能落地的较小值。`units` 为 0 的文档直接判 `ok`：空文档既不占预算也不会囤配额，若判 `loose` 建议值永远不收敛。失败文案与 `--list` 行都带上建议值。
 
 ### 三篇旧天花板按当前值重设
 

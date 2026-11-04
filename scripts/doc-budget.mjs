@@ -40,7 +40,7 @@ export function countDocUnits(text) {
 function recommendedCeiling(units) {
   const target = Math.ceil(units * HEADROOM_RATIO)
   const upper = Math.floor(units * LOOSE_RATIO)
-  return Math.max(1, Math.min(target, upper))
+  return Math.min(target, upper)
 }
 
 /**
@@ -59,7 +59,7 @@ export function checkBudgets(entries) {
     }
     if (units === null) return { path, ceiling, units: null, status: 'missing' }
     if (units > ceiling) return { path, ceiling, units, status: 'over' }
-    // 空文档不占预算，也不会囤配额：判 ok，避免建议值永远收不敛。
+    // 空文档不占预算，也不会囤配额：判 ok，避免建议值永远不收敛。
     if (units === 0) return { path, ceiling, units, status: 'ok' }
     if (ceiling / units > LOOSE_RATIO) {
       return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units) }
