@@ -124,6 +124,25 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
 
   const row = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(row, { description: '项目行出现在左栏', timeoutMs: 20_000 })
+
+  // 展开：leader 在项目树下单独占第一行，行首是我方内联的网格字形，且不给归档
+  // 入口——归档它等于让项目失去 leader，换人走项目菜单。
+  await row.locator('.dsh-leader-agent-project-lead').click()
+  const leaderRow = page.locator('.dsh-leader-agent-session-row').first()
+  await waitForLocator(leaderRow, { description: '展开后出现 leader 会话行', timeoutMs: 20_000 })
+  assert.equal(await leaderRow.getAttribute('data-session-id'), session.id, '第一行应当是 leader 会话')
+  assert.equal(await leaderRow.getAttribute('data-leader'), 'true', 'leader 行要带身份标记')
+  assert.equal(
+    await leaderRow.locator('.dsh-leader-agent-session-leader-icon svg').count(),
+    1,
+    'leader 行行首要有九宫格图标',
+  )
+  assert.equal(
+    await leaderRow.locator('.dsh-leader-agent-session-archive').count(),
+    0,
+    'leader 行不给归档入口',
+  )
+
   await row.click()
 
   // 点项目行仍然能打开 leader：不归属工作区不影响可打开性。

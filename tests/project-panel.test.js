@@ -13,7 +13,6 @@ import {
   defaultProjectName,
   describeDeletionNotice,
   describeProjectRemoval,
-  isLeaderCurrent,
   isLeaderRunning,
   isProjectCurrent,
   isProjectOpenable,
@@ -24,6 +23,7 @@ import {
   projectDropPlan,
   projectSectionLayout,
   sameProjectList,
+  selectLeaderSessionRow,
   selectProjectSessionRows,
   showsProjectActivity,
   isArchiveActiveRefusal,
@@ -136,7 +136,7 @@ test('项目行收起时，任一会话行在跑就显示加载器', () => {
   assert.equal(showsProjectActivity({ expanded: false, rows: undefined }), false)
 })
 
-test('行首加载圈的合成判定：收起看并集，展开只认 leader', () => {
+test('行首加载圈的合成判定：收起看并集，展开一律不代显', () => {
   const busy = [{ id: 's-worker', running: true }]
   const calm = [{ id: 's-worker', running: false }]
   // 三种「亮」的组合各自一条独占判据：下面的接线用例把三个入参逐一钉在源码上，
@@ -149,12 +149,12 @@ test('行首加载圈的合成判定：收起看并集，展开只认 leader', (
   assert.equal(
     showsProjectActivity({ expanded: false, rows: calm, leaderRunning: true }),
     true,
-    '收起 + leader 在跑：它没有会话行，行首是唯一提示',
+    '收起 + leader 在跑：它那一行也藏着，行首是唯一提示',
   )
   assert.equal(
     showsProjectActivity({ expanded: true, rows: calm, leaderRunning: true }),
-    true,
-    '展开 + leader 在跑：仍然只有行首能表达',
+    false,
+    '展开 + leader 在跑：leader 行自己带 spinner，行首不重复画',
   )
   assert.equal(
     showsProjectActivity({ expanded: true, rows: busy, leaderRunning: false }),
@@ -178,10 +178,9 @@ test('行首加载圈的合成判定：收起看并集，展开只认 leader', (
   )
 })
 
-test('项目行展开后 worker 在跑不点亮行首——会话行自己带 spinner', () => {
+test('项目行展开后不再代显任何运行态——leader 行与 worker 行各自带 spinner', () => {
   assert.equal(showsProjectActivity({ expanded: true, rows: [{ id: 's1', running: true }] }), false)
-  // leader 不在会话行里，展开时它的运行态仍只能落在行首。
-  assert.equal(showsProjectActivity({ expanded: true, rows: [], leaderRunning: true }), true)
+  assert.equal(showsProjectActivity({ expanded: true, rows: [], leaderRunning: true }), false)
 })
 
 test('目录行的加载器与渲染出来的会话行同源：归档会话与当前 leader 不算', () => {
@@ -196,7 +195,8 @@ test('目录行的加载器与渲染出来的会话行同源：归档会话与�
     's-worker': { id: 's-worker', running: false },
     's-archived': { id: 's-archived', running: true },
   }
-  // 在跑的是当前 leader（它没有会话行）与被归档的会话：只算会话行那一半时不亮。
+  // 在跑的是当前 leader 与被归档的会话：前者由 selectLeaderSessionRow 单独取，
+  // 不出现在会话行这一份里，所以只算会话行那一半时不亮。
   assert.equal(showsProjectActivity({
     expanded: false,
     rows: rowsOf(base),
@@ -264,19 +264,39 @@ test('当前会话取主区域持有的那条', () => {
   assert.equal(currentSessionIdOf(undefined), undefined)
 })
 
-test('整行选中态只给 leader 会话', () => {
-  const project = { leaderSessionId: 'session-leader' }
-  assert.equal(isLeaderCurrent(project, 'session-leader'), true)
-  // worker 会话被打开时选中态归它自己那一行，项目行只点亮文件夹。
-  assert.equal(isLeaderCurrent(project, 'session-worker'), false)
-  assert.equal(isLeaderCurrent(project, 'session-other'), false)
-  assert.equal(isLeaderCurrent(project, undefined), false)
-  assert.equal(isLeaderCurrent(project, ''), false)
-  assert.equal(isLeaderCurrent({}, 'session-leader'), false)
-  // 归档 leader 在项目树里没有可点的行，整行不能亮。
+test('leader 会话行单独取，且不混进 worker 列表', () => {
+  const sessionRows = {
+    's-leader': { id: 's-leader' },
+    's-worker': { id: 's-worker' },
+  }
+  assert.deepEqual(
+    selectLeaderSessionRow({ leaderSessionId: 's-leader', sessionRows }),
+    { id: 's-leader' },
+  )
+  // 它在 worker 那一份里仍然不出现：两份各取各的，折叠水位只作用于 worker 行。
+  assert.deepEqual(
+    selectProjectSessionRows({
+      sessionIds: ['s-leader', 's-worker'],
+      sessionRows,
+      leaderSessionId: 's-leader',
+    }).map((row) => row.id),
+    ['s-worker'],
+  )
+})
+
+test('leader 行取不到时返回 undefined：没有 id、已归档、快照还没同步', () => {
+  const sessionRows = { 's-leader': { id: 's-leader' } }
+  assert.equal(selectLeaderSessionRow({ leaderSessionId: undefined, sessionRows }), undefined)
+  assert.equal(selectLeaderSessionRow({ leaderSessionId: '', sessionRows }), undefined)
+  assert.equal(selectLeaderSessionRow({ leaderSessionId: 's-leader' }), undefined)
+  // 归档的 leader 在项目树里没有可点的行。
   assert.equal(
-    isLeaderCurrent(project, 'session-leader', new Set(['session-leader'])),
-    false,
+    selectLeaderSessionRow({
+      leaderSessionId: 's-leader',
+      sessionRows,
+      archivedSessionIds: new Set(['s-leader']),
+    }),
+    undefined,
   )
 })
 
@@ -296,13 +316,13 @@ test('leader 在运行时项目行显示运行态', () => {
   assert.equal(isLeaderRunning(project, { 'session-leader': { running: false } }), false)
   // worker 在跑不算：项目行只反映现任 leader，worker 各自的行上有自己的加载圈。
   assert.equal(isLeaderRunning(project, { 'session-worker': { running: true } }), false)
-  // 会话列表还没同步回来、leader 已经没有会话行时按未运行处理。
+  // 会话列表还没同步回来时按未运行处理（此时项目树里也没有 leader 行可点）。
   assert.equal(isLeaderRunning(project, {}), false)
   assert.equal(isLeaderRunning(project, undefined), false)
   assert.equal(isLeaderRunning({}, { 'session-leader': { running: true } }), false)
   assert.equal(isLeaderRunning({ leaderSessionId: '' }, { '': { running: true } }), false)
-  // 归档的 leader 不算：与整行选中态（isLeaderCurrent）同一条口径，宿主的
-  // 会话索引里还留着它的记录。
+  // 归档的 leader 不算：与项目行点亮文件夹（isProjectCurrent）同一条口径，宿主
+  // 的会话索引里还留着它的记录。
   assert.equal(
     isLeaderRunning(
       project,
@@ -335,8 +355,12 @@ test('leader 运行态接线到行首加载圈', () => {
   assert.doesNotMatch(source, /dsh-leader-agent-project-spinner/)
   assert.doesNotMatch(source, /dsh-leader-agent-session-spinner/)
   assert.doesNotMatch(source, /@keyframes dsh-leader-agent-spin/)
-  // 会话行与官方会话行同一个组件、同一个默认尺寸（ongoing 时 14px）。
-  assert.match(source, /row\.running \? createElement\(StateDot, \{ state: 'ongoing' \}\) : null,/)
+  // 会话行与官方会话行同一个组件、同一个默认尺寸（ongoing 时 14px）。leader 行
+  // 跑起来时走同一条分支，不单独再画一套。
+  assert.match(
+    source,
+    /row\.running\s*\n\s*\? createElement\(StateDot, \{ state: 'ongoing' \}\)\s*\n\s*: leader === true/,
+  )
   // 组件来自宿主基线模块（`PLATFORM_MODULES` 的 `ui-primitives`），不新引依赖。
   assert.match(
     source,
@@ -351,6 +375,24 @@ test('leader 运行态接线到行首加载圈', () => {
   const folderRule = source.slice(folderAt, source.indexOf('}', folderAt))
   assert.match(folderRule, /display: inline-flex/)
   assert.match(folderRule, /align-items: center/)
+})
+
+test('leader 行固定第一行、行首九宫格、不给归档入口', () => {
+  const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
+  // 取行走独立选择器：混进 worker 列表就会参与水位折叠，leader 被折起来就看不见了。
+  assert.match(source, /const leaderRow = selectLeaderSessionRow\(\{/)
+  const leaderAt = source.indexOf('leader: true,')
+  const foldedAt = source.indexOf('...folded.rows.map(')
+  assert.notEqual(leaderAt, -1, '找不到 leader 行的渲染')
+  assert.notEqual(foldedAt, -1, '找不到 worker 行的渲染')
+  assert.ok(leaderAt < foldedAt, 'leader 行要排在 worker 行之前')
+  const rowSource = sliceSessionRow(source)
+  // 行首字形：我方内联的 3×3 网格，不用宿主带加号的那一个（会被读成新建会话）。
+  assert.match(rowSource, /productIcon\('apps-grid-fill', \{ size: 16 \}\)/)
+  // leader 行不渲染归档入口：归档它等于让项目失去 leader。
+  assert.match(rowSource, /leader === true\s*\n\s*\? null\s*\n\s*: createElement\(/)
+  // 空列表提示看 leader 行在不在：只有它和 worker 都空时才提示。
+  assert.match(source, /leaderRow === undefined && childSessions\.length === 0/)
 })
 
 test('当前会话是 leader 或项目下的 worker 时项目行有激活态', () => {
