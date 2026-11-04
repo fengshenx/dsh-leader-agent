@@ -174,7 +174,7 @@ const GLYPHS = {
 /**
  * 造一个产品图标元素。
  *
- * @param {string} glyph - 字形名，如 `apps-grid-fill`
+ * @param {string} glyph - 字形名，如 `apps-add-outline`
  * @param {object} [options] - 选项
  * @param {number} [options.size] - 边长，默认取字形自带值
  * @returns {object} React 元素

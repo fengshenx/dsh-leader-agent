@@ -1,10 +1,10 @@
-# 项目行首图标改用九宫格
+# 项目行首图标改用宿主应用格子（`apps-add-outline`）
 
 **范围**：`src/client/{icons,project-section}.js`、`tests/project-panel.test.js`、`tests/e2e/project-workspace.e2e.js`、`docs/{usage,getting-started,architecture,limitations}.md`、`README.md`、`README_ZH.md`
 
 ## 背景
 
-项目行首一直是宿主同款的描边文件夹。这一行是 leader 会话的入口，但和左侧宿主工作区树的分组行完全同形——两棵树并排时「项目」和「工作区」只能靠位置区分。需求（issue #116）是把它换成九宫格。
+项目行首一直是宿主同款的描边文件夹。这一行是 leader 会话的入口，但和左侧宿主工作区树的分组行完全同形——两棵树并排时「项目」和「工作区」只能靠位置区分。issue #116 的原话是把它换成九宫格；最终口径（该 issue 的「变更记录」）是项目行首固定宿主 `apps-add-outline`（三格 + 一个加号），不新增 leader 会话行。
 
 首版按「leader 会话要有自己的行」来做，在展开列表里新增了一行 leader 并给它九宫格，项目行保持文件夹。实际反馈是「还是目录，不是九宫格」——要改的就是项目行首本身，那一版已整体回滚（提交 `46ef871` 与本 PR 的 revert）。
 
@@ -12,7 +12,9 @@
 
 ### 用宿主 `apps-add-outline` 原样，不自绘
 
-宿主 `artwork.ts` 没有纯九宫格：带格子的只有 `apps-add-outline` / `apps-add-compact-outline`，都是三格加一个「+」。一度按 16 box 口径自绘九宫格（九个填充方块），理由是「+」会被读成「新建项目」，而加项目按钮就在分区标题右侧；两轮尺寸调整（2.4px 像稀疏点阵、3.4px 才可辨）之后定为宿主原样字形——图标跟着宿主走，本仓不再维护一份自造路径，16px 下的可辨识度也不用自己调。
+宿主 `ui-primitives` 没有纯九宫格：带格子的只有 `apps-add` 这一族，都是三格加一个「+」。一度按 16 box 口径自绘九宫格（九个填充方块），理由是「+」会被读成「新建项目」，而加项目按钮就在分区标题右侧；两轮尺寸调整（2.4px 像稀疏点阵、3.4px 才可辨）之后定为宿主原样字形——图标跟着宿主走，本仓不再维护一份自造路径，16px 下的可辨识度也不用自己调。
+
+内联路径取自宿主 `0.2.1-rc.5` 的 `packages/client/ui-primitives/src/icons/index.tsx`（`IconAppsAddOutlineRegular`）；`artwork.ts` 的 sprite 重构从 `0.2.2-alpha.2` 起才有，按 rc.5 对照 `artwork.ts` 会找不到文件。内联本身不依赖宿主版本，这个锚点只为可追溯。
 
 路径按 `icons.js` 现有结构内联：三个 `<rect width=4 height=4 rx=1>` 折成等价 path，加号 `M11.75 1.75v5M9.25 4.25h5` 原样。
 
@@ -41,7 +43,7 @@
 
 ## 验证
 
-- 单测：`tests/project-panel.test.js` 新增「项目行首换成九宫格，不再引用目录字形」——断言渲染走 `apps-add-outline`，且 `src/client/icons.js` 里已无 `folder-close` / `folder-open` 定义。`npm run check` 全绿。
+- 单测：`tests/project-panel.test.js` 新增「项目行首改用宿主应用格子字形，不再引用目录字形」——断言渲染走 `apps-add-outline`，且 `src/client/icons.js` 里已无 `folder-close` / `folder-open` 定义。`npm run check` 全绿。
 - 双向验证：把渲染改回 `productIcon(expanded ? 'folder-open' : 'folder-close')` → 新用例在字形断言上变红；还原后全绿。
 - e2e：`tests/e2e/project-workspace.e2e.js` 在项目行出现后断言行首槽位里恰好 4 条 `<path>`（三格 + 加号），能区分于两三条 path 的目录字形。全量 `npm run e2e` 6/6 通过。
 - 真机：worktree 的 `npm run dev` 实例里行首显示为宿主应用格子图标，展开/收起与悬停箭头行为不变。
