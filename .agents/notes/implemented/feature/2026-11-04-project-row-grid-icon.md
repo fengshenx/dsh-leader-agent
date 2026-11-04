@@ -10,9 +10,11 @@
 
 ## 决策
 
-### 自绘 3×3 网格，不借宿主带加号的字形
+### 用宿主 `apps-add-outline` 原样，不自绘
 
-宿主 `artwork.ts` 没有纯九宫格：`apps-add-outline` / `apps-add-compact-outline` 都是三格加一个「+」。放在项目行首会被读成「新建项目」，而真正的加项目按钮就在分区标题右侧。所以 `icons.js` 内联 `apps-grid-fill`：九个 3.4px 圆角方块（`rx` 0.9），步长 5、边距 1.3，填充不描边，与宿主同一套 16 box 口径。方块尺寸是 16px 下的可辨识下限：2.4px 时九宫格读成稀疏点阵（第一版就是这么画的），4px 时间隙只剩 1.5、糊成一团。
+宿主 `artwork.ts` 没有纯九宫格：带格子的只有 `apps-add-outline` / `apps-add-compact-outline`，都是三格加一个「+」。一度按 16 box 口径自绘九宫格（九个填充方块），理由是「+」会被读成「新建项目」，而加项目按钮就在分区标题右侧；两轮尺寸调整（2.4px 像稀疏点阵、3.4px 才可辨）之后定为宿主原样字形——图标跟着宿主走，本仓不再维护一份自造路径，16px 下的可辨识度也不用自己调。
+
+路径按 `icons.js` 现有结构内联：三个 `<rect width=4 height=4 rx=1>` 折成等价 path，加号 `M11.75 1.75v5M9.25 4.25h5` 原样。
 
 ### 展开/收起不再换字形
 
@@ -32,14 +34,14 @@
 
 ## 边界
 
-- **九宫格是自绘字形**：不在宿主 `artwork.ts` 里，不会随宿主图标更新而变化；`icons.js` 其余字形仍与宿主同步。
-- **运行中槽位不渲染九宫格**：本组有活动时槽位换成宿主 `StateDot`，与之前「目录图标不渲染」是同一条既有行为，`docs/limitations.md` 已同步措辞。
-- **同屏其他网格类图标**：宿主侧栏的「更多」等入口也可能是网格形状，本仓只在项目行用九宫格；这是既有平台图标，不做联动。
+- **「+」与添加项目按钮同形**：这是宿主 `apps-add-outline` 自带的，接受它作为入口标识；项目行本身不做「新建」动作，新建在分区标题右侧。
+- **运行中槽位不渲染行首图标**：本组有活动时槽位换成宿主 `StateDot`，与之前「目录图标不渲染」是同一条既有行为，`docs/limitations.md` 已同步措辞。
+- **同屏其他网格类图标**：宿主侧栏的「更多」等入口也可能是网格形状，本仓只在项目行用应用格子图标；这是既有平台图标，不做联动。
 - **CSS 模板里的反引号会在 import 期炸掉整个客户端半边**。这次在 `STYLE_TEXT` 的注释里写了带反引号的类名后缀，模板当场截断，其余正文被当成 JS 表达式，产物里出现未定义标识符——页面白屏、`plugin.e2e.js` 与全部项目树场景一起超时，而 `node --check`、单测与覆盖率门禁全绿（这层只做语法检查，不跑模块求值）。AGENTS 早就写了这条规则，漏在执行。改 `src/client/` 里的 CSS 后先跑 `plugin.e2e.js`：它比业务场景快一个数量级，判据正是「插件能不能挂载」。
 
 ## 验证
 
-- 单测：`tests/project-panel.test.js` 新增「项目行首换成九宫格，不再引用目录字形」——断言渲染走 `apps-grid-fill`，且 `src/client/icons.js` 里已无 `folder-close` / `folder-open` 定义。`npm run check` 全绿（1066 用例通过）。
+- 单测：`tests/project-panel.test.js` 新增「项目行首换成九宫格，不再引用目录字形」——断言渲染走 `apps-add-outline`，且 `src/client/icons.js` 里已无 `folder-close` / `folder-open` 定义。`npm run check` 全绿。
 - 双向验证：把渲染改回 `productIcon(expanded ? 'folder-open' : 'folder-close')` → 新用例在字形断言上变红；还原后全绿。
-- e2e：`tests/e2e/project-workspace.e2e.js` 在项目行出现后断言行首槽位里恰好 9 条 `<path>`（九宫格的方块数，能区分于两三条 path 的目录字形）。全量 `npm run e2e` 6/6 通过。
-- 真机：worktree 的 `npm run dev` 实例（`empty-test` 项目）里行首显示为九宫格，展开/收起与悬停箭头行为不变。
+- e2e：`tests/e2e/project-workspace.e2e.js` 在项目行出现后断言行首槽位里恰好 4 条 `<path>`（三格 + 加号），能区分于两三条 path 的目录字形。全量 `npm run e2e` 6/6 通过。
+- 真机：worktree 的 `npm run dev` 实例里行首显示为宿主应用格子图标，展开/收起与悬停箭头行为不变。
