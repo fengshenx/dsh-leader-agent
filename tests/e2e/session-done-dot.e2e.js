@@ -19,8 +19,10 @@ import { startMockProvider } from './mock-llm.mjs'
 import { waitFor, waitForLocator } from './harness.mjs'
 
 /** 场景标记：一个标记只表达一个场景，两段各一轮。 */
+const MARKER_LEADER = 'MOCK-E2E-DONE-DOT-LEADER'
 const MARKER_FIRST = 'MOCK-E2E-DONE-DOT-FIRST'
 const MARKER_SECOND = 'MOCK-E2E-DONE-DOT-SECOND'
+const REPLY_LEADER = 'leader 回执'
 const REPLY_SECOND = '第二轮回执'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
@@ -56,8 +58,8 @@ function sessionContaining(home, needle) {
 
 /** 把会话登记成项目：同目录的其余会话即项目树里的 worker 行。 */
 function seedProject(home, leader) {
-  mkdirSync(join(home, 'dsh-leader-kit'), { recursive: true })
-  writeFileSync(join(home, 'dsh-leader-kit', 'projects.json'), `${JSON.stringify({
+  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
+  writeFileSync(join(home, 'dsh-leader-agent', 'projects.json'), `${JSON.stringify({
     version: 1,
     projects: [{
       id: 'e2e-done-dot-project',
@@ -75,8 +77,8 @@ function seedProject(home, leader) {
  * 不进项目树，必须在启动前把登记表也种好。
  */
 function seedWorkerRegistry(home, leader, worker) {
-  mkdirSync(join(home, 'dsh-leader-kit'), { recursive: true })
-  writeFileSync(join(home, 'dsh-leader-kit', 'workers.json'), `${JSON.stringify({
+  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
+  writeFileSync(join(home, 'dsh-leader-agent', 'workers.json'), `${JSON.stringify({
     version: 1,
     workers: [{
       childId: worker.id,
@@ -117,7 +119,7 @@ function collectProblems(page, problems) {
 }
 
 test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 }, async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-done-dot-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-done-dot-'))
   const mock = await startMockProvider({
     // 第二轮要在「执行中」窗口里完成页面动作（等 running 圈、切到 leader、等
     // 选中态消失）——本地 mock 一轮只有几毫秒，动作插不进窗口。延迟不能太大：
@@ -126,23 +128,26 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
     // 之间。
     stepDelayMs: 1500,
     scripts: {
+      [MARKER_LEADER]: [{ text: REPLY_LEADER }],
       [MARKER_FIRST]: [{ text: '第一轮回执' }],
       [MARKER_SECOND]: [{ text: REPLY_SECOND }],
     },
   })
   const problems = []
   let browser = null
+  let first = null
   let instance = null
 
   t.after(async () => {
     await browser?.close().catch(() => {})
+    await first?.stop().catch(() => {})
     await instance?.stop().catch(() => {})
     await mock.stop().catch(() => {})
     rmSync(root, { recursive: true, force: true })
   })
 
   // 第一段：建 worker 会话并让它跑完一轮——完成时它在主视图，本来就不该亮。
-  const first = await startInstanceIn({ root, baseUrl: mock.url })
+  first = await startInstanceIn({ root, baseUrl: mock.url })
   browser = await chromium.launch()
   const bootstrapContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const bootstrapPage = await bootstrapContext.newPage()
@@ -153,6 +158,13 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
 
   const leader = firstSession(first.home)
   assert.notEqual(leader, null, '宿主启动后应有一个落盘的空会话')
+
+  // 宿主的「新建会话」会复用同工作区里的空白草稿（rc.5 的 createInWorkspace），
+  // 启动会话正是这样一条草稿：先让它跑一轮，点新建才会真正建出新会话。
+  await composer.click()
+  await composer.fill(`${MARKER_LEADER} 打个招呼`)
+  await composer.press('Enter')
+  await waitForLocator(bootstrapPage.getByText(REPLY_LEADER).first(), { description: 'leader 首轮回复上屏' })
 
   // 在工作区新建一条会话当 worker：新会话与 leader 同属实例目录，归属按目录判定。
   const workspaceRow = bootstrapPage.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
@@ -188,10 +200,10 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
   collectProblems(page, problems)
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
 
-  const projectRow = page.locator('.dsh-leader-kit-project-row').first()
+  const projectRow = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(projectRow, { description: '项目行', timeoutMs: 20_000 })
   await projectRow.locator('button[aria-label="展开会话"]').click()
-  const workerRow = page.locator(`.dsh-leader-kit-session-row[data-session-id="${worker.id}"]`)
+  const workerRow = page.locator(`.dsh-leader-agent-session-row[data-session-id="${worker.id}"]`)
   await waitForLocator(workerRow, { description: '项目树里的 worker 会话行' })
   assert.equal(
     await workerRow.locator('[data-state]').count(),
@@ -210,10 +222,14 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
   await waitForLocator(workerRow.locator('[data-state="ongoing"]'), { description: 'worker 行的运行中加载圈' })
 
   await projectRow.click()
-  await waitForLocator(page.locator('.dsh-leader-kit-guide-card'), { description: 'leader 欢迎卡（切走完成）' })
-  // leader 的欢迎卡出现不等于 worker 已退出主视图：宿主的视图释放链是异步的，
-  // worker 的 mainView retain 没清零前完成跳变会被当作「有人看着」而不点亮。
-  // 行失去选中态（选中态与投影读的是同一份 retainedBy 快照）才是切走完成的确证。
+  // 项目行选中表示当前会话已切到 leader（它跟当前会话走）。项目行选中也不等于
+  // worker 已退出主视图：宿主的视图释放链是异步的，worker 的 mainView retain 没
+  // 清零前完成跳变会被当作「有人看着」而不点亮。行失去选中态（选中态与投影读的
+  // 是同一份 retainedBy 快照）才是切走完成的确证。
+  await waitFor({
+    description: '项目行进入选中态（已切到 leader）',
+    check: async () => (await projectRow.getAttribute('data-selected')) === 'true',
+  })
   await waitFor({
     description: 'worker 会话行退出选中态（主视图 retain 已释放）',
     check: async () => (await workerRow.getAttribute('data-selected')) !== 'true',
