@@ -19,7 +19,7 @@
  * 就会把工交回一个已经被换下的会话。按当前记录算则每次都朝最新值收敛（与索引
  * 对齐同一个道理）。
  *
- * @module dsh-leader-kit/host/leader-handover
+ * @module dsh-leader-agent/host/leader-handover
  */
 
 /**
@@ -54,7 +54,7 @@ export function createLeaderHandover({ projects, workers, notifications, dispatc
       moved += workerIds.length + notificationCount + inflightCount
       if (workerIds.length === 0 && notificationCount === 0 && inflightCount === 0) continue
       logger(
-        `dsh-leader-kit: 项目 ${projectId} 的 leader 换到 ${target}：`
+        `dsh-leader-agent: 项目 ${projectId} 的 leader 换到 ${target}：`
         + `接管 ${workerIds.length} 条派工记录、${notificationCount} 条待投通知、${inflightCount} 条在飞派工`,
       )
     }

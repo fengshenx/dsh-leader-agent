@@ -10,7 +10,7 @@
  * 与宿主的已知差异：宿主还会为「有子代理在跑」「等你输入」「未读完成」「当前
  * 会话」抬高水位，我们手里只有会话行的运行态，所以只认 running。
  *
- * @module dsh-leader-kit/client/session-watermark
+ * @module dsh-leader-agent/client/session-watermark
  */
 
 /** 无会话抬升水位时，每个项目默认露出的会话条数。 */

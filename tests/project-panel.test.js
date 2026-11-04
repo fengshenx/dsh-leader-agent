@@ -327,14 +327,14 @@ test('leader 运行态接线到行首加载圈', () => {
   // 不圆的缺口，动起来也和宿主不同步。
   assert.match(
     source,
-    /'dsh-leader-kit-project-lead-folder' \},\s*leadActivity\s*\n\s*\? createElement\(StateDot, \{ state: 'ongoing' \}\)/,
+    /'dsh-leader-agent-project-lead-folder' \},\s*leadActivity\s*\n\s*\? createElement\(StateDot, \{ state: 'ongoing' \}\)/,
   )
   // 两套判据合成后不留第二个入口，也不留第二套自写圆环与关键帧。
-  assert.doesNotMatch(source, /dsh-leader-kit-project-lead-spinner/)
+  assert.doesNotMatch(source, /dsh-leader-agent-project-lead-spinner/)
   assert.doesNotMatch(source, /'data-running'/)
-  assert.doesNotMatch(source, /dsh-leader-kit-project-spinner/)
-  assert.doesNotMatch(source, /dsh-leader-kit-session-spinner/)
-  assert.doesNotMatch(source, /@keyframes dsh-leader-kit-spin/)
+  assert.doesNotMatch(source, /dsh-leader-agent-project-spinner/)
+  assert.doesNotMatch(source, /dsh-leader-agent-session-spinner/)
+  assert.doesNotMatch(source, /@keyframes dsh-leader-agent-spin/)
   // 会话行与官方会话行同一个组件、同一个默认尺寸（ongoing 时 14px）。
   assert.match(source, /row\.running \? createElement\(StateDot, \{ state: 'ongoing' \}\) : null,/)
   // 组件来自宿主基线模块（`PLATFORM_MODULES` 的 `ui-primitives`），不新引依赖。
@@ -343,10 +343,10 @@ test('leader 运行态接线到行首加载圈', () => {
     /import \{ StateDot \} from '@deepseek-ai\/dsh-client-ui-primitives'/,
   )
   // hover 让位给展开箭头：槽位容器整条隐藏，加载圈跟着一起收起来。
-  assert.match(source, /:hover \.dsh-leader-kit-project-lead-folder \{\s*display: none;/)
+  assert.match(source, /:hover \.dsh-leader-agent-project-lead-folder \{\s*display: none;/)
   // 槽位容器是 flex：图标与加载圈都是 SVG，按行盒基线排时圈的中心比 34px 行
   // 的中心高 1.5px（无头 Chromium 实测，读数见 Agent Note）。
-  const folderAt = source.indexOf('\n.dsh-leader-kit-project-lead-folder {')
+  const folderAt = source.indexOf('\n.dsh-leader-agent-project-lead-folder {')
   assert.notEqual(folderAt, -1, '找不到行首槽位容器的样式规则')
   const folderRule = source.slice(folderAt, source.indexOf('}', folderAt))
   assert.match(folderRule, /display: inline-flex/)

@@ -11,7 +11,7 @@
  * 解析与命令行拼装是纯函数（`resolveExecutable` / `buildCommandLine`），文件系统
  * 探测从 `exists` 注入，测试不碰真实的 PATH。
  *
- * @module dsh-leader-kit/scripts/spawn-command
+ * @module dsh-leader-agent/scripts/spawn-command
  */
 
 import { spawn, spawnSync } from 'node:child_process'

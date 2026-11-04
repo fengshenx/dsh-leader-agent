@@ -8,7 +8,7 @@
  * 建会话本身不产生模型调用；worker 结束一轮后仍由派工与唤醒器
  * （`src/host/dispatch.js`）构造完成通知并唤醒 leader 会话。
  *
- * @module dsh-leader-kit/host/tools/spawn-worker
+ * @module dsh-leader-agent/host/tools/spawn-worker
  */
 
 import { isValidSlotName } from '../slots/slot-templates.js'

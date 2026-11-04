@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-zh-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-kit：Leader 扇出到多个 worker，右侧是项目看板" width="560">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh-dark.svg">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-agent：Leader 扇出到多个 worker，右侧是项目看板" width="560">
   </picture>
 </p>
 
@@ -10,16 +10,16 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
-  <a href="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
   <img alt="dsh 版本要求" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
   <img alt="状态" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
-  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
-  <a href="https://github.com/fengshenx/dsh-leader-kit/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
+  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-agent/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
 </p>
 
-# dsh-leader-kit
+# dsh-leader-agent
 
 > 一个 Leader 帮你推进开发和 Review，解放你的注意力：同时并行开发 10 个 feature，而不是逐个陪跑。
 >
@@ -40,16 +40,16 @@
 
 桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。
 
-**图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-kit` 后点「安装」：
+**图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-agent` 后点「安装」：
 
-<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-kit" width="880">
+<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-agent" width="880">
 
 **命令行安装**：系统 `dsh` 拒绝管理 desktop profile，要用桌面安装自带的 CLI：
 
 ```sh
 # 先完全退出应用（关窗口只是隐藏）
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add dsh-leader-kit
+  plugin --profile desktop add dsh-leader-agent
 ```
 
 Windows / Linux 换成安装目录里对应的 `runtime/cli/bin/dsh`。应用只在启动时读 profile，同一时刻只能挂一个版本；`DSH_HOME` 要用绝对路径或 `~/` 写法。会话、项目与卡片数据与 `web` 共享，插件包与激活状态各自一份。
@@ -58,10 +58,10 @@ Windows / Linux 换成安装目录里对应的 `runtime/cli/bin/dsh`。应用只
 
 ### Web 版安装
 
-从 npm 安装（包名 `dsh-leader-kit`）：
+从 npm 安装（包名 `dsh-leader-agent`）：
 
 ```sh
-dsh plugin --profile web add dsh-leader-kit
+dsh plugin --profile web add dsh-leader-agent
 dsh web
 ```
 
@@ -72,7 +72,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 ## 预览
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/board.png" alt="dsh-leader-kit：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="dsh-leader-agent：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
 </div>
 
 左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。你能看到正在工作的 Agent，点击即可下钻到它的会话，绕开 Leader 直接和它对话。
@@ -133,7 +133,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
-`init-leader-kit` skill 管项目初始化：先把仓库工程约定并入目标项目 `AGENTS.md` 的受管区块，再按包内骨架写 `LEADER.md`（leader 怎么指挥这个项目）与 `SLOTS.md`（执行者角色）。重复执行只替换受管区块，两份手册先读后改；空目录写带 TODO 的骨架，并把还没答的三个问题问清楚，不编造项目事实。
+`init-leader-agent` skill 管项目初始化：先把仓库工程约定并入目标项目 `AGENTS.md` 的受管区块，再按包内骨架写 `LEADER.md`（leader 怎么指挥这个项目）与 `SLOTS.md`（执行者角色）。重复执行只替换受管区块，两份手册先读后改；空目录写带 TODO 的骨架，并把还没答的三个问题问清楚，不编造项目事实。
 
 完整交互（槽位 frontmatter 细节、归档、换 leader、看板信号灯口径）见[使用手册](docs/usage.md)。
 

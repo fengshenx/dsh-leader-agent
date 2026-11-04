@@ -1,16 +1,16 @@
 {
-  "name": "dsh-leader-kit",
+  "name": "dsh-leader-agent",
   "version": "0.2.1",
   "description": "Leader-driven dispatch for DeepSeek Harness: protocol skills, project bootstrap, and a delivery board.",
   "type": "module",
   "main": "index.js",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fengshenx/dsh-leader-kit.git"
+    "url": "git+https://github.com/fengshenx/dsh-leader-agent.git"
   },
-  "homepage": "https://github.com/fengshenx/dsh-leader-kit#readme",
+  "homepage": "https://github.com/fengshenx/dsh-leader-agent#readme",
   "bugs": {
-    "url": "https://github.com/fengshenx/dsh-leader-kit/issues"
+    "url": "https://github.com/fengshenx/dsh-leader-agent/issues"
   },
   "exports": {
     ".": "./index.js",

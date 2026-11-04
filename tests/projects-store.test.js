@@ -12,7 +12,7 @@ after(cleanupTempDirs)
  * @returns {Promise<string>} 目录路径
  */
 async function makeHome() {
-  return makeTempDir('dsh-leader-kit-projects-')
+  return makeTempDir('dsh-leader-agent-projects-')
 }
 
 test('项目记录落盘后可读回，字段齐全', async () => {
@@ -63,7 +63,7 @@ test('退役 leader 列表可写，落盘后可读回', async () => {
 test('旧字段名的注册表仍能读出 leader 与退役列表，写回只留新字段', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await mkdir(join(home, 'dsh-leader-agent'), { recursive: true })
   await writeFile(store.file, `${JSON.stringify({
     version: 1,
     projects: [{
@@ -97,7 +97,7 @@ test('旧字段名的注册表仍能读出 leader 与退役列表，写回只留
 test('新旧字段同时存在时以新字段为准', async () => {
   const home = await makeHome()
   const store = createProjectStore({ home })
-  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await mkdir(join(home, 'dsh-leader-agent'), { recursive: true })
   await writeFile(store.file, `${JSON.stringify({
     version: 1,
     projects: [{

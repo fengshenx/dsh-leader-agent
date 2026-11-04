@@ -20,10 +20,10 @@ import { startInstanceIn } from './instance.mjs'
 import { waitFor, waitForLocator } from './harness.mjs'
 
 const ROW_SELECTOR = '[data-row-key^="session:"]'
-const EMPTY_UNGROUPED_CLASS = 'dsh-leader-kit-empty-ungrouped'
+const EMPTY_UNGROUPED_CLASS = 'dsh-leader-agent-empty-ungrouped'
 
 test('删掉工作区后，未分组里的会话与组头都得在', { timeout: 180_000 }, async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-ungrouped-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-ungrouped-'))
   const problems = []
   let browser = null
   let instance = null

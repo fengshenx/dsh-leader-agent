@@ -70,7 +70,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
     .fill('MOCK-XXX 做点什么')
 
   // 断言锚：DOM class / 计算样式 / 落盘文件；不读 agent 的自述文本
-  await waitForLocator(e2e.page.locator('.dsh-leader-kit-project-section'), { description: '项目区块挂载' })
+  await waitForLocator(e2e.page.locator('.dsh-leader-agent-project-section'), { description: '项目区块挂载' })
   await waitFor({ description: '会话日志写入回执', check: () => sessionLogsContain(e2e.instance.home, '回执') })
 
   assert.deepEqual(e2e.problems, [], '页内不应有未处理的异常或 console 错误')
@@ -100,7 +100,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 - **等状态，不睡时间**。`waitFor()` 轮询到条件成立；locator 用 `contenteditable="true"`、`data-*`、可见文本这类状态条件，让 playwright 自己等。
 - **等待预算按正常耗时给**。实测单场景 3–8 秒、元素 1–2 秒到位：首次启动 20 秒、元素状态 15 秒。写 60 秒/90 秒只会让失败多等一整分钟，还把「机器慢」与「等错了元素」混成同一个症状。慢机与 2 核 CI 用 `E2E_BUDGET_SCALE=1.5` 整体放大（测试级上限走 `scenarioTimeout()`，取同一个倍率）。
 - **失败要带读数**。元素等待走 `waitForLocator()`：失败时报 locator、目标元素读数（计数、`visible`、边界盒、`display` / `visibility` / `checkVisibility`、宽高）与页面读数（会话行、工作区行、插件元素计数）。目标读数用来分开「不在 DOM」「在 DOM 但 `display:none`」「在 DOM 但零尺寸」——只数 count 时这三种是同一句超时。读数自身限 2 秒：页面主线程卡死时退化成 `{ unavailable }`，不把失败拖到测试级超时。自定义读数用 `describePage()`。
-- **造状态用 seed**：目标状态直接写进数据文件（`<home>/dsh-leader-kit/cards.json`、`projects.json`），让界面去读。靠反复重启、反复点 UI 去凑瞬时态，永远对不齐。
+- **造状态用 seed**：目标状态直接写进数据文件（`<home>/dsh-leader-agent/cards.json`、`projects.json`），让界面去读。靠反复重启、反复点 UI 去凑瞬时态，永远对不齐。
 - **标识符必须来自本次运行**：端口、token、会话 id、数据根都从本次实例取，不硬编码上一轮残留的值。
 - **双向验证**：撤掉修复 → 断言必须变红 → 还原 → 变绿。绿了但撤掉修复也绿，说明断言没守住任何东西。
 

@@ -12,7 +12,7 @@
  *   的会话，不留半条记录。
  * - **目录不可改**：项目目录是身份的一部分，改目录等于换项目。
  *
- * @module dsh-leader-kit/host/projects/service
+ * @module dsh-leader-agent/host/projects/service
  */
 
 import { randomUUID } from 'node:crypto'
@@ -116,7 +116,7 @@ export function createProjectService({
   logger = () => {},
 }) {
   if (typeof isWorkerSession !== 'function') {
-    throw new Error('dsh-leader-kit: createProjectService 缺少 isWorkerSession，无法判定哪些会话属于项目')
+    throw new Error('dsh-leader-agent: createProjectService 缺少 isWorkerSession，无法判定哪些会话属于项目')
   }
   const openLeaderSession = createLeaderSession
     ?? ((directory, sessionId) => createLeaderSessionWithCtx(ctx, directory, sessionId))
@@ -180,7 +180,7 @@ export function createProjectService({
       await agent?.dispose?.()
     } catch (error) {
       logger(
-        `dsh-leader-kit: 撤销 leader 会话 ${sessionId} 失败：`
+        `dsh-leader-agent: 撤销 leader 会话 ${sessionId} 失败：`
         + `${error instanceof Error ? error.message : String(error)}`,
       )
     }
@@ -556,7 +556,7 @@ export function createProjectService({
             removed += 1
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error)
-            logger(`dsh-leader-kit: 会话 ${sessionId} 从工作区摘除失败：${message}`)
+            logger(`dsh-leader-agent: 会话 ${sessionId} 从工作区摘除失败：${message}`)
           }
         }
       }

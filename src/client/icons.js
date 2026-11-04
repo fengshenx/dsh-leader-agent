@@ -11,7 +11,7 @@
  * `artwork.ts`（regular 字重，描边 1px），与宿主视觉一致；代价是宿主改图标
  * 时本仓要同步——这条耦合与「手写 Typert 协议形状」同类，已记在 note 的边界段。
  *
- * @module dsh-leader-kit/client/icons
+ * @module dsh-leader-agent/client/icons
  */
 
 import { createElement } from 'react'

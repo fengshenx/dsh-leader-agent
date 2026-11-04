@@ -10,7 +10,7 @@
  * （`src-json`）派发，不读这里的 parse。真正的入参边界在宿主侧——所以
  * `updateCardLinks` 里会再规范化一遍链接。
  *
- * @module dsh-leader-kit/client/project-remote
+ * @module dsh-leader-agent/client/project-remote
  */
 
 import {
@@ -93,7 +93,7 @@ function buildDescriptor(method) {
     codec: codecFor(type),
   }))
   return {
-    id: `dsh-leader-kit:${PROJECT_REMOTE_NAMESPACE}/${method}`,
+    id: `dsh-leader-agent:${PROJECT_REMOTE_NAMESPACE}/${method}`,
     service: PROJECT_REMOTE_SERVICE_KEY,
     namespace: PROJECT_REMOTE_NAMESPACE,
     method,
@@ -105,7 +105,7 @@ function buildDescriptor(method) {
 
 /** 客户端贡献：宿主与浏览器共用的那批方法。 */
 export const PROJECT_REMOTE_CONTRIBUTION = Object.freeze({
-  package: 'dsh-leader-kit',
+  package: 'dsh-leader-agent',
   descriptors: Object.freeze(
     Object.keys(PROJECT_REMOTE_METHODS).map((method) => Object.freeze(buildDescriptor(method))),
   ),

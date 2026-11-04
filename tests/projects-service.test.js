@@ -18,8 +18,8 @@ after(cleanupTempDirs)
  * @returns {Promise<{ home: string, workspace: string }>} 路径
  */
 async function makeWorkspace() {
-  const home = await makeTempDir('dsh-leader-kit-projects-')
-  const workspace = await makeTempDir('dsh-leader-kit-work-')
+  const home = await makeTempDir('dsh-leader-agent-projects-')
+  const workspace = await makeTempDir('dsh-leader-agent-work-')
   return { home, workspace }
 }
 
@@ -151,7 +151,7 @@ test('建 leader 会话那一刻，注册表里已经有它（工具面按 leade
 test('旧字段名的注册表仍能恢复 leader 身份与工具面', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
-  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await mkdir(join(home, 'dsh-leader-agent'), { recursive: true })
   await writeFile(store.file, `${JSON.stringify({
     version: 1,
     projects: [{

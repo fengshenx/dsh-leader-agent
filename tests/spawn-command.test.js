@@ -89,7 +89,7 @@ test('pathValueOf 认大写或小写的 PATH，两者都在时认精确的 PATH'
 })
 
 test('PATH 上与命令同名的目录不算可执行文件，继续找下一个扩展名', async () => {
-  const dir = await makeTempDir('dsh-leader-kit spawn dir-')
+  const dir = await makeTempDir('dsh-leader-agent spawn dir-')
   mkdirSync(join(dir, 'probe-dir.exe'))
   assert.equal(resolveExecutable({ command: 'probe-dir', pathValue: dir }), null)
   writeFileSync(join(dir, 'probe-dir.cmd'), '@echo off\r\n')
@@ -133,13 +133,13 @@ test('spawnCommandSync 起一个真实进程并拿到输出', () => {
 
 test('spawnCommandSync 找不到命令时抛 CommandNotFoundError', () => {
   assert.throws(
-    () => spawnCommandSync({ command: 'dsh-leader-kit-definitely-missing', args: ['--version'], encoding: 'utf8' }),
+    () => spawnCommandSync({ command: 'dsh-leader-agent-definitely-missing', args: ['--version'], encoding: 'utf8' }),
     CommandNotFoundError,
   )
 })
 
 test('Windows 上经 cmd.exe 起带空格的 .cmd shim，参数原样到达', { skip: process.platform !== 'win32' }, async () => {
-  const dir = await makeTempDir('dsh-leader-kit spawn space-')
+  const dir = await makeTempDir('dsh-leader-agent spawn space-')
   const shim = join(dir, 'probe-cmd.cmd')
   writeFileSync(shim, '@echo off\r\necho [%~1]\r\n')
   const result = spawnCommandSync({ command: shim, args: ['a b'], encoding: 'utf8' })
@@ -148,7 +148,7 @@ test('Windows 上经 cmd.exe 起带空格的 .cmd shim，参数原样到达', { 
 })
 
 test('Windows 上按 PATH 解析出无扩展名命令的 .cmd shim 并起起来', { skip: process.platform !== 'win32' }, async () => {
-  const dir = await makeTempDir('dsh-leader-kit spawn path-')
+  const dir = await makeTempDir('dsh-leader-agent spawn path-')
   writeFileSync(join(dir, 'probe-path.cmd'), '@echo off\r\necho resolved [%~1]\r\n')
   const result = spawnCommandSync({
     command: 'probe-path', args: ['ok'], encoding: 'utf8', env: { ...process.env, PATH: dir },
@@ -158,7 +158,7 @@ test('Windows 上按 PATH 解析出无扩展名命令的 .cmd shim 并起起来'
 })
 
 test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己找', { skip: process.platform !== 'win32' }, async () => {
-  const dir = await makeTempDir('dsh-leader-kit spawn pick-')
+  const dir = await makeTempDir('dsh-leader-agent spawn pick-')
   writeFileSync(join(dir, 'probe-pick.cmd'), '@echo off\r\necho from-cmd\r\n')
   writeFileSync(join(dir, 'probe-pick.bat'), '@echo off\r\necho from-bat\r\n')
   // PATHEXT 里 .BAT 排在 .CMD 前面：只看 PATH 的话 cmd 会起 .bat，走解析则按
@@ -172,7 +172,7 @@ test('解析结果决定起哪个文件，而不是把命令名丢回 cmd 自己
 })
 
 test('调用方收窄 env 时仍能起 cmd：cmd 的定位不依赖子进程环境', { skip: process.platform !== 'win32' }, async () => {
-  const dir = await makeTempDir('dsh-leader-kit spawn env-')
+  const dir = await makeTempDir('dsh-leader-agent spawn env-')
   writeFileSync(join(dir, 'probe-env.cmd'), '@echo off\r\necho env-ok\r\n')
   const env = { ...process.env, PATH: dir }
   delete env.ComSpec
@@ -216,7 +216,7 @@ test('参数里的 %VAR% 会被 cmd 展开，引号拦不住（已知边界）',
 })
 
 test('Windows 上 spawnCommand 经 cmd 起 .cmd shim，参数原样到达', { skip: process.platform !== 'win32' }, async () => {
-  const dir = await makeTempDir('dsh-leader-kit spawn async-')
+  const dir = await makeTempDir('dsh-leader-agent spawn async-')
   writeFileSync(join(dir, 'probe-async.cmd'), '@echo off\r\necho async [%~1]\r\n')
   const child = spawnCommand({
     command: 'probe-async', args: ['a b'], env: { ...process.env, PATH: dir }, stdio: ['ignore', 'pipe', 'ignore'],
@@ -230,7 +230,7 @@ test('Windows 上 spawnCommand 经 cmd 起 .cmd shim，参数原样到达', { sk
 
 test('spawnCommand 解析不到命令时同步抛 CommandNotFoundError', { skip: process.platform !== 'win32' }, () => {
   assert.throws(
-    () => spawnCommand({ command: 'dsh-leader-kit-async-missing', args: [], stdio: 'ignore' }),
+    () => spawnCommand({ command: 'dsh-leader-agent-async-missing', args: [], stdio: 'ignore' }),
     CommandNotFoundError,
   )
 })

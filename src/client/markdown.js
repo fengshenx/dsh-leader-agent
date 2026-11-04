@@ -13,7 +13,7 @@
  * `labels` 必须是引用稳定的对象：组件按身份判断是否重建流式渲染缓存，每帧新建
  * 一个对象会让缓存失效。故这里是模块级常量。
  *
- * @module dsh-leader-kit/client/markdown
+ * @module dsh-leader-agent/client/markdown
  */
 
 import { createElement } from 'react'

@@ -51,11 +51,11 @@ test('exports 的通配子路径不作为必需文件，覆盖面交给磁盘枚
 test('skill 与 locale 的文件逐个并入必需集，并规整成包内路径', () => {
   const files = requiredPackFiles({
     manifest,
-    skillFiles: ['.agents/skills/leader-mode/SKILL.md', './.agents/skills/init-leader-kit/SKILL.md'],
+    skillFiles: ['.agents/skills/leader-mode/SKILL.md', './.agents/skills/init-leader-agent/SKILL.md'],
     localeFiles: ['zh.json', 'en.json'],
   })
   assert.ok(files.includes('.agents/skills/leader-mode/SKILL.md'))
-  assert.ok(files.includes('.agents/skills/init-leader-kit/SKILL.md'))
+  assert.ok(files.includes('.agents/skills/init-leader-agent/SKILL.md'))
   assert.ok(files.includes('locale/zh.json'))
   assert.ok(files.includes('locale/en.json'))
 })
@@ -77,13 +77,13 @@ test('开发残留进包会被拦下', () => {
     '.agents/skills/leader-mode/SKILL.md',
     'scripts/verify-pack.mjs',
     '.dev/home/sessions/x.json',
-    'dsh-leader-kit-0.1.0.tgz',
+    'dsh-leader-agent-0.1.0.tgz',
   ]
   const { forbidden } = checkPackEntries({ entries, required: [] })
   assert.deepEqual(forbidden.sort(), [
     '.agents/notes/implemented/process/2026-11-02-npm-publish-pipeline.md',
     '.dev/home/sessions/x.json',
-    'dsh-leader-kit-0.1.0.tgz',
+    'dsh-leader-agent-0.1.0.tgz',
     'scripts/verify-pack.mjs',
     'tests/skills.test.js',
   ])
@@ -128,7 +128,7 @@ test('.agents 只放行 skills 子树：新增目录默认被拦', () => {
   const published = [
     '.agents/skills/leader-mode/SKILL.md',
     '.agents/skills/leader-mode/playbooks/delivery.md',
-    '.agents/skills/init-leader-kit/references/conventions.md',
+    '.agents/skills/init-leader-agent/references/conventions.md',
   ]
   for (const path of published) assert.equal(isForbiddenPath(path), false, `${path} 是发布文件`)
 })

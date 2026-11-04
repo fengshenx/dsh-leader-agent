@@ -11,7 +11,7 @@
  * 客户端插件在浏览器进程运行，`ctx.sidebarRightTabs` 与 `ctx.slots` 都是
  * client 服务，宿主侧插件拿不到（见 docs/capability-gaps.md 第 15 条）。
  *
- * @module dsh-leader-kit/client
+ * @module dsh-leader-agent/client
  */
 
 import { BoardBody } from './board.js'
@@ -34,7 +34,7 @@ import { WorkerReportView } from './worker-report-view.js'
  * 这几处必须同值（guide 入口按 provider id 分发，宿主拿它当槽位键），写两遍
  * 容易改一处漏另一处——漏了就静默退回「全局入口」，入口又对所有会话可见。
  */
-const PLUGIN_ID = 'dsh-leader-kit'
+const PLUGIN_ID = 'dsh-leader-agent'
 
 export const inject = ['slots', 'sidebarRightTabs', 'sessions', 'locale']
 
@@ -48,14 +48,14 @@ export function apply(ctx) {
   // 字典晚于 UI 挂载也能生效（locale 服务会推 revision），不必等挂载顺序。
   ctx.effect(
     () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, { zh, en }),
-    'dsh-leader-kit 槽位显示名',
+    'dsh-leader-agent 槽位显示名',
   )
 
   // 注册必须放进 effect：注册表把 effect 挂到调用方 fiber 上，在别的插件的
   // apply 里直接注册会让浏览器启动静默卡住。
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: PLUGIN_ID,
-    kind: 'dsh-leader-kit-board',
+    kind: 'dsh-leader-agent-board',
     title: () => '看板',
     guide: [{
       id: 'board',
@@ -63,7 +63,7 @@ export function apply(ctx) {
       title: () => '看板',
       description: () => '项目 leader 与 worker 会话里的任务交付看板',
     }],
-  }), 'dsh-leader-kit 看板 tab 类型')
+  }), 'dsh-leader-agent 看板 tab 类型')
 
   // 面板主体挂在 tab 类型 id 上：tab 类型 id 既是实现身份，也是它在
   // `sidebar.right.pane.tab` 座里的注册键。
@@ -82,7 +82,7 @@ export function apply(ctx) {
       getUiWorkspace: () => ctx.get('uiWorkspace'),
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
     }),
-  }, BoardBody)), 'dsh-leader-kit 看板面板')
+  }, BoardBody)), 'dsh-leader-agent 看板面板')
 
   // 右栏 guide 页的「看板」入口由本插件自己渲染。宿主的入口来自 tab 类型的
   // 静态注册，注册表没有按会话过滤的扩展点（docs/capability-gaps.md 第 15 条），
@@ -94,7 +94,7 @@ export function apply(ctx) {
     inject: () => ({
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
     }),
-  }, BoardGuideEntry)), 'dsh-leader-kit 看板入口')
+  }, BoardGuideEntry)), 'dsh-leader-agent 看板入口')
 
   // 项目区块挂左栏底部（`sidebar.footer.action`）：左栏正文区只有
   // `sidebar.workspaces` 一个槽（已被宿主的工作区浏览占用），slot 机制没有装饰
@@ -109,7 +109,7 @@ export function apply(ctx) {
   ctx.inject(['workspaces'], () => { workspacesReady.mark() })
   ctx.effect(() => ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
     name: 'sidebar.footer.action',
-    id: 'dsh-leader-kit-projects',
+    id: 'dsh-leader-agent-projects',
     order: 10,
     label: '项目',
     inject: () => ({
@@ -120,7 +120,7 @@ export function apply(ctx) {
       getWorkspaces: () => ctx.get('workspaces'),
       onWorkspacesReady: (listener) => workspacesReady.subscribe(listener),
     }),
-  }, ProjectPanel)), 'dsh-leader-kit 左栏项目区块')
+  }, ProjectPanel)), 'dsh-leader-agent 左栏项目区块')
 
   // 一次性提示走跨栏浮层：`shell.overlay` 是宿主留给「徽标、toast 栈、状态
   // 药丸」这类全局表面的座位，浮在每一栏之上；窄侧栏收起项目浮层时提示仍在。
@@ -128,9 +128,9 @@ export function apply(ctx) {
   // 通知），所以这里自带一条，形态照宿主 Toast。
   ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
     name: 'shell.overlay',
-    id: 'dsh-leader-kit-toast',
+    id: 'dsh-leader-agent-toast',
     order: 20,
-  }, ToastOverlay)), 'dsh-leader-kit 提示浮层')
+  }, ToastOverlay)), 'dsh-leader-agent 提示浮层')
 
   // leader 视图目标：让 leader 会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调
@@ -151,7 +151,7 @@ export function apply(ctx) {
     void mountProjectRemote(remoteCtx).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
       reportProjectRemoteError(message)
-      remoteCtx.logger?.warn?.(`dsh-leader-kit: 项目通道挂载失败：${message}`)
+      remoteCtx.logger?.warn?.(`dsh-leader-agent: 项目通道挂载失败：${message}`)
     })
     // leader 会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
     watchLeaderSessions(remoteCtx)
@@ -172,7 +172,7 @@ export function apply(ctx) {
 function mountBoardMonitor(ctx) {
   const sidebarRight = ctx.get('sidebarRight')
   if (sidebarRight === undefined || sidebarRight === null) {
-    ctx.logger?.warn?.('dsh-leader-kit: 当前宿主没有右栏服务，建卡后不自动打开看板')
+    ctx.logger?.warn?.('dsh-leader-agent: 当前宿主没有右栏服务，建卡后不自动打开看板')
     return
   }
   const stop = mountProjectBoardMonitor({
@@ -180,7 +180,7 @@ function mountBoardMonitor(ctx) {
     callRemote: (method, args) => callProjectRemote(ctx, method, args),
     logger: (message) => { ctx.logger?.warn?.(message) },
   })
-  ctx.effect(() => stop, 'dsh-leader-kit 看板监视器')
+  ctx.effect(() => stop, 'dsh-leader-agent 看板监视器')
 }
 
 /**
@@ -197,7 +197,7 @@ function mountWorkerReport(ctx) {
     ctx.uiConversation.events.register(workerReportDefinition)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    ctx.logger?.error?.(`dsh-leader-kit: worker 回报节点注册失败：${message}`)
+    ctx.logger?.error?.(`dsh-leader-agent: worker 回报节点注册失败：${message}`)
     return
   }
   ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
@@ -208,5 +208,5 @@ function mountWorkerReport(ctx) {
     inject: () => ({
       openSession: (sessionId) => ctx.get('uiWorkspace')?.openSession(sessionId),
     }),
-  }, WorkerReportView)), 'dsh-leader-kit worker 回报渲染器')
+  }, WorkerReportView)), 'dsh-leader-agent worker 回报渲染器')
 }

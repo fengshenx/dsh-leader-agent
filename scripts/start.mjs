@@ -23,7 +23,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveDshHome } from '../src/host/home-paths.js'
 import {
-  LEADER_KIT_PACKAGE, PROFILE_NAME, assertLeaderKitBundle, assertWebBundle, corruptProfilePackageMessage,
+  LEADER_AGENT_PACKAGE, PROFILE_NAME, assertLeaderAgentBundle, assertWebBundle, corruptProfilePackageMessage,
   startWebBundleHint,
 } from './dev-plan.mjs'
 import { CommandNotFoundError, CommandShellError, spawnCommandSync } from './spawn-command.mjs'
@@ -141,13 +141,13 @@ function main() {
       bundles,
       hint: startWebBundleHint({ profileDir, dshCommand, worktree }),
     })
-    assertLeaderKitBundle({ profileDir, bundles, worktree })
+    assertLeaderAgentBundle({ profileDir, bundles, worktree })
   } catch (error) {
     console.error(`错误: ${error.message}`)
     process.exit(1)
   }
 
-  const pluginLink = join(profileDir, 'node_modules', LEADER_KIT_PACKAGE)
+  const pluginLink = join(profileDir, 'node_modules', LEADER_AGENT_PACKAGE)
   const loadedFrom = identityOf(pluginLink)
   if (loadedFrom === null) {
     console.error(`错误: ${pluginLink} 不存在，profile 声明了本插件但没链接上。`)
@@ -163,7 +163,7 @@ function main() {
   }
 
   console.log('')
-  console.log('== dsh-leader-kit 日常实例 ==')
+  console.log('== dsh-leader-agent 日常实例 ==')
   console.log(`  版本    ${dshCommand} ${dshVersion}`)
   console.log(`  数据根  ${home}`)
   console.log(`  插件    ${loadedFrom}`)

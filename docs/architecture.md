@@ -1,6 +1,6 @@
-# dsh-leader-kit 架构
+# dsh-leader-agent 架构
 
-本文是 dsh-leader-kit 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答「系统由什么组成、接缝在哪里、改一块会牵动谁」；安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
+本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答「系统由什么组成、接缝在哪里、改一块会牵动谁」；安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)，再看自己要改的那一块；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
@@ -13,13 +13,13 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
 | 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、worker 回报气泡、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
-| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-leader-kit` 初始化方法 |
+| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-leader-agent` 初始化方法 |
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
 **零运行时依赖的边界**：宿主侧只用 Node 内置模块与 Cordis 注入的 `ctx`，不 peer 依赖任何 dsh 内部包——宿主解析失败会让整个 bundle 加载失败。运行时唯一依赖 `minidenticons`（worker 头像），只用于客户端产物。
 
-**插件行必须是纯包名**：`cordis.patch.yml` 的插件行写成 `dsh-leader-kit/src/host` 这类子路径时，浏览器侧定位不到包 manifest，宿主便不下发 client bundle。
+**插件行必须是纯包名**：`cordis.patch.yml` 的插件行写成 `dsh-leader-agent/src/host` 这类子路径时，浏览器侧定位不到包 manifest，宿主便不下发 client bundle。
 
 ## 运行时模型
 
@@ -58,7 +58,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 宿主加载 `@deepseek-ai/dsh-experimental-agent-team-profile` 后，`agentTeams` 服务存在，`tool-agent-team` 会给每个普通根会话装团队工具（`agent-team/src/roster.ts` 的 `tryMembership`：无 `parentSession`、无 subagent descriptor 的 root 都算 lead）。本 bundle 的 worker 正是普通根会话，于是被当成隐式 Lead；leader 也同时看到两套派工工具。
 
-工具面挡不住它们：团队工具注册在 Agent scope，而 `tools.restrict({ deny })` 只接受全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），`tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以本 bundle 只做两件事——第一次会话创建时告警一次，以及给 leader 与 worker 注入运行时上下文（`dsh-leader-kit:team-ban`，order 106），按各自工具面分开写禁令；普通会话不注入，它们可能真的在用 teammate。要彻底隔离只能从 profile 移除那个 package。
+工具面挡不住它们：团队工具注册在 Agent scope，而 `tools.restrict({ deny })` 只接受全局工具名（宿主 `packages/core/tools/src/index.ts` 的 `restrictableNames`），`tool-subagent*` 的全局注册又被 agent-team-profile 禁用了。所以本 bundle 只做两件事——第一次会话创建时告警一次，以及给 leader 与 worker 注入运行时上下文（`dsh-leader-agent:team-ban`，order 106），按各自工具面分开写禁令；普通会话不注入，它们可能真的在用 teammate。要彻底隔离只能从 profile 移除那个 package。
 
 ## 项目与会话归属
 
@@ -76,7 +76,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 ## 卡片与看板
 
-卡片落盘在 `$DSH_HOME/dsh-leader-kit/cards.json`：编号全局递增、不复用，`revision` 做乐观并发，归档是终态，**项目归属由宿主判定**（`create_card` 时按调用方会话反查项目写 `projectId`，模型不传项目参数）。`list_cards` 默认只列本项目，`scope=all` 才跨项目；有归属的卡只能被本项目会话改。
+卡片落盘在 `$DSH_HOME/dsh-leader-agent/cards.json`：编号全局递增、不复用，`revision` 做乐观并发，归档是终态，**项目归属由宿主判定**（`create_card` 时按调用方会话反查项目写 `projectId`，模型不传项目参数）。`list_cards` 默认只列本项目，`scope=all` 才跨项目；有归属的卡只能被本项目会话改。
 
 看板是**项目的看板**：一个项目一个看板，跨会话聚合，leader 与 worker 建的卡在同一处。数据源是宿主的卡片库（经项目远程通道读取），不是会话事件流——事件流是会话维度的，一个项目的卡散在多个会话里，重放既慢又会漏。卡片仍随 `tool/result` 事件的 `meta` 投影进 session log（历史完整），但那是历史，不是看板的数据源。
 
@@ -100,7 +100,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ## 持久化布局
 
-运行时数据根是 `$DSH_HOME`（开发实例在 `.dev/home`），按宿主 `dsh-home-paths` 的口径解析（`~` 展开、相对路径 `resolve`、空白按未设，见 `src/host/home-paths.js`）。本 bundle 的数据全在 `dsh-leader-kit/` 下：
+运行时数据根是 `$DSH_HOME`（开发实例在 `.dev/home`），按宿主 `dsh-home-paths` 的口径解析（`~` 展开、相对路径 `resolve`、空白按未设，见 `src/host/home-paths.js`）。本 bundle 的数据全在 `dsh-leader-agent/` 下：
 
 | 文件 | 内容 |
 |---|---|
@@ -116,7 +116,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 来源 | 注入对象 | 生效时机 |
 |---|---|---|
 | `.agents/skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
-| `.agents/skills/init-leader-kit/` | 项目初始化方法（`AGENTS.md` + `LEADER.md` + `SLOTS.md`） | 模型调用 `skill` 工具时 |
+| `.agents/skills/init-leader-agent/` | 项目初始化方法（`AGENTS.md` + `LEADER.md` + `SLOTS.md`） | 模型调用 `skill` 工具时 |
 | `LEADER.md` | 该项目的 leader 会话 | 每轮请求求值，读文件内容变化才追加 |
 | `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，读文件内容变化才追加 |
 | 卡片事实 | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，卡片内容变化才追加 |
@@ -129,7 +129,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 `SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
-协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-kit/.agents/skills/`）。这个路径同时是 dsh 的项目级 skill 目录：任何项目在自己的 `.agents/skills/` 放同名副本即可覆盖，项目副本优先——dsh 的 skill 发现按来源层级取优，项目级 rank 200 低于 bundle 的 600。
+协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-agent/.agents/skills/`）。这个路径同时是 dsh 的项目级 skill 目录：任何项目在自己的 `.agents/skills/` 放同名副本即可覆盖，项目副本优先——dsh 的 skill 发现按来源层级取优，项目级 rank 200 低于 bundle 的 600。
 
 ## 目录职责
 
@@ -139,7 +139,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `src/host/tools/` | 六个工具的实现：`spawn_worker` / `message_worker` / `read_worker_session` / `create_card` / `update_card` / `list_cards` |
 | `src/client/` | 左栏项目区块与项目树、右栏看板与卡片详情、worker 回报气泡、浮层与提示条 |
 | `src/shared/` | 两端共用的纯函数与线上类型（frontmatter 解析、卡片链接判定、项目通道方法名） |
-| `.agents/skills/` | 协议层 `leader-mode` 与项目初始化方法 `init-leader-kit` |
+| `.agents/skills/` | 协议层 `leader-mode` 与项目初始化方法 `init-leader-agent` |
 | `build/`、`scripts/` | 客户端构建（原子替换）与开发实例、worktree、门禁脚本 |
 
 单个文件的职责写在文件头注释里——那是权威来源，不在文档里再抄一份。改某块前按 [AGENTS.md 的按任务查阅](../AGENTS.md#按任务查阅)找归属文档。

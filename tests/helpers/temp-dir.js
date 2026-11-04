@@ -2,10 +2,10 @@
  * 测试用的临时目录：建完登记，测试结束后统一删。
  *
  * 让每个用例自己 `rm` 很容易漏——本仓曾因此在系统 temp 里堆了四千多个
- * `dsh-leader-kit-*` 目录。改由这里统一登记，测试文件的 `after` 钩子调用
+ * `dsh-leader-agent-*` 目录。改由这里统一登记，测试文件的 `after` 钩子调用
  * `cleanupTempDirs` 收尾。
  *
- * @module dsh-leader-kit/tests/helpers/temp-dir
+ * @module dsh-leader-agent/tests/helpers/temp-dir
  */
 
 import { mkdtemp, rm } from 'node:fs/promises'

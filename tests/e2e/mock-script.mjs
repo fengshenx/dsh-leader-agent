@@ -4,7 +4,7 @@
  * 单独成模块是为了让这三件事进 `npm run check`——真实取证的失败原因经常落在
  * 「标记没被识别」「脚本多走一步」这类纯逻辑上，起浏览器之前就该测出来。
  *
- * @module dsh-leader-kit/tests/e2e/mock-script
+ * @module dsh-leader-agent/tests/e2e/mock-script
  */
 
 /** 场景标记：写在用户输入里，一个标记只表达一个场景。 */

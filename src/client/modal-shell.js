@@ -17,7 +17,7 @@
  * 框里没有可输入的控件，组合态下按 Escape 的风险不存在，这里只在按键判断里留
  * 一个 `isComposing` 检查。
  *
- * @module dsh-leader-kit/client/modal-shell
+ * @module dsh-leader-agent/client/modal-shell
  */
 
 import { createElement, useLayoutEffect, useRef } from 'react'
@@ -32,14 +32,14 @@ import {
 import { productIcon } from './icons.js'
 
 /** 样式表 id，同一页面只注入一次。 */
-const STYLE_ID = 'dsh-leader-kit-modal'
+const STYLE_ID = 'dsh-leader-agent-modal'
 
 /**
  * 样式表内容。类名、数值与断点照抄宿主 `Modal.module.css`，`--dsw-*` 变量由宿主
  * 主题提供。
  */
 const STYLE_TEXT = `
-.dsh-leader-kit-modal-root {
+.dsh-leader-agent-modal-root {
   pointer-events: auto;
   position: fixed;
   inset: 0;
@@ -50,21 +50,21 @@ const STYLE_TEXT = `
   padding: max(24px, var(--dsh-frame-overlay-top, 24px)) 24px;
 }
 
-.dsh-leader-kit-modal-mask {
+.dsh-leader-agent-modal-mask {
   position: absolute;
   inset: var(--dsh-frame-chrome-top, 0px) 0 0;
   backdrop-filter: var(--dsw-mask-blur);
 }
 
-.dsh-leader-kit-modal-mask::after {
+.dsh-leader-agent-modal-mask::after {
   content: '';
   position: absolute;
   inset: 0;
   background: var(--dsw-alias-bg-mask-1);
-  animation: dsh-leader-kit-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: dsh-leader-agent-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
-.dsh-leader-kit-modal-dialog {
+.dsh-leader-agent-modal-dialog {
   box-sizing: border-box;
   position: relative;
   z-index: 1;
@@ -78,36 +78,36 @@ const STYLE_TEXT = `
   border-radius: var(--dsw-radius-panel);
   background: var(--dsw-alias-bg-layer-2);
   box-shadow: var(--dsw-elevation-prominent);
-  animation: dsh-leader-kit-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
+  animation: dsh-leader-agent-modal-enter var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
-.dsh-leader-kit-modal-dialog-wide {
+.dsh-leader-agent-modal-dialog-wide {
   width: min(560px, 100%);
   max-height: 80vh;
 }
 
-@keyframes dsh-leader-kit-modal-enter {
+@keyframes dsh-leader-agent-modal-enter {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-leader-kit-modal-mask::after,
-  .dsh-leader-kit-modal-dialog { animation: none; }
+  .dsh-leader-agent-modal-mask::after,
+  .dsh-leader-agent-modal-dialog { animation: none; }
 }
 
-.dsh-leader-kit-modal-dialog:focus {
+.dsh-leader-agent-modal-dialog:focus {
   outline: none;
 }
 
-.dsh-leader-kit-modal-content {
+.dsh-leader-agent-modal-content {
   display: flex;
   flex-direction: column;
   width: 100%;
   min-height: 0;
 }
 
-.dsh-leader-kit-modal-header {
+.dsh-leader-agent-modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -115,7 +115,7 @@ const STYLE_TEXT = `
   padding: 22px 14px 12px 24px;
 }
 
-.dsh-leader-kit-modal-title {
+.dsh-leader-agent-modal-title {
   margin: 0;
   font-size: 16px;
   line-height: 24px;
@@ -123,7 +123,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-leader-kit-modal-close {
+.dsh-leader-agent-modal-close {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -138,12 +138,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-modal-close:hover {
+  .dsh-leader-agent-modal-close:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-modal-description {
+.dsh-leader-agent-modal-description {
   margin: 0;
   padding: 0 24px;
   font-size: 14px;
@@ -152,7 +152,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-leader-kit-modal-body {
+.dsh-leader-agent-modal-body {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -160,7 +160,7 @@ const STYLE_TEXT = `
   padding: 0 24px;
 }
 
-.dsh-leader-kit-modal-footer {
+.dsh-leader-agent-modal-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -168,7 +168,7 @@ const STYLE_TEXT = `
   padding: 0 24px;
 }
 
-.dsh-leader-kit-modal-button {
+.dsh-leader-agent-modal-button {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -185,28 +185,28 @@ const STYLE_TEXT = `
   background: transparent;
 }
 
-.dsh-leader-kit-modal-button:disabled {
+.dsh-leader-agent-modal-button:disabled {
   cursor: not-allowed;
   opacity: 0.4;
 }
 
-.dsh-leader-kit-modal-button-outline {
+.dsh-leader-agent-modal-button-outline {
   border: 0.5px solid transparent;
   background: transparent;
   box-shadow: inset 0 0 0 var(--ds-hairline-width, 0.5px) var(--dsh-button-outline-color, var(--dsw-alias-border-l3));
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-modal-button-outline:hover:not(:disabled) {
+  .dsh-leader-agent-modal-button-outline:hover:not(:disabled) {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-modal-button-danger:not(:disabled) {
+.dsh-leader-agent-modal-button-danger:not(:disabled) {
   color: var(--dsw-alias-state-error-primary);
 }
 
-.dsh-leader-kit-modal-error {
+.dsh-leader-agent-modal-error {
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-state-error-primary);
@@ -356,43 +356,43 @@ export function ModalShell({
 
   return createPortal(
     createElement('div', {
-      className: 'dsh-leader-kit-modal-root',
+      className: 'dsh-leader-agent-modal-root',
       role: 'presentation',
     },
     createElement('div', {
-      className: 'dsh-leader-kit-modal-mask',
+      className: 'dsh-leader-agent-modal-mask',
       'aria-hidden': 'true',
       onClick: () => close.current(),
     }),
     createElement('div', {
       ref: dialog,
       tabIndex: -1,
-      className: `dsh-leader-kit-modal-dialog${wide ? ' dsh-leader-kit-modal-dialog-wide' : ''}`,
+      className: `dsh-leader-agent-modal-dialog${wide ? ' dsh-leader-agent-modal-dialog-wide' : ''}`,
       role: 'dialog',
       'aria-modal': 'true',
       'aria-label': title,
     },
     headless
       ? children
-      : createElement('div', { className: 'dsh-leader-kit-modal-content' },
-        createElement('div', { className: 'dsh-leader-kit-modal-header' },
-          createElement('h2', { className: 'dsh-leader-kit-modal-title' }, title),
+      : createElement('div', { className: 'dsh-leader-agent-modal-content' },
+        createElement('div', { className: 'dsh-leader-agent-modal-header' },
+          createElement('h2', { className: 'dsh-leader-agent-modal-title' }, title),
           createElement('button', {
             type: 'button',
-            className: 'dsh-leader-kit-modal-close',
+            className: 'dsh-leader-agent-modal-close',
             'aria-label': closeLabel,
             onClick: () => close.current(),
           }, productIcon('close-outline', { size: 14 })),
         ),
         description !== ''
-          ? createElement('p', { className: 'dsh-leader-kit-modal-description' }, description)
+          ? createElement('p', { className: 'dsh-leader-agent-modal-description' }, description)
           : null,
         children !== null
-          ? createElement('div', { className: 'dsh-leader-kit-modal-body' }, children)
+          ? createElement('div', { className: 'dsh-leader-agent-modal-body' }, children)
           : null,
       ),
     footer !== null
-      ? createElement('div', { className: 'dsh-leader-kit-modal-footer' }, footer)
+      ? createElement('div', { className: 'dsh-leader-agent-modal-footer' }, footer)
       : null,
     ),
     ),

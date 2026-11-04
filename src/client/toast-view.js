@@ -5,17 +5,17 @@
  * 提示仍然可见。视觉照宿主自带的 Toast（顶部居中、暗色表面、不拦点击），
  * 只是文案由本插件给。
  *
- * @module dsh-leader-kit/client/toast-view
+ * @module dsh-leader-agent/client/toast-view
  */
 
 import { createElement, Fragment, useEffect, useState } from 'react'
 import { currentToast, dismissToast, subscribeToasts } from './toast.js'
 
-const STYLE_ID = 'dsh-leader-kit-toast-style'
+const STYLE_ID = 'dsh-leader-agent-toast-style'
 
 // client 侧的样式写在模板字符串里，不能出现反引号。
 const STYLE_TEXT = `
-.dsh-leader-kit-toast {
+.dsh-leader-agent-toast {
   position: fixed;
   top: 40px;
   left: 50%;
@@ -32,19 +32,19 @@ const STYLE_TEXT = `
   box-shadow: var(--dsw-shadow-lv3);
   transform: translateX(-50%);
   animation:
-    dsh-leader-kit-toast-in 160ms ease-out,
-    dsh-leader-kit-toast-fade 1000ms ease var(--dsh-leader-kit-toast-hold, 4000ms) forwards;
+    dsh-leader-agent-toast-in 160ms ease-out,
+    dsh-leader-agent-toast-fade 1000ms ease var(--dsh-leader-agent-toast-hold, 4000ms) forwards;
 }
-@keyframes dsh-leader-kit-toast-in {
+@keyframes dsh-leader-agent-toast-in {
   from { opacity: 0; transform: translate(-50%, -6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
-@keyframes dsh-leader-kit-toast-fade {
+@keyframes dsh-leader-agent-toast-fade {
   to { opacity: 0; visibility: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .dsh-leader-kit-toast {
-    animation: dsh-leader-kit-toast-fade 1000ms ease var(--dsh-leader-kit-toast-hold, 4000ms) forwards;
+  .dsh-leader-agent-toast {
+    animation: dsh-leader-agent-toast-fade 1000ms ease var(--dsh-leader-agent-toast-hold, 4000ms) forwards;
   }
 }
 `
@@ -90,9 +90,9 @@ export function ToastOverlay() {
     createElement(
       'div',
       {
-        className: 'dsh-leader-kit-toast',
+        className: 'dsh-leader-agent-toast',
         role: 'alert',
-        style: { '--dsh-leader-kit-toast-hold': `${toast.holdMs}ms` },
+        style: { '--dsh-leader-agent-toast-hold': `${toast.holdMs}ms` },
       },
       toast.text,
     ),

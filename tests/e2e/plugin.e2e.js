@@ -16,11 +16,11 @@ test('左栏项目区块在真实宿主里挂载', { timeout: scenarioTimeout() 
 
   await e2e.open()
 
-  const section = e2e.page.locator('.dsh-leader-kit-project-section')
+  const section = e2e.page.locator('.dsh-leader-agent-project-section')
   await waitForLocator(section, { description: '插件项目区块在左栏挂载', timeoutMs: 20_000 })
 
   // 文案来自插件的 locale 字典：容器在、文案对，才算这颗 bundle 真的跑起来了。
-  await waitForLocator(e2e.page.locator('.dsh-leader-kit-project-header-label', { hasText: '项目' }), {
+  await waitForLocator(e2e.page.locator('.dsh-leader-agent-project-header-label', { hasText: '项目' }), {
     description: '项目区块标题文案出现',
   })
   assert.match(

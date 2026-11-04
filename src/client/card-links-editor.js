@@ -9,7 +9,7 @@
  * 草稿的 `key` 只服务于 React 与本地增删，提交前剔除；链接的 `id` 原样带回，
  * 新条目没有 id，由宿主在落盘时补。
  *
- * @module dsh-leader-kit/client/card-links-editor
+ * @module dsh-leader-agent/client/card-links-editor
  */
 
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
@@ -172,22 +172,22 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
 
   return createElement(
     'div',
-    { ref: root, className: 'dsh-leader-kit-link-editor' },
+    { ref: root, className: 'dsh-leader-agent-link-editor' },
     drafts.length === 0
       ? createElement(
           'p',
-          { className: 'dsh-leader-kit-link-editor-empty' },
+          { className: 'dsh-leader-agent-link-editor-empty' },
           '这张卡还没有挂链接。',
         )
       : drafts.map((draft, index) => createElement(
           'div',
-          { key: draft.key, className: 'dsh-leader-kit-link-editor-row' },
+          { key: draft.key, className: 'dsh-leader-agent-link-editor-row' },
           createElement(
             'div',
-            { className: 'dsh-leader-kit-link-editor-main' },
+            { className: 'dsh-leader-agent-link-editor-main' },
             createElement('input', {
               type: 'text',
-              className: 'dsh-leader-kit-link-editor-label',
+              className: 'dsh-leader-agent-link-editor-label',
               value: draft.label,
               placeholder: '标签',
               'aria-label': '链接标签',
@@ -200,7 +200,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
             }),
             createElement('input', {
               type: 'text',
-              className: 'dsh-leader-kit-link-editor-url',
+              className: 'dsh-leader-agent-link-editor-url',
               value: draft.url,
               placeholder: 'https://…',
               'aria-label': '链接 URL',
@@ -214,7 +214,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
               'button',
               {
                 type: 'button',
-                className: 'dsh-leader-kit-link-editor-remove',
+                className: 'dsh-leader-agent-link-editor-remove',
                 title: '移除链接',
                 'aria-label': '移除链接',
                 disabled: saving,
@@ -228,7 +228,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
                 'button',
                 {
                   type: 'button',
-                  className: 'dsh-leader-kit-link-editor-add-purpose',
+                  className: 'dsh-leader-agent-link-editor-add-purpose',
                   disabled: saving,
                   onClick: () => update(draft.key, 'purpose', ''),
                 },
@@ -236,7 +236,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
               )
             : createElement('input', {
                 type: 'text',
-                className: 'dsh-leader-kit-link-editor-purpose',
+                className: 'dsh-leader-agent-link-editor-purpose',
                 value: draft.purpose,
                 placeholder: '用途（可选）',
                 'aria-label': '链接用途',
@@ -251,7 +251,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
       'button',
       {
         type: 'button',
-        className: 'dsh-leader-kit-link-editor-add',
+        className: 'dsh-leader-agent-link-editor-add',
         disabled: saving,
         onClick: add,
       },
@@ -259,15 +259,15 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
     ),
     error === ''
       ? null
-      : createElement('div', { className: 'dsh-leader-kit-link-editor-error', role: 'alert' }, error),
+      : createElement('div', { className: 'dsh-leader-agent-link-editor-error', role: 'alert' }, error),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-link-editor-actions' },
+      { className: 'dsh-leader-agent-link-editor-actions' },
       createElement(
         'button',
         {
           type: 'button',
-          className: 'dsh-leader-kit-link-editor-button',
+          className: 'dsh-leader-agent-link-editor-button',
           disabled: saving,
           onClick: onCancel,
         },
@@ -277,7 +277,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
         'button',
         {
           type: 'button',
-          className: 'dsh-leader-kit-link-editor-button dsh-leader-kit-link-editor-button-primary',
+          className: 'dsh-leader-agent-link-editor-button dsh-leader-agent-link-editor-button-primary',
           disabled: saving,
           onClick: () => { void submit() },
         },

@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { desktopLinkSpec } from '../scripts/desktop-plan.mjs'
-import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
+import { LEADER_AGENT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(new URL('../scripts/desktop.mjs', import.meta.url)))
 
@@ -69,10 +69,10 @@ function writeProfileManifest(profileDir, worktree) {
   const manifest = {
     name: 'dsh-profile-desktop',
     private: true,
-    dependencies: worktree === null ? {} : { [LEADER_KIT_PACKAGE]: desktopLinkSpec(worktree) },
+    dependencies: worktree === null ? {} : { [LEADER_AGENT_PACKAGE]: desktopLinkSpec(worktree) },
     dsh: {
       profile: {
-        bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, ...(worktree === null ? [] : [LEADER_KIT_PACKAGE])],
+        bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, ...(worktree === null ? [] : [LEADER_AGENT_PACKAGE])],
       },
     },
   }
@@ -150,7 +150,7 @@ test('worktree 内 --remove 只摘派生根：不按日常 profile 重建，日�
   assert.equal(result.status, 0, `--remove 失败:\n${result.stdout}\n${result.stderr}`)
   assert.match(result.stdout, /已从 desktop profile 摘除/)
   const after = JSON.parse(readFileSync(join(derivedProfileDir, 'package.json'), 'utf8'))
-  assert.equal(LEADER_KIT_PACKAGE in after.dependencies, false)
+  assert.equal(LEADER_AGENT_PACKAGE in after.dependencies, false)
   assert.deepEqual(after.dsh.profile.bundles, ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE])
   assert.deepEqual(snapshotOf(dailyManifestPath), before)
   assert.equal(existsSync(join(tree, '.dev', 'desktop-home', '.credentials.yaml')), false, '摘除时把日常凭据复制进了派生根')
@@ -170,7 +170,7 @@ test('显式 DSH_HOME 时 --remove 只摘那条根，不派生', (t) => {
   assert.match(result.stdout, /已从 desktop profile 摘除/)
   // 只看用户指定的那条根：日常根里那份「没装」的状态原样留着。
   const installed = JSON.parse(readFileSync(join(home, '.dsh', 'profiles', 'desktop', 'package.json'), 'utf8'))
-  assert.equal(LEADER_KIT_PACKAGE in installed.dependencies, false)
+  assert.equal(LEADER_AGENT_PACKAGE in installed.dependencies, false)
   assert.equal(existsSync(join(tree, '.dev')), false, '显式 DSH_HOME 时不该派生')
 })
 
@@ -184,7 +184,7 @@ test('主 checkout（.git 是目录）时 --remove 摘日常根，不建派生�
   assert.equal(result.status, 0, `--remove 失败:\n${result.stdout}\n${result.stderr}`)
   assert.match(result.stdout, /已从 desktop profile 摘除/)
   const after = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  assert.equal(LEADER_KIT_PACKAGE in after.dependencies, false)
+  assert.equal(LEADER_AGENT_PACKAGE in after.dependencies, false)
   assert.deepEqual(after.dsh.profile.bundles, ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE])
   assert.equal(existsSync(join(tree, '.dev')), false, '主 checkout 不该派生')
 })

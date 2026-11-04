@@ -10,7 +10,7 @@ import { createNotificationStore } from '../src/host/notification-store.js'
  * @returns {Promise<{ store: object, home: string }>} 队列与 home 目录
  */
 async function createStore() {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-store-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-store-'))
   return { store: createNotificationStore({ home }), home }
 }
 

@@ -12,7 +12,7 @@
  *
  * 本模块**只读不写** `SLOTS.md`——用户与 leader 用常规的 Write/Edit 工具维护它。
  *
- * @module dsh-leader-kit/host/slots/slot-templates
+ * @module dsh-leader-agent/host/slots/slot-templates
  */
 
 import { readFileSync } from 'node:fs'
@@ -199,7 +199,7 @@ export function loadSlotTemplates(directory) {
     } else {
       reportIssues(directory, [{
         signature: `read:${error.code ?? error.message}`,
-        message: `dsh-leader-kit: 读取 ${file} 失败（${error.code ?? error.message}），已回落默认槽位。`,
+        message: `dsh-leader-agent: 读取 ${file} 失败（${error.code ?? error.message}），已回落默认槽位。`,
       }])
     }
     return fallback
@@ -210,19 +210,19 @@ export function loadSlotTemplates(directory) {
   if (invalidNames.length > 0) {
     issues.push({
       signature: `invalid:${invalidNames.join(',')}`,
-      message: `dsh-leader-kit: ${file} 里这些分节名不合法、整节已忽略：${invalidNames.map((name) => `「${name}」`).join(' ')}。槽位名须为小写 ASCII（字母、数字、下划线、连字符，最长 32 字符）。`,
+      message: `dsh-leader-agent: ${file} 里这些分节名不合法、整节已忽略：${invalidNames.map((name) => `「${name}」`).join(' ')}。槽位名须为小写 ASCII（字母、数字、下划线、连字符，最长 32 字符）。`,
     })
   }
   for (const warning of warnings) {
     issues.push({
       signature: `frontmatter:${warning}`,
-      message: `dsh-leader-kit: ${file} 的 frontmatter ${warning}。`,
+      message: `dsh-leader-agent: ${file} 的 frontmatter ${warning}。`,
     })
   }
   if (slots.size === 0) {
     issues.push({
       signature: 'zero',
-      message: `dsh-leader-kit: ${file} 存在但没有合法的「## <槽位名>」分节，已回落默认槽位 ${DEFAULT_SLOT_NAMES.join(' / ')}。`,
+      message: `dsh-leader-agent: ${file} 存在但没有合法的「## <槽位名>」分节，已回落默认槽位 ${DEFAULT_SLOT_NAMES.join(' / ')}。`,
     })
   }
   reportIssues(directory, issues)

@@ -22,7 +22,7 @@ function event(type, data, time = 0) {
  * 造一条真人输入的消息事件。
  *
  * 三种生产者的 `user/message` 只靠 `source.kind` 区分：`user` 是真人输入，
- * `dsh-leader-kit/worker-task` 是 leader 投递的任务，其余是宿主注入的上下文。
+ * `dsh-leader-agent/worker-task` 是 leader 投递的任务，其余是宿主注入的上下文。
  *
  * @param {string} text - 正文
  * @returns {object} 事件

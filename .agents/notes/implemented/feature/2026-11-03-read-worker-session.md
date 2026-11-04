@@ -38,7 +38,7 @@
 - 未配对的 `tool/result`（宿主在工具恢复路径上会补写）不丢，名字记 `unknown`；
 - 无关事件（step、请求头、压缩、系统/开发者消息）不进视图。
 
-`user/message` 有三种生产者，只靠 `source.kind` 区分：真人输入（`user`）、本仓协调者投递的任务（`dsh-leader-kit/worker-task`，见 `host/message.js` 的 `WORKER_TASK_SOURCE_KIND`）、宿主注入的上下文（换目录、plan 模式、hooks 的 `additionalContexts` 等）。三类分开记：任务与人类输入进正文，注入只记条数、正文省略——否则注入会占掉任务正文的 2000 字符预算，协调者看到「用户」说过自己没说过的话，甚至把真正的任务挤出去。
+`user/message` 有三种生产者，只靠 `source.kind` 区分：真人输入（`user`）、本仓协调者投递的任务（`dsh-leader-agent/worker-task`，见 `host/message.js` 的 `WORKER_TASK_SOURCE_KIND`）、宿主注入的上下文（换目录、plan 模式、hooks 的 `additionalContexts` 等）。三类分开记：任务与人类输入进正文，注入只记条数、正文省略——否则注入会占掉任务正文的 2000 字符预算，协调者看到「用户」说过自己没说过的话，甚至把真正的任务挤出去。
 
 ### 上限：三层，缺一层就能撑爆协调者上下文
 

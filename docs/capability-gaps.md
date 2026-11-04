@@ -48,7 +48,7 @@ is incompatible with dsh 0.2.1-rc.2: requirements {"@deepseek-ai/dsh-llm":"^0.1.
 **实测**：用 `--patch` 加载时，插件行写包名会失败：
 
 ```
-Cannot find package 'dsh-leader-kit' imported from /Users/mxwu/.dsh/profiles/web/
+Cannot find package 'dsh-leader-agent' imported from /Users/mxwu/.dsh/profiles/web/
 ```
 
 把包 link 进 dsh 仓库的 `node_modules` 无效——解析基准是 profile 目录。
@@ -135,7 +135,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **实测**：`tool/result` 事件的 `message.content` 只有 `output.render` 给模型的文本；`output.value`（结构化结果）不出现在事件里。`output.presentationMeta(args, value)` 投影的 `meta` 才随事件持久化（`tool/result` 事件的 `data.meta`），并被客户端的 `ToolResultNode.meta` 读回。
 
-**影响**：客户端要拿结构化数据，只能走 `presentationMeta`。本 bundle 的卡片工具据此投影 `meta`（`{kind:'dsh-leader-kit-cards', scope, cards}`），客户端据此重建看板。
+**影响**：客户端要拿结构化数据，只能走 `presentationMeta`。本 bundle 的卡片工具据此投影 `meta`（`{kind:'dsh-leader-agent-cards', scope, cards}`），客户端据此重建看板。
 
 ### 15. 右栏 tab 注册与 slot body 都在浏览器侧，host 插件够不着
 
@@ -157,13 +157,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **实测**：`defineDomain` / `domainTable`（`packages/storage/storage-domain/src/spec.ts:107`）要求 zod schema，存储域服务本身是 `@deepseek-ai/dsh-storage-domain` peer 依赖，dsh 按 peer 版本与宿主严格校验。
 
-**影响**：卡片与通知队列改用自建落盘（原子写 + 读-改-写串行化），落在 `$DSH_HOME/dsh-leader-kit/`（包名从 `dsh-coordinator` 改过来，旧目录不读不迁；包未发布、无外部用户）。代价是不享受 dsh 的存储域生态（迁移、备份、跨端同步），换来的是零版本耦合。
+**影响**：卡片与通知队列改用自建落盘（原子写 + 读-改-写串行化），落在 `$DSH_HOME/dsh-leader-agent/`（包名从 `dsh-coordinator` 改过来，旧目录不读不迁；包未发布、无外部用户）。代价是不享受 dsh 的存储域生态（迁移、备份、跨端同步），换来的是零版本耦合。
 
 ### 18. 插件行名必须是纯包名，否则浏览器侧发现不到 client 半边
 
-**实测**：`packages/client/modules/src/index.ts:892` 的 `locatePkgJson` 要求 Loader 行名可解析成包名：`exactPackageSpecifier` 不接受含 `/` 的子路径。行名写成 `dsh-leader-kit/src/host` 时定位不到包 manifest，该行不会被识别为 client row——宿主不下发 client bundle，浏览器侧完全没有本包的 UI。
+**实测**：`packages/client/modules/src/index.ts:892` 的 `locatePkgJson` 要求 Loader 行名可解析成包名：`exactPackageSpecifier` 不接受含 `/` 的子路径。行名写成 `dsh-leader-agent/src/host` 时定位不到包 manifest，该行不会被识别为 client row——宿主不下发 client bundle，浏览器侧完全没有本包的 UI。
 
-**实测（修复后）**：行名改为 `dsh-leader-kit`（纯包名）→ web profile 的 boot manifest 从 70 条目变 71 条目，多出的条目即本包，附带 `plugins/??dsh-leader-kit/client.js` 下发路径；浏览器右栏随即出现本包注册的 Tab。
+**实测（修复后）**：行名改为 `dsh-leader-agent`（纯包名）→ web profile 的 boot manifest 从 70 条目变 71 条目，多出的条目即本包，附带 `plugins/??dsh-leader-agent/client.js` 下发路径；浏览器右栏随即出现本包注册的 Tab。
 
 **影响**：bundle 的插件行名不能为了定位子模块而写成子路径；子模块仍可通过 `exports` 映射（如 `"./src/host"`）供包内引用。
 
@@ -421,7 +421,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 宽度由 `dsh-client-ui-layout` 的 AppFrame 算：`RIGHTBAR_DEFAULT_RATIO = .45`，首次 `openRightbar()` 时执行 `rightbar ??= Math.max(300, Math.round(viewportWidth * .45))`；此后保留当前 px 偏好（首开计算值或拖拽值），且是**内存态**，刷新即失（该包 README 的 Known Limitations：layout state resets on reload）。
 - `ctx.layout` 的公开面只有 `selectPanel` / `beginNavigation` / `toggleSidebar` / `openRightbar(track, fullscreen)` / `closeRightbar`，没有设置宽度的动作；存 `rightbar` 的 `layoutInfo` 是包内 store，第三方拿不到。编译产物里 `LayoutController` 实例另有普通属性 `panels`，`ctx.layout.panels.setRightbar(400)` 今天技术上可达；但公开面没声明，属宿主私有实现、重构即失效，违反「不 hack 宿主内部」铁律，已评估不采用。
 - `dsh-client-ui-sidebar-right` 的 localStorage（`dsh.sidebar-right.v1.<sessionId>`）只存每会话的 tab / 分栏比例 / 浮窗矩形 / 呈现方式，不存列宽；右栏座收到的 `width` 是宿主解析后的只读值（`RightbarOwnerProps.width`）。
-- 本插件没有撑开它的样式：看板面板根节点 `.dsh-leader-kit-board` 不设固定宽度（宽随容器；`board-styles.js` 的 `width: 100%` 只在卡片（含 done 行）、done 切换按钮与链接编辑器输入上），唯一的 380px 是 guide 入口胶囊且带 `max-width: 100%`；自动弹出只调用 `sidebarRight.openTab` / `focus`。
+- 本插件没有撑开它的样式：看板面板根节点 `.dsh-leader-agent-board` 不设固定宽度（宽随容器；`board-styles.js` 的 `width: 100%` 只在卡片（含 done 行）、done 切换按钮与链接编辑器输入上），唯一的 380px 是 guide 入口胶囊且带 `max-width: 100%`；自动弹出只调用 `sidebarRight.openTab` / `focus`。
 - **真机读数**（本机 Chrome，视口 1556×952 CSS px，DPI 96）：右栏面板实测 434×952 px——这是窗口更窄时首开计算出的 px 偏好，按 434 ÷ .45 推算当时视口约 964 px（推断值，非实测）；同一视口按首开公式应为 700 px。此后只按像素保留，实测宽度不随窗口缩放。
 
 **结论**：右栏默认宽度 = `max(300, round(视口宽 × 45%))`——1920px 宽窗口下约 864px，与「启动时太宽」的观感一致。第三方要改成 400 的公开路径只有三条，都不该走：改宿主默认值（本仓不改宿主）、用 `!important` 覆盖面板 inline 宽度（轨道内联在 frame 的 `grid-template-columns` 上，拖拽把手位置与 dockkit 测宽也按同一宽度算，盖一处会三处不一致）、派发合成 pointer 事件去拖宿主把手（依赖宿主内部 DOM 与手势实现）；私有 `panels` 旁路同样不采用（见上）。**需要宿主提供宽度偏好入口**（例如 `ctx.layout.setRightbarWidth(px)`，或一个公开 CSS 变量）；在那之前看板只能跟随宿主默认宽度，拖出来的宽度刷新后也会弹回 45%。
@@ -449,7 +449,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 组头 `div[data-row-key="workspace:"]` 与会话行是同一个 `div.<hash>_groupSection` 的**兄弟节点**，顺序是组头 → 会话行 →（可选）展开按钮；1 条会话与 6 条（折叠水位 5）两种状态都是 1 个 `groupSection`，组头的 `parentElement` 里就能查到会话行。
 - 子工作区嵌套时段内行渲染在父 section 内一个 `div[role="group"]` 里，仍然不是独立的 `groupSection`。
 
-**影响**：既然同 section，「组头所在 section 里有没有可见会话行」这个 DOM 判据**并不恒假**——组里还有用户自己的会话时判得准。组内的行**全被插件自己的排除集隐藏**（`dsh-leader-kit-excluded-session`）时，判据看到一排带隐藏类的行、得出「组里没内容」，会连组头一起藏——这是宿主结构下的必然结果，不是判据的缺陷：`markUngroupedHeader` 只按渲染结果判，不复刻宿主的数据层可见性规则（取舍见 `docs/limitations.md` 的「未分组」组头那条），代价就落在这个形态上，方向仍是宁可留一个空组头也不误伤用户自己的会话。项目目录失效后仍排除它的会话正好落进这里，用户看到「未分组整组消失，卸载插件就回来」——所以修复只能落在排除集上（客户端不再按目录可用性排除），不在 DOM 结构上。
+**影响**：既然同 section，「组头所在 section 里有没有可见会话行」这个 DOM 判据**并不恒假**——组里还有用户自己的会话时判得准。组内的行**全被插件自己的排除集隐藏**（`dsh-leader-agent-excluded-session`）时，判据看到一排带隐藏类的行、得出「组里没内容」，会连组头一起藏——这是宿主结构下的必然结果，不是判据的缺陷：`markUngroupedHeader` 只按渲染结果判，不复刻宿主的数据层可见性规则（取舍见 `docs/limitations.md` 的「未分组」组头那条），代价就落在这个形态上，方向仍是宁可留一个空组头也不误伤用户自己的会话。项目目录失效后仍排除它的会话正好落进这里，用户看到「未分组整组消失，卸载插件就回来」——所以修复只能落在排除集上（客户端不再按目录可用性排除），不在 DOM 结构上。
 
 **本仓不再改这个判据**：`089b5a6`（#101）已给 `markUngroupedHeader` 加「组内还有可见的『展开其余 N 个会话』就不藏」的兜底，把上面那个形态压到只剩「行全被排除且没有展开按钮」；另一种偏差是快照滞后（组里有会话但行还没画出来，判据看到空 section）——未复现，属理论边界。回归用例是 `tests/e2e/project-directory-gone.e2e.js`（删掉 `directoryUsable` 过滤必红）。
 
@@ -461,14 +461,14 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 | 能力 | 实测结果 | 证据 |
 |---|---|---|
-| bundle 作为第三方 bundle 分发 | 通过 | `dsh plugin --profile headless add ../dsh-leader-kit` 后 `dsh.profile.bundles` 含 `dsh-leader-kit` |
+| bundle 作为第三方 bundle 分发 | 通过 | `dsh plugin --profile headless add ../dsh-leader-agent` 后 `dsh.profile.bundles` 含 `dsh-leader-agent` |
 | `ctx.tools.register` | 通过 | 模型调用 `init_project` 成功，目标目录生成 `AGENTS.md`（4307 字节，含受管区块） |
-| `ctx.skills.registerProvider` | 通过 | `ctx.skills.list()` 返回 `leader-mode` 与 `init-leader-kit`，provider `dsh-leader-kit`，source `bundled` |
+| `ctx.skills.registerProvider` | 通过 | `ctx.skills.list()` 返回 `leader-mode` 与 `init-leader-agent`，provider `dsh-leader-agent`，source `bundled` |
 | 免凭据跑真实会话 | 通过 | dsh 自带 mock LLM server（`packages/test-support/llm-mock-server`）+ `DEEPSEEK_BASE_URL` 覆盖 |
 | 包名子路径解析 | 通过 | `exports` 映射 `"./src/host": "./src/host/index.js"`；ESM 不支持目录索引，必须指到文件 |
 | 后台派工（派完即返回） | 通过 | `spawn_worker` 立即返回子会话 id，父 turn 正常结束，worker 在后台继续 |
 | 完成自动唤醒 | 通过 | 父 inbox 收到完成通知（正文不带说话人前缀）后状态 `idle → running → idle`，通知队列清空 |
-| 协议层与工具对模型可见 | 通过 | 模型侧工具列表同时含 `init_project` 与 `spawn_worker`；skill catalog 含 `leader-mode` 与 `init-leader-kit` |
+| 协议层与工具对模型可见 | 通过 | 模型侧工具列表同时含 `init_project` 与 `spawn_worker`；skill catalog 含 `leader-mode` 与 `init-leader-agent` |
 | 原生工具管理子会话 | 通过（源码核验） | base bundle 启用 `tool-subagent-control` 与 `tool-subagent-control/list-agents`；`agent_id` 即子会话 id |
 | 卡片存储与领域规则 | 通过 | 49 例单测全绿；sdk profile + mock LLM 实测建卡/改卡/查卡/版本冲突 |
 | 客户端取数通道 | 通过 | `output.presentationMeta` 投影的 `meta` 随 `tool/result` 事件持久化，实测携带完整卡片对象 |

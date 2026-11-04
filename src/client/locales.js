@@ -14,11 +14,11 @@
  * 自己的名字，优先级高于这份字典（`slotDisplayName`）；两者都没有时显示槽位名
  * 本身——不会因为缺翻译就看不见。
  *
- * @module dsh-leader-kit/client/locales
+ * @module dsh-leader-agent/client/locales
  */
 
 /** 本插件的 locale 命名空间。 */
-export const SLOT_LOCALE_NAMESPACE = 'dsh-leader-kit'
+export const SLOT_LOCALE_NAMESPACE = 'dsh-leader-agent'
 
 /**
  * 槽位名到字典键。
@@ -41,7 +41,7 @@ export const zh = Object.freeze({
   'guide.steps': '你可以让它建任务卡、给 Agent 派活，在右栏看板跟进',
   'guide.action.intro': '了解怎么用',
   'guide.action.dismiss': '知道了',
-  'guide.intro.prompt': '这个项目还没配置，先讲讲 dsh-leader-kit 怎么用。',
+  'guide.intro.prompt': '这个项目还没配置，先讲讲 dsh-leader-agent 怎么用。',
 })
 
 /** 英文字典，键与中文字典一致。 */
@@ -53,7 +53,7 @@ export const en = Object.freeze({
   'guide.steps': 'Open task cards, hand work to Agents, track progress in the board',
   'guide.action.intro': 'Show me how to use it',
   'guide.action.dismiss': 'Got it',
-  'guide.intro.prompt': "This project isn't set up yet — show me how dsh-leader-kit works.",
+  'guide.intro.prompt': "This project isn't set up yet — show me how dsh-leader-agent works.",
 })
 
 /**

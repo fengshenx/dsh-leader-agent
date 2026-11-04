@@ -40,8 +40,8 @@ test('看板样式表注入一次，重复调用不重复追加', () => {
   ensureBoardStyles()
   ensureBoardStyles()
   assert.equal(head.length, 1)
-  assert.equal(head[0].id, 'dsh-leader-kit-board')
-  assert.match(head[0].textContent, /\.dsh-leader-kit-board/)
+  assert.equal(head[0].id, 'dsh-leader-agent-board')
+  assert.match(head[0].textContent, /\.dsh-leader-agent-board/)
 })
 
 test('worker 回报样式表注入一次，重复调用不重复追加', () => {
@@ -49,8 +49,8 @@ test('worker 回报样式表注入一次，重复调用不重复追加', () => {
   ensureWorkerReportStyles()
   ensureWorkerReportStyles()
   assert.equal(head.length, 1)
-  assert.equal(head[0].id, 'dsh-leader-kit-worker-report')
-  assert.match(head[0].textContent, /\.dsh-leader-kit-worker-report/)
+  assert.equal(head[0].id, 'dsh-leader-agent-worker-report')
+  assert.match(head[0].textContent, /\.dsh-leader-agent-worker-report/)
 })
 
 test('没有 document 时直接返回，不抛错', () => {

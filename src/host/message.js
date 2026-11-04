@@ -6,7 +6,7 @@
  * 因此按 dsh 的消息契约就地构造等价对象：`id` 是随机 UUID，`source` 默认取
  * `{ kind: 'user' }`。
  *
- * @module dsh-leader-kit/host/message
+ * @module dsh-leader-agent/host/message
  */
 
 import { randomUUID } from 'node:crypto'
@@ -17,7 +17,7 @@ import { randomUUID } from 'node:crypto'
  * 读侧（`worker-transcript`）靠它把任务正文与宿主注入的上下文区分开：两者都是
  * `user/message`，只有 `source.kind` 不同。
  */
-export const WORKER_TASK_SOURCE_KIND = 'dsh-leader-kit/worker-task'
+export const WORKER_TASK_SOURCE_KIND = 'dsh-leader-agent/worker-task'
 
 /**
  * 构造一条 dsh 用户消息。

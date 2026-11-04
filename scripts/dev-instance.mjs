@@ -5,7 +5,7 @@
  * 都要「插件指向当前工作树、数据根独立、不碰 ~/.dsh」，写成两份必然漂移——e2e 会
  * 在开发实例装得下的组合之外悄悄跑，测到的就不是用户实际拿到的东西。
  *
- * @module dsh-leader-kit/scripts/dev-instance
+ * @module dsh-leader-agent/scripts/dev-instance
  */
 
 import {

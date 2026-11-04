@@ -13,7 +13,7 @@
  * "Full-width entries above the composer card"）：条目渲染空内容时不占空间，
  * 与 leader 视图入口共用同一个槽。
  *
- * @module dsh-leader-kit/client/guide-card
+ * @module dsh-leader-agent/client/guide-card
  */
 
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -67,17 +67,17 @@ export function GuideCardEntry(props) {
 
   return createElement(
     'div',
-    { className: 'dsh-leader-kit-guide-card' },
-    createElement('span', { className: 'dsh-leader-kit-guide-icon' }, productIcon('checklist-outline', { size: 16 })),
+    { className: 'dsh-leader-agent-guide-card' },
+    createElement('span', { className: 'dsh-leader-agent-guide-icon' }, productIcon('checklist-outline', { size: 16 })),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-guide-body' },
-      createElement('div', { className: 'dsh-leader-kit-guide-title' }, t('guide.title')),
-      createElement('div', { className: 'dsh-leader-kit-guide-steps' }, t('guide.steps')),
+      { className: 'dsh-leader-agent-guide-body' },
+      createElement('div', { className: 'dsh-leader-agent-guide-title' }, t('guide.title')),
+      createElement('div', { className: 'dsh-leader-agent-guide-steps' }, t('guide.steps')),
     ),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-guide-actions' },
+      { className: 'dsh-leader-agent-guide-actions' },
       // 与 sendIntroPrompt 共用同一个判定：只差一半能力时（比如有 submit 没有
       // setDraft）宁可不画，也不留一个点了没反应的按钮。
       canSendIntro(inputActions) === false ? null : createElement(Button, {
@@ -109,8 +109,8 @@ export function GuideCardEntry(props) {
 export function mountGuideCard(ctx) {
   ctx.effect(() => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
-    id: 'dsh-leader-kit-guide',
+    id: 'dsh-leader-agent-guide',
     order: 90,
     locale: SLOT_LOCALE_NAMESPACE,
-  }, GuideCardEntry)), 'dsh-leader-kit 引导卡')
+  }, GuideCardEntry)), 'dsh-leader-agent 引导卡')
 }

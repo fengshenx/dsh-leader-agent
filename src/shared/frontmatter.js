@@ -5,7 +5,7 @@
  * name / description / whenToUse 与 `SLOTS.md` 的槽位元数据使用。
  * 不引入 YAML 依赖——bundle 保持零运行时依赖，宿主只需解析 Node 内置模块。
  *
- * @module dsh-leader-kit/shared/frontmatter
+ * @module dsh-leader-agent/shared/frontmatter
  */
 
 /**

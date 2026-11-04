@@ -4,7 +4,7 @@
 
 ## 背景
 
-桌面应用的 profile 固定是 `$DSH_HOME/profiles/desktop`（`apps/desktop/src/paths.ts`），只有一份。主 checkout 装过一次之后，在 worktree 里跑 `npm run desktop` 会被 `planDesktopEnable` 拒绝——`dependencies['dsh-leader-kit']` 指着 `link:<主 checkout>`，不是当前目录。想在这个分支上验证改动，唯一出路是先把主 checkout 那份卸掉，验证完再装回来。
+桌面应用的 profile 固定是 `$DSH_HOME/profiles/desktop`（`apps/desktop/src/paths.ts`），只有一份。主 checkout 装过一次之后，在 worktree 里跑 `npm run desktop` 会被 `planDesktopEnable` 拒绝——`dependencies['dsh-leader-agent']` 指着 `link:<主 checkout>`，不是当前目录。想在这个分支上验证改动，唯一出路是先把主 checkout 那份卸掉，验证完再装回来。
 
 实际使用里这条路走不通：几个 worktree 并行开发时谁跑一次就把别人的挂载顶掉；主 checkout 的桌面版也会在下次启动时变成某个分支的代码。而「不覆盖别人的安装」本来就是这个脚本的既有语义（`planDesktopEnable` / `planDesktopDisable` / `planLinkAction` 三个守卫），不能为了跑通把它拆掉。
 
@@ -45,7 +45,7 @@
   - 输出走「分支隔离」分支，数据根 `…\.worktrees\windows-desktop-launch\.dev\desktop-home`，插件链接指向当前工作树；
   - 宿主进程命令行第 4 个参数是 `<派生根>\profiles\desktop`，派生根生成 `sessions`、`storages`、`.credentials.yaml`；
   - 插件确实激活：桌面版监听的端口上 `POST /api/projects/list`、`/api/cards/list` 返回 **401**（路由存在、要鉴权）；同机另一个监听端口返回 404——404 正是宿主半边未激活时的形态，两者能区分开；
-  - 日常 profile 的 `package.json` sha256 前后一致，`node_modules/dsh-leader-kit` 始终不存在；
+  - 日常 profile 的 `package.json` sha256 前后一致，`node_modules/dsh-leader-agent` 始终不存在；
   - 凭据继承：派生根的 `.credentials.yaml` 从只有 `records` 变成 `version: 1` + `refs: DEEPSEEK_API_KEY`，输出打印一行「凭据引用 日常 → 派生根（DEEPSEEK_API_KEY）」；同目录的 `records`（browser-session）原样保留，`records` 不参与合并；
   - 应用运行中重跑：报「正在运行」、退出 1、派生根 manifest 哈希不变（探活在派生之前）；
   - `--remove`：摘掉派生根的依赖与链接，日常 profile 哈希仍不变。

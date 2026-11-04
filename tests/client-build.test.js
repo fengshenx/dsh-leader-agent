@@ -18,7 +18,7 @@ const BASELINE_MODULES = ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-prim
  * @returns {{ dir: string, outfile: string }} 临时目录与产物路径
  */
 function makeOutfile() {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-client-'))
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-client-'))
   return { dir, outfile: join(dir, 'lib', 'client.js') }
 }
 
@@ -47,7 +47,7 @@ test('产物保持 closure-factory 外壳，基线模块留给宿主模块表', 
   try {
     await buildClient({ entry: ENTRY, outfile })
     const source = readFileSync(outfile, 'utf8')
-    assert.ok(source.startsWith('window.__ModuleLoader__.load({ id: "dsh-leader-kit", factory: (require) => {'))
+    assert.ok(source.startsWith('window.__ModuleLoader__.load({ id: "dsh-leader-agent", factory: (require) => {'))
     assert.ok(source.trimEnd().endsWith('return module.exports; } });'))
     // 内联进产物的第三方代码，许可声明必须跟着走：发布包里没有 node_modules，
     // 产物是用户拿到版权信息的唯一位置。esbuild 自己会留下含包名的路径注释，

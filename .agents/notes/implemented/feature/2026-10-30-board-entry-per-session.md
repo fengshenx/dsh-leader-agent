@@ -13,7 +13,7 @@
 
 ### 入口由本插件接管渲染
 
-`sidebar.right.tab.guide.entry` 是 keyed slot，键是 tab 类型的 `providerId`（本插件是 `dsh-leader-kit`）。注册自己的渲染器后，guide 页里这一枚胶囊由本插件画：项目会话画，其余返回 `null`。
+`sidebar.right.tab.guide.entry` 是 keyed slot，键是 tab 类型的 `providerId`（本插件是 `dsh-leader-agent`）。注册自己的渲染器后，guide 页里这一枚胶囊由本插件画：项目会话画，其余返回 `null`。
 
 - 胶囊样式复刻宿主 `EntryBox`（`ui-sidebar-right` 的 `GuideBody.module.css`）：380px 宽、56px 最小高、14/20 内边距、14px 图标间距、`--dsw-radius-xl` 圆角、`--dsw-alias-*` 令牌。宿主改版式时本仓要跟——这是接管渲染的固定成本，与「图标从宿主 artwork 抄路径」同类，写进 capability-gaps 第 15 条。
 - 点击只走 `tab.actions.openTab(kind, { replaceTab: true })`：rc.2 的 tab 级 `openTab` 把 `replaceTab` 换成同 kind 的 tab id，service 在同一次调用里关掉被替换的 tab。**不要再补 `tab.actions.close()`**——那行是 no-op，还会让后来者以为替换要手动关。

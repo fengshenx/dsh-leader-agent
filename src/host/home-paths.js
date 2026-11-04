@@ -8,7 +8,7 @@
  *
  * 不 import 宿主包：`engines.dsh` 只承诺版本范围，内部包会随版本漂移。
  *
- * @module dsh-leader-kit/host/home-paths
+ * @module dsh-leader-agent/host/home-paths
  */
 
 import { homedir } from 'node:os'

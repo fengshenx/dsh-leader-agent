@@ -8,7 +8,7 @@
  * 不用 `ready-signal.js`：那是「就绪一次」的信号，重复标记是 no-op，而项目可以
  * 反复增删。
  *
- * @module dsh-leader-kit/client/project-changes
+ * @module dsh-leader-agent/client/project-changes
  */
 
 /** @type {Set<() => void>} 变更订阅者 */
@@ -38,7 +38,7 @@ export function notifyProjectsChanged() {
     try {
       listener()
     } catch (error) {
-      console.error('dsh-leader-kit: 项目变更订阅回调抛错', error)
+      console.error('dsh-leader-agent: 项目变更订阅回调抛错', error)
     }
   }
 }

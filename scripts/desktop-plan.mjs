@@ -6,12 +6,12 @@
  * 所以「在桌面端用」= 把本插件挂进 desktop profile；这里只算要改成什么样、什么
  * 情况该拒绝，文件系统操作在 `desktop.mjs`。
  *
- * @module dsh-leader-kit/scripts/desktop-plan
+ * @module dsh-leader-agent/scripts/desktop-plan
  */
 
 import { isAbsolute, join } from 'node:path'
 import { expandHomePath } from '../src/host/home-paths.js'
-import { LEADER_KIT_PACKAGE } from './dev-plan.mjs'
+import { LEADER_AGENT_PACKAGE } from './dev-plan.mjs'
 
 /** 桌面应用在 Windows 上的可执行文件名后缀（Electron/electron-builder 的产物形态）。 */
 const WINDOWS_EXE_EXTENSION = '.exe'
@@ -257,7 +257,7 @@ export function desktopPathsOf(home) {
     /** 桌面应用自己那把锁：`apps/desktop/src/paths.ts` 的 `lock`，内容是持有者 PID。 */
     profileLockPath: join(profileDir, 'lock'),
     nodeModulesDir,
-    linkPath: join(nodeModulesDir, LEADER_KIT_PACKAGE),
+    linkPath: join(nodeModulesDir, LEADER_AGENT_PACKAGE),
   }
 }
 
@@ -313,7 +313,7 @@ export function planDesktopHome({ inWorktree, installedSpec = null }) {
  * @returns {string | null} 依赖说明符
  */
 export function installedSpecOf(manifest) {
-  return manifest?.dependencies?.[LEADER_KIT_PACKAGE] ?? null
+  return manifest?.dependencies?.[LEADER_AGENT_PACKAGE] ?? null
 }
 
 /**
@@ -334,7 +334,7 @@ export function planDesktopEnable({ manifest, worktree }) {
   const installed = installedSpecOf(manifest)
   if (installed !== null && installed !== spec) {
     throw new Error(
-      `desktop profile 里已经装了一份 ${LEADER_KIT_PACKAGE}（${installed}），不是当前目录 ${worktree}。`
+      `desktop profile 里已经装了一份 ${LEADER_AGENT_PACKAGE}（${installed}），不是当前目录 ${worktree}。`
       + '\n它可能是桌面 App 的插件管理装的，也可能是另一个工作树挂上去的。'
       + `\n先卸掉再重跑：npm run desktop -- --remove，或在 DeepSeek Harness 的插件管理里卸载。`,
     )
@@ -346,10 +346,10 @@ export function planDesktopEnable({ manifest, worktree }) {
       + '这不是一个完整的桌面 profile。先打开一次 DeepSeek Harness 让它初始化，或删掉该 profile 让应用重建。',
     )
   }
-  if (!bundles.includes(LEADER_KIT_PACKAGE)) bundles.push(LEADER_KIT_PACKAGE)
+  if (!bundles.includes(LEADER_AGENT_PACKAGE)) bundles.push(LEADER_AGENT_PACKAGE)
   const next = {
     ...manifest,
-    dependencies: { ...(manifest.dependencies ?? {}), [LEADER_KIT_PACKAGE]: spec },
+    dependencies: { ...(manifest.dependencies ?? {}), [LEADER_AGENT_PACKAGE]: spec },
     dsh: { ...manifest.dsh, profile: { ...manifest.dsh.profile, bundles } },
   }
   return { manifest: next, changed: JSON.stringify(next) !== JSON.stringify(manifest) }
@@ -371,26 +371,26 @@ export function planDesktopEnable({ manifest, worktree }) {
 export function planDesktopDisable({ manifest, worktree }) {
   const installed = installedSpecOf(manifest)
   const current = Array.isArray(manifest?.dsh?.profile?.bundles) ? manifest.dsh.profile.bundles : []
-  const inBundles = current.includes(LEADER_KIT_PACKAGE)
+  const inBundles = current.includes(LEADER_AGENT_PACKAGE)
   if (installed === null && !inBundles) {
     return { manifest, changed: false }
   }
   if (installed === null) {
     throw new Error(
-      `desktop profile 的 dsh.profile.bundles 里有 ${LEADER_KIT_PACKAGE}，但没有对应的依赖条目，`
+      `desktop profile 的 dsh.profile.bundles 里有 ${LEADER_AGENT_PACKAGE}，但没有对应的依赖条目，`
       + '判不出是谁挂上去的。确认那份安装确实属于当前目录后手工删掉该 bundle 项，或整条重装。',
     )
   }
   if (installed !== desktopLinkSpec(worktree)) {
     throw new Error(
-      `desktop profile 里装的 ${LEADER_KIT_PACKAGE} 是 ${installed}，不是当前目录 ${worktree}。`
+      `desktop profile 里装的 ${LEADER_AGENT_PACKAGE} 是 ${installed}，不是当前目录 ${worktree}。`
       + '\n不摘别人的安装：到那份来源的目录里跑 npm run desktop -- --remove，'
       + '或在 DeepSeek Harness 的插件管理里卸载。',
     )
   }
   const dependencies = { ...(manifest?.dependencies ?? {}) }
-  delete dependencies[LEADER_KIT_PACKAGE]
-  const bundles = current.filter((name) => name !== LEADER_KIT_PACKAGE)
+  delete dependencies[LEADER_AGENT_PACKAGE]
+  const bundles = current.filter((name) => name !== LEADER_AGENT_PACKAGE)
   const next = {
     ...manifest,
     dependencies,

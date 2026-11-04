@@ -8,11 +8,11 @@
  * 关闭状态存 localStorage：仓外插件不能新增 session event 类型，而一次性提示
  * 本就不该写进会话记录（写进去就不满足「引导出现期间会话事件数为 0」）。
  *
- * @module dsh-leader-kit/client/guide-card-logic
+ * @module dsh-leader-agent/client/guide-card-logic
  */
 
 /** 关闭标记的 localStorage 键前缀，后面接 leader 会话 id。 */
-export const GUIDE_DISMISS_PREFIX = 'dsh-leader-kit.guide.dismissed.'
+export const GUIDE_DISMISS_PREFIX = 'dsh-leader-agent.guide.dismissed.'
 
 
 

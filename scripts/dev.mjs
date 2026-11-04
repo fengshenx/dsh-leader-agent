@@ -10,7 +10,7 @@
  * - 数据根（`DSH_HOME`）默认落在工作树内的 `.dev/home`，删掉即重置，工作树删掉
  *   时一起消失；
  * - profile 从源 HOME 的 `profiles/web` 派生：`package.json` 照抄依赖与 bundle
- *   列表（复现日常组合），只把 `dsh-leader-kit` 换成工作树链接；派生与依赖链接的
+ *   列表（复现日常组合），只把 `dsh-leader-agent` 换成工作树链接；派生与依赖链接的
  *   实现在 `dev-instance.mjs`，浏览器 e2e 用同一份（两边组合必须一致）；
  * - `node_modules` 不复制，逐条符号链接到源 profile 的同名条目——依赖仍由源里那
  *   一份承担，源里升级 dsh 或增删插件时开发实例自动跟随；
@@ -127,10 +127,10 @@ try {
 }
 
 console.log('')
-console.log('== dsh-leader-kit 开发实例 ==')
+console.log('== dsh-leader-agent 开发实例 ==')
 console.log(`  工作树    ${worktree}`)
 console.log(`  数据根    ${paths.home}  （会话、项目、卡片都在这里；删掉即重置）`)
-console.log(`  插件链接  ${join(paths.profileDir, 'node_modules', 'dsh-leader-kit')} -> ${worktree}`)
+console.log(`  插件链接  ${join(paths.profileDir, 'node_modules', 'dsh-leader-agent')} -> ${worktree}`)
 if (inheritedCredentials.keys.length > 0) {
   console.log(`  凭据引用  ${paths.sourceCredentialsPath} -> ${paths.credentialsPath}（${inheritedCredentials.keys.join(', ')}）`)
 }

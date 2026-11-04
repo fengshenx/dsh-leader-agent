@@ -9,7 +9,7 @@
  * 的头注释：section 进的是会话级固定的系统提示词消息，文件改了不会重写；运行时
  * 上下文每轮重新求值，「改动在下一轮 turn 生效」因此是结构性的。
  *
- * @module dsh-leader-kit/host/leader-context
+ * @module dsh-leader-agent/host/leader-context
  */
 
 import { readFileSync } from 'node:fs'
@@ -28,7 +28,7 @@ export const LEADER_CONTEXT_FILE = 'LEADER.md'
 export const LEGACY_LEADER_CONTEXT_FILE = 'COORDINATOR.md'
 
 /** 注入项的上下文名。 */
-export const LEADER_CONTEXT_NAME = 'dsh-leader-kit:leader'
+export const LEADER_CONTEXT_NAME = 'dsh-leader-agent:leader'
 
 /**
  * 注入项在运行时上下文里的位置。
@@ -90,7 +90,7 @@ export function loadLeaderManual(directory, logger = () => {}) {
   const primary = join(directory, LEADER_CONTEXT_FILE)
   const first = readManual(primary)
   if (first.error !== undefined) {
-    logger(`dsh-leader-kit: 读取 leader 手册失败（${primary}）：${first.error instanceof Error ? first.error.message : String(first.error)}`)
+    logger(`dsh-leader-agent: 读取 leader 手册失败（${primary}）：${first.error instanceof Error ? first.error.message : String(first.error)}`)
     return ''
   }
   const legacy = join(directory, LEGACY_LEADER_CONTEXT_FILE)
@@ -104,7 +104,7 @@ export function loadLeaderManual(directory, logger = () => {}) {
       && legacyBody !== primaryBody
       && !warnedShadowedLegacy.has(directory)) {
       warnedShadowedLegacy.add(directory)
-      logger(`dsh-leader-kit: ${directory} 的 ${LEGACY_LEADER_CONTEXT_FILE} 与 ${LEADER_CONTEXT_FILE} 内容不一致；以 ${LEADER_CONTEXT_FILE} 为准，旧文件已不参与注入`)
+      logger(`dsh-leader-agent: ${directory} 的 ${LEGACY_LEADER_CONTEXT_FILE} 与 ${LEADER_CONTEXT_FILE} 内容不一致；以 ${LEADER_CONTEXT_FILE} 为准，旧文件已不参与注入`)
     }
     return primaryBody
   }
@@ -112,12 +112,12 @@ export function loadLeaderManual(directory, logger = () => {}) {
     if (!warnedLegacyFallback.has(directory)) {
       warnedLegacyFallback.add(directory)
       const reason = first.body === undefined ? '不存在' : '是空的'
-      logger(`dsh-leader-kit: ${directory} 的 ${LEADER_CONTEXT_FILE} ${reason}，按旧名 ${LEGACY_LEADER_CONTEXT_FILE} 注入；请把内容迁到 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
+      logger(`dsh-leader-agent: ${directory} 的 ${LEADER_CONTEXT_FILE} ${reason}，按旧名 ${LEGACY_LEADER_CONTEXT_FILE} 注入；请把内容迁到 ${LEADER_CONTEXT_FILE}，本版本按旧名读取`)
     }
     return legacyBody
   }
   if (second.error !== undefined) {
-    logger(`dsh-leader-kit: 读取 leader 手册失败（${legacy}）：${second.error instanceof Error ? second.error.message : String(second.error)}`)
+    logger(`dsh-leader-agent: 读取 leader 手册失败（${legacy}）：${second.error instanceof Error ? second.error.message : String(second.error)}`)
   }
   return ''
 }
@@ -167,12 +167,12 @@ export function renderInitializationHint(directory) {
         ? `这个项目的 \`${LEADER_CONTEXT_FILE}\` 还是空的（只有空白），需要补上内容。`
         : `这个项目的 \`${LEADER_CONTEXT_FILE}\` 还是空的（只有空白），也没有 ${slotsClause}。`),
     '',
-    '用户第一次问这个项目怎么用、怎么开始，或问 dsh-leader-kit 是什么时，按这个顺序回答：',
+    '用户第一次问这个项目怎么用、怎么开始，或问 dsh-leader-agent 是什么时，按这个顺序回答：',
     '',
-    '1. 说明 dsh-leader-kit 怎么工作：你负责拆解目标、建任务卡、派工；worker 在各自的工作区干活并回报；用户在看板上跟进进度、审核与验收。一个任务一张卡，卡上标出执行者。',
+    '1. 说明 dsh-leader-agent 怎么工作：你负责拆解目标、建任务卡、派工；worker 在各自的工作区干活并回报；用户在看板上跟进进度、审核与验收。一个任务一张卡，卡上标出执行者。',
     '2. 说明两份文件各解决什么，然后问用户是否现在初始化。',
-    '3. 用户明确同意后，加载 `init-leader-kit` skill 并按它执行：目录里已有的文档先读，目录是空的就写带 TODO 的骨架，不要编造项目内容。',
-    `4. 用户明确说不需要初始化时，本轮及本会话不要再追问；不要为了记录这个拒绝去写任何文件。想在以后彻底停用，告诉用户自行创建 \`${LEADER_CONTEXT_FILE}\`（或让他运行 \`init-leader-kit\`，之后可以只留少量内容）。`,
+    '3. 用户明确同意后，加载 `init-leader-agent` skill 并按它执行：目录里已有的文档先读，目录是空的就写带 TODO 的骨架，不要编造项目内容。',
+    `4. 用户明确说不需要初始化时，本轮及本会话不要再追问；不要为了记录这个拒绝去写任何文件。想在以后彻底停用，告诉用户自行创建 \`${LEADER_CONTEXT_FILE}\`（或让他运行 \`init-leader-agent\`，之后可以只留少量内容）。`,
     '',
     '用户没同意前不要创建或修改任何文件；已经问过、用户还没回答时不要重复追问。用户直接派活时不要打断，按正常流程干活。',
   ].join('\n')
@@ -226,9 +226,9 @@ export function applyLeaderContext({ ctx, resolveDirectory, logger = () => {} })
         return renderLeaderContext({ sessionId, resolveDirectory, logger })
       } catch (error) {
         // 求值失败会让整个 turn 崩掉。手册是增量信息，取不到就当没有。
-        logger(`dsh-leader-kit: 渲染 leader 手册失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-agent: 渲染 leader 手册失败：${error instanceof Error ? error.message : String(error)}`)
         return ''
       }
     },
-  }), 'dsh-leader-kit leader 手册注入')
+  }), 'dsh-leader-agent leader 手册注入')
 }

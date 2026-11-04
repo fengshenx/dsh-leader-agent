@@ -3,6 +3,8 @@
 **日期**：2026-11-02
 **范围**：全仓标识（包名、CSS 前缀、skill 名、locale、remote），不含 `.worktrees/` 旧副本
 
+> **后续改名**：2026-11-04 包名再次改为 `dsh-leader-agent`，本文的选型理由与「不迁移数据」的取舍仍然成立，其中的包名、目录与标识符具体值已被 [2026-11-04-rename-to-leader-agent.md](2026-11-04-rename-to-leader-agent.md) 取代。
+
 ## 背景
 
 `coordinator` 太泛，不表达"人带队派工"这个形态。选型时先排除了 dsh 生态里已被占用的词：

@@ -17,7 +17,7 @@
 
 ### 渲染层接管「未分组」
 
-项目会话落进官方树的「未分组」。会话行本来就被排除（`workspace-exclusion.js`），这次补上组头：组内已渲染的会话行全被隐藏、且没有可见的「展开其余 N 个会话」时，给组头加 `dsh-leader-kit-empty-ungrouped`。判据只看 DOM 现状，不复刻宿主的可见性规则（`blank && id !== current` 不渲染、归档不进组）——上一轮正是因为「复刻规则会漂移」才推翻了解耦路线，这次把判据压到「读渲染结果」就绕开了这个反对理由。
+项目会话落进官方树的「未分组」。会话行本来就被排除（`workspace-exclusion.js`），这次补上组头：组内已渲染的会话行全被隐藏、且没有可见的「展开其余 N 个会话」时，给组头加 `dsh-leader-agent-empty-ungrouped`。判据只看 DOM 现状，不复刻宿主的可见性规则（`blank && id !== current` 不渲染、归档不进组）——上一轮正是因为「复刻规则会漂移」才推翻了解耦路线，这次把判据压到「读渲染结果」就绕开了这个反对理由。
 
 ### 历史挂载在启动时摘掉，只摘项目目录那个工作区
 
@@ -61,4 +61,4 @@
   8. e2e 当前会话行的选择器改回旧的 `aria-current` / `.selected` → 「应当能读到当前会话行」变红（旧写法恒为 null，原断言等于空转）；把比较反向（断言当前会话就是 leader）→ 「不应停在 leader 上」变红；
   9. 把按目录配对改回「全局 targets × 全局目录集合」→「迁移不摘别的项目拖进本项目目录工作区的 leader」变红，还原后 51 例全绿。
 - e2e 的已知噪音：`assert.deepEqual(e2e.problems, [])` 偶发红在宿主侧 `Sidebar Session opening failed: Error: Session reference "…" is released`（`SidebarSessionView.dispose` 抛出，栈里没有插件帧）。单跑 4 次 3 绿 1 红；为它改断言或加 retry 都会削弱「页内错误即失败」这条纪律，所以保持原样，遇到时按宿主噪音记录。
-- e2e（`tests/e2e/project-workspace.e2e.js`，真实 dsh + 本地 mock + chromium）：两段式实例——第一段拿宿主的空会话，停实例后 seed `projects.json` 并把 leader 塞回默认工作区（模拟旧数据）→ 第二段启动，等 `storages/workspace.json` 里 leader 被摘掉 → 点项目行打开 leader（引导卡出现）→ 断言「未分组」组头带 `dsh-leader-kit-empty-ungrouped` → 点工作区行的「新建会话」→ 引导卡消失、当前会话不是 leader。连跑 3 次全绿。
+- e2e（`tests/e2e/project-workspace.e2e.js`，真实 dsh + 本地 mock + chromium）：两段式实例——第一段拿宿主的空会话，停实例后 seed `projects.json` 并把 leader 塞回默认工作区（模拟旧数据）→ 第二段启动，等 `storages/workspace.json` 里 leader 被摘掉 → 点项目行打开 leader（引导卡出现）→ 断言「未分组」组头带 `dsh-leader-agent-empty-ungrouped` → 点工作区行的「新建会话」→ 引导卡消失、当前会话不是 leader。连跑 3 次全绿。

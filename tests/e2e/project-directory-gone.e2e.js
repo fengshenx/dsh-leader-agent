@@ -24,12 +24,12 @@ const MARKER = 'MOCK-E2E-DIR-GONE'
 const REPLY = 'mock 回执已收到'
 /** mock 给会话起标题时的固定回执，用来在左栏定位那一行。 */
 const SESSION_TITLE = 'e2e 会话'
-const EXCLUDED_CLASS = 'dsh-leader-kit-excluded-session'
-const UNGROUPED_HIDDEN_CLASS = 'dsh-leader-kit-empty-ungrouped'
+const EXCLUDED_CLASS = 'dsh-leader-agent-excluded-session'
+const UNGROUPED_HIDDEN_CLASS = 'dsh-leader-agent-empty-ungrouped'
 
 test('项目目录被删后，它的会话回到官方树里可见', { timeout: 300_000 }, async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-dir-gone-'))
-  const directory = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-dir-gone-project-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-dir-gone-'))
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-dir-gone-project-'))
   const mock = await startMockProvider({ scripts: { [MARKER]: [{ text: REPLY }] } })
   const problems = []
   let browser = null
@@ -87,7 +87,7 @@ test('项目目录被删后，它的会话回到官方树里可见', { timeout: 
   })
   // 项目行的 `data-dead` 只看 leader 是否存活（`isProjectOpenable`），与目录态无关，
   // 拿它断言目录等于恒真；这里只等行渲染出来，删目录后再断言它没消失。
-  const projectRow = page.locator('.dsh-leader-kit-project-row').first()
+  const projectRow = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
 
   // 删目录：项目行再也打不开，继续排除会让会话两处都不可达。
@@ -138,8 +138,8 @@ async function removeWorkspace(page) {
 
 /** 把一个会话登记成项目，目录用给定的路径。 */
 function seedProject(home, { id, directory }) {
-  mkdirSync(join(home, 'dsh-leader-kit'), { recursive: true })
-  writeFileSync(join(home, 'dsh-leader-kit', 'projects.json'), `${JSON.stringify({
+  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
+  writeFileSync(join(home, 'dsh-leader-agent', 'projects.json'), `${JSON.stringify({
     version: 1,
     projects: [{
       id: 'e2e-gone-directory-project',

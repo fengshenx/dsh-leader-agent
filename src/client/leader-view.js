@@ -9,7 +9,7 @@
  * 它，官方外壳就自己切到 active 形态，输入框落到底部，会话区是空的。目标不
  * 注册成可见 tab，所以所有会话的头部都不会多出标签。
  *
- * @module dsh-leader-kit/client/leader-view
+ * @module dsh-leader-agent/client/leader-view
  */
 
 import { createElement, useLayoutEffect } from 'react'
@@ -50,17 +50,17 @@ export function mountLeaderView(ctx) {
     ctx.uiConversation.views.register(createLeaderViewDefinition())
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    ctx.logger?.error?.(`dsh-leader-kit: leader 视图目标注册失败：${message}`)
+    ctx.logger?.error?.(`dsh-leader-agent: leader 视图目标注册失败：${message}`)
     return
   }
   // 入口挂在输入框上方的 dock 槽：那里按会话渲染，入口拿得到当前会话 id，
   // 而宿主在会话打开后才会建绑定——正好是激活的时机。
   ctx.effect(() => ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
     name: 'conversation.input.dock',
-    id: 'dsh-leader-kit-view',
+    id: 'dsh-leader-agent-view',
     order: 100,
     inject: () => ({
       getUiConversation: () => ctx.get('uiConversation'),
     }),
-  }, LeaderViewEntry)), 'dsh-leader-kit leader 视图入口')
+  }, LeaderViewEntry)), 'dsh-leader-agent leader 视图入口')
 }

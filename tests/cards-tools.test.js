@@ -19,7 +19,7 @@ import {
  * @returns {Promise<{ home: string, tools: Record<string, object> }>} 工具集与 home 目录
  */
 async function createTools(resolveProject, canWrite) {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
   // 可控时钟：卡片排序按更新时间戳，两次写入落在同一毫秒会退回插入序，
   // 断言「最近更新的排前面」就成了碰运气的 flaky 用例。
   let tick = 0
@@ -285,7 +285,7 @@ test('卡片数据投影到 presentationMeta，客户端据此重建看板', asy
   try {
     const created = await tools.create_card.execute({ title: '任务' }, exec)
     const single = tools.create_card.output.presentationMeta({}, created)
-    assert.equal(single.kind, 'dsh-leader-kit-cards')
+    assert.equal(single.kind, 'dsh-leader-agent-cards')
     assert.equal(single.scope, 'card')
     assert.equal(single.cards[0].title, '任务')
     const listed = await tools.list_cards.execute({}, exec)
@@ -870,7 +870,7 @@ test('身份闸先于入参校验：普通会话传空标题也报身份错误',
 
 test('createBundleTools 把写卡身份判定透传给卡片工具', async () => {
   // 漏传就是闸静默失效：装配出来的工具看起来正常，写卡不校验身份。
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
   try {
     const store = createCardStore({ home })
     const tools = createBundleTools({
@@ -918,7 +918,7 @@ test('createBundleTools 缺 worker 写卡范围依赖时同样直接报错', () 
 })
 
 test('worker 只能改自己挂着的卡，且不能改槽位、状态、规格与标题', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
   try {
     const store = createCardStore({ home })
     const mine = await store.create({ title: '我的卡', slots: { dev: { sessionId: 'worker-1' } } })
@@ -989,7 +989,7 @@ test('worker 只能改自己挂着的卡，且不能改槽位、状态、规格�
 })
 
 test('worker 不能建卡：建卡与派工是 leader 的一条动作链', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-cardtools-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
   try {
     const store = createCardStore({ home })
     const createCard = createCreateCardTool({

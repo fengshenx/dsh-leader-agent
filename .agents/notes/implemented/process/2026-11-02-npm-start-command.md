@@ -21,8 +21,8 @@
 1. `dsh` 可执行文件：用 `--version` 探测。ENOENT 时说明「没装或不在 PATH」，并提示 nvm 换版本会重置 PATH、`DSH_DSH` 可指定路径；非零退出码时把 stderr 打出来。
 2. 日常 profile 的 `package.json`：不存在时给 `dsh plugin --profile web add <当前仓库>`。
 3. bundles 里有 `@deepseek-ai/dsh-web-app`（复用 `assertWebBundle`，修复建议由调用方传入）：缺它时 `dsh web` 不监听、不打印、也不报错，起一个「成功」的空进程最糟。
-4. bundles 里有本插件（`assertLeaderKitBundle`，本 PR 新增）：缺它时实例不会加载本仓库。
-5. `node_modules/dsh-leader-kit` 链接存在：声明了却没链接上说明链接被破坏。
+4. bundles 里有本插件（`assertLeaderAgentBundle`，本 PR 新增）：缺它时实例不会加载本仓库。
+5. `node_modules/dsh-leader-agent` 链接存在：声明了却没链接上说明链接被破坏。
 
 `dsh --version` 顺带显示在启动横幅里，但**不校验 `engines.dsh` 范围**——npm 安装与宿主启动各自会拦，start 不重复实现 semver 比较。
 
@@ -57,11 +57,11 @@
 
 `npm run check` 630 用例全绿。`tests/dev-plan.test.js` 27 条：本 PR 新增「日常 profile 已装本插件时放行」「没装时拒绝并给出安装命令」「没写 bundles 时拒绝」，审查修复又加 5 条（`hint` 的四处行为 + 损坏 `package.json` 的建议文案）。
 
-双向验证：把 `assertLeaderKitBundle` 的判据替换成无条件 `return` → 「没装本插件时拒绝」「没写 bundles 时拒绝」两条变红（20/22 通过），还原后全绿；把 `startWebBundleHint` 换成 `devWebBundleHint` → 「start 的修复建议不提 DSH_PROFILE」变红（25/26），还原后 26/26 绿；把 `corruptProfilePackageMessage` 换回「重装一次: …」→「损坏时给的是先修文件或删目录重建」变红（26/27），还原后 27/27 绿。
+双向验证：把 `assertLeaderAgentBundle` 的判据替换成无条件 `return` → 「没装本插件时拒绝」「没写 bundles 时拒绝」两条变红（20/22 通过），还原后全绿；把 `startWebBundleHint` 换成 `devWebBundleHint` → 「start 的修复建议不提 DSH_PROFILE」变红（25/26），还原后 26/26 绿；把 `corruptProfilePackageMessage` 换回「重装一次: …」→「损坏时给的是先修文件或删目录重建」变红（26/27），还原后 27/27 绿。
 
 真机读数（`dsh 0.2.1-rc.2`）：
 
 - 正常路径：`DSH_HOME=/tmp/start-ok-home npm start -- --no-open --port 0`（profile 的插件链接指向本 worktree）先构建产物，横幅打印 `版本    dsh 0.2.1-rc.2`、数据根与插件路径，随后打印 `dsh web: http://127.0.0.1:…/?token=…` 并监听；`--no-open --port 0` 两项透传到位。
-- 加载目录不同：`DSH_HOME=~/.dsh npm start -- --no-open`（链接指向主 checkout）打出 `[warn] 实例加载的是 …/dsh-leader-kit，不是当前目录 …/.worktrees/npm-start-script`，跳过构建（`lib/client.js` 的 mtime 不变）。
-- 四条失败路径各自以 1 退出并给出可复制的修复命令：`DSH_DSH=no-such-dsh`（提示 PATH 与 nvm）、数据根没有 profile、profile 缺本插件、profile 声明了但没有 `node_modules/dsh-leader-kit` 链接。
+- 加载目录不同：`DSH_HOME=~/.dsh npm start -- --no-open`（链接指向主 checkout）打出 `[warn] 实例加载的是 …/dsh-leader-agent，不是当前目录 …/.worktrees/npm-start-script`，跳过构建（`lib/client.js` 的 mtime 不变）。
+- 四条失败路径各自以 1 退出并给出可复制的修复命令：`DSH_DSH=no-such-dsh`（提示 PATH 与 nvm）、数据根没有 profile、profile 缺本插件、profile 声明了但没有 `node_modules/dsh-leader-agent` 链接。
 - 错误输出（stub `dsh` + /tmp 夹具）：`package.json` 损坏时打 `错误: … 不是合法 JSON（…）：dsh plugin 装东西时也读这份文件，损坏时它会一起失败。先手工修好它，或删掉 … 让 dsh 按 web 模板重建（删前确认里面没有别的插件），再重装: …` 加一行首帧；缺 web-app 时打 `错误: … 把 @deepseek-ai/dsh-web-app 加进该 profile 的 dsh.profile.bundles，或删掉 …`，**不含 `DSH_PROFILE`**；`dsh web` 退 3 时打 `错误: 退出码 3: … web（上面是它自己的输出）` 加首帧，三者都不再吐整段 stack。

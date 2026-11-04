@@ -216,7 +216,7 @@ const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
 const skillFiles = listFiles(join(root, '.agents', 'skills'), '.agents/skills')
 const localeFiles = readdirSync(join(root, 'locale')).filter((name) => name.endsWith('.json'))
 
-const tempDir = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-pack-'))
+const tempDir = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-pack-'))
 // 门禁失败走 process.exit（会跳过 finally），清理挂在 exit 上：装好的临时目录
 // 有几十 MB，失败路径更不能留。
 process.once('exit', () => rmSync(tempDir, { recursive: true, force: true }))

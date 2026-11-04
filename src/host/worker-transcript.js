@@ -6,7 +6,7 @@
  * 终态。工具参数与结果正文只保留能解释失败的片段：完整日志往往是几万 token,
  * 读完塞进 leader 的上下文既没必要也会挤掉它自己的工作记忆。
  *
- * @module dsh-leader-kit/host/worker-transcript
+ * @module dsh-leader-agent/host/worker-transcript
  */
 
 import { blocksToText, WORKER_TASK_SOURCE_KIND } from './message.js'

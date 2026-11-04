@@ -5,7 +5,7 @@
  * 哪、分支叫什么、node_modules 链接该怎么拆」，供 `worktree-spawn.mjs`、
  * `worktree-prune.mjs` 与测试共用。
  *
- * @module dsh-leader-kit/scripts/worktree-common
+ * @module dsh-leader-agent/scripts/worktree-common
  */
 
 import { lstatSync, rmdirSync, unlinkSync } from 'node:fs'

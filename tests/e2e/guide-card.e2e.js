@@ -61,8 +61,8 @@ function firstSession(home) {
  * @returns {void}
  */
 function seedProject(home, session) {
-  mkdirSync(join(home, 'dsh-leader-kit'), { recursive: true })
-  writeFileSync(join(home, 'dsh-leader-kit', 'projects.json'), `${JSON.stringify({
+  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
+  writeFileSync(join(home, 'dsh-leader-agent', 'projects.json'), `${JSON.stringify({
     version: 1,
     projects: [{
       id: 'e2e-guide-project',
@@ -76,7 +76,7 @@ function seedProject(home, session) {
 }
 
 test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就消失', { timeout: scenarioTimeout() }, async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-guide-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-guide-'))
   // 引导发出的那句话不带场景标记，mock 会按「没有标记」回 400：这里要证明的是
   // 「消息发出去并走了一轮模型」，不是模型答得对不对。
   const mock = await startMockProvider({})
@@ -114,9 +114,9 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const ready = async (page) => {
     watchProblems(page, problems)
     await page.goto(second.url, { waitUntil: 'domcontentloaded' })
-    return page.locator('.dsh-leader-kit-project-row').first()
+    return page.locator('.dsh-leader-agent-project-row').first()
   }
-  const card = (page) => page.locator('.dsh-leader-kit-guide-card')
+  const card = (page) => page.locator('.dsh-leader-agent-guide-card')
   const openLeader = async (page) => {
     const row = await ready(page)
     await waitForLocator(row, { description: '项目行出现在左栏', timeoutMs: 20_000 })
@@ -131,14 +131,14 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   // 视觉硬指标：与输入框外壳同宽同边界。输入框外壳是编辑器往上第一个带
   // max-width 的祖先（宿主自己就是靠它把输入框收在内容列宽内的）。
   const box = await page.evaluate(() => {
-    const card = document.querySelector('.dsh-leader-kit-guide-card')
+    const card = document.querySelector('.dsh-leader-agent-guide-card')
     const editor = document.querySelector('div[role="textbox"][contenteditable="true"]')
     let shell = editor
     while (shell && getComputedStyle(shell).maxWidth === 'none') shell = shell.parentElement
     const a = card.getBoundingClientRect()
     const b = shell.getBoundingClientRect()
-    const title = card.querySelector('.dsh-leader-kit-guide-title')
-    const steps = card.querySelector('.dsh-leader-kit-guide-steps')
+    const title = card.querySelector('.dsh-leader-agent-guide-title')
+    const steps = card.querySelector('.dsh-leader-agent-guide-steps')
     return {
       width: Math.abs(a.width - b.width),
       left: Math.abs(a.left - b.left),

@@ -10,7 +10,7 @@ dsh 的 bundle 有两半：host 半边跑在 Node 进程，client 半边跑在�
 
 ## 决策
 
-**插件行名必须是纯包名**。`packages/client/modules/src/index.ts:892` 的 `locatePkgJson` 靠 Loader 行名定位包 manifest 才能判断「这个包有 client 半边」：`exactPackageSpecifier` 不接受含 `/` 的子路径。行名写成 `dsh-leader-kit/src/host` 时定位失败，该行不会被识别为 client row——宿主根本不下发 client bundle，浏览器右栏只剩内置欢迎页。改成 `dsh-leader-kit` 后，包入口相应改为再导出 host 侧实现（`index.js` 的 `apply`/`inject`/`name` 全部来自 `src/host/index.js`，不再自己声明一份 `name`，避免重复导出）。
+**插件行名必须是纯包名**。`packages/client/modules/src/index.ts:892` 的 `locatePkgJson` 靠 Loader 行名定位包 manifest 才能判断「这个包有 client 半边」：`exactPackageSpecifier` 不接受含 `/` 的子路径。行名写成 `dsh-leader-agent/src/host` 时定位失败，该行不会被识别为 client row——宿主根本不下发 client bundle，浏览器右栏只剩内置欢迎页。改成 `dsh-leader-agent` 后，包入口相应改为再导出 host 侧实现（`index.js` 的 `apply`/`inject`/`name` 全部来自 `src/host/index.js`，不再自己声明一份 `name`，避免重复导出）。
 
 **client 产物自己产，用 esbuild 复刻 closure-factory 封装**。dsh 的 `clientBundle` 预设（`packages/client/tsdown.client.ts`）绑定仓内 `PLATFORM_MODULES` 等多个模块，第三方仓无法引用；宿主按 closure-factory 约定加载产物（`window.__ModuleLoader__.load({ id, factory: (require) => { … return module.exports; } })`）。于是 `build/client.mjs` 用 esbuild 产出 CJS 产物：banner 注册工厂并注入 require，footer 交回 exports；产物里留下的外部 import 由工厂的 require 解析。产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。
 
@@ -38,14 +38,14 @@ dsh 的 bundle 有两半：host 半边跑在 Node 进程，client 半边跑在�
 - **注册必须放进 `ctx.effect`**。注册表把 effect 挂到调用方 fiber 上，在别的插件的 apply 里直接注册会让浏览器启动静默卡住。
 - **`ctx.sessions` 在 apply 期可能未就绪**，因此注入面板的是延迟取值器 `() => ctx.sessions`，不是当时的快照。
 - **worktree 不要再往里套 worktree**。`.worktrees/` 在仓内，worktree 里再 `git worktree add .worktrees/<x>` 会递归嵌套，git 会拒绝或产生怪路径。新任务一律从主 checkout 建。
-- **profile 的 link 指向 worktree 目录**。开发时 `~/.dsh/profiles/<name>/package.json` 把 `dsh-leader-kit` link 到 worktree 路径（`link:/…/dsh-leader-kit/.worktrees/<任务名>`）；worktree 删掉后 profile 就断了，要改回主 checkout 的路径。
+- **profile 的 link 指向 worktree 目录**。开发时 `~/.dsh/profiles/<name>/package.json` 把 `dsh-leader-agent` link 到 worktree 路径（`link:/…/dsh-leader-agent/.worktrees/<任务名>`）；worktree 删掉后 profile 就断了，要改回主 checkout 的路径。
 
 ## 证据
 
-web profile（dsh 0.2.1-rc.2）实测：boot manifest 从 70 条目变 71 条目，多出的条目即本包（`plugins/??dsh-leader-kit/client.js`，`inject` 含 `@deepseek-ai/dsh-client-ui-sidebar-right` 与 `@deepseek-ai/dsh-api-session-controller`）；浏览器右栏出现「看板」Tab，点开显示面板。
+web profile（dsh 0.2.1-rc.2）实测：boot manifest 从 70 条目变 71 条目，多出的条目即本包（`plugins/??dsh-leader-agent/client.js`，`inject` 含 `@deepseek-ai/dsh-client-ui-sidebar-right` 与 `@deepseek-ai/dsh-api-session-controller`）；浏览器右栏出现「看板」Tab，点开显示面板。
 
 删掉 manifest 的 `dsh.client.external` 后实测：插件照常被发现与加载，产物里仍只有 `require("react")` 与 `require("react-dom")` 两处外部依赖，看板渲染 4 张卡（3 张 active + 1 张已完成），信号灯四档与链接 chip 均正常，控制台无报错。
 
-数据通道实测：web 会话里模型调 `create_card` → 落盘 `#3「端到端验证卡片」` → 该会话的 `tool/result` 事件 `meta` 携带 `{"kind":"dsh-leader-kit-cards","scope":"card","cards":[…]}`。
+数据通道实测：web 会话里模型调 `create_card` → 落盘 `#3「端到端验证卡片」` → 该会话的 `tool/result` 事件 `meta` 携带 `{"kind":"dsh-leader-agent-cards","scope":"card","cards":[…]}`。
 
 行名改动后的 host 侧回归：sdk profile + mock LLM 实测 `create_card` 仍工作（落盘 `#2「行名回归验证卡片」`），49 例单测全绿。

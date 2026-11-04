@@ -8,7 +8,7 @@
  * 形态对齐宿主自带的 Toast：顶部居中、固定时长后淡出、不拦截点击。同一时刻
  * 只留一条，新消息替换旧消息并重启计时。
  *
- * @module dsh-leader-kit/client/toast
+ * @module dsh-leader-agent/client/toast
  */
 
 /** 淡出开始前的停留时长；失败文案比一句成功回执更长，比宿主默认的 3 秒多给 1 秒。 */

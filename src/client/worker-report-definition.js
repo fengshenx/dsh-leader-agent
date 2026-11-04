@@ -12,13 +12,13 @@
  * 认领失败时（宿主版本漂移导致本定义没注册上）消息仍由官方渲染，最多退化成一条
  * 右对齐的用户气泡，不会丢内容。
  *
- * @module dsh-leader-kit/client/worker-report-definition
+ * @module dsh-leader-agent/client/worker-report-definition
  */
 
 import { readWorkerReportSource, workerReportText } from '../shared/worker-report.js'
 
 /** worker 回报消息的节点 kind（渲染器的 dispatch key）。 */
-export const WORKER_REPORT_NODE_KIND = 'dsh-leader-kit-worker-report'
+export const WORKER_REPORT_NODE_KIND = 'dsh-leader-agent-worker-report'
 
 /**
  * 会话节点定义。

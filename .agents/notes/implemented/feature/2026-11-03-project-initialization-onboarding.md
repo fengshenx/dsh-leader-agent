@@ -10,7 +10,7 @@
 
 ### 用户消息只发一句触发语，作答要求走 `LEADER.md` 的运行时上下文
 
-`guide.intro.prompt` 缩成一句：「这个项目还没配置，先讲讲 dsh-leader-kit 怎么用。」它在对话里显示为用户消息，长指令（解释什么、问什么、确认前不写文件）放进运行时上下文：`renderInitializationHint`（`src/host/leader-context.js`）在 `LEADER.md` 缺失时取代手册正文，告诉模型按三步回答，并限定触发面——用户直接派活时不打断、问过没答不重复追问。
+`guide.intro.prompt` 缩成一句：「这个项目还没配置，先讲讲 dsh-leader-agent 怎么用。」它在对话里显示为用户消息，长指令（解释什么、问什么、确认前不写文件）放进运行时上下文：`renderInitializationHint`（`src/host/leader-context.js`）在 `LEADER.md` 缺失时取代手册正文，告诉模型按三步回答，并限定触发面——用户直接派活时不打断、问过没答不重复追问。
 
 选注入而不是把长文本塞进消息：用户消息是对话的一部分，几百字的「你是这个项目的 leader……」以用户口吻出现，观感像自言自语；而注入项每轮**求值**、文本变化才追加一份新快照（不是每轮往上下文里再塞一份文本），手册建好后这段提示自动消失，不需要额外的「已提示过」状态。
 
@@ -24,12 +24,12 @@
 
 ### 拒绝不做持久化：提示词约束到会话为止
 
-用户在对话里明确拒绝后，提示词要求模型「本轮及本会话不要再追问」，并明确**不要为记录这个拒绝写任何文件**。换一个新会话仍会再问一次，这是已知代价；想彻底停用就创建 `LEADER.md`（或跑 `init-leader-kit` 后只留少量内容）——提示只在两份手册都没有正文时注入。
+用户在对话里明确拒绝后，提示词要求模型「本轮及本会话不要再追问」，并明确**不要为记录这个拒绝写任何文件**。换一个新会话仍会再问一次，这是已知代价；想彻底停用就创建 `LEADER.md`（或跑 `init-leader-agent` 后只留少量内容）——提示只在两份手册都没有正文时注入。
 
 两个持久化方案都被否决，原因不同：
 
-- **写进项目目录**（`.dsh-leader-kit/init-declined`）：项目目录是用户的 git 仓库，实测 `git status` 会多出 `?? .dsh-leader-kit/`，`git add -A` 会把这个空文件提交进去；插件没有、也不该有替用户往仓库里立 `.gitignore` 的权力。
-- **写进 dsh 数据域**（`<dsh home>/dsh-leader-kit/init-declined/`）：实际运行时走不通。宿主默认 preset 是 `workspace-write`，`fs-sandbox` 只放行 workspace root 与平台 temp，模型写 home 会拿到 `FS_SANDBOX_DENIED`；工具层可以用 `sandbox_permissions` 申请升权，但那要为一个「别再问」的标记弹一次审批——比重复问一次更烦。失败时 `existsSync` 静默返回 false，用户完全看不到发生了什么。
+- **写进项目目录**（`.dsh-leader-agent/init-declined`）：项目目录是用户的 git 仓库，实测 `git status` 会多出 `?? .dsh-leader-agent/`，`git add -A` 会把这个空文件提交进去；插件没有、也不该有替用户往仓库里立 `.gitignore` 的权力。
+- **写进 dsh 数据域**（`<dsh home>/dsh-leader-agent/init-declined/`）：实际运行时走不通。宿主默认 preset 是 `workspace-write`，`fs-sandbox` 只放行 workspace root 与平台 temp，模型写 home 会拿到 `FS_SANDBOX_DENIED`；工具层可以用 `sandbox_permissions` 申请升权，但那要为一个「别再问」的标记弹一次审批——比重复问一次更烦。失败时 `existsSync` 静默返回 false，用户完全看不到发生了什么。
 
 第三个候选是「不持久化、跨会话重问一次」，也就是现在采用的方案：代价可见、行为在提示词里写清，比一个会静默失败的标记诚实。
 
@@ -39,9 +39,9 @@
 
 边界：只影响**零合法槽位时**的回落默认值。项目 `SLOTS.md` 里显式声明的 `## discuss` 节照常解析与注入（本仓根的 `SLOTS.md` 已同步删掉该节）；内置翻译 `slot.discuss` 保留在 `src/client/locales.js`，用户自己加回该槽位时卡面仍有中文名。
 
-这条产品口径与引导卡无直接关系，同一 PR 收口是因为骨架（`init-leader-kit/references/SLOTS.md`）要按两角色写，拆成两个 PR 会让骨架在两次提交里各改一遍。审查时单独标注过，可随时拆出去。
+这条产品口径与引导卡无直接关系，同一 PR 收口是因为骨架（`init-leader-agent/references/SLOTS.md`）要按两角色写，拆成两个 PR 会让骨架在两次提交里各改一遍。审查时单独标注过，可随时拆出去。
 
-### 骨架随包分发，放在 `init-leader-kit` skill 的 `references/`
+### 骨架随包分发，放在 `init-leader-agent` skill 的 `references/`
 
 骨架是 `references/LEADER.md` 与 `references/SLOTS.md`，随 `.agents/skills/**` 进 npm 包，`package.json` 不用改 `files`。模型加载 skill 时拿到 `resourceBase`（skill 目录），直接用文件工具读这两份，不需要再猜插件安装路径。
 
@@ -51,9 +51,9 @@
 
 插件不在项目注册时写任何文件。用户确认后由 skill 写：先把 `AGENTS.md` 的受管区块并入，再按项目实际改写两份手册。目录是空的就不编造——写带 TODO 的骨架，并把还缺的三个问题（项目做什么、什么算交付、有哪些硬约束）问清楚；这比生成一份看起来完整、实际是通用道理的 `LEADER.md` 有用。
 
-### skill 从 `init-project` 改名 `init-leader-kit`
+### skill 从 `init-project` 改名 `init-leader-agent`
 
-`init-project` 太通用，容易和其他插件的同名 skill 撞；`init-leader-kit` 一眼能看出归属。skill 是 bundled provider（`rank: 600`），不落 `~/.dsh/skills`，项目内同名副本仍优先。改名对 0.1.1 已装用户是可见变化（skill 列表里名字变了），可接受：名字只影响模型发现，不影响已写入项目的文件。
+`init-project` 太通用，容易和其他插件的同名 skill 撞；`init-leader-agent` 一眼能看出归属。skill 是 bundled provider（`rank: 600`），不落 `~/.dsh/skills`，项目内同名副本仍优先。改名对 0.1.1 已装用户是可见变化（skill 列表里名字变了），可接受：名字只影响模型发现，不影响已写入项目的文件。
 
 ## 边界
 
@@ -67,9 +67,9 @@
 
 ## 验证
 
-- `tests/leader-context.test.js`：新增「项目还没有手册时注入初始化提示」（断言含 `## 项目待初始化`、`init-leader-kit`、`不要创建或修改任何文件`、`用户直接派活时不要打断`）、「已有 `SLOTS.md` 只缺 `LEADER.md` 时措辞不同」、「手册存在时不出现初始化提示」、「仅空白 `LEADER.md` 时提示说的是补内容」、「只有 `COORDINATOR.md` 时按旧名注入」「空 `LEADER.md` + 有内容 `COORDINATOR.md` 时回落到旧名」「拒绝后不追问、不写文件，并给出彻底停用的办法」；原「缺失返回空串」改为只断言 `loadLeaderManual`。
+- `tests/leader-context.test.js`：新增「项目还没有手册时注入初始化提示」（断言含 `## 项目待初始化`、`init-leader-agent`、`不要创建或修改任何文件`、`用户直接派活时不要打断`）、「已有 `SLOTS.md` 只缺 `LEADER.md` 时措辞不同」、「手册存在时不出现初始化提示」、「仅空白 `LEADER.md` 时提示说的是补内容」、「只有 `COORDINATOR.md` 时按旧名注入」「空 `LEADER.md` + 有内容 `COORDINATOR.md` 时回落到旧名」「拒绝后不追问、不写文件，并给出彻底停用的办法」；原「缺失返回空串」改为只断言 `loadLeaderManual`。
 - 双向验证（撤销 → 对应用例变红 → 还原 → 22 例全绿）：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；把 `loadLeaderManual` 的新版判据改回 `first.body !== undefined`（空新版遮蔽旧名）→ 回落用例红；删掉提示里「拒绝后不要追问、不要写文件」那一步 → 拒绝用例红。
-- `tests/guide-card-logic.test.js`：新增「开场正文只发一句触发语」——断言两句 `guide.intro.prompt` 都含 `dsh-leader-kit`、不含 `LEADER.md`、长度小于 80。
-- `tests/skills.test.js` / `tests/leader-wiring.test.js` / `tests/pack-manifest.test.js`：skill 名单与包内路径同步为 `init-leader-kit`；新增「初始化骨架默认只含 dev 与 review 两个槽位」。
+- `tests/guide-card-logic.test.js`：新增「开场正文只发一句触发语」——断言两句 `guide.intro.prompt` 都含 `dsh-leader-agent`、不含 `LEADER.md`、长度小于 80。
+- `tests/skills.test.js` / `tests/leader-wiring.test.js` / `tests/pack-manifest.test.js`：skill 名单与包内路径同步为 `init-leader-agent`；新增「初始化骨架默认只含 dev 与 review 两个槽位」。
 - `tests/slots.test.js`：新增「默认槽位只有 dev 与 review」，锁住回落口径（讨论由 leader 自己做，不占槽位）。
 - `npm run check`：1004 用例通过（16 跳过），98 文件语法通过，13 篇 standing docs 在预算内。`limitations.md` / `usage.md` 的天花板按 5% 余量重算（6900 / 5600）：两条边界是使用者与后续维护都要读到的事实，压缩会丢信息。

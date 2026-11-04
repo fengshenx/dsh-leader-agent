@@ -30,7 +30,7 @@
 
 ### 插入线画在项目块上，不是项目行上
 
-落点线是 `data-drop` 挂在 `.dsh-leader-kit-project-block`（行 + 展开的会话列表）上的 `::before` / `::after`，`top` / `bottom` 取 -2px 落进行距缝隙。挂到行上会错：插入点按项目数组排（会话不是独立项），「落在这一行下半」的实际落点是整个块之后，而展开态下行的底边是「行与会话列表」的接缝，线会差出一整个会话列表的高度。
+落点线是 `data-drop` 挂在 `.dsh-leader-agent-project-block`（行 + 展开的会话列表）上的 `::before` / `::after`，`top` / `bottom` 取 -2px 落进行距缝隙。挂到行上会错：插入点按项目数组排（会话不是独立项），「落在这一行下半」的实际落点是整个块之后，而展开态下行的底边是「行与会话列表」的接缝，线会差出一整个会话列表的高度。
 
 落点判定收在一个纯函数 `projectDropPlan` 里，同时给出锚点与要不要画线：拖到源行本身时不给线（拖起来后指针会从行上划过，线亮着而松手什么都不发生，像上次的落点没清掉）。顺序本来就对、落点在别的行上时线照画，只省掉远程调用。
 
@@ -40,7 +40,7 @@
 
 ### 2px 行距照宿主，落点线画在缝里
 
-`.dsh-leader-kit-project-list > * + * { margin-top: 2px }`，与宿主工作区树一致；会话列表容器（`.dsh-leader-kit-project-sessions`）同样加 2px，那里是同一类粘连。落点指示线用项目块上的 `::before` / `::after`，`top` / `bottom` 取 -2px，正好落在行距缝隙里；被拖起的行加 `data-dragging` 压到 0.5 不透明度。
+`.dsh-leader-agent-project-list > * + * { margin-top: 2px }`，与宿主工作区树一致；会话列表容器（`.dsh-leader-agent-project-sessions`）同样加 2px，那里是同一类粘连。落点指示线用项目块上的 `::before` / `::after`，`top` / `bottom` 取 -2px，正好落在行距缝隙里；被拖起的行加 `data-dragging` 压到 0.5 不透明度。
 
 行距是 `> * + *`，不是容器 `gap`：项目列表容器是默认 block 布局（宽侧栏里就是普通文档流），`gap` 在这类容器上不生效，要拉开行距只能用外边距。会话列表虽然是 flex column（`gap` 在那儿等价），但两处共用同一条 `> * + *`、与宿主 `WorkspaceBrowser.module.css` 的 `.groupSection > * + *` 同写法，省掉两套规则。
 
@@ -67,7 +67,7 @@
 - 真机（worktree 开发实例，dsh 0.2.1-rc.2，隔离数据根，Playwright headless Chromium 1440×900）：seed 三个项目 alpha / beta / gamma 后读 DOM——三行 `draggable="true"`，相邻行矩形间距实测 `2px`、`2px`。
   - 真实鼠标拖拽（`mouse.down` → 分步 `mouse.move` → `mouse.up`）把最后一行拖到第一行上半：DOM 顺序变 `gamma / alpha / beta`，`projects.json` 落盘顺序同为 `gamma / alpha / beta`。
   - 拖拽中途读数：被拖行 `data-dragging="true"`，落点块 `data-drop="after"` 且伪元素存在；松手后顺序变 `alpha / beta / gamma`，落盘一致。
-  - **插入线落点（展开态）**：展开 beta（块内多出 31px 的会话列表）后把 gamma 拖到 beta 下半——线挂在 `.dsh-leader-kit-project-block` 上，`getComputedStyle(::after)` 得 `bottom: -2px`、`height: 2px`，线所在 y = 块底 `309`，而行的底边是 `278`。同一场景换回旧实现（`data-drop` 在行上）实测 `lineOwner: row`、线 y = `278`——比真实落点高 31px，即整个会话列表的高度。
+  - **插入线落点（展开态）**：展开 beta（块内多出 31px 的会话列表）后把 gamma 拖到 beta 下半——线挂在 `.dsh-leader-agent-project-block` 上，`getComputedStyle(::after)` 得 `bottom: -2px`、`height: 2px`，线所在 y = 块底 `309`，而行的底边是 `278`。同一场景换回旧实现（`data-drop` 在行上）实测 `lineOwner: row`、线 y = `278`——比真实落点高 31px，即整个会话列表的高度。
   - **拖回源行**：指针从 beta 下半移回源行 gamma 的下半，三块的 `data-drop` 全部为 `null`（线随落点清掉）。
   - 全程无 pageerror、无 console error；拖拽没有顺带打开会话（主区域停在原页）。
 - **未验证**：触屏与移动端没有实测（HTML5 DnD 在触摸设备上不生效）；项目行在窄导轨浮层里的拖拽同样没有真机复跑，渲染路径与宽侧栏同一份组件；`busy` 时不可拖只做了静态核对（要造成「写请求在途」得让宿主慢响应，没有为此造桩）。

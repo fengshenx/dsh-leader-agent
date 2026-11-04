@@ -67,7 +67,7 @@ Windows 不需要 macOS 的 `open --env` 通道：`spawn(exe, [], { env: { ...pr
   - 应用运行中重跑：报「正在运行，profile 只在启动时读入」、退出 1、manifest 的 sha256 前后一致。
   - `DSH_DESKTOP_APP` 指向安装目录：报错行给出解析后的 exe 绝对路径并命中探活，说明目录形态能解析。
   - `DSH_DESKTOP_APP=__no_such_app__`：报「找不到桌面应用 exe」、退出 1、manifest 未变（挂载前早失败）。
-  - `--remove`：manifest 里依赖与 bundle 清空、`node_modules/dsh-leader-kit` 的 junction 被删（`rmdir` 路径）。
+  - `--remove`：manifest 里依赖与 bundle 清空、`node_modules/dsh-leader-agent` 的 junction 被删（`rmdir` 路径）。
 - 未验证：
   - `tasklist` 全量输出在进程数很多的机器上的耗时（只做了功能验证）。
   - 单实例竞态（探活后、spawn 前应用被手动打开）没有构造。

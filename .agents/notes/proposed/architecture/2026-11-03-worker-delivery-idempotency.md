@@ -6,7 +6,7 @@
 
 被问到「leader 与 worker 的回报有没有持久化和幂等、会不会重复投递、会不会丢消息」时，逐条核过实现并跑了两条探针（复用 `tests/dispatch.test.js` 的夹具，非真机）。现状是分层的：
 
-- **会话本体**由宿主 JSONL 持有，进程重启后 `agents.resume()` 冷恢复；**worker 登记表**与**完成通知队列**各自落盘在 `$DSH_HOME/dsh-leader-kit/`，都是原子写加串行读改写（`worker-registry.js:78-99`、`notification-store.js:36-66`：读在 `36-55`、原子写在 `62-66`、串行在 `75-79`）。
+- **会话本体**由宿主 JSONL 持有，进程重启后 `agents.resume()` 冷恢复；**worker 登记表**与**完成通知队列**各自落盘在 `$DSH_HOME/dsh-leader-agent/`，都是原子写加串行读改写（`worker-registry.js:78-99`、`notification-store.js:36-66`：读在 `36-55`、原子写在 `62-66`、串行在 `75-79`）。
 - **通知入队按 id 幂等**（`note-<childId>-<startedAt>`，查重在 `notification-store.js:106`，先查后写），落盘失败重试与重结算不会多出一条；**投递**有进程内 `delivering` 闸、`flushWaiting` 的先摘后投、投前核对落盘队列，挡得住轮询重入与补投并发（`dispatch.js:228-235`、`dispatch.js:379-428`）——这几处查重都发生在 `agent.followup`（也就是宿主的 `session.append`）之前，重入不会往会话日志里多写一条。
 - **卡片写入**走 `expectedRevision` 乐观并发，**worker 登记**按 childId 更新而非追加。
 

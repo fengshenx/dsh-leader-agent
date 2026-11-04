@@ -1,6 +1,6 @@
 # leader 手册
 
-本文件由 dsh-leader-kit 注入项目的 leader 会话：每轮 turn 读取项目目录根下的 `LEADER.md`，把它作为该项目的 leader 工作方法。它与 `AGENTS.md`（工程约定，所有会话共享）和 `SLOTS.md`（执行者角色手册）分工不同——这里只写「leader 怎么指挥这个仓库」。
+本文件由 dsh-leader-agent 注入项目的 leader 会话：每轮 turn 读取项目目录根下的 `LEADER.md`，把它作为该项目的 leader 工作方法。它与 `AGENTS.md`（工程约定，所有会话共享）和 `SLOTS.md`（执行者角色手册）分工不同——这里只写「leader 怎么指挥这个仓库」。
 
 ## 你的职责
 

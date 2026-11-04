@@ -9,11 +9,11 @@
  * 目标不注册成可见 tab：官方没有「按会话过滤 tab」的能力，可见 tab 会出现在
  * 所有会话的头部。它只提供活动，视图区仍是官方那个空会话。
  *
- * @module dsh-leader-kit/client/leader-view-logic
+ * @module dsh-leader-agent/client/leader-view-logic
  */
 
 /** leader 视图目标 id。 */
-export const LEADER_VIEW_TARGET = 'dsh-leader-kit'
+export const LEADER_VIEW_TARGET = 'dsh-leader-agent'
 
 /**
  * 构造 leader 视图定义。
