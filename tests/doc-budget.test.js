@@ -62,6 +62,42 @@ test('判定：文件缺失与非法天花板各自单独报出，不混成超�
   assert.deepEqual(results.map((result) => result.status), ['missing', 'bad-ceiling', 'bad-ceiling'])
 })
 
+test('判定：余量上限——正好 12% 仍是 ok，略超报 loose 并给出建议值', () => {
+  const results = checkBudgets([
+    { path: 'edge.md', ceiling: 112, units: 100 },
+    { path: 'loose.md', ceiling: 113, units: 100 },
+  ])
+  assert.deepEqual(results.map((result) => result.status), ['ok', 'loose'])
+  assert.equal(results[1].suggestedCeiling, 105)
+})
+
+test('判定：loose 的建议值按当前值留 5% 余量', () => {
+  const [result] = checkBudgets([{ path: 'README.md', ceiling: 4000, units: 3018 }])
+  assert.equal(result.status, 'loose')
+  assert.equal(result.suggestedCeiling, 3169)
+})
+
+test('判定：units 为 0 或极小时不除零，建议值仍是可落地的最小正整数', () => {
+  const results = checkBudgets([
+    { path: 'empty.md', ceiling: 5, units: 0 },
+    { path: 'tiny.md', ceiling: 2, units: 1 },
+  ])
+  assert.deepEqual(results.map((result) => result.status), ['loose', 'loose'])
+  assert.deepEqual(results.map((result) => result.suggestedCeiling), [1, 1])
+  // 按建议值改完不能再触发 loose
+  const [fixed] = checkBudgets([{ path: 'tiny.md', ceiling: 1, units: 1 }])
+  assert.equal(fixed.status, 'ok')
+})
+
+test('判定：bad-ceiling / missing / over 优先于 loose', () => {
+  const results = checkBudgets([
+    { path: 'bad.md', ceiling: 0, units: 1 },
+    { path: 'missing.md', ceiling: 9999, units: null },
+    { path: 'over.md', ceiling: 100, units: 120 },
+  ])
+  assert.deepEqual(results.map((result) => result.status), ['bad-ceiling', 'missing', 'over'])
+})
+
 test('输出行带状态、读数与天花板', () => {
   const row = formatBudgetRow({ path: 'docs/a.md', ceiling: 100, units: 120, status: 'over' })
   assert.match(row, /^OVER/)
@@ -74,6 +110,14 @@ test('输出行：缺失文件的读数显示为破折号', () => {
   const row = formatBudgetRow({ path: 'docs/a.md', ceiling: 100, units: null, status: 'missing' })
   assert.match(row, /^MISS/)
   assert.match(row, /—/)
+})
+
+test('输出行：loose 带状态与建议值', () => {
+  const row = formatBudgetRow({ path: 'docs/a.md', ceiling: 4000, units: 3018, status: 'loose', suggestedCeiling: 3169 })
+  assert.match(row, /^LOOSE/)
+  assert.match(row, /3018/)
+  assert.match(row, /4000/)
+  assert.match(row, /建议 3169/)
 })
 
 test('未登记的长期文档被报出，已登记的不报', () => {
@@ -93,6 +137,18 @@ test('真实清单：声明的文件都在，且读数都是正整数', () => {
     assert.ok(existsSync(join(root, path)), `清单里的 ${path} 不存在，改名或删除时同步 scripts/doc-budgets.json`)
     assert.ok(Number.isInteger(ceiling) && ceiling > 0, `${path} 的天花板必须是正整数`)
   }
+})
+
+test('真实清单：当前读数都不超限，余量也不超过 12%', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
+  const entries = Object.entries(manifest).map(([path, ceiling]) => {
+    const abs = join(root, path)
+    return { path, ceiling, units: existsSync(abs) ? countDocUnits(readFileSync(abs, 'utf8')) : null }
+  })
+  assert.deepEqual(
+    checkBudgets(entries).filter((result) => result.status !== 'ok'),
+    [],
+  )
 })
 
 test('真实清单：根目录与 docs/ 下的 Markdown 全部登记', () => {

@@ -54,7 +54,7 @@ if (listOnly) process.exit(0)
 
 const failures = results.filter((result) => result.status !== 'ok')
 if (failures.length === 0 && unregistered.length === 0) {
-  console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在天花板内`)
+  console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在天花板内，余量不超过 12%`)
   process.exit(0)
 }
 
@@ -65,6 +65,8 @@ for (const path of unregistered) {
 for (const failure of failures) {
   if (failure.status === 'over') {
     console.error(`  ${failure.path}: ${failure.units} 个单位超过天花板 ${failure.ceiling}——按 AGENTS.md 先搬到对的层，再压缩；抬天花板要在 PR 里写明理由`)
+  } else if (failure.status === 'loose') {
+    console.error(`  ${failure.path}: 天花板 ${failure.ceiling} 高于当前值 ${failure.units} 的 12%——按当前值重设（建议 ${failure.suggestedCeiling}），不要留没有约束力的余量`)
   } else if (failure.status === 'missing') {
     console.error(`  ${failure.path}: 清单里的文件不存在（改名或删除了？同一次改动里更新 scripts/doc-budgets.json）`)
   } else {

@@ -36,7 +36,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 ## 测试与构建
 
-只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法与断言纪律见 [e2e-testing.md](e2e-testing.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
+只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
 
 覆盖率门禁 `npm run test:coverage`（`npm run check` 末尾跑的就是它）判 `src` 下 per-file 行覆盖：没登记门槛的文件要求 100%，存量欠账按整数记在 `scripts/coverage-manifest.json` 的 `thresholds`，掉到门槛以下变红，涨出门槛会提示抬高。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由（客户端组件由 e2e 覆盖）——新增 `src` 文件既不进报告也不登记同样变红。只判行覆盖：分支与函数覆盖率既不设门槛，也不进门禁输出。
 
