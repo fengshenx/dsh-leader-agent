@@ -28,7 +28,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 | 写浏览器 e2e 场景的断言与排查方法 | [e2e-scenarios](.agents/skills/e2e-scenarios/SKILL.md)（断言纪律、失败诊断、双向验证、搭场景；按任务加载） |
 | 跑 `npm run e2e`、查车道命令与夹具、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、文件职责、场景模板、mock 标记约定、截图落点、人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
-| 发版、发布包内容与 CI | [.telov/skills/release](.telov/skills/release/SKILL.md)（发版手册）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/implemented/process/2026-11-03-npm-oidc-publishing.md) |
+| 发版、发布包内容与 CI | [docs/release.md](docs/release.md)（发版手册；维护者专用，不进包）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/implemented/process/2026-11-03-npm-oidc-publishing.md) |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 
 ## 目录与职责
@@ -39,15 +39,14 @@ src/host/           宿主侧：工具、派工器、存储、项目服务、wor
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
 .agents/skills/     协议层 skill（leader-mode 派工协议、init-leader-agent 初始化方法、e2e-scenarios 场景写法）
-.telov/skills/      工作区运维 skill（release 发版手册，不进发布包）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
 scripts/            开发实例、worktree 工具、门禁（Agent Note 格式、文档工具名、文档预算、覆盖率、发布包内容）
-docs/               长期文档（架构地图、已知限制、宿主能力边界、开发与构建、e2e 车道与人工取证）
+docs/               长期文档（架构地图、已知限制、宿主能力边界、开发与构建、e2e 车道与人工取证、发版手册）
 .agents/notes/      决策记忆：按 {lifecycle}/{class}/ 归位（口径见目录内 README.md）
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
-COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（Telov 等外部工具用）
+COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（外部工具用）
 SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review）
 ```
 
@@ -77,7 +76,7 @@ npm run release:check             # 发版门禁：check + build:client + verify
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。
-- 工具名只有一处来源：`src/host/index.js` 的 `createBundleTools`（门禁比对用的是它的 `documentedToolNames`）。`SLOTS.md`、`LEADER.md`、`.agents/skills/**/*.md` 里反引号写的工具名由 `scripts/verify-doc-tool-names.mjs` 比对，删工具时漏改文档 `npm run check` 会红。
+- 工具名只有一处来源：`src/host/index.js` 的 `createBundleTools`（门禁比对用的是它的 `documentedToolNames`）。`SLOTS.md`、`LEADER.md`、`.agents/skills/**/*.md` 与 `docs/release.md`（维护者手册，见 `MAINTAINER_DOCS`）里反引号写的工具名由 `scripts/verify-doc-tool-names.mjs` 比对，删工具时漏改文档 `npm run check` 会红。
 
 ## 代码风格
 
@@ -117,15 +116,15 @@ npm run release:check             # 发版门禁：check + build:client + verify
 
 ## 用 bot 身份发评论
 
-审查意见走 GitHub App `telov-review-bot`，评论显示为 `telov-review-bot[bot]`，与作者账号（`fengshenx`）分离。merge、push 用本人凭证，bot 不做；approve 需用户明确指令。
+审查意见走单独注册的 GitHub App，评论显示为 `<app-slug>[bot]`，与作者账号（`fengshenx`）分离。merge、push 用本人凭证，bot 不做；approve 需用户明确指令。
 
-**这套通道依赖本机私有凭据**：`scripts/github-app-token.mjs` 读 `~/.telov/`，仓库本身不带这个能力。换机器、别人 clone、或将来接 CI 都要自备 App 与 installation——没有凭据时脚本按 Fail Loud 报缺文件并以 1 退出，不会静默降级成作者身份。
+**这套通道依赖本机私有凭据**：`scripts/github-app-token.mjs` 读 `~/.dsh-leader-agent/`，仓库本身不带这个能力。换机器、别人 clone、或将来接 CI 都要自备 App 与 installation——没有凭据时脚本按 Fail Loud 报缺文件并以 1 退出，不会静默降级成作者身份。
 
-- 凭据在机器本地、不入库：`~/.telov/github-app.env`（`GITHUB_APP_ID` / `GITHUB_APP_INSTALLATION_ID`）、`~/.telov/github-app.pem`（`chmod 600`）。该 App 的 installation 覆盖 `fengshenx` 名下全部仓库，同一份凭据 Telov 与本仓通用。
+- 凭据在机器本地、不入库：`~/.dsh-leader-agent/github-app.env`（`GITHUB_APP_ID` / `GITHUB_APP_INSTALLATION_ID`）、`~/.dsh-leader-agent/github-app.pem`（`chmod 600`）。该 App 的 installation 覆盖 `fengshenx` 名下全部仓库；同一台机器上其它仓库共用同一个 App，各自读自己的副本。
 - 换 token：`node scripts/github-app-token.mjs`（RS256 JWT → installation token，1 小时有效，不落盘）。它是**纯入口**，逻辑在 `github-app-credentials.mjs`（凭据读取与 token 交换）与 `github-app-jwt.mjs`（签名）。**别给入口加「是不是被直接执行」的守卫**：`import.meta.url` 会解析软链而 `pathToFileURL(argv[1])` 不会，路径经过软链时守卫判错、脚本退 0 且 stdout 为空，`$(…)` 一侧不短路，`gh` 随后回落到本人凭证——正是要防的身份降级。
 - **取 token 与调用必须写在同一行**：`TOKEN=$(node scripts/github-app-token.mjs) && GH_TOKEN="$TOKEN" gh pr comment <n> --body-file /tmp/review.md`。分两次 shell 调用时 `$TOKEN` 已丢失，`gh` 回落到本人凭证——评论照样发出，身份却静默变成作者账号；`&&` 短路是第二道防线，取不到 token 就不执行 `gh`。
 - 正文含中文、换行、代码块时先写临时文件再 `--body-file`，避开 shell 引号转义；临时文件用完删掉。
-- **别用 `gh api user` 验身份**：installation token 访问该端点一律 403（`Resource not accessible by integration`），那是预期形态不是故障——身份由 App slug 决定（`GET /app` 的 `slug` 是 `telov-review-bot`），用它签出的 token 发评必然显示为 `[bot]`。要确认可用性就查 `gh api /installation/repositories` 里有没有目标仓库。
+- **别用 `gh api user` 验身份**：installation token 访问该端点一律 403（`Resource not accessible by integration`），那是预期形态不是故障——身份由 App slug 决定（`GET /app` 的 `slug` 就是评论作者的 bot 句柄），用它签出的 token 发评必然显示为 `[bot]`。要确认可用性就查 `gh api /installation/repositories` 里有没有目标仓库。
 - App 权限只有 `issues` / `pull_requests` / `metadata`：能发评论，不能 merge、不能 push；也**不要**把 token `export` 成全局 `GH_TOKEN`，那会让后续所有 `gh` 操作变成 bot 身份。
 
 ## 编辑本文件与文档分层

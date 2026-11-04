@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { PROMPT_DOCS, PROMPT_SKILLS_DIRS, scanToolNames } from '../scripts/doc-tool-names.mjs'
+import { MAINTAINER_DOCS, PROMPT_DOCS, PROMPT_SKILLS_DIRS, scanToolNames } from '../scripts/doc-tool-names.mjs'
 import { documentedToolNames } from '../src/host/index.js'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
@@ -93,7 +93,7 @@ test('门禁的已知集合只来自 documentedToolNames，不碰 gate.js', () =
 test('仓库里注入会话的文档零误报', () => {
   const known = new Set(documentedToolNames())
   const docs = [
-    ...PROMPT_DOCS.map((name) => join(root, name)),
+    ...[...PROMPT_DOCS, ...MAINTAINER_DOCS].map((name) => join(root, name)),
     ...PROMPT_SKILLS_DIRS.flatMap((dir) => markdownFiles(join(root, dir))),
   ]
   for (const file of docs) {
@@ -103,13 +103,12 @@ test('仓库里注入会话的文档零误报', () => {
   }
 })
 
-test('.telov/skills 也在扫描面内：运维 skill 写错工具名同样会红', () => {
-  const docs = PROMPT_SKILLS_DIRS.flatMap((dir) => markdownFiles(join(root, dir)))
-  assert.ok(
-    docs.some((file) => file.endsWith('.telov/skills/release/SKILL.md')),
-    '发版手册应进入工具名门禁的扫描面',
-  )
-  // 门禁脚本必须复用同一常量：另写一套目录列表时，扫描面会与这里悄悄分叉
+test('扫描面收窄到协议层 skill，维护者手册显式点名', () => {
+  // 外部工作区目录不再参与扫描：它已迁到 docs/，不进提示词、也不该再给它单开一道口子。
+  assert.deepEqual(PROMPT_SKILLS_DIRS, ['.agents/skills'])
+  assert.ok(MAINTAINER_DOCS.includes('docs/release.md'), '发版手册虽不进会话，工具名仍要有门禁')
+  // 门禁脚本必须复用同一份常量：另写一套列表时，扫描面会与这里悄悄分叉
   const source = readFileSync(join(root, 'scripts/verify-doc-tool-names.mjs'), 'utf8')
   assert.match(source, /PROMPT_SKILLS_DIRS\.flatMap/)
+  assert.match(source, /MAINTAINER_DOCS/)
 })

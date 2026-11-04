@@ -8,7 +8,7 @@
  *
  * 完成信号由本模块从会话事件里认：订阅宿主的 `session/event`，在 `turn/end` 那一刻
  * 折叠这一轮的 `assistant/message` 文本与终态。worker 不调用任何工具回报——这与
- * Telov 的 `<subagent-notification>`、以及宿主 subagent 的 `captureLocalResult()`
+ * 外部编排工具的 `<subagent-notification>`、以及宿主 subagent 的 `captureLocalResult()`
  * （同样从会话事件折叠产出与 stopReason）是同一个机制：产出与终态都由机制侧取，
  * 模型漏写一句话不会让 leader 卡在等待里。
  *

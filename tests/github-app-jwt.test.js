@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { createPublicKey, createVerify, generateKeyPairSync } from 'node:crypto'
 import { base64url, createJwt, partsOf } from '../scripts/github-app-jwt.mjs'
 
-// 测试自己造一对密钥：不碰 ~/.telov 的本机凭据，也不让用例依赖那台机器
+// 测试自己造一对密钥：不碰本机凭据，也不让用例依赖那台机器
 const { privateKey, publicKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   publicKeyEncoding: { type: 'spki', format: 'pem' },

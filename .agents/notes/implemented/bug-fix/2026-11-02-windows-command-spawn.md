@@ -77,9 +77,9 @@ Node 的 `shell: true` 在 Windows 上只是把 `[file, ...args].join(' ')` 整�
 | `scripts/check-syntax.mjs` 前，把 `src/shared/frontmatter.js` 写坏 | 门禁 exit 1，打印 `src\shared\frontmatter.js` 与 `SyntaxError: Unexpected end of input`；还原后 exit 0 |
 | 把 `check-syntax` 里的 `process.execPath` 换成 `no-such-node-xyz` | exit 1，一行 `check-syntax: 起不了 no-such-node-xyz --check：spawnSync no-such-node-xyz ENOENT`；修复前同样操作只打印 80 行裸路径、`ENOENT` 一次都不出现 |
 
-引号探针（`.telov/probe-quote.mjs` 那 10 组 `a\"b` / `a b\\` / `x\\"y` / `tail two\\` 等）：修复前 6/10 相等，修复后 10/10 相等。另测 33 组元字符与边缘形态（制表符、单双引号、`&` / `|` / `;` / 括号、超长串、emoji、换行），不等的只有两类：`%OS%`（cmd 层展开）与含换行的参数（`'line1\nline2'` 只收到 `'line1'`）。换行是截断不是注入：`'a\necho INJECTED>文件'` 实测 argv 只有 `['a']`、目标文件没有被创建。
+引号探针（本机临时脚本，不入库，那 10 组 `a\"b` / `a b\\` / `x\\"y` / `tail two\\` 等）：修复前 6/10 相等，修复后 10/10 相等。另测 33 组元字符与边缘形态（制表符、单双引号、`&` / `|` / `;` / 括号、超长串、emoji、换行），不等的只有两类：`%OS%`（cmd 层展开）与含换行的参数（`'line1\nline2'` 只收到 `'line1'`）。换行是截断不是注入：`'a\necho INJECTED>文件'` 实测 argv 只有 `['a']`、目标文件没有被创建。
 
-用例比较子进程 stdout 前统一剥 ANSI 转义（`plain()`）：调用方环境可能通过 `NODE_OPTIONS` 里的 require hook、`FORCE_COLOR` 等途径给 node 子进程注入着色，`node -e` 那条实测收到 `'\x1B[33m2\x1B[39m'`。按名字清 `NODE_OPTIONS` / `FORCE_COLOR` 只能挡住已知途径，所以按内容剥。着色场景读数（`NODE_OPTIONS=--require .telov/colorize.cjs` 把子进程 stdout 全包成黄色）：修复前 22/24（`起一个真实进程并拿到输出`、`%VAR% 展开` 两条红），修复后 24/24；无注入同样 24/24。
+用例比较子进程 stdout 前统一剥 ANSI 转义（`plain()`）：调用方环境可能通过 `NODE_OPTIONS` 里的 require hook、`FORCE_COLOR` 等途径给 node 子进程注入着色，`node -e` 那条实测收到 `'\x1B[33m2\x1B[39m'`。按名字清 `NODE_OPTIONS` / `FORCE_COLOR` 只能挡住已知途径，所以按内容剥。着色场景读数（`NODE_OPTIONS=--require <本机临时着色脚本>` 把子进程 stdout 全包成黄色）：修复前 22/24（`起一个真实进程并拿到输出`、`%VAR% 展开` 两条红），修复后 24/24；无注入同样 24/24。
 
 `npm run check` 整条（Windows 11，合入 main 之后）：Agent Note 格式 50 篇、文档工具名 11 篇、语法检查 84 文件、单测 784 用例 / 781 通过 / **0 失败** / 3 跳过，exit 0；平台适配前是 714 用例 / 10 失败（那 10 条与 main 基线逐条相同）。
 

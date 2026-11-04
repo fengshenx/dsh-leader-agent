@@ -145,20 +145,30 @@ test('files 放宽到 .agents/** 时，notes 与新增目录仍被拦', () => {
   assert.deepEqual(missing, [])
 })
 
-test('.telov 是工作区运维目录，整棵子树都不该进包', () => {
-  // 今天靠 files 白名单兜住（.telov/ 不在名单里）；白名单哪天放宽，这里是第二道
-  // 防线。发版 skill 只服务本仓维护者，装到用户 node_modules 里没有用处。
+test('顶层点目录整棵子树都不该进包，协议层 skill 是唯一例外', () => {
+  // 今天靠 files 白名单兜住；白名单哪天放宽，这里是第二道防线。按顶层点前缀统一
+  // 拦，任何将来新增的本地状态目录也默认进不来。
   const forbidden = [
-    '.telov/skills/release/SKILL.md',
-    '.telov/mcp.json',
+    '.dev/home/sessions/x.json',
+    '.worktrees/some-task/index.js',
+    '.github/workflows/ci.yml',
+    '.local-state/x.json',
+    '.env',
+    '.agents/notes/implemented/process/x.md',
   ]
   for (const path of forbidden) assert.equal(isForbiddenPath(path), true, `${path} 应被拦下`)
 
+  const published = [
+    '.agents/skills/leader-mode/SKILL.md',
+    '.agents/skills/init-leader-agent/references/conventions.md',
+  ]
+  for (const path of published) assert.equal(isForbiddenPath(path), false, `${path} 是发布文件`)
+
   const { forbidden: caught } = checkPackEntries({
-    entries: ['index.js', '.telov/skills/release/SKILL.md'],
+    entries: ['index.js', '.dev/home/sessions/x.json'],
     required: [],
   })
-  assert.deepEqual(caught, ['.telov/skills/release/SKILL.md'])
+  assert.deepEqual(caught, ['.dev/home/sessions/x.json'])
 })
 
 test('发布包要用的路径不被误判', () => {
