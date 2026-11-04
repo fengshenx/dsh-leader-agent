@@ -1,0 +1,33 @@
+name: 功能请求
+description: 希望新增或改变的行为
+title: '[Feature]: '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先描述问题，再描述方案——同一个问题的其他做法可能更合适。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 想解决什么问题
+      description: 现在的行为哪里不够用，在什么场景下遇到的
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 设想的做法
+      description: 可选。有替代方案一并写上
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已搜索既有 issue，没有重复
+          required: true

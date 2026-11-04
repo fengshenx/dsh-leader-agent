@@ -1,0 +1,85 @@
+name: 缺陷报告
+description: 插件行为与预期不符
+title: '[Bug]: '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        开新 issue 前先搜一遍既有 issue。宿主升级后出现的问题，也请顺手确认是不是宿主本身的行为。
+
+  - type: input
+    id: version
+    attributes:
+      label: 插件版本
+      description: npm 上的版本，或 package.json 里的 version
+      placeholder: 0.3.1
+    validations:
+      required: true
+
+  - type: input
+    id: dsh
+    attributes:
+      label: dsh 版本
+      description: 宿主自身的版本（`dsh --version`）
+      placeholder: 0.2.1-rc.2
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 安装方式
+      options:
+        - npm 安装
+        - 本地路径或 worktree 挂载
+        - 桌面版
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统
+      options:
+        - macOS
+        - Linux
+        - Windows
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从干净状态开始，写出能稳定复现的最短路径
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望与实际
+      description: 实际看到什么、期望看到什么；有报错就贴原文
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志与截图
+      description: 相关日志片段、控制台报错。贴之前去掉 token、会话内容等敏感信息
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 提交前确认
+      options:
+        - label: 已搜索既有 issue，没有重复
+          required: true
