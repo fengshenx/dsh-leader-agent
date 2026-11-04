@@ -118,11 +118,10 @@ export function sameProjectList(previous, next) {
 /**
  * 挑出项目下要列出的会话行。
  *
- * leader 不在其中：它由 {@link selectLeaderSessionRow} 单独取，固定排在列表第一行
- * ——这里混进来会和 worker 行一样参与水位折叠，跑起来时被折进去就看不见了。已归档
- * 的会话也不列：归档是「从列表移除」这个动作的结果，宿主的会话索引按磁盘目录扫，
- * 归档后那条记录仍在索引里，不在这里滤掉就会原地复活。宿主侧暂时取不到的会话行
- * （会话刚建、列表还没同步）直接略过。
+ * leader 不在其中——项目名就是它的入口，重复列出会让「点项目名打开 leader」这条
+ * 路径变得含糊。已归档的会话也不列：归档是「从列表移除」这个动作的结果，宿主
+ * 的会话索引按磁盘目录扫，归档后那条记录仍在索引里，不在这里滤掉就会原地复活。
+ * 宿主侧暂时取不到的会话行（会话刚建、列表还没同步）直接略过。
  *
  * @param {object} options - 选项
  * @param {string[]} options.sessionIds - 该项目的会话 id 列表
@@ -149,30 +148,12 @@ export function selectProjectSessionRows({
 }
 
 /**
- * 取项目下 leader 会话那一行。
- *
- * 它固定排在会话列表第一行，不参与水位折叠：leader 被折进去就看不见了，而它是
- * 「这个项目现在由谁指挥」的唯一标识。归归档的 leader 与还没同步到快照的会话都
- * 返回 undefined，那两种情况下项目树里没有可点的 leader 行。
- *
- * @param {object} options - 选项
- * @param {string | undefined} options.leaderSessionId - leader 会话 id
- * @param {Record<string, object>} [options.sessionRows] - 会话 id 到会话行
- * @param {Set<string>} [options.archivedSessionIds] - 已归档的会话 id
- * @returns {object | undefined} leader 会话行
- */
-export function selectLeaderSessionRow({ leaderSessionId, sessionRows, archivedSessionIds }) {
-  if (typeof leaderSessionId !== 'string' || leaderSessionId === '') return undefined
-  if (archivedSessionIds?.has(leaderSessionId) === true) return undefined
-  return sessionRows?.[leaderSessionId]
-}
-
-/**
  * 项目行行首要不要显示加载圈。
  *
  * 两个来源合成一个判定：本组任一会话行在跑（只在收起时算），以及 leader 自己在跑
- * （收起时行首是唯一的活动提示）。展开后会话行（含 leader 那一行）各自带 spinner，
- * 行首不再代显——同一个状态画两处会让人以为是两个任务。
+ * （任何展开状态都算）。收起后会话行不可见，行首是唯一的活动提示；展开后每条
+ * 会话行自己带 spinner，其它会话在跑就不再画第二遍——但它没有自己的行，leader
+ * 跑起来只能靠行首。
  *
  * 会话行那一半读**要渲染的会话行**（{@link selectProjectSessionRows} 的结果），
  * 不另行判一遍身份与归属。这样「目录行有加载器」与「至少一条会话行有 spinner」
@@ -186,8 +167,8 @@ export function selectLeaderSessionRow({ leaderSessionId, sessionRows, archivedS
  * @returns {boolean} 是否显示加载圈
  */
 export function showsProjectActivity({ expanded, rows, leaderRunning }) {
-  if (expanded === true) return false
   if (leaderRunning === true) return true
+  if (expanded === true) return false
   return (Array.isArray(rows) ? rows : []).some((row) => row?.running === true)
 }
 
@@ -243,14 +224,39 @@ export function currentSessionIdOf(byId) {
 }
 
 /**
+ * 判定项目行是否代表主区域里正在看的 leader 会话。
+ *
+ * leader 会话不在项目树下单独出行，项目行就是它的入口：点项目行打开 leader 之后
+ * 主区域里放着那条会话，这一行必须跟着亮起来，否则「我现在在哪个项目里」只能
+ * 靠会话标题猜。
+ *
+ * 只有 leader 算数：被打开的 worker 会话在列表里有自己的一行，选中态归它；项目
+ * 行这时只点亮行首文件夹（`isProjectCurrent`）。两行同时铺整行底色会看成选了
+ * 两个，而它们层级不同。
+ *
+ * 归档 leader 在项目树里没有可点的行，不算。
+ *
+ * @param {object} project - 项目记录
+ * @param {string | undefined} currentSessionId - 主区域当前会话 id
+ * @param {Set<string>} [archivedSessionIds] - 已归档的会话 id
+ * @returns {boolean} 是否选中
+ */
+export function isLeaderCurrent(project, currentSessionId, archivedSessionIds) {
+  if (typeof currentSessionId !== 'string' || currentSessionId === '') return false
+  if (project?.leaderSessionId !== currentSessionId) return false
+  return archivedSessionIds?.has(currentSessionId) !== true
+}
+
+/**
  * 判定项目的 leader 会话是否在运行。
  *
- * 收起时项目行行首是唯一的活动提示，所以这一项要与会话行的运行态分开算：收起后
- * 会话行不可见，展开后 leader 行自己带 spinner。行首加载圈的另一半是会话行的运行态
- * （{@link showsProjectActivity}），两者在 `ProjectRow` 里合成。
+ * 会话行有自己的运行状态位，项目行没有——leader 在项目树下不单独出行，它跑起来
+ * 时唯一能看出「还在干活」的位置就是项目行的行首图标。行首加载圈的另一半是
+ * 会话行的运行态（{@link showsProjectActivity}），两者在 `ProjectRow` 里合成。
  *
- * 只认现任 leader：worker 在跑各自的行上有自己的加载圈。归档的 leader 不算——
- * 与 {@link isProjectCurrent} 同一条口径，宿主会话索引里还留着它的记录。
+ * 只认现任 leader：worker 在跑各自的行上有自己的加载圈。归档的 leader 不算——与
+ * {@link isLeaderCurrent} / {@link isProjectCurrent} 同一条口径，宿主会话
+ * 索引里还留着它的记录。
  *
  * @param {object} project - 项目记录
  * @param {Record<string, {running?: boolean}>} [sessionRows] - 会话 id 到会话行
@@ -267,9 +273,9 @@ export function isLeaderRunning(project, sessionRows, archivedSessionIds) {
 /**
  * 判定主区域里的当前会话是否属于这个项目（leader 或 worker）。
  *
- * 这一层不画整行底色——那归会话行（leader 与 worker 都各自铺自己的行），只
- * 点亮行首文件夹：整行底色的语义是「你现在看的就是这一行」，而被打开的会话是
- * 列表里的另一行。
+ * 这一层不画整行底色——那是 leader 会话的选中态（`isLeaderCurrent`），只
+ * 点亮行首文件夹：整行底色的语义是「你现在看的就是这一行」，而被打开的 worker
+ * 是列表里的另一行。
  *
  * 口径与看板的「项目会话」判定一致（`boardViewState` 的 `leader` / `worker`）：
  * 退役 leader 仍解析得到项目、也仍列在 `sessionsByProject` 里，归档会话的行还留在
