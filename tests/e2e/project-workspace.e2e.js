@@ -37,8 +37,8 @@ function firstSession(home) {
 
 /** 把该会话登记成项目。 */
 function seedProject(home, session) {
-  mkdirSync(join(home, 'dsh-leader-kit'), { recursive: true })
-  writeFileSync(join(home, 'dsh-leader-kit', 'projects.json'), `${JSON.stringify({
+  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
+  writeFileSync(join(home, 'dsh-leader-agent', 'projects.json'), `${JSON.stringify({
     version: 1,
     projects: [{
       id: 'e2e-workspace-project',
@@ -75,7 +75,7 @@ function attachmentOf(home, workspaceId, sessionId) {
 }
 
 test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeout: scenarioTimeout() }, async (t) => {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-decouple-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-decouple-'))
   const mock = await startMockProvider({})
   const problems = []
   let browser = null
@@ -122,12 +122,12 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
   watchProblems(page, problems)
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
 
-  const row = page.locator('.dsh-leader-kit-project-row').first()
+  const row = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(row, { description: '项目行出现在左栏', timeoutMs: 20_000 })
   await row.click()
 
   // 点项目行仍然能打开 leader：不归属工作区不影响可打开性。
-  await waitForLocator(page.locator('.dsh-leader-kit-guide-card'), {
+  await waitForLocator(page.locator('.dsh-leader-agent-guide-card'), {
     description: '打开 leader 后引导卡出现',
     timeoutMs: 15_000,
   })
@@ -136,7 +136,7 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
   const ungrouped = page.locator('[data-row-key="workspace:"]')
   await waitForLocator(ungrouped.first(), { description: '未分组组头出现', state: 'attached', timeoutMs: 15_000 })
   assert.equal(
-    await ungrouped.first().evaluate((node) => node.classList.contains('dsh-leader-kit-empty-ungrouped')),
+    await ungrouped.first().evaluate((node) => node.classList.contains('dsh-leader-agent-empty-ungrouped')),
     true,
     '未分组里只剩被排除的项目会话时，组头也要藏起来',
   )
@@ -146,7 +146,7 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
   await waitForLocator(workspaceRow, { description: '默认工作区行出现', timeoutMs: 20_000 })
   await workspaceRow.hover()
   await workspaceRow.locator('button[aria-label*="新建会话"]').first().click({ force: true })
-  await waitForLocator(page.locator('.dsh-leader-kit-guide-card'), {
+  await waitForLocator(page.locator('.dsh-leader-agent-guide-card'), {
     description: '新建会话后引导卡消失',
     state: 'detached',
     timeoutMs: 20_000,
@@ -171,9 +171,9 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
   const workspacesBefore = JSON.parse(readFileSync(join(second.home, 'storages', 'workspace.json'), 'utf8'))
   await row.hover()
   await row.locator('button[title="更多"]').click()
-  await page.locator('.dsh-leader-kit-project-menu-item').filter({ hasText: '删除' }).click()
-  await page.locator('.dsh-leader-kit-modal-button-danger').click()
-  await waitForLocator(page.locator('.dsh-leader-kit-project-row').first(), {
+  await page.locator('.dsh-leader-agent-project-menu-item').filter({ hasText: '删除' }).click()
+  await page.locator('.dsh-leader-agent-modal-button-danger').click()
+  await waitForLocator(page.locator('.dsh-leader-agent-project-row').first(), {
     description: '删项目后项目行消失',
     state: 'detached',
     timeoutMs: 15_000,
@@ -182,7 +182,7 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
   assert.deepEqual(workspacesAfter.tables.workspaces, workspacesBefore.tables.workspaces, '删项目不应改动 dsh 工作区')
   assert.equal(existsSync(session.cwd), true, '删项目不应删目录')
   assert.equal(
-    readFileSync(join(second.home, 'dsh-leader-kit', 'projects.json'), 'utf8').includes('e2e-workspace-project'),
+    readFileSync(join(second.home, 'dsh-leader-agent', 'projects.json'), 'utf8').includes('e2e-workspace-project'),
     false,
     '删项目应清掉项目记录',
   )

@@ -6,14 +6,14 @@
  * 不触碰用户在 `~/.dsh` 里的日常 profile。
  *
  * 做法是不复制依赖：目标 profile 的 `node_modules` 逐条符号链接到源 profile 的
- * 同名条目，只有 `dsh-leader-kit` 指向工作树。dsh 启动时读的是包解析结果，
+ * 同名条目，只有 `dsh-leader-agent` 指向工作树。dsh 启动时读的是包解析结果，
  * 不校验 `package.json` 的 `link:` 路径与磁盘链接是否一致，所以这样一个
  * profile 能被正常加载（`npm run dev` 的隔离实例就是这么跑起来的）。
  *
  * 这里的函数只算「该建什么」与「什么情况该拒绝」，文件系统操作在 `dev.mjs`
  * 与 `start.mjs`。
  *
- * @module dsh-leader-kit/scripts/dev-plan
+ * @module dsh-leader-agent/scripts/dev-plan
  */
 
 import { realpathSync } from 'node:fs'
@@ -21,7 +21,7 @@ import { dirname, join, resolve } from 'node:path'
 import { resolveHomeFromEnv } from '../src/host/home-paths.js'
 
 /** 插件包名：profile 里换成工作树链接的那个。 */
-export const LEADER_KIT_PACKAGE = 'dsh-leader-kit'
+export const LEADER_AGENT_PACKAGE = 'dsh-leader-agent'
 
 /** 开发实例用的 profile 名。插件的客户端 manifest 声明 `platform: web`。 */
 export const PROFILE_NAME = 'web'
@@ -487,10 +487,10 @@ export function corruptProfilePackageMessage({ packagePath, parseMessage, dshCom
  * @param {string} options.worktree - 当前仓库路径，用于给出可复制的安装命令
  * @returns {void} 已装本插件时无返回
  */
-export function assertLeaderKitBundle({ profileDir, bundles, worktree }) {
-  if (Array.isArray(bundles) && bundles.includes(LEADER_KIT_PACKAGE)) return
+export function assertLeaderAgentBundle({ profileDir, bundles, worktree }) {
+  if (Array.isArray(bundles) && bundles.includes(LEADER_AGENT_PACKAGE)) return
   throw new Error(
-    `日常 profile 的 bundles 里没有 ${LEADER_KIT_PACKAGE}（${profileDir}），这个实例不会加载本插件。`
+    `日常 profile 的 bundles 里没有 ${LEADER_AGENT_PACKAGE}（${profileDir}），这个实例不会加载本插件。`
     + `先装一次：dsh plugin --profile ${PROFILE_NAME} add ${worktree}`,
   )
 }
@@ -499,7 +499,7 @@ export function assertLeaderKitBundle({ profileDir, bundles, worktree }) {
  * 从源 profile 的 `package.json` 派生开发实例的版本。
  *
  * 依赖与 bundle 列表都照源抄——开发实例要复现日常环境的组合，否则「本地跑得
- * 起来、装进 profile 就坏」这类问题测不出来。只有两处不同：`dsh-leader-kit`
+ * 起来、装进 profile 就坏」这类问题测不出来。只有两处不同：`dsh-leader-agent`
  * 的依赖换成工作树链接，bundle 列表保证含它（源里没装过本插件时也能起）。
  *
  * @param {object} sourcePackage - 源 profile 的 `package.json` 解析结果
@@ -508,12 +508,12 @@ export function assertLeaderKitBundle({ profileDir, bundles, worktree }) {
  */
 export function deriveProfilePackage(sourcePackage, worktree) {
   const bundles = [...(sourcePackage?.dsh?.profile?.bundles ?? [])]
-  if (!bundles.includes(LEADER_KIT_PACKAGE)) bundles.push(LEADER_KIT_PACKAGE)
+  if (!bundles.includes(LEADER_AGENT_PACKAGE)) bundles.push(LEADER_AGENT_PACKAGE)
   return {
     ...sourcePackage,
     dependencies: {
       ...(sourcePackage?.dependencies ?? {}),
-      [LEADER_KIT_PACKAGE]: `link:${worktree}`,
+      [LEADER_AGENT_PACKAGE]: `link:${worktree}`,
     },
     dsh: {
       ...(sourcePackage?.dsh ?? {}),
@@ -541,11 +541,11 @@ export function deriveProfilePackage(sourcePackage, worktree) {
  */
 export function planNodeModules({ sourceEntries, existingEntries, sourceNodeModules, worktree }) {
   const links = sourceEntries
-    .filter((name) => name !== LEADER_KIT_PACKAGE)
+    .filter((name) => name !== LEADER_AGENT_PACKAGE)
     .map((name) => ({ name, target: join(sourceNodeModules, name) }))
-  links.push({ name: LEADER_KIT_PACKAGE, target: worktree })
+  links.push({ name: LEADER_AGENT_PACKAGE, target: worktree })
   const removals = existingEntries
-    .filter((name) => !sourceEntries.includes(name) && name !== LEADER_KIT_PACKAGE)
+    .filter((name) => !sourceEntries.includes(name) && name !== LEADER_AGENT_PACKAGE)
   return { links, removals }
 }
 

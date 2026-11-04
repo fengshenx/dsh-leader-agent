@@ -2,7 +2,7 @@
 
 ## 背景
 
-PR #28 把换下的协调者会话留在项目下、和 worker 同列（见 [2026-10-30-retired-coordinator-sessions.md](../feature/2026-10-30-retired-coordinator-sessions.md)），它的审查建议记为 [issue #31](https://github.com/fengshenx/dsh-leader-kit/issues/31)。
+PR #28 把换下的协调者会话留在项目下、和 worker 同列（见 [2026-10-30-retired-coordinator-sessions.md](../feature/2026-10-30-retired-coordinator-sessions.md)），它的审查建议记为 [issue #31](https://github.com/fengshenx/dsh-leader-agent/issues/31)。
 
 修的过程中又露出两层问题：一是「换人」不等于「新会话接过项目」——`COORDINATOR.md` 写的是「新会话立刻接手项目」，而原班 worker 的派工归属仍挂在退役会话上，换个人就废掉一班人；二是补投路径在「一次投出 ≥1 条」时整表删等待表，把同一轮里刚进去的条目一起丢掉。
 

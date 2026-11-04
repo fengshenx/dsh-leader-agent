@@ -16,7 +16,7 @@ dsh 侧最容易误认的是 `workspace` 家族——`ctx.workspaceRegistry`，�
 
 ## 决策
 
-**项目 = 显式注册的持久实体**，落盘在 `$DSH_HOME/dsh-leader-kit/projects.json`（结构 `{version, projects[]}`，与卡片库同域）。字段：`id` / `name` / `directory` / `coordinatorSessionId?` / `createdAt` / `updatedAt`。存储域自建而非用 dsh storage domain：后者要 zod schema 与 `@deepseek-ai/dsh-storage-domain` peer 依赖，仓外 bundle 带内部 peer 会周期性失效（`agent-team` 是活例，见[卡片存储与编号作用域](2026-10-23-card-storage-and-numbering-scope.md)）。原子写（tmp + rename）+ 全部读-改-写走同一条 promise 链串行化 + 库损坏时备份并写回空库。
+**项目 = 显式注册的持久实体**，落盘在 `$DSH_HOME/dsh-leader-agent/projects.json`（结构 `{version, projects[]}`，与卡片库同域）。字段：`id` / `name` / `directory` / `coordinatorSessionId?` / `createdAt` / `updatedAt`。存储域自建而非用 dsh storage domain：后者要 zod schema 与 `@deepseek-ai/dsh-storage-domain` peer 依赖，仓外 bundle 带内部 peer 会周期性失效（`agent-team` 是活例，见[卡片存储与编号作用域](2026-10-23-card-storage-and-numbering-scope.md)）。原子写（tmp + rename）+ 全部读-改-写走同一条 promise 链串行化 + 库损坏时备份并写回空库。
 
 **项目 ↔ 协调者会话硬绑定**。dsh 的 `SessionHeader` 是封闭字段、没有自由元数据槽（`packages/core/session/src/types.ts:95-138`），第三方无法给会话塞 `projectId`；`coordinatorSessionId` 指针因此存在**项目记录**里，这是绑定关系的唯一真源。`SessionHeader.cwd` 是 readonly 且创建时定死（`:106`），`session.create` 接受 `workspaceId` 或 `cwd` 二选一（`packages/api/session-controller/src/commands.ts:112-124`）——所以「切项目」在 dsh 里天然是「切到另一个 cwd 的会话」。
 
@@ -72,7 +72,7 @@ Typert 侧的关键发现是：**宿主 gateway 在 strict 生成描述符缺失
 
 **只有插件自己注册的工作区才记进项目记录**。复用的工作区不记——用户自己加的工作区即便目录与项目相同也不是我们的，插件对它没有「移除」的立场。判据因此统一成「项目记录里有 `workspaceId` 即插件工作区」，项目列表只对这类工作区给出 `workspaceId`。代价：用户手动删掉工作区后记录悬空，下次打开项目会重新注册并把记录更新到新 id。
 
-**移除工作区要先问一句，弹窗照抄宿主 Modal 改写**。移除工作区本身是可逆的（宿主 `delete` 只删注册，目录与全部会话日志留着，协调者会话仍在），但它动的是用户在 dsh 里看得见的列表，误点就少一个工作区。因此菜单项只发请求，弹窗确认后才执行。第三方 bundle 不能 import 宿主 UI 包（`docs/subsystems/web-client.zh.md:93`），官方的 `Modal` 组件用不了，于是照 `packages/client/ui-primitives/src/Modal.tsx`（91 行）与 `Modal.module.css`（131 行）复制一份改写：结构与样式数值照抄（380px 宽、28px 圆角、`rgba(0,0,0,0.24)` 遮罩、`--dsw-mask-blur` 遮罩模糊），类名换成 `dsh-leader-kit-modal-*` 前缀，`clsx` 换成字符串拼接。保留的行为有遮罩点击关闭、Escape 关闭、Tab 焦点循环、初始焦点落在 `data-modal-autofocus` 元素、关闭后焦点返回触发元素；省略的是 IME 组合输入保护（确认框没有可输入控件，只在按键判断里留 `event.isComposing` 检查）与 `observeComposition`。焦点样式仍借用宿主主题的 `[data-dsh-automatic-focus]:focus` 抑制规则（`packages/client/ui-theme/src/styles/base.css:36`）——这条规则由宿主主题提供，不是本仓定义的。
+**移除工作区要先问一句，弹窗照抄宿主 Modal 改写**。移除工作区本身是可逆的（宿主 `delete` 只删注册，目录与全部会话日志留着，协调者会话仍在），但它动的是用户在 dsh 里看得见的列表，误点就少一个工作区。因此菜单项只发请求，弹窗确认后才执行。第三方 bundle 不能 import 宿主 UI 包（`docs/subsystems/web-client.zh.md:93`），官方的 `Modal` 组件用不了，于是照 `packages/client/ui-primitives/src/Modal.tsx`（91 行）与 `Modal.module.css`（131 行）复制一份改写：结构与样式数值照抄（380px 宽、28px 圆角、`rgba(0,0,0,0.24)` 遮罩、`--dsw-mask-blur` 遮罩模糊），类名换成 `dsh-leader-agent-modal-*` 前缀，`clsx` 换成字符串拼接。保留的行为有遮罩点击关闭、Escape 关闭、Tab 焦点循环、初始焦点落在 `data-modal-autofocus` 元素、关闭后焦点返回触发元素；省略的是 IME 组合输入保护（确认框没有可输入控件，只在按键判断里留 `event.isComposing` 检查）与 `observeComposition`。焦点样式仍借用宿主主题的 `[data-dsh-automatic-focus]:focus` 抑制规则（`packages/client/ui-theme/src/styles/base.css:36`）——这条规则由宿主主题提供，不是本仓定义的。
 
 **归属要同步回客户端的列表**。工作区可能是这次打开才注册的（之前被移除过），归属记在宿主侧的项目注册表里，客户端那份列表是打开前的快照——不同步的话「从 dsh 移除工作区」这个入口要等页面刷新才出现。所以 `attachCoordinator` 返回的是**项目记录里的**工作区 id（复用的用户工作区不在记录里，返回 undefined），客户端拿它更新列表里那一项。服务端回读时要用 `store.get` 重读一次记录：`store.update` 刚写进去的 `workspaceId` 不在调用方开头取到的旧对象上，直接读旧对象会漏掉。
 
@@ -115,13 +115,13 @@ Typert 侧的关键发现是：**宿主 gateway 在 strict 生成描述符缺失
 
 机制结论来自 dsh 0.2.1-rc.2 源码阅读，引用位置逐条标在正文；两条实现期修订（项目模型、注入落点）的实测证据如下。
 
-- **项目实体落盘与回滚**：mock LLM 实测调 `add_project` → `~/.dsh/dsh-leader-kit/projects.json` 写出完整记录（id / name / directory / coordinatorSessionId / 时间戳），协调者会话目录即项目目录；建会话失败时注册表不落盘。
+- **项目实体落盘与回滚**：mock LLM 实测调 `add_project` → `~/.dsh/dsh-leader-agent/projects.json` 写出完整记录（id / name / directory / coordinatorSessionId / 时间戳），协调者会话目录即项目目录；建会话失败时注册表不落盘。
 - **worker 目录跟随项目**：在项目协调者会话内调 `spawn_worker` → worker 子会话落在项目目录对应的会话目录。
 - **左栏渲染与位置**：web profile 实测宽栏 AX 快照顺序为「全局面板（插件 / 自动化任务）→ 项目（标题 + 加项目按钮）→ 工作区（搜索 / 视图选项 / 添加工作区 / 会话树）」——区块落在「自动化任务之下、工作区之上」。
 - **排除标记在去抖后仍然生效（浏览器实测，探针已删）**：真实实例展开官方工作区分组 → 该组 19 个会话行里，项目下的 5 行被加隐藏类且 `getComputedStyle` 为 `display:none`，其余 14 行可见；无 console error。（展开分组走的是观察回调路径，正是去抖生效的那条。）
 - **项目树与排除（浏览器实测，探针已删）**：探针驱动窄栏入口与项目展开按钮 → 渲染出 3 个子会话行（`ourRows: 3`）；造一条 `data-row-key="session:<项目会话id>"` 的行验证排除器 → 被加隐藏类且 `getComputedStyle` 为 `display:none`；官方树里 `test` 工作区下的真实会话行（`session-090d74bf-…`，即 `test` 项目的会话）同样 `hidden:true / display:none`。
 - **交互（浏览器实测，探针已删）**：点项目行的行首槽位 → 展开 4 个子会话行，再点 → 收起（0 行）；点标题「项目」→ 项目行清空（列表折叠）；项目行内不再有路径文本（`hasMeta: false`），路径在悬停提示里；「更多」菜单四项为「打开协调者会话 / 重命名 / 换新协调者 / 注销项目」。
-- **行首槽位与三点对齐（浏览器实测，探针已删）**：探针读样式表与几何——行首槽宽 16px（官方 `.slot` 同值）；静止态目录图标 `display: block`（flex item 被 blockify）、箭头 `display: none`；`@media (hover: hover)` 规则与官方逐条对应（悬停时箭头 `inline-flex`、目录图标 `none`），箭头展开态 `transform: rotate(90deg)`；「更多」容器右边缘距行右边缘 8px＝官方行的 `padding: 0 8px`，即三点贴行右端。点行首槽位（探针记到的点击目标是 `SPAN.dsh-leader-kit-project-lead`）→ 该行 `aria-expanded` 由 `false` 变 `true`、子会话行数 4 → 再点回 `false`、子会话行数 0。
+- **行首槽位与三点对齐（浏览器实测，探针已删）**：探针读样式表与几何——行首槽宽 16px（官方 `.slot` 同值）；静止态目录图标 `display: block`（flex item 被 blockify）、箭头 `display: none`；`@media (hover: hover)` 规则与官方逐条对应（悬停时箭头 `inline-flex`、目录图标 `none`），箭头展开态 `transform: rotate(90deg)`；「更多」容器右边缘距行右边缘 8px＝官方行的 `padding: 0 8px`，即三点贴行右端。点行首槽位（探针记到的点击目标是 `SPAN.dsh-leader-agent-project-lead`）→ 该行 `aria-expanded` 由 `false` 变 `true`、子会话行数 4 → 再点回 `false`、子会话行数 0。
   ⚠️ 未取证的部分：真实鼠标悬停时的画面（悬停规则本身已按官方实现，但浏览器会话不在前台时点击与截图都无效，取不到悬停态截图）。
 - **图标（浏览器实测，探针已删）**：改动前 12 个 `<use>` 全部 0×0（`symbolCount: 0`、`[data-dsh-icon-sprite]` 不存在，宿主自己的图标是内联 path）→ 改为内联路径后：标题区 3 个图标、项目行 9 个图标，尺寸分别为 14×14 与 16×16，path 数 1~3 不等。窄栏浮层与宽栏的截图均确认图标可见、展开/收起状态由 chevron 方向区分。
 - **通道行为（Typert）**：`curl` 打官方 `POST /api/projects/list` 返回 200 与完整项目列表；多传字段被宿主拒为 `gateway/arguments-invalid`（说明严格字段校验生效）；不带会话 cookie 返回 401（官方鉴权生效，强度高于首版的同源校验）。`POST /api/projects/sessionsByProject` 返回 200 与「项目 → 会话 id」列表，其中裸 uuid 的 id 是 subagent 会话（worker 会话确实归到项目下）。
@@ -131,7 +131,7 @@ Typert 侧的关键发现是：**宿主 gateway 在 strict 生成描述符缺失
 - **协调者会话挂工作区（curl + 文件校验）**：`POST /api/projects/attachCoordinator`（payload `{"args":{"id":"9ec30436-02e5-495d-b095-c0d1b519e760"}}`）→ `{"ok":true,"value":{"attached":true,"workspaceId":"536ecde4-47ea-4e4d-a59c-167da1ac6c53"}}`；`~/.dsh/storages/workspace.json` 里该工作区 `path=/private/tmp/dsh-demo-project`、`title=dsh-demo-project`，且协调者会话 `session-3949fcda-…` 已在它的 `sessionIds` 里。
 - **会话行去图标（浏览器实测，探针已删）**：5 个子会话行的 `svg` 数为 `[0,0,0,0,0]`——左侧会话图标与右侧执行者标记都没了。
 - **菜单几何（浏览器实测，探针已删）**：菜单在 `document.body` 下、`position: fixed`、`data-menu-material="translucent"`、背景 `rgba(248,249,250,0.58)`、`backdrop-filter: blur(40px) saturate(1.5)`、阴影为官方 elevation 组合、`border-radius: 16px`、`padding: 4px`、`min-width: 144px`；菜单行 `min-height:34px` / `font-size:13px` / `padding:6px 8px` / `border-radius:12px` / `gap:6px`，菜单项图标 5 个（打开协调者会话 / 重命名 / 换新协调者 / 从 dsh 移除工作区 / 注销项目，其中移除工作区只在项目有插件注册的工作区时出现），危险项颜色 `rgb(236,19,19)`。定位用「更多」按钮的矩形，宽为 0（该按钮悬停才显示，脚本点击时量不到）时退回行首槽位的矩形——否则菜单会贴到视口左上角 (0,4)。
-- **插件工作区隐藏（浏览器实测，探针已删）**：注入一条 `data-row-key="workspace:536ecde4-…"` 的行 → 探针读到 `cls="dsh-leader-kit-hidden-workspace"`、`data-dsh-leader-kit-workspace="true"`、`display:none`；`curl` 打 `POST /api/projects/list` → demo 的 `workspaceId` 为 `dcdf0a59-…`，test（用户自己的工作区 `72b91e02-…`）为 `undefined`（不隐藏）。点 demo 项目行后主区域切到会话视图、`notices=[]`。
+- **插件工作区隐藏（浏览器实测，探针已删）**：注入一条 `data-row-key="workspace:536ecde4-…"` 的行 → 探针读到 `cls="dsh-leader-agent-hidden-workspace"`、`data-dsh-leader-agent-workspace="true"`、`display:none`；`curl` 打 `POST /api/projects/list` → demo 的 `workspaceId` 为 `dcdf0a59-…`，test（用户自己的工作区 `72b91e02-…`）为 `undefined`（不隐藏）。点 demo 项目行后主区域切到会话视图、`notices=[]`。
   ⚠️ 这条取证描述的是**当时**的机制：2026-10-27 取消工作区隐藏、2026-10-30 又按 `workspaceId` 恢复（收窄到插件自己注册的那些，见 [项目自建工作区的可见性](../bug-fix/2026-10-30-quiet-workspace-activation.md)）。该判据（`data-row-key="workspace:<id>"` + 「项目记录里有 `workspaceId` 才藏」）已于 **2026-11-02 整体删除**：工作区行一直可见，`workspaceId` 只用于删项目时摘掉工作区与重建提示，不再驱动可见性，见 [项目目录的工作区行一直可见](../feature/2026-11-02-project-workspace-stays-visible.md)。
   ⚠️ 未取证的部分：宽栏下**官方真实工作区行**被隐藏的画面——当前实例窗口是窄栏，官方工作区树一行都不渲染（探针 `real=[]`），真实行只能靠源码确认 `data-row-key` 格式（`packages/client/ui-workspace/src/client/rows/Rows.tsx:290`）+ 假行验证。
 - **工作区归属改记项目注册表，官方标题保持原样（接口实测）**：`POST /api/projects/list` → demo 的 `workspaceId` 为 `dcdf0a59-…`（记录里的值），test（用户自己的工作区 `72b91e02-…`）为 `undefined`；欢迎页的「选择工作区」显示 `dsh-demo-project`，无前缀。

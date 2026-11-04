@@ -15,7 +15,7 @@
 
 ### 脚本直接改 manifest 与链接，不跑 pnpm
 
-`npm run desktop` 往 desktop profile 的 `package.json` 写 `dsh-leader-kit: link:<当前目录>`、把包名追加进 `dsh.profile.bundles`，并在 `node_modules` 里建符号链接（`junction`，Windows 不需要管理员）。
+`npm run desktop` 往 desktop profile 的 `package.json` 写 `dsh-leader-agent: link:<当前目录>`、把包名追加进 `dsh.profile.bundles`，并在 `node_modules` 里建符号链接（`junction`，Windows 不需要管理员）。
 
 - 桌面应用执行包操作时用的是它自带的 pnpm 与 Electron Node 模式（`ELECTRON_RUN_AS_NODE`、私有 launcher 环境）。脚本复刻那套环境容易随宿主版本漂移而失效；而宿主启动时只按 `bundles` 列表解析包，不校验 `link:` 与磁盘链接是否一致——`npm run dev` 的派生 profile 已经用同一机制跑通。
 - 代价是 `pnpm-lock.yaml` 与 manifest 短暂不一致；link 依赖不需要网络，下次在桌面应用的插件管理里做安装/卸载时由 pnpm 自己补齐。这个代价写进 README 的一句话里。
@@ -28,8 +28,8 @@
 ### 别人的安装不覆盖，运行中不写入
 
 - 依赖条目已有本插件但说明符不是当前目录时直接报错：那可能是插件管理装的版本，或另一个工作树挂上去的，覆盖要由人决定。
-- `node_modules/dsh-leader-kit` 已存在时只接受两种状态：不是符号链接（插件管理装的实体目录）拒绝；符号链接但指向别的工作树也拒绝。后一种是审查阶段补的——原实现对「指向别处」直接 `rm` 再重建，等于把别人的安装悄无声息顶掉，与上面那条 manifest 守卫的语义不一致。判定收敛成纯函数 `planLinkAction`（`create` / `keep` / `refuse`），IO 只执行结论。
-- **先建链接、再写 manifest**：链接被别人的安装挡住时立刻失败，manifest 保持原样。反过来会留下「bundles 里声明了 `dsh-leader-kit`、`node_modules` 却是插件管理的实体目录」的坏状态（实测确认：拒绝时 manifest 已被改写）。链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑按 `kept` 处理，宿主也不会加载它。
+- `node_modules/dsh-leader-agent` 已存在时只接受两种状态：不是符号链接（插件管理装的实体目录）拒绝；符号链接但指向别的工作树也拒绝。后一种是审查阶段补的——原实现对「指向别处」直接 `rm` 再重建，等于把别人的安装悄无声息顶掉，与上面那条 manifest 守卫的语义不一致。判定收敛成纯函数 `planLinkAction`（`create` / `keep` / `refuse`），IO 只执行结论。
+- **先建链接、再写 manifest**：链接被别人的安装挡住时立刻失败，manifest 保持原样。反过来会留下「bundles 里声明了 `dsh-leader-agent`、`node_modules` 却是插件管理的实体目录」的坏状态（实测确认：拒绝时 manifest 已被改写）。链接成功而写 manifest 失败，只留一个没人引用的链接，下次重跑按 `kept` 处理，宿主也不会加载它。
 - 桌面应用运行中拒绝写入：宿主只在启动时读 profile，写入不生效，还可能和应用自己的插件管理撞上。macOS 的探活依赖 `plutil` 读 `Info.plist` 再 `pgrep -x`；Linux 返回「探不了」，脚本照样写完 profile 并提示手动启动——不要在 Linux 上调一个不存在的 `plutil` 把整条命令卡死。Windows 的探活与启动后来补上，见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)。
 - **进程名取自 `.app` 的 `Info.plist`（`CFBundleExecutable`）**，不按包文件名猜：`Lark.app` 的进程是 `Feishu`，带版本号的快照（`DeepSeek Harness 0.2.1.app`）同理。取不到 `.app`、读不到 plist 或缺 `CFBundleExecutable` 时直接报错退出——猜一个名字会漏判运行态，进而写坏 profile。`open -a` 收的是解析后的 `.app` 绝对路径，不是 `DSH_DESKTOP_APP` 原值。
 - **两把锁都要认**：`<profile>/lock` 是桌面应用自己的那把——`resolveDesktopPaths` 的 `lock` 字段，`DesktopProjectManager.withLock` 用 `openSync(..., 'wx')` 建它并写入自己的 PID，`applyRelease()` / `disableAllPlugins()` 都走它；`package.json.lock` 是宿主的 `dsh-atomic-write` 在写 manifest 时用的 `<file>.lock` 兄弟文件。第一版只查了后者，判断错了：`<profile>/lock` 平时不存在（操作完就删），不等于没有。
@@ -40,7 +40,7 @@
   - `open --env` 对已运行实例是「部分成功」：profile 已经挂好，但应用仍用启动时的旧环境。脚本不回滚挂载（那是真实写入的结果），而是报错要求先完全退出应用再重跑——下次启动才读得到新 profile 与 `DSH_HOME`。
   - 边界：「先探活、再启动」之间应用被手动打开仍会落进上面这种部分成功；拦不干净，靠 `open` 的 stderr 与下一次重跑兜住。
 - `--remove` 是**包级摘除**，只摘「能判定是当前工作树挂的」那份：依赖说明符不等于 `link:<当前目录>`（别的工作树、插件管理的版本）、或只在 `bundles` 里出现而没有依赖条目时，一律拒绝并说明，不摘别人的安装。
-- **实体目录占位时整单拒绝**（而不是只摘声明）：`node_modules/dsh-leader-kit` 是实体目录、而 manifest 里又有本插件的记录时，`--remove` 直接报错、manifest 一个字不改。两个可选语义（只摘声明 / 拒绝）选了后者——前者会留下「声明没了、磁盘上还挂着一份插件管理装的包」的状态，而宿主只按 `bundles` 加载，看上去「摘干净了」，实际那份目录还在且下次 `--remove` 判不出归属。目录与声明要么一起解决，要么都不动。
+- **实体目录占位时整单拒绝**（而不是只摘声明）：`node_modules/dsh-leader-agent` 是实体目录、而 manifest 里又有本插件的记录时，`--remove` 直接报错、manifest 一个字不改。两个可选语义（只摘声明 / 拒绝）选了后者——前者会留下「声明没了、磁盘上还挂着一份插件管理装的包」的状态，而宿主只按 `bundles` 加载，看上去「摘干净了」，实际那份目录还在且下次 `--remove` 判不出归属。目录与声明要么一起解决，要么都不动。
 - `--remove` 不依赖应用是否存在：探活只在挂载分支做。应用卸载、改名之后照样要能摘除，探活失败不该拦住摘除。
 - 链接拆除走仓里既有的 `detachNodeModulesLink`：Windows junction 用 `rmdir`、其余平台 `unlink`，与 `worktree-prune` 同一约定（原实现用 `rmSync`，在 Windows 上对目录链接的语义不一致）。非 macOS 平台只完成 profile 写入并提示手动启动，不再打印「桌面应用已启动」。
 
@@ -90,7 +90,7 @@ README 的安装章节加「桌面版」小节给使用者操作（一条命令 
   - 并发：挂载后同时起两个 `--remove`，一个报「manifest 已更新」、另一个「本来就没有」，退出码都是 0，最终 manifest 不残留本插件——持锁让两个写者串行。
   - `--remove` 时 `DSH_DESKTOP_APP` 指向不存在的应用：摘除照常完成（探活在挂载分支，摘除不看应用在不在）。
 - 探活实证（macOS 只读）：`pgrep -x Finder` 命中、`pgrep -x /System/Library/CoreServices/Finder.app` 不命中；`Lark.app` 的 `CFBundleExecutable` 是 `Feishu`（按包名推进程名必漏判）。
-- 实机（macOS，桌面版 0.2.1-rc.5）：`npm run desktop` 写入 `~/.dsh/profiles/desktop/package.json`（依赖 `link:/…/.worktrees/desktop-launcher`、bundles 末尾 `dsh-leader-kit`）并建链接；应用正常启动，Host 进程以 `profiles/desktop` 为参数加载，无致命错误。
+- 实机（macOS，桌面版 0.2.1-rc.5）：`npm run desktop` 写入 `~/.dsh/profiles/desktop/package.json`（依赖 `link:/…/.worktrees/desktop-launcher`、bundles 末尾 `dsh-leader-agent`）并建链接；应用正常启动，Host 进程以 `profiles/desktop` 为参数加载，无致命错误。
 - 应用运行中重跑 `npm run desktop` 被拒绝（`DeepSeek Harness 正在运行，profile 只在启动时读入`），profile 未被改动。
 - `dsh --profile desktop --help` 返回 `profile "desktop" is managed exclusively by the Electron application`，确认无法用 CLI 形态替代验证。
 - 未验证：非 macOS 平台的探活与「请手动启动」分支——本轮只在 macOS 上跑过。Windows 的探活、启动与 junction 拆除后来在真机上补齐，读数见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)；Linux 仍只有「探不了」一条。

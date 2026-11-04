@@ -205,7 +205,7 @@ test('方法把调用转给项目服务', async () => {
 })
 
 test('项目的槽位显示名来自 SLOTS.md 的 label，未声明的槽位不下发', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-slots-remote-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-slots-remote-'))
   try {
     await writeFile(join(directory, 'SLOTS.md'), [
       '---',

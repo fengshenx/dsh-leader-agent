@@ -14,7 +14,7 @@
  * 两边的「该用什么」按各自工具面分开写：worker 没有 worker 编排工具，共用一份
  * 文案会让它去调一个被 deny 的名字。
  *
- * @module dsh-leader-kit/host/team-guard
+ * @module dsh-leader-agent/host/team-guard
  */
 
 /**
@@ -36,7 +36,7 @@ export const TEAM_TOOL_NAMES = Object.freeze([
 ])
 
 /** 注入项的上下文名。 */
-export const TEAM_BAN_CONTEXT_NAME = 'dsh-leader-kit:team-ban'
+export const TEAM_BAN_CONTEXT_NAME = 'dsh-leader-agent:team-ban'
 
 /**
  * 注入项所在的 order 段：10x 是「这个会话该怎么干活」的约束段。
@@ -172,11 +172,11 @@ export function applyTeamGuard({
         })
       } catch (error) {
         // 求值失败会让整个 turn 崩掉；禁令是增量信息，取不到就当没有。
-        logger(`dsh-leader-kit: 渲染 agent-team 禁令失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-agent: 渲染 agent-team 禁令失败：${error instanceof Error ? error.message : String(error)}`)
         return ''
       }
     },
-  }), 'dsh-leader-kit agent-team 禁令注入')
+  }), 'dsh-leader-agent agent-team 禁令注入')
 
   let warned = false
   return {
@@ -184,7 +184,7 @@ export function applyTeamGuard({
       if (warned || !isAgentTeamEnabled(ctx)) return
       warned = true
       logger(
-        'dsh-leader-kit: 检测到 agent-team（`agentTeams` 服务）：它的团队工具会装进 leader 与 worker 会话'
+        'dsh-leader-agent: 检测到 agent-team（`agentTeams` 服务）：它的团队工具会装进 leader 与 worker 会话'
         + '——worker 是普通根会话，被 agent-team 当成隐式 Lead。工具面挡不住（团队工具注册在 Agent scope），'
         + '已在 leader 与 worker 的运行时上下文里写明不要混用；要彻底隔离请从 profile 移除'
         + ' @deepseek-ai/dsh-experimental-agent-team-profile。',

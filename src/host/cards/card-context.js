@@ -12,11 +12,11 @@
  * 索引是同步内存镜像（`cards/store.js` 的 `cardIndex`）：提示词组装函数是同步的，
  * 不能在里面 await 异步落盘的卡片库。
  *
- * @module dsh-leader-kit/host/cards/card-context
+ * @module dsh-leader-agent/host/cards/card-context
  */
 
 /** 注入项的上下文名。 */
-export const CARD_CONTEXT_NAME = 'dsh-leader-kit:task-card'
+export const CARD_CONTEXT_NAME = 'dsh-leader-agent:task-card'
 
 /**
  * 注入项在运行时上下文里的位置。
@@ -95,9 +95,9 @@ export function applyCardContext({ ctx, cardIndex, logger = () => {} }) {
         return renderCardContext({ sessionId, cardIndex })
       } catch (error) {
         // 求值失败会让整个 turn 崩掉。卡片是增量信息，取不到就当没有。
-        logger(`dsh-leader-kit: 渲染任务卡上下文失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-agent: 渲染任务卡上下文失败：${error instanceof Error ? error.message : String(error)}`)
         return ''
       }
     },
-  }), 'dsh-leader-kit 任务卡上下文注入')
+  }), 'dsh-leader-agent 任务卡上下文注入')
 }

@@ -32,7 +32,7 @@
 
 理由与上一节相同：协调者在项目树下不单独出行，项目收起或 worker 行被水位折叠时，行首是唯一能看出「它还在干活」的位置。只认现任协调者——worker 在跑不影响项目行，它们各自的行上有自己的加载圈。
 
-加载圈画在 `.dsh-leader-kit-project-lead-folder` 槽位**内部**，不替换容器：组内有当前会话的激活色挂在容器的 `color` 上（`project-section.js` 的 `[data-active='true'] .dsh-leader-kit-project-lead-folder`），容器一被顶掉，收起态下的活动提示与「本组有当前会话」就丢了同一处承载。边框因此写 `currentColor`（与目录图标的 `stroke: currentColor` 同源），不写死 `label-tertiary`；加载圈本身是装饰，挂 `aria-hidden="true"`。
+加载圈画在 `.dsh-leader-agent-project-lead-folder` 槽位**内部**，不替换容器：组内有当前会话的激活色挂在容器的 `color` 上（`project-section.js` 的 `[data-active='true'] .dsh-leader-agent-project-lead-folder`），容器一被顶掉，收起态下的活动提示与「本组有当前会话」就丢了同一处承载。边框因此写 `currentColor`（与目录图标的 `stroke: currentColor` 同源），不写死 `label-tertiary`；加载圈本身是装饰，挂 `aria-hidden="true"`。
 
 > **已被 [2026-11-03 加载圈改用宿主 StateDot](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md) 取代**：加载圈现在是宿主基线模块的 `StateDot`（`state: 'ongoing'`），颜色固定 `label-tertiary`，不再用 `currentColor`；「画在槽位内部、hover 让位」这两条仍然成立。
 
@@ -55,7 +55,7 @@ leadActivity = showsProjectActivity({
 })
 ```
 
-本 PR 只落地前半句；#64 rebase 时把两半并进 `showsProjectActivity` 一个判定，`data-running` 属性与 `lead-spinner` 类随之删除（统一成 `.dsh-leader-kit-project-spinner`）。合成后的取舍、归档口径与验证读数见 [2026-11-02-project-activity-indicator.md](2026-11-02-project-activity-indicator.md)。
+本 PR 只落地前半句；#64 rebase 时把两半并进 `showsProjectActivity` 一个判定，`data-running` 属性与 `lead-spinner` 类随之删除（统一成 `.dsh-leader-agent-project-spinner`）。合成后的取舍、归档口径与验证读数见 [2026-11-02-project-activity-indicator.md](2026-11-02-project-activity-indicator.md)。
 
 ## 边界
 
@@ -73,7 +73,7 @@ leadActivity = showsProjectActivity({
 - 会话行的接线守卫：仓里没有 jsdom，`SessionRow` 渲染不出可断言的元素，所以「当前会话 → `data-selected` / `aria-current`」这条链只能读 `src/client/project-section.js` 源码断言（同 `tests/board-styles.test.js` 读样式表的做法）：`ProjectRow` 传 `selected: row.id === currentSessionId`，`SessionRow` 把它映射到两个属性。双向验证：删掉传入 `selected` 那一行 → 1 fail；删掉 `SessionRow` 里的 `data-selected` → 1 fail；还原 → 47 pass。旧口径下这两处都能静默通过（44 pass）。运行态的接线（`leadActivity` → spinner → 样式与 hover 让位）走同一种源码断言，合成后的实现与验证读数见 [2026-11-02-project-activity-indicator.md](2026-11-02-project-activity-indicator.md)。
 - `npm run check`：788 tests / 779 pass / 9 skipped / 0 fail。
 - `npm run build:client` 重建产物，`lib/client.js` 里 `data-selected` 4 处命中（项目行、会话行与两处样式选择器），`project-lead-spinner` 2 处命中（样式选择器与组件类名各一；类名在 #64 合成时统一成 `project-spinner`）。
-- 真机（隔离 dev 实例，`DSH_HOME` 在 `.dev/home`，端口 4321；项目与 worker 登记用 seed 写入 `dsh-leader-kit/projects.json` / `workers.json`，会话目录从既有会话复制；无头 Chrome 1440×940 走 CDP 读 `data-*` 与 `getComputedStyle`，console error 计数 0）：
+- 真机（隔离 dev 实例，`DSH_HOME` 在 `.dev/home`，端口 4321；项目与 worker 登记用 seed 写入 `dsh-leader-agent/projects.json` / `workers.json`，会话目录从既有会话复制；无头 Chrome 1440×940 走 CDP 读 `data-*` 与 `getComputedStyle`，console error 计数 0）：
 
   | 场景 | 修复前 | 修复后 |
   |---|---|---|
@@ -91,4 +91,4 @@ leadActivity = showsProjectActivity({
   | 修复前（替代容器）+ `data-active=true` | 否 | 否 | `rgb(120, 130, 150)` | 无 |
   | 修复后、非激活 | 是 | 是 | `rgb(120, 130, 150)` | `rgb(120, 130, 150)` |
 
-  三者行高都是 34px（槽位没被撑开）、`width/height=12px`、`animationName=dsh-leader-kit-spin`、`border-top-color` 透明（旋转缺口）。修复前那一行就是审查实测的激活色丢失：容器被顶掉后边框落回写死的 tertiary，与图标的 `rgb(65, 118, 230)` 不一致。真实运行态下的切换依赖的是同一条渲染分支与会话行的 `running` 订阅（`ProjectPanel` 的 `sessions.list.subscribe`），这条订阅链在选中态的真机读数里已经跑通。这段读数对应已删除的自绘实现，现实现见 [2026-11-03](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md)。
+  三者行高都是 34px（槽位没被撑开）、`width/height=12px`、`animationName=dsh-leader-agent-spin`、`border-top-color` 透明（旋转缺口）。修复前那一行就是审查实测的激活色丢失：容器被顶掉后边框落回写死的 tertiary，与图标的 `rgb(65, 118, 230)` 不一致。真实运行态下的切换依赖的是同一条渲染分支与会话行的 `running` 订阅（`ProjectPanel` 的 `sessions.list.subscribe`），这条订阅链在选中态的真机读数里已经跑通。这段读数对应已删除的自绘实现，现实现见 [2026-11-03](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md)。

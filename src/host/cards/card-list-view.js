@@ -14,7 +14,7 @@
  *   「没有」，而「这张卡该补规格」「这张卡有产物链接」都会改变下一步动作；
  * - 输出有字符预算，逐卡累加，超出按卡截断并给出续页位置。
  *
- * @module dsh-leader-kit/host/cards/card-list-view
+ * @module dsh-leader-agent/host/cards/card-list-view
  */
 
 /** 单页张数缺省值。 */

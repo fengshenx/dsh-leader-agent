@@ -12,7 +12,7 @@
  * `EntryBox`（第三方 bundle 不能 import 宿主的 CSS module），数值取自
  * `ui-sidebar-right` 的 `GuideBody.module.css`。
  *
- * @module dsh-leader-kit/client/board-guide-entry
+ * @module dsh-leader-agent/client/board-guide-entry
  */
 
 import { createElement, useEffect, useState } from 'react'
@@ -79,7 +79,7 @@ export function BoardGuideEntry({ sessionId, kind, title, description, useTabInf
     'button',
     {
       type: 'button',
-      className: 'dsh-leader-kit-guide-entry',
+      className: 'dsh-leader-agent-guide-entry',
       // 宿主 EntryBox 用 entry.kind 标这一枚胶囊；接管渲染后保留同一个可观测
       // 标识，真机取证与后续 e2e 才认得出它是哪个入口。
       'data-sidebar-right-guide-entry': kind,
@@ -87,16 +87,16 @@ export function BoardGuideEntry({ sessionId, kind, title, description, useTabInf
     },
     createElement(
       'span',
-      { className: 'dsh-leader-kit-guide-entry-icon' },
+      { className: 'dsh-leader-agent-guide-entry-icon' },
       productIcon('checklist-outline', { size: description === undefined ? 22 : 26 }),
     ),
     createElement(
       'span',
-      { className: 'dsh-leader-kit-guide-entry-text' },
-      createElement('span', { className: 'dsh-leader-kit-guide-entry-title' }, title),
+      { className: 'dsh-leader-agent-guide-entry-text' },
+      createElement('span', { className: 'dsh-leader-agent-guide-entry-title' }, title),
       description === undefined
         ? null
-        : createElement('span', { className: 'dsh-leader-kit-guide-entry-description' }, description),
+        : createElement('span', { className: 'dsh-leader-agent-guide-entry-description' }, description),
     ),
   )
 }

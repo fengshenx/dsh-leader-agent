@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-en-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-kit: a Leader fanning out to several workers, with a project board on the right" width="560">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en-dark.svg">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent: a Leader fanning out to several workers, with a project board on the right" width="560">
   </picture>
 </p>
 
@@ -10,16 +10,16 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
-  <a href="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-kit/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
   <img alt="dsh version" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
   <img alt="status" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
-  <a href="https://www.npmjs.com/package/dsh-leader-kit"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
-  <a href="https://github.com/fengshenx/dsh-leader-kit/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-kit?style=flat-square&color=4b6fff"></a>
+  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-agent/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
 </p>
 
-# dsh-leader-kit
+# dsh-leader-agent
 
 > One Leader drives the work and the review, so you can run ten features in parallel instead of babysitting each one.
 >
@@ -40,16 +40,16 @@
 
 Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`.
 
-**GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-kit` and click **Install**:
+**GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-agent` and click **Install**:
 
-<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-kit" width="880">
+<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-agent" width="880">
 
 **CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
 
 ```sh
 # quit the app completely first (closing the window only hides it)
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add dsh-leader-kit
+  plugin --profile desktop add dsh-leader-agent
 ```
 
 On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
@@ -58,10 +58,10 @@ For development inside this repository, `npm run desktop` mounts the current wor
 
 ### Web install
 
-Install from npm (package name `dsh-leader-kit`):
+Install from npm (package name `dsh-leader-agent`):
 
 ```sh
-dsh plugin --profile web add dsh-leader-kit
+dsh plugin --profile web add dsh-leader-agent
 dsh web
 ```
 
@@ -69,10 +69,21 @@ The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES
 
 For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
 
+### Upgrading from `dsh-leader-kit`
+
+The package was renamed to `dsh-leader-agent` **without a compatibility path**. `dsh plugin add` records the *package name* in `dsh.profile.bundles`, so the old entry survives and both bundles get applied: tools registered twice, two dispatchers settling the same `turn/end` (duplicate notifications and wakeups). Remove the old entry first, in the same profile you install into:
+
+```sh
+dsh plugin --profile web remove dsh-leader-kit
+dsh plugin --profile web add dsh-leader-agent
+```
+
+The data directory moved with the name (`$DSH_HOME/dsh-leader-kit` → `$DSH_HOME/dsh-leader-agent`) and is **not migrated**: boards start empty and worker registrations rebuild on first start. The old package is deprecated in favor of this one.
+
 ## Preview
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-kit/main/docs/assets/readme/board.png" alt="dsh-leader-kit: the project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="dsh-leader-agent: the project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
 </div>
 
 Left: projects and the workers each Leader spawned. Center: the Leader's session — the task, the dispatch, the worker reporting back, the verdict. Right: the delivery board for the project, with one card per task and a slot chip per executor. You can see the agents that are working, click one to drill into its session and talk to it directly, without going through the Leader.
@@ -133,7 +144,7 @@ The plugin only reads `LEADER.md`. A `COORDINATOR.md` that merely points at it i
 
 Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default two roles `dev` / `review`.
 
-The `init-leader-kit` skill handles project setup: it merges the repository's engineering conventions into a managed block of the target project's `AGENTS.md`, then writes `LEADER.md` (how the Leader drives this project) and `SLOTS.md` (executor roles) from the bundled skeletons. Re-running only replaces the managed block, and both manuals are read before editing. An empty directory gets the TODO skeleton plus the three questions still unanswered — project facts are never invented.
+The `init-leader-agent` skill handles project setup: it merges the repository's engineering conventions into a managed block of the target project's `AGENTS.md`, then writes `LEADER.md` (how the Leader drives this project) and `SLOTS.md` (executor roles) from the bundled skeletons. Re-running only replaces the managed block, and both manuals are read before editing. An empty directory gets the TODO skeleton plus the three questions still unanswered — project facts are never invented.
 
 For the full interaction — slot frontmatter details, archiving, swapping the Leader, how board status lights are derived — see the [usage manual](docs/usage.md) (Chinese).
 

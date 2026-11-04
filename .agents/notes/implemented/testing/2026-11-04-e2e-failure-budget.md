@@ -68,5 +68,5 @@
 - 页面已关闭：报「等待失败：locator.waitFor: Target page, context or browser has been closed」；撤掉 `error.name` 分支后变成「等待超时（15000ms）」，误导。
 - 预算倍率：`E2E_BUDGET_SCALE=3` 时 1 秒预算的等待 3026ms 失败，消息写「等待超时（3000ms）」。
 - 双向验证（失败语义）：把 `plugin.e2e.js` 的选择器改坏 → 22.2 秒失败（原 60 秒 + 启动），报错为
-  `等待超时（20000ms）：插件项目区块在左栏挂载；locator locator('.dsh-leader-kit-project-section-missing')；…页面读数 {"rowKeys":[...],"composer":true,"leaderKit":{"sections":1,...}}`
+  `等待超时（20000ms）：插件项目区块在左栏挂载；locator locator('.dsh-leader-agent-project-section-missing')；…页面读数 {"rowKeys":[...],"composer":true,"leaderAgent":{"sections":1,...}}`
   → 还原后 2.6 秒绿。读数里的 `sections: 1` 正是「插件挂载了、选择器写错」的证据。

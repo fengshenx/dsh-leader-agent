@@ -1,5 +1,5 @@
 /**
- * dsh-leader-kit 的宿主侧插件。
+ * dsh-leader-agent 的宿主侧插件。
  *
  * 贡献九件事：bundle 内置 skill 的发现（协议层）、后台派工工具、worker 会话的
  * 创建与续聊（常驻根会话 + 登记表落盘 + `message_worker` 工具）、按回合回看 worker
@@ -10,7 +10,7 @@
  * 客户端侧（交付看板 UI 与左栏项目区块）在 `src/client/`，跑在浏览器进程，与本
  * 模块不共处。
  *
- * @module dsh-leader-kit/host
+ * @module dsh-leader-agent/host
  */
 
 import { fileURLToPath } from 'node:url'
@@ -47,7 +47,7 @@ const bundleRoot = join(here, '..', '..')
  */
 export const SKILLS_DIR = '.agents/skills'
 
-export const name = 'dsh-leader-kit-host'
+export const name = 'dsh-leader-agent-host'
 // `systemPrompt` 必须声明：角色槽位靠它注册运行时上下文，服务不在作用域内时
 // 注入静默失效（实测：不声明时上下文不进组装结果）。该服务由 base bundle 提供，
 // 官方各 profile 都有。
@@ -140,7 +140,7 @@ export function apply(ctx) {
   ctx.skills.registerProvider(() =>
     createSkillProvider({
       skillsRoot: join(bundleRoot, SKILLS_DIR),
-      providerName: 'dsh-leader-kit',
+      providerName: 'dsh-leader-agent',
       logger,
     }),
   )
@@ -188,7 +188,7 @@ export function apply(ctx) {
     for (const record of records) workerSessions.adopt(record.childId)
     return records.map((record) => record.childId)
   }).catch((error) => {
-    logger(`dsh-leader-kit: 读取 worker 登记表失败，重启后的老 worker 工具面可能偏宽：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 读取 worker 登记表失败，重启后的老 worker 工具面可能偏宽：${error instanceof Error ? error.message : String(error)}`)
     return []
   })
   // 旧版本把项目会话挂进了 dsh 工作区，宿主会把空白的 leader 当作可复用的新建草稿
@@ -200,7 +200,7 @@ export function apply(ctx) {
       workerIds,
       registry: scope.get('workspaceRegistry'),
     })).catch((error) => {
-      logger(`dsh-leader-kit: 摘除项目会话的历史工作区挂载失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-agent: 摘除项目会话的历史工作区挂载失败：${error instanceof Error ? error.message : String(error)}`)
     })
   })
   // 归档会话后的收尾（摘卡 + 摘派工登记）也走这条通道：归档本身由宿主的
@@ -293,7 +293,7 @@ export function apply(ctx) {
 
   // 两份反查索引都是进程内的，崩溃后不会留下：启动时从卡片库重建（槽位与卡片事实）。
   void cards.loadIndexes().catch((error) => {
-    logger(`dsh-leader-kit: 重建卡片索引失败：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 重建卡片索引失败：${error instanceof Error ? error.message : String(error)}`)
   })
   // 项目索引失败会永久停在「未就绪」，而那个状态下所有会话都被当作 leader。
   // 重启进程代价太大，退避重试几次；最终失败则由派工路径上的 awaitIndex 拒绝。
@@ -305,7 +305,7 @@ export function apply(ctx) {
     try {
       await projectService.loadIndex()
     } catch (error) {
-      logger(`dsh-leader-kit: 重建项目索引失败（第 ${attempt} 次）：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-agent: 重建项目索引失败（第 ${attempt} 次）：${error instanceof Error ? error.message : String(error)}`)
       if (attempt >= 3 || disposed) return
       indexRetryTimer = setTimeout(() => { void loadProjectIndex(attempt + 1) }, 2000 * attempt)
     }
@@ -323,7 +323,7 @@ export function apply(ctx) {
     teamGuard.warnOnce()
     dispatcher.markAlive(agent.id)
     void dispatcher.redeliverPending(agent).catch((error) => {
-      logger(`dsh-leader-kit: 补投完成通知失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-agent: 补投完成通知失败：${error instanceof Error ? error.message : String(error)}`)
     })
   })
 

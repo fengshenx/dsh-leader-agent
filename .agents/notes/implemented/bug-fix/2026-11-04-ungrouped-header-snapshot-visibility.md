@@ -39,6 +39,6 @@ DOM 上只留一条保护：还有可见的「展开其余 N 个会话」就不�
 ## 验证
 
 - 单测：`tests/workspace-exclusion.test.js` 32 条（新增「未分组里剩下的会话全在排除集里才藏组头」「未分组里没有会话、或快照还没到时都不藏组头」「子代理与已归档的会话不参与组头判定」「组头容器里查不到行也按会话快照保留组头」）、`tests/project-panel.test.js` 47 条（新增 `sameProjectList` 的等价判定，含目录失效、顺序变化与旧版宿主无字段）、`tests/projects-service.test.js` 52 条（`directoryUsable` 标注）。`npm run check`：1049 用例通过 / 17 跳过，71 个源文件、55 个被加载、47 个行覆盖 100%；`src/client/workspace-exclusion.js` 行覆盖 85.42%，门槛 84 → 85。
-- e2e：`tests/e2e/ungrouped-header.e2e.js` 走界面删工作区造松散会话，断言未分组组头无 `dsh-leader-kit-empty-ungrouped`、`display` 不是 `none`、会话行可见。单跑 3.1 秒；全量串行 6 条全绿。
+- e2e：`tests/e2e/ungrouped-header.e2e.js` 走界面删工作区造松散会话，断言未分组组头无 `dsh-leader-agent-empty-ungrouped`、`display` 不是 `none`、会话行可见。单跑 3.1 秒；全量串行 6 条全绿。
 - 双向验证：让 `shouldHideUngroupedHeader` 恒返回 true（复现「无条件藏组头」这个失效方向）→ e2e 在「未分组里还有会话时不能给组头加隐藏类」变红（`true !== false`）→ 还原 → 变绿。
 - `project-directory-gone.e2e.js` 去掉删目录后手工派发的 `focus` 事件后仍然通过（7.6 秒），证明轮询真的兜住了这件事；把轮询间隔调到 60 秒，同一条用例 30 秒超时变红。

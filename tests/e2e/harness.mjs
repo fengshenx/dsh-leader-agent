@@ -8,7 +8,7 @@
  * - **按状态同步，不用 sleep**：等 DOM 稳定、等落盘文件出现，等某个具体状态。
  * - **不设重试**：失败就是失败，重试只会把竞态藏起来。
  *
- * @module dsh-leader-kit/tests/e2e/harness
+ * @module dsh-leader-agent/tests/e2e/harness
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
@@ -316,11 +316,11 @@ export async function describePage(page, { timeoutMs = READ_BUDGET_MS } = {}) {
       url: location.href,
       rowKeys: [...document.querySelectorAll('[data-row-key]')].map((node) => node.getAttribute('data-row-key')),
       composer: document.querySelector('div[role="textbox"][contenteditable="true"]') !== null,
-      leaderKit: {
-        sections: document.querySelectorAll('.dsh-leader-kit-project-section').length,
-        projectRows: document.querySelectorAll('.dsh-leader-kit-project-row').length,
-        guideCards: document.querySelectorAll('.dsh-leader-kit-guide-card').length,
-        excluded: document.querySelectorAll('.dsh-leader-kit-excluded-session').length,
+      leaderAgent: {
+        sections: document.querySelectorAll('.dsh-leader-agent-project-section').length,
+        projectRows: document.querySelectorAll('.dsh-leader-agent-project-row').length,
+        guideCards: document.querySelectorAll('.dsh-leader-agent-guide-card').length,
+        excluded: document.querySelectorAll('.dsh-leader-agent-excluded-session').length,
       },
     }))
     // 页面已经关掉时读不到 DOM：读数只是附加证据，不能盖住真正的失败原因。

@@ -17,7 +17,7 @@ after(cleanupTempDirs)
  * @returns {Promise<{ home: string, projects: object, projectId: string }>} 项目注册表与 id
  */
 async function makeProject({ retired, leader }) {
-  const home = await makeTempDir('dsh-leader-kit-handover-')
+  const home = await makeTempDir('dsh-leader-agent-handover-')
   const projects = createProjectStore({ home })
   const project = await projects.insert({
     id: `p-${leader}`,

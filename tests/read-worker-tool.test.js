@@ -124,10 +124,10 @@ function event(type, data) {
 function fullTurn(turn) {
   return [
     event('turn/start', { turn }),
-    // 真实的派工消息带 `dsh-leader-kit/worker-task` 来源（`worker-sessions.taskMessage`）。
+    // 真实的派工消息带 `dsh-leader-agent/worker-task` 来源（`worker-sessions.taskMessage`）。
     event('user/message', {
       content: [{ type: 'text', text: `第 ${turn} 轮任务` }],
-      source: { kind: 'dsh-leader-kit/worker-task' },
+      source: { kind: 'dsh-leader-agent/worker-task' },
     }),
     event('assistant/message', { message: { content: [{ type: 'text', text: `第 ${turn} 轮产物` }] } }),
     event('tool/call', { callId: `c-${turn}`, name: 'bash', arguments: '{}' }),

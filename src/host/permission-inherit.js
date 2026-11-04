@@ -22,7 +22,7 @@
  * 边界：只继承一次，即派工那一刻。leader 之后切换 preset 不影响已派出的 worker——
  * 权限在宿主里本来就是逐会话的，worker 是独立会话。
  *
- * @module dsh-leader-kit/host/permission-inherit
+ * @module dsh-leader-agent/host/permission-inherit
  */
 
 /**
@@ -35,13 +35,13 @@
  */
 function readSandbox(sandboxPolicy, session, logger) {
   if (typeof sandboxPolicy.resolve !== 'function') {
-    logger('dsh-leader-kit: sandboxPolicy 服务缺少 resolve()，worker 会话继承不到沙箱模式')
+    logger('dsh-leader-agent: sandboxPolicy 服务缺少 resolve()，worker 会话继承不到沙箱模式')
     return undefined
   }
   try {
     return sandboxPolicy.resolve({ session }).mode
   } catch (error) {
-    logger(`dsh-leader-kit: 读 leader 的沙箱模式失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 读 leader 的沙箱模式失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -56,14 +56,14 @@ function readSandbox(sandboxPolicy, session, logger) {
  */
 function readApproval(approval, session, logger) {
   if (typeof approval.overrideOf !== 'function') {
-    logger('dsh-leader-kit: approval 服务缺少 overrideOf()，worker 会话继承不到审批策略')
+    logger('dsh-leader-agent: approval 服务缺少 overrideOf()，worker 会话继承不到审批策略')
     return undefined
   }
   try {
     return approval.overrideOf(session) ?? approval.config.policy ?? 'ask'
   } catch (error) {
     // projection 还没注册时 stateOf 会抛（宿主启停窗口）；权限读取不该让派工失败。
-    logger(`dsh-leader-kit: 读 leader 的审批策略失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 读 leader 的审批策略失败，worker 会话保持默认：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -79,13 +79,13 @@ function readApproval(approval, session, logger) {
 function readPreset(permissionPresets, session, logger) {
   if (permissionPresets === undefined) return undefined
   if (typeof permissionPresets.current !== 'function') {
-    logger('dsh-leader-kit: permissionPresets 服务缺少 current()，无法确认 leader 的 preset，worker 不继承权限')
+    logger('dsh-leader-agent: permissionPresets 服务缺少 current()，无法确认 leader 的 preset，worker 不继承权限')
     return undefined
   }
   try {
     return permissionPresets.current(session)
   } catch (error) {
-    logger(`dsh-leader-kit: 读 leader 的 preset 失败，worker 不继承权限：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 读 leader 的 preset 失败，worker 不继承权限：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -139,7 +139,7 @@ function appendOverride(session, type, data, logger) {
     session.append(type, data)
     return true
   } catch (error) {
-    logger(`dsh-leader-kit: 向 worker 会话写 ${type} 失败，它保持默认权限：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 向 worker 会话写 ${type} 失败，它保持默认权限：${error instanceof Error ? error.message : String(error)}`)
     return false
   }
 }
@@ -156,7 +156,7 @@ function readEffectiveSandbox(sandboxPolicy, session, logger) {
   try {
     return sandboxPolicy.resolve({ session }).mode
   } catch (error) {
-    logger(`dsh-leader-kit: 回读 worker 的实际沙箱模式失败，派工回执不写该值：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 回读 worker 的实际沙箱模式失败，派工回执不写该值：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -173,7 +173,7 @@ function readEffectiveApproval(approval, session, logger) {
   try {
     return approval.overrideOf(session) ?? approval.config.policy ?? 'ask'
   } catch (error) {
-    logger(`dsh-leader-kit: 回读 worker 的实际审批策略失败，派工回执不写该值：${error instanceof Error ? error.message : String(error)}`)
+    logger(`dsh-leader-agent: 回读 worker 的实际审批策略失败，派工回执不写该值：${error instanceof Error ? error.message : String(error)}`)
     return undefined
   }
 }
@@ -232,7 +232,7 @@ export function inheritPermission({ ctx, fromSession, toSession, logger = () => 
   // 两个服务都没有：这个组合没有权限旋钮（sdk-minimal 一类），无从继承也不必告警。
   if (sandboxPolicy === undefined && approval === undefined) return undefined
   if (sandboxPolicy === undefined || approval === undefined) {
-    logger('dsh-leader-kit: 权限服务只露出一半（缺 sandboxPolicy 或 approval），worker 会话的权限继承不完整')
+    logger('dsh-leader-agent: 权限服务只露出一半（缺 sandboxPolicy 或 approval），worker 会话的权限继承不完整')
   }
 
   const permissionPresets = ctx.get('permissionPresets')

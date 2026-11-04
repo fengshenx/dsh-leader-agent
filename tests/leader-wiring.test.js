@@ -80,9 +80,9 @@ function createFakeHost(sessionCwds, extraServices = {}) {
 }
 
 test('装配层：手册目录只认 leader 会话的项目目录，不认会话 cwd', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
-  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
-  const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-session-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-session-'))
   const previousHome = process.env.DSH_HOME
   // cwd 故意都指向会话目录：按 cwd 取目录的错判据会读到那里。
   const { ctx, holder } = createFakeHost(new Map([
@@ -93,8 +93,8 @@ test('装配层：手册目录只认 leader 会话的项目目录，不认会话
   try {
     await writeFile(join(projectDirectory, LEADER_CONTEXT_FILE), '项目手册正文。', 'utf8')
     await writeFile(join(sessionDirectory, LEADER_CONTEXT_FILE), '会话目录的手册不该被注入。', 'utf8')
-    await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
-    await writeFile(join(home, 'dsh-leader-kit', 'projects.json'), JSON.stringify({
+    await mkdir(join(home, 'dsh-leader-agent'), { recursive: true })
+    await writeFile(join(home, 'dsh-leader-agent', 'projects.json'), JSON.stringify({
       version: 1,
       projects: [{
         id: 'project-1',
@@ -130,7 +130,7 @@ test('装配层：手册目录只认 leader 会话的项目目录，不认会话
 })
 
 test('装配层：skill provider 读包内 .agents/skills', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
   const previousHome = process.env.DSH_HOME
   const { ctx, holder } = createFakeHost(new Map())
   process.env.DSH_HOME = home
@@ -139,7 +139,7 @@ test('装配层：skill provider 读包内 .agents/skills', async () => {
     assert.ok(holder.skillsProvider, 'skill provider 没有注册')
     // 路径拼错时 provider 读盘失败会静默返回空候选，这条断言守的是搬迁后的真实位置。
     const names = (await holder.skillsProvider.list()).map(candidate => candidate.name).sort()
-    assert.deepEqual(names, ['init-leader-kit', 'leader-mode'])
+    assert.deepEqual(names, ['init-leader-agent', 'leader-mode'])
   } finally {
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME
@@ -155,17 +155,17 @@ test('装配层：skill provider 读包内 .agents/skills', async () => {
  * @returns {Promise<void>}
  */
 async function writeProjectIndex(home, projects) {
-  await mkdir(join(home, 'dsh-leader-kit'), { recursive: true })
+  await mkdir(join(home, 'dsh-leader-agent'), { recursive: true })
   await writeFile(
-    join(home, 'dsh-leader-kit', 'projects.json'),
+    join(home, 'dsh-leader-agent', 'projects.json'),
     JSON.stringify({ version: 1, projects }),
     'utf8',
   )
 }
 
 test('装配层：工作区服务就绪后把项目 leader 从工作区里摘掉', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
-  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
   const previousHome = process.env.DSH_HOME
   const detached = []
   const workspace = {
@@ -202,8 +202,8 @@ test('装配层：工作区服务就绪后把项目 leader 从工作区里摘掉
 })
 
 test('装配层：普通会话写卡被拒，leader 放行', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
-  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
   const previousHome = process.env.DSH_HOME
   // 普通会话的 cwd 就在项目目录里：归属解析会认它，写卡仍要按身份拒。
   const { ctx, holder } = createFakeHost(new Map([['session-plain', projectDirectory]]))
@@ -244,8 +244,8 @@ test('装配层：普通会话写卡被拒，leader 放行', async () => {
 })
 
 test('装配层：真实换 leader 之后，退役会话写卡被拒、新会话放行', async () => {
-  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-home-'))
-  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
   const previousHome = process.env.DSH_HOME
   const { ctx, holder } = createFakeHost(new Map([['session-old', projectDirectory]]), {
     // 换 leader 要建一条新会话；建会话的实现必须使用调用方传入的 id。

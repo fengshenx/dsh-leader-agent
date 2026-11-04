@@ -5,7 +5,7 @@
  * 数据根：e2e 每次跑都从空的 `mkdtemp` 根开始，跑完删掉——卡片、项目、会话都
  * 是场景自己种的，不继承上一轮的残留。
  *
- * @module dsh-leader-kit/tests/e2e/instance
+ * @module dsh-leader-agent/tests/e2e/instance
  */
 
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -29,7 +29,7 @@ export const WORKTREE = fileURLToPath(new URL('../..', import.meta.url))
  * @returns {Promise<object>} 实例句柄：地址、数据根、日志与幂等停止函数
  */
 export async function startInstance({ baseUrl, env = {} }) {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-'))
   try {
     return await startInstanceIn({ root, baseUrl, env })
   } catch (error) {

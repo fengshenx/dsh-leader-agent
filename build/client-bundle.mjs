@@ -15,7 +15,7 @@
  * 文件（共享路径会让先完成的 rename 把另一个正在写的路径搬走）。各自 rename 仍会竞争
  * 最终产物，后完成者赢——不保证内容新旧顺序，但读方永远看不到半截文件。
  *
- * @module dsh-leader-kit/build/client-bundle
+ * @module dsh-leader-agent/build/client-bundle
  */
 
 import { randomBytes } from 'node:crypto'
@@ -39,7 +39,7 @@ import { context } from 'esbuild'
 const BASELINE_EXTERNALS = ['react', 'react-dom', '@deepseek-ai/dsh-client-ui-primitives']
 
 /** 产物注册到宿主模块表时用的 id：必须与包名一致（宿主按包名索引插件行）。 */
-const PLUGIN_ID = 'dsh-leader-kit'
+const PLUGIN_ID = 'dsh-leader-agent'
 
 /**
  * 内联进产物的第三方代码的许可声明。
@@ -132,7 +132,7 @@ export async function buildClient({ entry, outfile, watch = false, logLevel = 'w
     banner: { js: BANNER },
     footer: { js: FOOTER },
     plugins: [{
-      name: 'dsh-leader-kit-atomic-write',
+      name: 'dsh-leader-agent-atomic-write',
       setup(build) {
         build.onEnd((result) => {
           const failed = result.errors.length > 0

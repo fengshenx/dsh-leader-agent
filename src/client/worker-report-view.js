@@ -11,7 +11,7 @@
  *
  * 气泡下方一行是时间与复制按钮，与官方消息的底部 chrome 同形。
  *
- * @module dsh-leader-kit/client/worker-report-view
+ * @module dsh-leader-agent/client/worker-report-view
  */
 
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
@@ -103,12 +103,12 @@ export function WorkerReportView({ node, openSession }) {
 
   return createElement(
     'div',
-    { className: 'dsh-leader-kit-worker-report' },
+    { className: 'dsh-leader-agent-worker-report' },
     createElement(
       'div',
-      { className: 'dsh-leader-kit-worker-report__identity' },
+      { className: 'dsh-leader-agent-worker-report__identity' },
       createElement('img', {
-        className: 'dsh-leader-kit-worker-report__avatar',
+        className: 'dsh-leader-agent-worker-report__avatar',
         src: agentAvatarDataUri(data.name),
         alt: '',
       }),
@@ -116,7 +116,7 @@ export function WorkerReportView({ node, openSession }) {
         'button',
         {
           type: 'button',
-          className: 'dsh-leader-kit-worker-report__name',
+          className: 'dsh-leader-agent-worker-report__name',
           title: `打开 ${data.name} 的子会话`,
           onClick: () => openSession?.(data.childSessionId),
         },
@@ -125,25 +125,25 @@ export function WorkerReportView({ node, openSession }) {
     ),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-worker-report__bubble' },
+      { className: 'dsh-leader-agent-worker-report__bubble' },
       // 裁剪只发生在正文层：按钮在气泡内、正文外，否则展开开关会跟着两行水位被裁掉
       createElement(
         'div',
         {
           ref: bubbleRef,
-          className: 'dsh-leader-kit-worker-report__content',
+          className: 'dsh-leader-agent-worker-report__content',
           'data-collapsed': expanded ? undefined : 'true',
         },
         markdown
           ? createElement(Markdown, { source: body })
-          : createElement('div', { className: 'dsh-leader-kit-worker-report__plain' }, body),
+          : createElement('div', { className: 'dsh-leader-agent-worker-report__plain' }, body),
       ),
       overflowing
         ? createElement(
             'button',
             {
               type: 'button',
-              className: 'dsh-leader-kit-worker-report__toggle',
+              className: 'dsh-leader-agent-worker-report__toggle',
               'aria-expanded': expanded,
               onClick: () => setExpanded((value) => !value),
             },
@@ -153,13 +153,13 @@ export function WorkerReportView({ node, openSession }) {
     ),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-worker-report__meta' },
-      createElement('span', { className: 'dsh-leader-kit-worker-report__time' }, formatReportClock(data.time)),
+      { className: 'dsh-leader-agent-worker-report__meta' },
+      createElement('span', { className: 'dsh-leader-agent-worker-report__time' }, formatReportClock(data.time)),
       createElement(
         'button',
         {
           type: 'button',
-          className: 'dsh-leader-kit-worker-report__copy',
+          className: 'dsh-leader-agent-worker-report__copy',
           'aria-label': copied ? '已复制' : '复制',
           title: copied ? '已复制' : '复制',
           onClick: () => { void copy() },

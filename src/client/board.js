@@ -16,7 +16,7 @@
  * 等你输入与未读在这条路径上无从表达。会话列表对未保留的 subagent 子会话给的
  * 是兜底值，据此说「空闲」是撒谎，读不到时如实给「状态未知」。
  *
- * @module dsh-leader-kit/client/board
+ * @module dsh-leader-agent/client/board
  */
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -282,13 +282,13 @@ function BoardEmpty({ allDone, projectName }) {
   const whose = projectName === undefined ? '本项目' : `「${projectName}」`
   return createElement(
     'div',
-    { className: 'dsh-leader-kit-board-empty' },
+    { className: 'dsh-leader-agent-board-empty' },
     createElement(
       'div',
       {
         className: allDone
-          ? 'dsh-leader-kit-board-empty-icon dsh-leader-kit-board-empty-icon-success'
-          : 'dsh-leader-kit-board-empty-icon',
+          ? 'dsh-leader-agent-board-empty-icon dsh-leader-agent-board-empty-icon-success'
+          : 'dsh-leader-agent-board-empty-icon',
       },
       allDone
         ? productIcon('check-circle-outline', { size: 24 })
@@ -296,12 +296,12 @@ function BoardEmpty({ allDone, projectName }) {
     ),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-board-empty-title' },
+      { className: 'dsh-leader-agent-board-empty-title' },
       allDone ? '全部完成' : '还没有卡片',
     ),
     createElement(
       'div',
-      { className: 'dsh-leader-kit-board-empty-hint' },
+      { className: 'dsh-leader-agent-board-empty-hint' },
       allDone ? `${whose}的卡片都已完成` : 'leader 调用 create_card 后，卡片会出现在这里',
     ),
   )
@@ -315,13 +315,13 @@ function BoardEmpty({ allDone, projectName }) {
 function BoardSkeleton() {
   return createElement(
     'div',
-    { className: 'dsh-leader-kit-board-list' },
+    { className: 'dsh-leader-agent-board-list' },
     createElement(
       'div',
-      { className: 'dsh-leader-kit-board-group' },
-      createElement('div', { className: 'dsh-leader-kit-board-skeleton' }),
-      createElement('div', { className: 'dsh-leader-kit-board-skeleton' }),
-      createElement('div', { className: 'dsh-leader-kit-board-skeleton' }),
+      { className: 'dsh-leader-agent-board-group' },
+      createElement('div', { className: 'dsh-leader-agent-board-skeleton' }),
+      createElement('div', { className: 'dsh-leader-agent-board-skeleton' }),
+      createElement('div', { className: 'dsh-leader-agent-board-skeleton' }),
     ),
   )
 }
@@ -491,8 +491,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   if (projectError !== null && project === undefined) {
     return createElement(
       'div',
-      { className: 'dsh-leader-kit-board-empty' },
-      createElement('div', { className: 'dsh-leader-kit-board-empty-title' }, projectError),
+      { className: 'dsh-leader-agent-board-empty' },
+      createElement('div', { className: 'dsh-leader-agent-board-empty-title' }, projectError),
     )
   }
 
@@ -501,19 +501,19 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   if (view === 'no-project') {
     return createElement(
       'div',
-      { className: 'dsh-leader-kit-board-list' },
+      { className: 'dsh-leader-agent-board-list' },
       resolved
         ? createElement(
             'div',
-            { className: 'dsh-leader-kit-board-empty' },
+            { className: 'dsh-leader-agent-board-empty' },
             createElement(
               'div',
-              { className: 'dsh-leader-kit-board-empty-title' },
+              { className: 'dsh-leader-agent-board-empty-title' },
               '当前会话不属于任何项目',
             ),
             createElement(
               'div',
-              { className: 'dsh-leader-kit-board-empty-hint' },
+              { className: 'dsh-leader-agent-board-empty-hint' },
               '看板按项目组织：在项目会话（leader 或 worker）里打开它。',
             ),
           )
@@ -533,18 +533,18 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     const leaderDead = view === 'leader-dead'
     return createElement(
       'div',
-      { className: 'dsh-leader-kit-board-list' },
+      { className: 'dsh-leader-agent-board-list' },
       createElement(
         'div',
-        { className: 'dsh-leader-kit-board-empty' },
+        { className: 'dsh-leader-agent-board-empty' },
         createElement(
           'div',
-          { className: 'dsh-leader-kit-board-empty-title' },
+          { className: 'dsh-leader-agent-board-empty-title' },
           leaderDead ? '该项目的 leader 会话已失效' : '看板只在项目会话中打开',
         ),
         createElement(
           'div',
-          { className: 'dsh-leader-kit-board-empty-hint' },
+          { className: 'dsh-leader-agent-board-empty-hint' },
           leaderDead
             ? '请在左栏项目区块对该项目换新 Leader，再打开看板。'
             : `这是「${project.name ?? '本项目'}」所在目录里的普通会话；去该项目的 leader 或 worker 会话查看交付看板。`,
@@ -557,8 +557,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   if (cardsError !== null && cards.length === 0) {
     return createElement(
       'div',
-      { className: 'dsh-leader-kit-board-empty' },
-      createElement('div', { className: 'dsh-leader-kit-board-empty-title' }, cardsError),
+      { className: 'dsh-leader-agent-board-empty' },
+      createElement('div', { className: 'dsh-leader-agent-board-empty-title' }, cardsError),
     )
   }
 
@@ -569,21 +569,21 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   if (cards.length === 0) {
     return createElement(
       'div',
-      { className: 'dsh-leader-kit-board-list' },
+      { className: 'dsh-leader-agent-board-list' },
       createElement(BoardEmpty, { allDone: false, projectName: project.name }),
     )
   }
 
   return createElement(
     'div',
-    { className: 'dsh-leader-kit-board' },
+    { className: 'dsh-leader-agent-board' },
     createElement(
       'div',
-      { className: 'dsh-leader-kit-board-list' },
+      { className: 'dsh-leader-agent-board-list' },
       active.length > 0
         ? createElement(
             'div',
-            { className: 'dsh-leader-kit-board-group' },
+            { className: 'dsh-leader-agent-board-group' },
             active.map((card) => createElement(BoardCard, {
               key: card.id,
               card,
@@ -600,12 +600,12 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       done.length > 0
         ? createElement(
             'div',
-            { className: 'dsh-leader-kit-board-done-section' },
+            { className: 'dsh-leader-agent-board-done-section' },
             createElement(
               'button',
               {
                 type: 'button',
-                className: 'dsh-leader-kit-board-done-toggle',
+                className: 'dsh-leader-agent-board-done-toggle',
                 'aria-expanded': doneOpen,
                 onClick: () => { setDoneOpen(!doneOpen) },
               },
@@ -613,18 +613,18 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
                 'span',
                 {
                   className: doneOpen
-                    ? 'dsh-leader-kit-board-done-chevron dsh-leader-kit-board-done-chevron-open'
-                    : 'dsh-leader-kit-board-done-chevron',
+                    ? 'dsh-leader-agent-board-done-chevron dsh-leader-agent-board-done-chevron-open'
+                    : 'dsh-leader-agent-board-done-chevron',
                 },
                 productIcon('chevron-right-outline', { size: 14 }),
               ),
               '已完成',
-              createElement('span', { className: 'dsh-leader-kit-board-done-count' }, String(done.length)),
+              createElement('span', { className: 'dsh-leader-agent-board-done-count' }, String(done.length)),
             ),
             doneOpen
               ? createElement(
                   'div',
-                  { className: 'dsh-leader-kit-board-group' },
+                  { className: 'dsh-leader-agent-board-group' },
                   done.map((card) => createElement(BoardCard, {
                     key: card.id,
                     card,

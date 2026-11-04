@@ -5,13 +5,13 @@
  * 拿不到：宿主包的 CSS module 在构建期编译成哈希类名、映射留在宿主产物里（包的
  * `./src/*` 导出指向源码，`files` 只发 `lib/`），跨 bundle 能引用的只有 CSS 变量。
  *
- * @module dsh-leader-kit/client/worker-report-styles
+ * @module dsh-leader-agent/client/worker-report-styles
  */
 
-const STYLE_ID = 'dsh-leader-kit-worker-report'
+const STYLE_ID = 'dsh-leader-agent-worker-report'
 
 const STYLE_TEXT = `
-.dsh-leader-kit-worker-report {
+.dsh-leader-agent-worker-report {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -19,20 +19,20 @@ const STYLE_TEXT = `
   width: 100%;
 }
 
-.dsh-leader-kit-worker-report__identity {
+.dsh-leader-agent-worker-report__identity {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.dsh-leader-kit-worker-report__avatar {
+.dsh-leader-agent-worker-report__avatar {
   width: 20px;
   height: 20px;
   border-radius: 5px;
   flex-shrink: 0;
 }
 
-.dsh-leader-kit-worker-report__name {
+.dsh-leader-agent-worker-report__name {
   font-size: 12px;
   font-weight: 500;
   color: var(--dsw-alias-label-secondary);
@@ -43,14 +43,14 @@ const STYLE_TEXT = `
   font-family: inherit;
 }
 
-.dsh-leader-kit-worker-report__name:hover {
+.dsh-leader-agent-worker-report__name:hover {
   color: var(--dsw-alias-label-primary);
   text-decoration: underline;
 }
 
-.dsh-leader-kit-worker-report__bubble {
+.dsh-leader-agent-worker-report__bubble {
   /* 行高取 compact 变体的值，与 MarkdownText 内部排版一致，否则折叠水位会差半行 */
-  --dsh-leader-kit-report-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
+  --dsh-leader-agent-report-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -65,12 +65,12 @@ const STYLE_TEXT = `
   border-radius: var(--dsw-radius-xl);
   padding: 10px 16px 12px;
   font-size: var(--dsh-content-font-size, 14px);
-  line-height: var(--dsh-leader-kit-report-line);
+  line-height: var(--dsh-leader-agent-report-line);
   color: var(--dsw-alias-label-primary);
   word-break: break-word;
 }
 
-.dsh-leader-kit-worker-report__content {
+.dsh-leader-agent-worker-report__content {
   /* flex 容器里 align-items: flex-start 会让子项按内容收缩，显式撑满才不会提前换行 */
   width: 100%;
 }
@@ -78,17 +78,17 @@ const STYLE_TEXT = `
 /* 同 card-detail-text：compact 变体把正文压成三级标签色、链接变成 inherit。
    容器类 + data-markdown-variant 是 (0,2,0)，压过 .compact 的 (0,1,0)；
    链接到 (0,2,1)，压过 .compact a 的 (0,1,1)——特异性更高，不靠注入顺序。 */
-.dsh-leader-kit-worker-report__bubble [data-markdown-variant='compact'] {
+.dsh-leader-agent-worker-report__bubble [data-markdown-variant='compact'] {
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-leader-kit-worker-report__bubble [data-markdown-variant='compact'] a {
+.dsh-leader-agent-worker-report__bubble [data-markdown-variant='compact'] a {
   color: var(--dsw-alias-link);
 }
 
 /* 旧消息（改造前落盘）没有 report，回退的是整条通知正文：子会话、状态、下一步
    是逐行的协议字段，按 Markdown 渲染会因软换行折成一段。这条路径保持纯文本。 */
-.dsh-leader-kit-worker-report__plain {
+.dsh-leader-agent-worker-report__plain {
   white-space: pre-wrap;
 }
 
@@ -96,12 +96,12 @@ const STYLE_TEXT = `
    正文是块级元素（段落、列表、代码块），line-clamp 只能截纯文本行；按行高算
    max-height 才对块级内容生效。多出的 4px 是 compact 段落的上边距，不加会把第二行
    的下缘裁掉。裁剪只落在正文层，气泡内的展开按钮不跟着被截。 */
-.dsh-leader-kit-worker-report__content[data-collapsed='true'] {
-  max-height: calc(2 * var(--dsh-leader-kit-report-line) + 4px);
+.dsh-leader-agent-worker-report__content[data-collapsed='true'] {
+  max-height: calc(2 * var(--dsh-leader-agent-report-line) + 4px);
   overflow: hidden;
 }
 
-.dsh-leader-kit-worker-report__toggle {
+.dsh-leader-agent-worker-report__toggle {
   align-self: flex-start;
   padding: 0 2px;
   border: none;
@@ -113,23 +113,23 @@ const STYLE_TEXT = `
   cursor: pointer;
 }
 
-.dsh-leader-kit-worker-report__toggle:hover {
+.dsh-leader-agent-worker-report__toggle:hover {
   color: var(--dsw-alias-label-secondary);
 }
 
-.dsh-leader-kit-worker-report__meta {
+.dsh-leader-agent-worker-report__meta {
   display: flex;
   align-items: center;
   gap: 6px;
   padding-left: 2px;
 }
 
-.dsh-leader-kit-worker-report__time {
+.dsh-leader-agent-worker-report__time {
   font-size: 11px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-worker-report__copy {
+.dsh-leader-agent-worker-report__copy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -143,7 +143,7 @@ const STYLE_TEXT = `
   cursor: pointer;
 }
 
-.dsh-leader-kit-worker-report__copy:hover {
+.dsh-leader-agent-worker-report__copy:hover {
   background: color-mix(in srgb, var(--dsw-alias-label-primary) 8%, transparent);
   color: var(--dsw-alias-label-secondary);
 }

@@ -11,19 +11,19 @@ const bundleRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const skillsRoot = join(bundleRoot, SKILLS_DIR)
 
 test('发现 bundle 内全部 skill', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const candidates = await provider.list()
   const names = candidates.map(candidate => candidate.name).sort()
-  assert.deepEqual(names, ['init-leader-kit', 'leader-mode'])
+  assert.deepEqual(names, ['init-leader-agent', 'leader-mode'])
 })
 
 test('候选带可加载的正文与目录资源基址', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const candidates = await provider.list()
   const target = candidates.find(candidate => candidate.name === 'leader-mode')
   assert.ok(target, 'leader-mode 应被发现')
   assert.equal(target.source, 'bundled')
-  assert.equal(target.provider, 'dsh-leader-kit')
+  assert.equal(target.provider, 'dsh-leader-agent')
   assert.equal(target.resourceBase.kind, 'directory')
 
   const definition = await provider.get(target)
@@ -33,29 +33,29 @@ test('候选带可加载的正文与目录资源基址', async () => {
 })
 
 test('初始化骨架默认只含 dev 与 review 两个槽位', async () => {
-  const text = await readFile(join(skillsRoot, 'init-leader-kit', 'references', 'SLOTS.md'), 'utf8')
+  const text = await readFile(join(skillsRoot, 'init-leader-agent', 'references', 'SLOTS.md'), 'utf8')
   assert.match(text, /^slots:\n  dev:/m)
   assert.match(text, /^## review$/m)
   assert.doesNotMatch(text, /^## discuss$/m)
 })
 
 test('未知候选返回 undefined', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const definition = await provider.get({ locator: { directory: '/nonexistent' } })
   assert.equal(definition, undefined)
 })
 
 test('候选的 locator 不是目录描述时 get 返回 undefined', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   assert.equal(await provider.get({ locator: null }), undefined)
   assert.equal(await provider.get({}), undefined)
 })
 
 test('目录里没有 SKILL.md 时跳过，不当作 skill', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-skills-'))
+  const root = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-skills-'))
   try {
     await mkdir(join(root, 'empty-skill'), { recursive: true })
-    const provider = createSkillProvider({ skillsRoot: root, providerName: 'dsh-leader-kit' })
+    const provider = createSkillProvider({ skillsRoot: root, providerName: 'dsh-leader-agent' })
     assert.deepEqual(await provider.list(), [])
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -63,7 +63,7 @@ test('目录里没有 SKILL.md 时跳过，不当作 skill', async () => {
 })
 
 test('协议层引用的是 bundle 内的相对路径', async () => {
-  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-kit' })
+  const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const candidates = await provider.list()
   const target = candidates.find(candidate => candidate.name === 'leader-mode')
   const definition = await provider.get(target)
@@ -81,7 +81,7 @@ test('skillsRoot 不可读时返回空候选并告警', async () => {
   const warnings = []
   const provider = createSkillProvider({
     skillsRoot: join(bundleRoot, 'missing-skills'),
-    providerName: 'dsh-leader-kit',
+    providerName: 'dsh-leader-agent',
     logger: message => warnings.push(message),
   })
   assert.deepEqual(await provider.list(), [])

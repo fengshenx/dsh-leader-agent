@@ -19,7 +19,7 @@ function violationsOf({ path = PATH, text = IMPLEMENTED_TEXT } = {}) {
 
 /** 造一份临时语料跑整条门禁，用于证明脚本确实调了判定。 */
 function withCorpus(corpus, run) {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-notes-'))
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-notes-'))
   try {
     for (const [relPath, text] of Object.entries(corpus)) {
       const file = join(dir, relPath)

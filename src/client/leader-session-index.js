@@ -7,7 +7,7 @@
  * 与视图注册分开成两个模块：这里不碰 React，名单刷新可以单独单测；`leader-view.js`
  * 只负责视图目标与主区域入口。
  *
- * @module dsh-leader-kit/client/leader-session-index
+ * @module dsh-leader-agent/client/leader-session-index
  */
 
 import {
@@ -37,7 +37,7 @@ export function watchLeaderSessions(ctx) {
       leaderSessionIndex.update(collectLeaderSessionIds(projects))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      ctx.logger?.warn?.(`dsh-leader-kit: 读取 leader 会话名单失败：${message}`)
+      ctx.logger?.warn?.(`dsh-leader-agent: 读取 leader 会话名单失败：${message}`)
     }
   }
   // 三条订阅都要退订：remote 服务重新注册会让 fiber 重建，漏一条就永久累积，

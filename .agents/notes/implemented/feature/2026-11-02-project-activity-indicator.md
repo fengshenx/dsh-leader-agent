@@ -4,7 +4,7 @@
 
 ## 背景
 
-项目行收起时，用户看不出这个目录里有没有会话在跑：会话行有 spinner（`dsh-leader-kit-session-spinner`），但它只在展开后才出现，收起状态等于失明。
+项目行收起时，用户看不出这个目录里有没有会话在跑：会话行有 spinner（`dsh-leader-agent-session-spinner`），但它只在展开后才出现，收起状态等于失明。
 
 展开时反过来不需要会话级的重复指示：每条会话行自己就带着 spinner，再在目录行画一个就是把同一件事画两遍。
 
@@ -28,7 +28,7 @@
 
 **展开态不额外兜底，边界是 `requiredWatermark` 的前 50 条**：运行中的会话会把水位抬到自己所在位置（`session-watermark.js` 的 `requiredWatermark`），但只在前 50 条内生效。这个范围内展开后可见，不会出现「收起时目录行有加载器、展开之后连会话行也看不见」的失明窗口；第 51 条及以后在跑的会话不抬水位，展开后仍可能被折起，要再点「展开其余」——那是会话列表本身超出一页时的既有折叠口径（与宿主一致），不为它扩大边界。
 
-**渲染上是替换行首槽位里的目录图标，不是加第二个指示**。槽位尺寸不变（16×20），spinner 取 12px，复用同一份 `dsh-leader-kit-spin` 关键帧；只有一个类（`.dsh-leader-kit-project-spinner`）与一条样式规则，画在 `lead-folder` 槽位**内部**而不是替换容器——组内有当前会话时的激活色挂在容器的 `color` 上，容器被顶掉就丢了同一处承载。边框用 `currentColor`（与目录图标的 `stroke: currentColor` 同源），不写死 `label-tertiary`。悬停规则挂在槽位容器上，箭头照常盖住 spinner——运行中也要能展开查看是哪条会话在跑。spinner 是装饰（`aria-hidden`），状态语义不塞进按钮的无障碍名：项目行的入口含义仍是「打开协调者」。
+**渲染上是替换行首槽位里的目录图标，不是加第二个指示**。槽位尺寸不变（16×20），spinner 取 12px，复用同一份 `dsh-leader-agent-spin` 关键帧；只有一个类（`.dsh-leader-agent-project-spinner`）与一条样式规则，画在 `lead-folder` 槽位**内部**而不是替换容器——组内有当前会话时的激活色挂在容器的 `color` 上，容器被顶掉就丢了同一处承载。边框用 `currentColor`（与目录图标的 `stroke: currentColor` 同源），不写死 `label-tertiary`。悬停规则挂在槽位容器上，箭头照常盖住 spinner——运行中也要能展开查看是哪条会话在跑。spinner 是装饰（`aria-hidden`），状态语义不塞进按钮的无障碍名：项目行的入口含义仍是「打开协调者」。
 
 > **这一段已被 [2026-11-03 加载圈改用宿主 StateDot](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md) 取代**：现在渲染的是宿主基线模块的 `StateDot`（`state: 'ongoing'`，14px），不再有自绘类、`currentColor` 与 0.8s 关键帧；运行中槽位只有灰圈、目录图标不渲染，该槽位没有激活色回执，组内激活态在整条项目行上完全消失。**判定与边界的其余决策仍然生效**——`showsProjectActivity` 的两来源并集、归档口径、`expanded` / `leaderRunning` 边界都还在 `src/client/project-panel-logic.js` 里跑。
 
@@ -38,7 +38,7 @@
 
 - 只覆盖「运行中」，不覆盖「等你输入」：宿主当前没有发布待处理交互的数据源（`docs/capability-gaps.md` 第 35 条）。
 - 展开态行首只代表协调者：worker 在跑时不亮，由它自己的会话行带 spinner。两态下行首的语义不同（收起是「本组有活动」、展开是「协调者在跑」），这是信息展开时的正常过渡，不是两套判据。
-- 合成后不留第二个渲染入口：`data-running` 属性与 `lead-spinner` 类删掉，观测量统一看行首有没有 `.dsh-leader-kit-project-spinner`。
+- 合成后不留第二个渲染入口：`data-running` 属性与 `lead-spinner` 类删掉，观测量统一看行首有没有 `.dsh-leader-agent-project-spinner`。
 - 悬停整行时行首槽位换成展开箭头、加载器随之隐藏：沿用官方工作区行的悬停规则，运行中也要能点开。
 - 不动官方工作区行的图标：项目会话的排除只在渲染层，官方那一行的激活态另由 `quietWorkspaceOf` 处理。
 - 项目区块标题行（「项目」小标题）不显示任何项目级状态：它是整个列表的折叠开关，不代表某个目录。
@@ -54,7 +54,7 @@
   - 接线层把 `expanded` 写死成 `false` → 接线用例红（1 fail），50 pass / 1 fail；还原 → 51 pass。
   - 删掉 `isCoordinatorRunning()` 里的归档过滤 → 1 例红（`协调者在运行时项目行显示运行态`），50 pass / 1 fail；还原 → 51 pass。
   - 矩阵里三种「亮」的组合各是一条独立 `assert`（带中文失败信息），不靠循环 + 同一条断言：上面前两条探针的失败点因此能直接指出是哪一组。
-- 渲染路径：仓里没有 jsdom，渲染这一半落在源码接线断言与产物读数上——`ProjectRow` 的 `leadActivity` 由 `showsProjectActivity({ expanded, rows: childSessions, coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds) })` 给出，spinner 画在 `lead-folder` 内部、带 `aria-hidden`，全文件只有一个 `.dsh-leader-kit-project-spinner` 类定义，`lead-spinner` / `data-running` 已无残留。
-- 产物读数：`npm run build:client` 重建后 `lib/client.js` 里 `dsh-leader-kit-project-spinner` 2 处命中（样式选择器 + 组件类名），`lead-spinner` 与 `data-running` 0 处。
-- 计算样式读数（从 `lib/client.js` 抽取真实规则，无头 Chrome 读 `getComputedStyle`）：激活态容器 `color` 与 spinner `border-left-color` 同为 `rgb(65, 118, 230)`（与目录图标的 `stroke: currentColor` 一致），非激活 `rgb(120, 130, 150)`；`12px × 12px`、`animation: dsh-leader-kit-spin / 0.8s`、`border-top-color` 透明（旋转缺口）、`aria-hidden=true`、父元素是 `lead-folder`。这组读数对应已删除的自绘实现，现实现见 [2026-11-03](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md)。
+- 渲染路径：仓里没有 jsdom，渲染这一半落在源码接线断言与产物读数上——`ProjectRow` 的 `leadActivity` 由 `showsProjectActivity({ expanded, rows: childSessions, coordinatorRunning: isCoordinatorRunning(project, sessionRows, archivedSessionIds) })` 给出，spinner 画在 `lead-folder` 内部、带 `aria-hidden`，全文件只有一个 `.dsh-leader-agent-project-spinner` 类定义，`lead-spinner` / `data-running` 已无残留。
+- 产物读数：`npm run build:client` 重建后 `lib/client.js` 里 `dsh-leader-agent-project-spinner` 2 处命中（样式选择器 + 组件类名），`lead-spinner` 与 `data-running` 0 处。
+- 计算样式读数（从 `lib/client.js` 抽取真实规则，无头 Chrome 读 `getComputedStyle`）：激活态容器 `color` 与 spinner `border-left-color` 同为 `rgb(65, 118, 230)`（与目录图标的 `stroke: currentColor` 一致），非激活 `rgb(120, 130, 150)`；`12px × 12px`、`animation: dsh-leader-agent-spin / 0.8s`、`border-top-color` 透明（旋转缺口）、`aria-hidden=true`、父元素是 `lead-folder`。这组读数对应已删除的自绘实现，现实现见 [2026-11-03](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md)。
 - 未做「worker 真在跑」的端到端：那需要真实模型或本地 mock provider，本轮以「判定用单测、渲染用上面的产物与计算样式读数」两段拼出结论；合入后第一次真实派工时再看一眼收起态即可。

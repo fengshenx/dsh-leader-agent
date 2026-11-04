@@ -189,14 +189,14 @@ test('节点定义把回报事实装进视图节点', () => {
   assert.equal(state.seq, 12)
 
   const node = workerReportDefinition.buildViewNode({
-    key: '7:dsh-leader-kit-worker-reportm1',
+    key: '7:dsh-leader-agent-worker-reportm1',
     id: 'm1',
     start: { location: { kind: 'turn' } },
     state,
   })
   assert.equal(node.kind, WORKER_REPORT_NODE_KIND)
   assert.equal(node.target, 'chat')
-  assert.equal(node.key, '7:dsh-leader-kit-worker-reportm1')
+  assert.equal(node.key, '7:dsh-leader-agent-worker-reportm1')
   assert.equal(node.anchorSeq, 12)
   assert.equal(node.visibility, 'visible')
   assert.equal(node.groupTree, 'input')

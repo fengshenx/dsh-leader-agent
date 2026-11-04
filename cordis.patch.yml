@@ -1,8 +1,8 @@
-# dsh-leader-kit bundle 的插件层。
+# dsh-leader-agent bundle 的插件层。
 # 每一行是一个 Cordis 插件；`name` 指向本包内的模块，由 Node 解析。
 #
 # `name` 必须是**纯包名**：浏览器侧靠 Loader 行名定位包 manifest 才能发现本包的
-# client 半边。写成 `dsh-leader-kit/src/host` 这样的子路径，宿主定位不到包根，
+# client 半边。写成 `dsh-leader-agent/src/host` 这样的子路径，宿主定位不到包根，
 # 便不会把 client bundle 下发给浏览器——右栏也就看不到看板。
 #
 # `subagents` 必须显式声明：Cordis 只把已声明的服务暴露给插件作用域，
@@ -18,5 +18,5 @@
 # `export const inject` 声明。在 patch 里另写一份会与模块声明脱节——模块新增
 # 依赖时，patch 里的旧列表会让插件在访问新服务时抛「without inject」。
 - insert:
-    - id: leader-kit-host
-      name: 'dsh-leader-kit'
+    - id: leader-agent-host
+      name: 'dsh-leader-agent'

@@ -11,7 +11,7 @@
  * 同一份记录（内容与 mtime）后才删。残余窗口只剩两次读取之间——持锁者恰好在那时
  * 释放、另一个进程立刻拿到锁，接管方会删掉新锁。PID 复用与宿主一样不处理。
  *
- * @module dsh-leader-kit/scripts/atomic-write
+ * @module dsh-leader-agent/scripts/atomic-write
  */
 
 import { randomBytes } from 'node:crypto'

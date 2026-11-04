@@ -27,7 +27,7 @@
  *
  * 窄侧栏（56px 导轨）放不下列表，改为一个入口按钮 + 浮层。
  *
- * @module dsh-leader-kit/client/project-panel
+ * @module dsh-leader-agent/client/project-panel
  */
 
 import { createElement, Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -754,7 +754,7 @@ function SidebarPlacement(props) {
     const nav = root.querySelector(':scope > nav')
     if (nav === null) return undefined
     const host = document.createElement('div')
-    host.setAttribute('data-dsh-leader-kit-projects', '')
+    host.setAttribute('data-dsh-leader-agent-projects', '')
     host.style.flex = 'none'
     nav.insertAdjacentElement('afterend', host)
     setContainer(host)

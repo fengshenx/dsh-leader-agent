@@ -58,7 +58,7 @@ check 的门禁只跑纯函数与假件，不能依赖真实 `dsh` 与 chromium�
 - **双向验证 3**（spawn 门禁）：`dev-instance.mjs` 改回裸 `spawn(dshCommand, …)` → `起子进程只经 spawn-command.mjs` 红，报出该文件；还原 → 绿。`dev.mjs` 的 `run()` 改回 `spawnSync(command, …)` → `dev.mjs 的裸 spawn 只起 process.execPath` 红，actual `['spawnSync(command)', 'spawn(process.execPath)']`；还原 → 绿。
 - **双向验证 3b**（门禁覆盖导入形态）：临时加 `tests/e2e/_probe-spawn.mjs`，分别写 `import * as cp from 'node:child_process'` + `cp.spawn('dsh')`、`import cp from 'node:child_process'` + `cp.spawn('dsh')`、`createRequire(import.meta.url)('node:child_process')` + `cp.spawn('dsh')` → 三种形态各自让门禁红并报出探针文件；删掉 → 4 例全绿。把 `referencesChildProcess` 临时退化成只认 `import { … } from` → `检测覆盖命名、命名空间、默认导入与 require 形态` 红并打印「漏检的写法：import * as cp from 'node:child_process'」；还原 → 绿。
 - **双向验证 4**（mock 断连，探针 `/tmp/probe-mock-abort.mjs`：`content-length: 200` 只写 12 字节后 `destroy()`）：修复前进程 exit 1，栈是 `Error: aborted … code: 'ECONNRESET'`；修复后打印 `ALIVE`、exit 0。
-- **双向验证 5**（失败路径临时根，探针 `/tmp/probe-instance-clean.mjs`，`DSH_HOME_SOURCE` 指向空目录）：修复前 `before=0 after=1`（残留一个 `dsh-leader-kit-e2e-*`）；修复后 `before=0 after=0`。
+- **双向验证 5**（失败路径临时根，探针 `/tmp/probe-instance-clean.mjs`，`DSH_HOME_SOURCE` 指向空目录）：修复前 `before=0 after=1`（残留一个 `dsh-leader-agent-e2e-*`）；修复后 `before=0 after=0`。
 - 真机读数：实例就绪行形如 `dsh web: http://127.0.0.1:<port>/?token=<...>`；新会话的 composer 在启动早期是 `data-phase="inert"`（`aria-label="选择工作区"`），等 `contenteditable="true"` 才是可输入状态；一条消息会带来两次模型请求（`scenario` + `title`）。
 - 截图读数：`.dev/e2e-artifacts/session-<pid>/reply.png` 里左栏有本插件的「项目」区块，会话消息是 `MOCK-E2E-REPLY 收工即可`，回复为 `mock 回执已收到`，会话标题是 mock 回的「e2e 会话」——标题请求被单独归类这一点也在图上。
 - `npm run dev` 冒烟（macOS，`DEV_NO_OPEN=1 DEV_PORT=0 node scripts/dev.mjs`）：打印数据根与插件链接、跑完 `build:client`、最后一行 `dsh web: http://127.0.0.1:59789/?token=…`；起进程改经 `spawnCommand` 后行为不变。

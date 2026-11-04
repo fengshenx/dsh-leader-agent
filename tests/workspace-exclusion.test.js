@@ -59,14 +59,14 @@ test('命中排除集的会话行被标记为隐藏', () => {
   const row = fakeRow('session:s1')
   const hidden = markSessionRow(row, new Set(['s1']))
   assert.equal(hidden, true)
-  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), true)
+  assert.equal(row.classes.has('dsh-leader-agent-excluded-session'), true)
 })
 
 test('不在排除集里的会话行保持可见', () => {
   const row = fakeRow('session:s2')
   const hidden = markSessionRow(row, new Set(['s1']))
   assert.equal(hidden, false)
-  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), false)
+  assert.equal(row.classes.has('dsh-leader-agent-excluded-session'), false)
 })
 
 test('不是会话行的标识不参与排除', () => {
@@ -111,7 +111,7 @@ test('工作区行不被整行隐藏：项目目录也照常出现在树里', ()
 
   markRows(root, { excluded: new Set(['s9']) })
 
-  assert.deepEqual([...sessionRow.classes], ['dsh-leader-kit-excluded-session'])
+  assert.deepEqual([...sessionRow.classes], ['dsh-leader-agent-excluded-session'])
   assert.deepEqual([...workspaceRow.classes], [])
 })
 
@@ -123,9 +123,9 @@ test('会话行只认 session: 前缀', () => {
 test('排除集变化后重新标记能改回可见', () => {
   const row = fakeRow('session:s1')
   markSessionRow(row, new Set(['s1']))
-  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), true)
+  assert.equal(row.classes.has('dsh-leader-agent-excluded-session'), true)
   markSessionRow(row, new Set())
-  assert.equal(row.classes.has('dsh-leader-kit-excluded-session'), false)
+  assert.equal(row.classes.has('dsh-leader-agent-excluded-session'), false)
 })
 
 /**
@@ -238,10 +238,10 @@ test('展开按钮的剩余数扣掉藏在未渲染部分里的项目会话', ()
     excludedByGroup: new Map([['w1', 3]]),
   })
 
-  assert.equal(group.sessions.get('w1s').classes.has('dsh-leader-kit-excluded-session'), true)
+  assert.equal(group.sessions.get('w1s').classes.has('dsh-leader-agent-excluded-session'), true)
   // 宿主说还剩 3 条，其中 1 条是没渲染出来的项目会话 → 真实可看 2 条。
   assert.equal(group.button.textContent, '展开其余 2 个会话')
-  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), false)
+  assert.equal(group.button.classes.has('dsh-leader-agent-excluded-expand'), false)
 })
 
 test('剩余全是项目会话时把展开按钮收起', () => {
@@ -252,7 +252,7 @@ test('剩余全是项目会话时把展开按钮收起', () => {
     excludedByGroup: new Map([['w1', 2]]),
   })
 
-  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), true)
+  assert.equal(group.button.classes.has('dsh-leader-agent-excluded-expand'), true)
 })
 
 test('反复标记不会把改过的数字再减一次', () => {
@@ -361,7 +361,7 @@ test('子工作区的隐藏会话不算进父组的剩余数', () => {
   assert.equal(parentButton.textContent, '展开其余 2 个会话')
   // 子组自身那一条已渲染且隐藏：2 - (1 - 1) = 2。
   assert.equal(childButton.textContent, '展开其余 2 个会话')
-  assert.equal(childRow.classes.has('dsh-leader-kit-excluded-session'), true)
+  assert.equal(childRow.classes.has('dsh-leader-agent-excluded-session'), true)
 })
 
 /**
@@ -399,7 +399,7 @@ test('未分组里的项目会话全被排除时，组头也藏起来', () => {
 
   markRows(group.root, { excluded: new Set(['w1', 'w2']), hideUngrouped: true })
 
-  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
+  assert.equal(group.header.classes.has('dsh-leader-agent-empty-ungrouped'), true)
 })
 
 test('未分组里还有可见会话时组头保留', () => {
@@ -407,7 +407,7 @@ test('未分组里还有可见会话时组头保留', () => {
 
   markRows(group.root, { excluded: new Set(['w1']), hideUngrouped: false })
 
-  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+  assert.equal(group.header.classes.has('dsh-leader-agent-empty-ungrouped'), false)
 })
 
 test('组头容器里查不到行也按会话快照保留组头', () => {
@@ -417,7 +417,7 @@ test('组头容器里查不到行也按会话快照保留组头', () => {
 
   markUngroupedHeader(group.root, { hide: false })
 
-  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+  assert.equal(group.header.classes.has('dsh-leader-agent-empty-ungrouped'), false)
 })
 
 test('还有展开按钮时不藏组头：未渲染的会话可能不属于排除集', () => {
@@ -425,7 +425,7 @@ test('还有展开按钮时不藏组头：未渲染的会话可能不属于排�
 
   markUngroupedHeader(group.root)
 
-  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+  assert.equal(group.header.classes.has('dsh-leader-agent-empty-ungrouped'), false)
 })
 
 test('展开按钮被收起后组头跟着藏起来', () => {
@@ -443,8 +443,8 @@ test('展开按钮被收起后组头跟着藏起来', () => {
     hideUngrouped: true,
   })
 
-  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), true)
-  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), true)
+  assert.equal(group.button.classes.has('dsh-leader-agent-excluded-expand'), true)
+  assert.equal(group.header.classes.has('dsh-leader-agent-empty-ungrouped'), true)
 })
 
 test('未分组超过一屏且混着用户会话：按钮数字不动，组头保留', () => {
@@ -462,8 +462,8 @@ test('未分组超过一屏且混着用户会话：按钮数字不动，组头�
   })
 
   assert.equal(group.button.textContent, '展开其余 2 个会话')
-  assert.equal(group.button.classes.has('dsh-leader-kit-excluded-expand'), false)
-  assert.equal(group.header.classes.has('dsh-leader-kit-empty-ungrouped'), false)
+  assert.equal(group.button.classes.has('dsh-leader-agent-excluded-expand'), false)
+  assert.equal(group.header.classes.has('dsh-leader-agent-empty-ungrouped'), false)
 })
 
 test('还原展开按钮：文本仍是我们写的那句时换回宿主原数', () => {
@@ -499,12 +499,12 @@ test('还原展开按钮：没有 dataset 的节点只去掉隐藏类', () => {
   const button = fakeRow('overflow:')
   button.textContent = '展开其余 2 个会话'
   delete button.dataset
-  button.classList.add('dsh-leader-kit-excluded-expand')
+  button.classList.add('dsh-leader-agent-excluded-expand')
 
   restoreExpandButton(button)
 
   assert.equal(button.textContent, '展开其余 2 个会话')
-  assert.equal(button.classes.has('dsh-leader-kit-excluded-expand'), false)
+  assert.equal(button.classes.has('dsh-leader-agent-excluded-expand'), false)
 })
 
 test('没有未分组组头时不做任何标记', () => {

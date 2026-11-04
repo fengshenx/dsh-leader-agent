@@ -31,7 +31,7 @@
  * 人下钻到 worker 会话直接对话时不经过本模块：那种轮次不会登记在飞记录，也就
  * 不会被结算，worker 不会因为人自己聊了几句去打扰 leader。
  *
- * @module dsh-leader-kit/host/dispatch
+ * @module dsh-leader-agent/host/dispatch
  */
 
 import { createUserMessage, blocksToText } from './message.js'
@@ -144,15 +144,15 @@ export function createDispatcher({
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
   if (typeof leaderIndex?.awaitIndex !== 'function'
     || typeof leaderIndex?.isLeaderSession !== 'function') {
-    throw new Error('dsh-leader-kit: createDispatcher 缺少 leaderIndex，无法校验 leader 身份')
+    throw new Error('dsh-leader-agent: createDispatcher 缺少 leaderIndex，无法校验 leader 身份')
   }
   // worker 会话是派工的唯一落点，漏传会让派工在运行到一半时炸。
   if (typeof workerSessions?.spawn !== 'function' || typeof workerSessions?.send !== 'function') {
-    throw new Error('dsh-leader-kit: createDispatcher 缺少 workerSessions，无法创建或唤醒 worker 会话')
+    throw new Error('dsh-leader-agent: createDispatcher 缺少 workerSessions，无法创建或唤醒 worker 会话')
   }
   // 绑卡归属校验要同时读调用方项目与卡片；只给一半会静默少一道闸。
   if ((typeof resolveProject === 'function') !== (typeof getCard === 'function')) {
-    throw new Error('dsh-leader-kit: createDispatcher 的 resolveProject 与 getCard 必须成对提供，否则跨项目绑卡校验会静默失效')
+    throw new Error('dsh-leader-agent: createDispatcher 的 resolveProject 与 getCard 必须成对提供，否则跨项目绑卡校验会静默失效')
   }
   /** @type {Map<string, object>} 派工记录，key 为 worker 会话 id */
   const inflight = new Map()
@@ -288,7 +288,7 @@ export function createDispatcher({
     const reason = `连续自动续行已达上限 ${autoResumeLimit}，当前有 ${pendingCount} 条完成通知待投`
     await store.markUndelivered(notification.id, reason)
     logger(
-      `dsh-leader-kit: 父会话 ${notification.parentSessionId} 的${reason}，`
+      `dsh-leader-agent: 父会话 ${notification.parentSessionId} 的${reason}，`
       + `通知 ${notification.id} 留待人工处理`,
     )
   }
@@ -356,7 +356,7 @@ export function createDispatcher({
         .catch((error) => {
           // 读盘失败等异常必须在这里兜住：宿主对未处理拒绝是致命退出（proc.exit(1)），
           // 一次磁盘抖动不该带走整个 dsh 进程。
-          logger(`dsh-leader-kit: 空闲检测失败：${error instanceof Error ? error.message : String(error)}`)
+          logger(`dsh-leader-agent: 空闲检测失败：${error instanceof Error ? error.message : String(error)}`)
         })
         .finally(() => {
           flushing = false
@@ -639,7 +639,7 @@ export function createDispatcher({
         await workers.rename(sessionId, name)
       } catch (error) {
         // 消息已经投进 worker 了，改名落盘失败不该让调用方以为投递失败。
-        logger(`dsh-leader-kit: worker ${sessionId} 登记表改名失败：${error instanceof Error ? error.message : String(error)}`)
+        logger(`dsh-leader-agent: worker ${sessionId} 登记表改名失败：${error instanceof Error ? error.message : String(error)}`)
       }
     }
     return { code: form === 'resumed' ? 'sent' : 'merged', name: displayName }
@@ -733,10 +733,10 @@ export function createDispatcher({
     // 续聊是 worker 的既定能力：缺持久化后端（日志不落盘）或查询后端（冷恢复
     // 读不了日志）时 worker 只能跑一轮，拒绝派工而不是静默降级成一次性 worker。
     if (ctx.get('sessionPersistence') === undefined) {
-      throw new Error('dsh-leader-kit: 当前组合缺少会话持久化后端，worker 无法续聊，拒绝派工')
+      throw new Error('dsh-leader-agent: 当前组合缺少会话持久化后端，worker 无法续聊，拒绝派工')
     }
     if (ctx.get('sessionQuery') === undefined) {
-      throw new Error('dsh-leader-kit: 当前组合缺少会话查询后端，worker 无法冷恢复续聊，拒绝派工')
+      throw new Error('dsh-leader-agent: 当前组合缺少会话查询后端，worker 无法冷恢复续聊，拒绝派工')
     }
     // 绑卡前先校验归属与状态：跨项目写会污染对方的看板与上下文，已关闭的卡绑上去
     // 会绕过投递门禁。校验放在建会话之前，被拒时磁盘上连会话都不会留下。
@@ -787,7 +787,7 @@ export function createDispatcher({
     if (cardId !== undefined && slot !== undefined) {
       if (typeof bindCardSlot !== 'function') {
         await workerSessions.dispose(childId)
-        throw new Error('dsh-leader-kit: 当前装配没有提供 bindCardSlot，无法在派工时绑卡')
+        throw new Error('dsh-leader-agent: 当前装配没有提供 bindCardSlot，无法在派工时绑卡')
       }
       try {
         await bindCardSlot({ cardId, slot, sessionId: childId })
@@ -818,7 +818,7 @@ export function createDispatcher({
         name,
       })
     } catch (error) {
-      logger(`dsh-leader-kit: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-agent: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
     }
     return record
   }
@@ -882,7 +882,7 @@ export function createDispatcher({
     } catch (error) {
       // 已经落盘：投递失败留给空闲检测与补投通道，一次 IO 抖动不能让这一轮
       // 重结算一遍（那会再唤醒父会话一次，且第二条正文是新一轮的产物）。
-      logger(`dsh-leader-kit: 投递 worker ${sessionId} 的完成通知失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-agent: 投递 worker ${sessionId} 的完成通知失败：${error instanceof Error ? error.message : String(error)}`)
     }
     return true
   }
@@ -911,7 +911,7 @@ export function createDispatcher({
     // 宿主会接住并记下观察者的异常，但那条日志混在宿主日志里查不出来源；自己接住，
     // 才能把「回报没送到」记成这条链上的失败。
     return settleTurn(sessionId, event.data?.reason).catch((error) => {
-      logger(`dsh-leader-kit: 结算 worker ${sessionId} 的轮次失败：${error instanceof Error ? error.message : String(error)}`)
+      logger(`dsh-leader-agent: 结算 worker ${sessionId} 的轮次失败：${error instanceof Error ? error.message : String(error)}`)
       return false
     })
   }

@@ -66,8 +66,8 @@ rebase：`git rebase origin/main` 到 `5b40f79`。冲突三处：`README.md`（#
 - 首建失败提示：broken 入口跑 `node build/client.mjs --watch`，打印「客户端 watch 已建立，但首次构建失败…」，不再冒充成功。
 - staging 并发：10 个 `node build/client.mjs` 并发，修复后 10/10 exit 0、`lib/` 只有 `client.js`、`node --check` 通过；把 staging 临时改回固定名后 4/10 以 `ENOENT ... client.js.staging` 失败，恢复后回到 10/10。
 - 信号清场（`DEV_DSH` 指向 `exec sleep 60` 的假 dsh）：对 `node scripts/dev.mjs` 发 SIGTERM，父、watcher、dsh 三个进程全部退出；只把 SIGINT 发给父进程时同样三者全退。用 HEAD 的旧版 `dev.mjs`（`spawnSync` + `finally`）重复同一探针，父进程死后 watcher 仍存活，随后手动清理。Ctrl-C 的进程组行为是终端语义，未单独构造进程组复现。
-- SSE 推送（`curl -N /plugins/events?token=…`）：重建后收到 `{"type":"rebuilt","id":"dsh-leader-kit","rev":"7533752b18c0"}`，graph 里该行 URL 的 rev 同步变化。
-- 浏览器替换（`npm run dev` 起的实例，页面全程未刷新）：在 `apply` 里临时加 `console.warn('dsh-leader-kit apply: probe-v2')`，watch 重建后页面 console 立即出现该条——旧 fiber 被拆、新 bundle 重新执行 `apply`。探针用完已还原，不入库。
+- SSE 推送（`curl -N /plugins/events?token=…`）：重建后收到 `{"type":"rebuilt","id":"dsh-leader-agent","rev":"7533752b18c0"}`，graph 里该行 URL 的 rev 同步变化。
+- 浏览器替换（`npm run dev` 起的实例，页面全程未刷新）：在 `apply` 里临时加 `console.warn('dsh-leader-agent apply: probe-v2')`，watch 重建后页面 console 立即出现该条——旧 fiber 被拆、新 bundle 重新执行 `apply`。探针用完已还原，不入库。
 - 附带读数：同一次重建里改 `sidebar.footer.action` 的 `label`，页面上该按钮的可访问名没有跟着变。宿主按钮文案的渲染路径不读注册 label 或做了 memo，与本通道无关，未据此下结论。
 
 外部清单回归：`tests/client-build.test.js` 的 fixture 直接 import react / react-dom / ui-primitives，断言三者都以 `require(...)` 留在产物外；真实入口用例也断言三者。清单漏项时 esbuild 解析失败或内联会直接变红。

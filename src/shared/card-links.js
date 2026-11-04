@@ -14,7 +14,7 @@
  * `https:/example.com` 与内嵌换行的写法都会被存成规范形式，不会原样进存储。
  * 校验与归一化是同一个函数，避免「判定的形态」与「落盘的形态」各是一套规则。
  *
- * @module dsh-leader-kit/shared/card-links
+ * @module dsh-leader-agent/shared/card-links
  */
 
 /**

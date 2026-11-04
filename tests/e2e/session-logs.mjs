@@ -5,7 +5,7 @@
  * 但层级与格式版本都属于宿主内部实现：这里递归找文件、两种后缀都认，写死路径会
  * 随版本漂移，而失败时看不出是编码变了还是日志没写。
  *
- * @module dsh-leader-kit/tests/e2e/session-logs
+ * @module dsh-leader-agent/tests/e2e/session-logs
  */
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'

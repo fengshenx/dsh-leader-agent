@@ -1,5 +1,5 @@
 ---
-name: init-leader-kit
+name: init-leader-agent
 description: 把项目上下文固化到三份文件：工程约定写进 AGENTS.md，leader 工作方法写进 LEADER.md，执行者角色写进 SLOTS.md。当用户要求「初始化项目」「设定工程约定」「新项目上手」「写 LEADER.md / SLOTS.md」时使用；空目录也能初始化。
 whenToUse: 项目还没有 LEADER.md / SLOTS.md，或需要把约定与角色手册固化到项目上下文，而不是每次会话口头交代时。
 ---
@@ -27,7 +27,7 @@ whenToUse: 项目还没有 LEADER.md / SLOTS.md，或需要把约定与角色手
 1. 读 `references/conventions.md` 得到约定正文。
 2. 读目标项目的 `AGENTS.md`（不存在就视为空）。
 3. 把约定正文并入受管区块，保留文件里的其它内容：
-   - 区块以 `<!-- dsh-leader-kit:conventions:start -->` 开头、`<!-- dsh-leader-kit:conventions:end -->` 结尾。
+   - 区块以 `<!-- dsh-leader-agent:conventions:start -->` 开头、`<!-- dsh-leader-agent:conventions:end -->` 结尾。
    - 已有同区块就整体替换该区块；没有就追加到文件末尾；空文件直接写入区块。
 
 dsh 读取 `AGENTS.md` 作为系统提示段落，写入后立即对模型生效。
@@ -42,7 +42,7 @@ dsh 读取 `AGENTS.md` 作为系统提示段落，写入后立即对模型生效
    - 有哪些不能破的规则（分支与工作区、构建与发布、依赖与兼容范围）？
 4. 写到项目根目录的 `LEADER.md`。已存在就先读再改，保留用户已经写好的部分。
 
-`LEADER.md` 由 dsh-leader-kit 每轮 turn 读一次并注入项目的 leader 会话，改了下一轮就生效。
+`LEADER.md` 由 dsh-leader-agent 每轮 turn 读一次并注入项目的 leader 会话，改了下一轮就生效。
 
 ## 四、写 SLOTS.md
 

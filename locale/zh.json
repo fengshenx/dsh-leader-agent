@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "队长工具包",
+    "title": "队长 Agent",
     "description": "DeepSeek Harness 的队长/执行者编排：协议层 skill、项目初始化与交付看板。"
   }
 }

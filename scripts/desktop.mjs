@@ -15,9 +15,9 @@
  *   `DSH_HOME` 显式指定时两条都不走，就写那一份根。
  *
  * 脚本做的事（两套根都一样）：
- * - 往 desktop profile 的 `package.json` 里写 `dsh-leader-kit: link:<当前目录>` 并把
+ * - 往 desktop profile 的 `package.json` 里写 `dsh-leader-agent: link:<当前目录>` 并把
  *   包名追加进 `dsh.profile.bundles`（主 checkout 里已装别的来源时拒绝，不覆盖人的安装）；
- * - `node_modules/dsh-leader-kit` 链到当前目录（junction，Windows 上不需要管理员）；
+ * - `node_modules/dsh-leader-agent` 链到当前目录（junction，Windows 上不需要管理员）；
  * - 重建客户端产物 `lib/client.js`（不入库，漏构建时实例照常起来、右栏却没有看板）；
  * - 启动桌面应用（macOS 用 `open --env -a`，Windows 直接起 exe 并把 `DSH_HOME` 放进
  *   子进程环境；`DSH_DESKTOP_APP` 可换应用名、`.app`／exe 路径或安装目录）。
@@ -44,7 +44,7 @@ import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
 import { inheritCredentialRefs, prepareProfileDir } from './dev-instance.mjs'
-import { CREDENTIALS_FILE, LEADER_KIT_PACKAGE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
+import { CREDENTIALS_FILE, LEADER_AGENT_PACKAGE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
 import {
   DESKTOP_APP_NAME, DESKTOP_PROFILE, desktopPathsOf, derivedDesktopHome, expandHomePath,
   installedSpecOf, looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable,
@@ -465,7 +465,7 @@ function manualLaunchHint(target, dshHome) {
 }
 
 /**
- * 让 `node_modules/dsh-leader-kit` 指向当前工作树。
+ * 让 `node_modules/dsh-leader-agent` 指向当前工作树。
  *
  * 只建不覆盖：已指向同一目录时不动；指向别的目录或已被桌面 App 的插件管理装成
  * 真目录时拒绝——两种都是别人的安装，由人决定要不要换。
@@ -649,7 +649,7 @@ async function main() {
       return { changed: written, linkState: state }
     })
     console.log('')
-    console.log('== 已从 desktop profile 摘除 dsh-leader-kit ==')
+    console.log('== 已从 desktop profile 摘除 dsh-leader-agent ==')
     console.log(`  manifest  ${changed ? '已更新' : '本来就没有'}`)
     console.log(`  链接      ${linkState === 'ours' ? '已删除' : linkState === 'foreign' ? '是实体目录（不属于本脚本），未动' : '本来就没有'}`)
     console.log(`  profile   ${paths.profileDir}`)
@@ -713,8 +713,8 @@ async function main() {
 
   console.log('')
   console.log(homePlan.mode === 'derived'
-    ? '== dsh-leader-kit 挂进桌面版（分支隔离）=='
-    : '== dsh-leader-kit 挂进桌面版 ==')
+    ? '== dsh-leader-agent 挂进桌面版（分支隔离）=='
+    : '== dsh-leader-agent 挂进桌面版 ==')
   if (homePlan.mode === 'derived') {
     console.log(`  日常 profile  ${dailyPaths.profileDir}`)
     console.log(`                挂着 ${homePlan.owner ?? '另一份安装'}，本次不动它`)

@@ -27,14 +27,14 @@
  * 工作区行本身照常显示：目录是用户在官方树里看得见、能用的入口，藏掉会让用户
  * 手动开的会话无处可寻。
  *
- * @module dsh-leader-kit/client/workspace-exclusion
+ * @module dsh-leader-agent/client/workspace-exclusion
  */
 
 /** 命中排除集的会话行所用的类名。 */
-const HIDDEN_CLASS = 'dsh-leader-kit-excluded-session'
+const HIDDEN_CLASS = 'dsh-leader-agent-excluded-session'
 
 /** 剩余可看行数为 0 时要收起的展开按钮所用的类名。 */
-const HIDDEN_BUTTON_CLASS = 'dsh-leader-kit-excluded-expand'
+const HIDDEN_BUTTON_CLASS = 'dsh-leader-agent-excluded-expand'
 
 /**
  * 宿主原文案里的数字记在按钮上，用来区分「宿主刚重写的」与「上次改写后留下的」。
@@ -54,19 +54,19 @@ const WRITTEN_ATTR = 'expandWritten'
  * 还留着，看起来像一个空分组。判据只看 DOM（组内已渲染的会话行与展开按钮），
  * 不推断宿主的数据层规则。
  */
-const EMPTY_UNGROUPED_CLASS = 'dsh-leader-kit-empty-ungrouped'
+const EMPTY_UNGROUPED_CLASS = 'dsh-leader-agent-empty-ungrouped'
 
 /** 隐藏规则的样式表 id。 */
-const STYLE_ID = 'dsh-leader-kit-workspace-exclusion'
+const STYLE_ID = 'dsh-leader-agent-workspace-exclusion'
 
 const STYLE_TEXT = `
-.dsh-leader-kit-excluded-session {
+.dsh-leader-agent-excluded-session {
   display: none !important;
 }
-.dsh-leader-kit-excluded-expand {
+.dsh-leader-agent-excluded-expand {
   display: none !important;
 }
-.dsh-leader-kit-empty-ungrouped {
+.dsh-leader-agent-empty-ungrouped {
   display: none !important;
 }
 `

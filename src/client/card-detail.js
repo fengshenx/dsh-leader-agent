@@ -9,7 +9,7 @@
  * `headless` 模式自带头部——标题就是卡片标题本身，「卡片详情」这种无信息标题
  * 不放。
  *
- * @module dsh-leader-kit/client/card-detail
+ * @module dsh-leader-agent/client/card-detail
  */
 
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
@@ -85,16 +85,16 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
     restoreFocus,
     children: createElement(
       'div',
-      { className: 'dsh-leader-kit-card-detail' },
+      { className: 'dsh-leader-agent-card-detail' },
       createElement(
         'div',
-        { className: 'dsh-leader-kit-card-detail-header' },
-        createElement('h2', { className: 'dsh-leader-kit-card-detail-title' }, card?.title ?? ''),
+        { className: 'dsh-leader-agent-card-detail-header' },
+        createElement('h2', { className: 'dsh-leader-agent-card-detail-title' }, card?.title ?? ''),
         createElement(
           'button',
           {
             type: 'button',
-            className: 'dsh-leader-kit-card-detail-close',
+            className: 'dsh-leader-agent-card-detail-close',
             'aria-label': '关闭',
             onClick: onClose,
           },
@@ -103,50 +103,50 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
       ),
       createElement(
         'div',
-        { className: 'dsh-leader-kit-card-detail-meta' },
+        { className: 'dsh-leader-agent-card-detail-meta' },
         createElement(
           'span',
-          { className: 'dsh-leader-kit-card-detail-number' },
+          { className: 'dsh-leader-agent-card-detail-number' },
           `#${card?.number ?? '?'}`,
         ),
         createElement(
           'span',
           {
-            className: `dsh-leader-kit-card-detail-status${done ? ' dsh-leader-kit-card-detail-status-done' : ''}`,
+            className: `dsh-leader-agent-card-detail-status${done ? ' dsh-leader-agent-card-detail-status-done' : ''}`,
           },
           statusLabel(card?.status),
         ),
       ),
       createElement(
         'div',
-        { className: 'dsh-leader-kit-card-detail-body' },
+        { className: 'dsh-leader-agent-card-detail-body' },
         sections.spec !== null
           ? createElement(
               'section',
-              { className: 'dsh-leader-kit-card-detail-section' },
-              createElement('div', { className: 'dsh-leader-kit-card-detail-section-title' }, '说明'),
+              { className: 'dsh-leader-agent-card-detail-section' },
+              createElement('div', { className: 'dsh-leader-agent-card-detail-section-title' }, '说明'),
               createElement(
                 'div',
-                { className: 'dsh-leader-kit-card-detail-text' },
+                { className: 'dsh-leader-agent-card-detail-text' },
                 createElement(Markdown, { source: sections.spec }),
               ),
             )
-          : createElement('div', { className: 'dsh-leader-kit-card-detail-muted' }, DETAIL_SPEC_EMPTY),
+          : createElement('div', { className: 'dsh-leader-agent-card-detail-muted' }, DETAIL_SPEC_EMPTY),
         sections.links.length > 0 || editable
           ? createElement(
               'section',
-              { className: 'dsh-leader-kit-card-detail-section' },
+              { className: 'dsh-leader-agent-card-detail-section' },
               createElement(
                 'div',
-                { className: 'dsh-leader-kit-card-detail-section-head' },
-                createElement('div', { className: 'dsh-leader-kit-card-detail-section-title' }, '链接'),
+                { className: 'dsh-leader-agent-card-detail-section-head' },
+                createElement('div', { className: 'dsh-leader-agent-card-detail-section-title' }, '链接'),
                 editable && !editing
                   ? createElement(
                       'button',
                       {
                         ref: editButton,
                         type: 'button',
-                        className: 'dsh-leader-kit-card-detail-section-action',
+                        className: 'dsh-leader-agent-card-detail-section-action',
                         onClick: () => { setEditing(true) },
                       },
                       '编辑链接',
@@ -161,21 +161,21 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
                   })
                 : createElement(
                     'div',
-                    { className: 'dsh-leader-kit-card-detail-links' },
+                    { className: 'dsh-leader-agent-card-detail-links' },
                     sections.links.map((link, index) => {
                       const row = createElement(
                         'span',
-                        { className: 'dsh-leader-kit-board-link-chip-body' },
+                        { className: 'dsh-leader-agent-board-link-chip-body' },
                         productIcon('link-outline', { size: 12 }),
                         createElement(
                           'span',
-                          { className: 'dsh-leader-kit-board-link-chip-label' },
+                          { className: 'dsh-leader-agent-board-link-chip-label' },
                           link.label ?? '',
                         ),
                         link.purpose
                           ? createElement(
                               'span',
-                              { className: 'dsh-leader-kit-card-detail-link-purpose' },
+                              { className: 'dsh-leader-agent-card-detail-link-purpose' },
                               link.purpose,
                             )
                           : null,
@@ -185,7 +185,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
                             'a',
                             {
                               key: linkRowKey(link, index),
-                              className: 'dsh-leader-kit-card-detail-link',
+                              className: 'dsh-leader-agent-card-detail-link',
                               href: link.url,
                               target: '_blank',
                               rel: 'noreferrer',
@@ -194,7 +194,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
                           )
                         : createElement(
                             'div',
-                            { key: linkRowKey(link, index), className: 'dsh-leader-kit-card-detail-link' },
+                            { key: linkRowKey(link, index), className: 'dsh-leader-agent-card-detail-link' },
                             row,
                           )
                     }),

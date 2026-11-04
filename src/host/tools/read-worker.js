@@ -5,7 +5,7 @@
  * 工具、哪一步失败。这条路直接读宿主的会话日志（`sessionQuery.readSession()`），
  * 不唤醒 worker、不产生模型调用。降级方案是 `message_worker` 追问，那会多开一轮。
  *
- * @module dsh-leader-kit/host/tools/read-worker
+ * @module dsh-leader-agent/host/tools/read-worker
  */
 
 /** 默认回看的回合数。 */

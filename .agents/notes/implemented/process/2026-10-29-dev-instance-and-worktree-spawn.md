@@ -13,7 +13,7 @@
 
 **数据根落在工作树内**：`.dev/home`（gitignore 忽略）。会话、项目、卡片都在里面，删掉即重置，worktree 删掉时一起消失。
 
-**profile 从源 HOME 派生，不重新安装**。`package.json` 照抄源 profile 的依赖与 `dsh.profile.bundles`（复现日常组合，否则「本地跑得起来、装进 profile 就坏」这类问题测不出来），只把 `dsh-leader-kit` 的依赖换成 `link:<工作树>`，`bundles` 缺它就补上（源里没装过本插件时也能起）。
+**profile 从源 HOME 派生，不重新安装**。`package.json` 照抄源 profile 的依赖与 `dsh.profile.bundles`（复现日常组合，否则「本地跑得起来、装进 profile 就坏」这类问题测不出来），只把 `dsh-leader-agent` 的依赖换成 `link:<工作树>`，`bundles` 缺它就补上（源里没装过本插件时也能起）。
 
 **`node_modules` 逐条符号链接到源 profile，只有插件本体指工作树**。依赖仍由源里那一份承担：源里升级 dsh 或增删插件，开发实例自动跟随。`dsh` 启动不校验 `package.json` 的 `link:` 路径与磁盘链接是否一致，所以这样造出来的 profile 能正常加载——实测过（见验证）。
 
@@ -33,7 +33,7 @@
 
 - `npm run check`：430 例全绿（`tests/dev-plan.test.js` 16 例、`tests/worktree-common.test.js` 12 例）。`npm run build:client` 通过。
 - 双向验证：把 `planNodeModules` 的插件链接改成指向源 profile → 「node_modules 逐条链到源，只有插件本体指工作树」红；把 `assertSeparateHome` 的条件改成恒假 → 四条边界（同路径、`..` 绕路、符号链接、不存在路径）全红；还原后全绿。
-- 真机（`dsh 0.2.1-rc.2`，隔离实例）：`npm run dev` 一条命令起实例，页面项目区与输入框都在；数据根只有 `profiles/ sessions/ storages/`；`profiles/web/node_modules/dsh-leader-kit` 指向工作树，其余条目指向源 profile。
+- 真机（`dsh 0.2.1-rc.2`，隔离实例）：`npm run dev` 一条命令起实例，页面项目区与输入框都在；数据根只有 `profiles/ sessions/ storages/`；`profiles/web/node_modules/dsh-leader-agent` 指向工作树，其余条目指向源 profile。
 - 重复运行幂等：第二次 `npm run dev` 复用现有 profile，`DEV_PORT=5877` 生效。
 - **代码即生效**：临时把 `project-section.js` 的标题改成「项目·工作树」，`npm run dev` 后页面读到新文案，确认加载的是工作树当前代码而非某个装好的旧版本；改回后 `git diff` 无残留。
 - `worktree:prune` dry-run 在当前仓库实测：已合并的判为可删（走 PR 状态），当前所在的 dev-script 判为拒绝。

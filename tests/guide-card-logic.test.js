@@ -121,7 +121,7 @@ test('开场正文只发一句触发语，作答要求交给运行时上下文',
   // 确认前不写文件、空目录写骨架）放在 leader 上下文注入里，见
   // `renderInitializationHint`。
   for (const dict of [zh, en]) {
-    assert.match(dict['guide.intro.prompt'], /dsh-leader-kit/)
+    assert.match(dict['guide.intro.prompt'], /dsh-leader-agent/)
     assert.doesNotMatch(dict['guide.intro.prompt'], /LEADER\.md/)
     assert.ok(dict['guide.intro.prompt'].length < 80, '引导语应是一句话')
   }

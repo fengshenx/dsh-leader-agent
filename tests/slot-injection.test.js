@@ -59,7 +59,7 @@ test('组装上下文没有会话时正文为空串', () => {
 })
 
 test('绑定了槽位的会话渲染出角色正文', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-inject-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-inject-'))
   try {
     await writeFile(join(directory, SLOT_TEMPLATE_FILE), '## dev\n你是实现者。\n', 'utf8')
     const { ctx, holder } = createFakeCtx()
@@ -76,8 +76,8 @@ test('绑定了槽位的会话渲染出角色正文', async () => {
 })
 
 test('项目目录优先于会话头的目录', async () => {
-  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-project-'))
-  const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-session-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const sessionDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-session-'))
   try {
     await writeFile(join(projectDirectory, SLOT_TEMPLATE_FILE), '## dev\n来自项目目录。\n', 'utf8')
     await writeFile(join(sessionDirectory, SLOT_TEMPLATE_FILE), '## dev\n来自会话目录。\n', 'utf8')
@@ -98,7 +98,7 @@ test('项目目录优先于会话头的目录', async () => {
 })
 
 test('项目目录不可得时回落会话头的目录', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-inject-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-inject-'))
   try {
     await writeFile(join(directory, SLOT_TEMPLATE_FILE), '## dev\n来自会话头。\n', 'utf8')
     const { ctx, holder } = createFakeCtx()

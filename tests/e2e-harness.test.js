@@ -46,7 +46,7 @@ test('超时之后才拒绝的关闭不会变成未处理的 rejection', async (
 })
 
 test('清理失败合并成一条，且后续步骤与删根都照跑', async () => {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-kit-e2e-cleanup-'))
+  const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-cleanup-'))
   const order = []
   const resources = {
     browser: { close: async () => order.push('browser') },

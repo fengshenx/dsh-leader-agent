@@ -40,7 +40,7 @@
 ## 验证
 
 - `npm run check`：639 tests / 639 pass / 0 fail（rebase 到 116ecad 后读数）。构成：base 87d2963 有 610 条，本 PR 删 7 条与藏行相关的用例（`workspace-exclusion.test.js` 6 条：2 条工作区行藏行 + 4 条组内行连带隐藏；`project-panel.test.js` 1 条藏行集），新增 2 条（「工作区行不被整行隐藏」+ 覆盖真实标记路径的「真实标记路径下工作区行只带压灰类」），净 -5；rebase 把 main 侧新增的 34 条（拖拽排序、`npm start`、agent-team 护栏等）一起带进来。
-- 双向验证（单测）：给 `markWorkspaceRow` 临时加回 `row.classList.toggle('dsh-leader-kit-hidden-workspace', true)` → 2 条变红（11 pass / 2 fail）；给真实标记路径 `markRows` 加回同一句 → 「真实标记路径…」变红（12 pass / 1 fail）；还原 → 13 条全绿。
+- 双向验证（单测）：给 `markWorkspaceRow` 临时加回 `row.classList.toggle('dsh-leader-agent-hidden-workspace', true)` → 2 条变红（11 pass / 2 fail）；给真实标记路径 `markRows` 加回同一句 → 「真实标记路径…」变红（12 pass / 1 fail）；还原 → 13 条全绿。
 - `npm run build:client` 重建产物，`grep hidden-workspace lib/client.js` 零命中。
 - 真机（隔离 dev 实例，`.dev/home` 里已有一个带 `workspaceId` 的项目；无头 Chrome 走 CDP 读 `[data-row-key^="workspace:"]` 的 `getComputedStyle().display`）：
 
@@ -51,5 +51,5 @@
   | 被排除的项目会话行 | `display: none` | `display: none` |
   | 项目区块 | 正常渲染 | 正常渲染 |
 
-  修复前读数用「临时把隐藏类与样式加回 → 重建 → reload」取得，还原后重读回到 `flex`；页面 `Runtime.exceptionThrown` / console error 计数 0。承载被排除会话的那一行仍带 `dsh-leader-kit-quiet-workspace`，激活态压灰按原设计保留。
+  修复前读数用「临时把隐藏类与样式加回 → 重建 → reload」取得，还原后重读回到 `flex`；页面 `Runtime.exceptionThrown` / console error 计数 0。承载被排除会话的那一行仍带 `dsh-leader-agent-quiet-workspace`，激活态压灰按原设计保留。
 

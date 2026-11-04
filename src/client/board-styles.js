@@ -12,24 +12,24 @@
  * 里的 `ui-primitives`，见 `markdown.js`），它们的 CSS module 不在这张表里，也没有
  * Tailwind 可用，因此样式只能自注入（沿用 `modal-shell.js` 的做法）。
  *
- * @module dsh-leader-kit/client/board-styles
+ * @module dsh-leader-agent/client/board-styles
  */
 
 /** 样式表 id，同一页面只注入一次。 */
-const STYLE_ID = 'dsh-leader-kit-board'
+const STYLE_ID = 'dsh-leader-agent-board'
 
 /**
- * 样式表内容。类名统一 `dsh-leader-kit-board-*` 前缀，避免与宿主样式撞名。
+ * 样式表内容。类名统一 `dsh-leader-agent-board-*` 前缀，避免与宿主样式撞名。
  */
 const STYLE_TEXT = `
-.dsh-leader-kit-board {
+.dsh-leader-agent-board {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
 }
 
-.dsh-leader-kit-board-list {
+.dsh-leader-agent-board-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -38,7 +38,7 @@ const STYLE_TEXT = `
      l2，本层再绑一次只是同值重复；写 body 的基础档反而会在浮起面上读成脏印 */
 }
 
-.dsh-leader-kit-board-group {
+.dsh-leader-agent-board-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -49,7 +49,7 @@ const STYLE_TEXT = `
    重绑 stroke 色而不叠 border——中性 border 配 elevation 阴影被宿主
    ui-theme 的 elevation spec 拒绝。静态取 l3 而不是成员卡的 l2：看板卡在
    浅色 sidebar 上独自立着，没有弹出面板的暗底衬着，l2 在 1x 屏读不出边界。 */
-.dsh-leader-kit-board-card {
+.dsh-leader-agent-board-card {
   display: block;
   box-sizing: border-box;
   width: 100%;
@@ -69,27 +69,27 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-board-card:hover {
+  .dsh-leader-agent-board-card:hover {
     --dsw-elevation-stroke-color: var(--dsw-alias-border-l4);
     box-shadow: var(--dsw-elevation-panel);
   }
 }
 
 /* 卡面在贴边滚动容器里，外扩焦点环会被裁掉，用内嵌环 */
-.dsh-leader-kit-board-card:focus-visible {
+.dsh-leader-agent-board-card:focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
-.dsh-leader-kit-board-card-title-row {
+.dsh-leader-agent-board-card-title-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
 /* 信号灯槽：固定 14px，让各卡的标题左缘对齐 */
-.dsh-leader-kit-board-signal-slot {
+.dsh-leader-agent-board-signal-slot {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -101,7 +101,7 @@ const STYLE_TEXT = `
 /* 图形点的弱化沿用 alpha：这里没有「比 tertiary 更浅」的 token 档，而点要的是
    面积上的退让而不是色相的语义。文字类弱化一律换档不叠 alpha（编号/时间用
    label-caption、折叠开关用 label-secondary），两条界线互不越界 */
-.dsh-leader-kit-board-signal {
+.dsh-leader-agent-board-signal {
   display: inline-block;
   box-sizing: border-box;
   width: 8px;
@@ -113,52 +113,52 @@ const STYLE_TEXT = `
 }
 
 /* 等你输入与未读同色不同动效：都在等你动作，但「有人在等」与「有结果没看」不同 */
-.dsh-leader-kit-board-signal-waiting {
+.dsh-leader-agent-board-signal-waiting {
   background: var(--dsw-static-blue-500);
   opacity: 1;
-  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-leader-kit-board-signal-unread {
+.dsh-leader-agent-board-signal-unread {
   background: var(--dsw-static-blue-500);
   opacity: 1;
 }
 
-.dsh-leader-kit-board-signal-running {
+.dsh-leader-agent-board-signal-running {
   background: var(--dsw-alias-state-warn-primary);
   opacity: 1;
-  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-leader-kit-board-signal-attention {
+.dsh-leader-agent-board-signal-attention {
   background: var(--dsw-alias-state-error-primary);
   opacity: 1;
 }
 
-.dsh-leader-kit-board-signal-idle {
+.dsh-leader-agent-board-signal-idle {
   background: var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
 /* 未派工与状态未知共用虚线圈：两者都不谎称空闲，形状上与实心档区分 */
-.dsh-leader-kit-board-signal-unknown,
-.dsh-leader-kit-board-signal-none {
+.dsh-leader-agent-board-signal-unknown,
+.dsh-leader-agent-board-signal-none {
   background: transparent;
   border: 1px dashed var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
-@keyframes dsh-leader-kit-board-pulse {
+@keyframes dsh-leader-agent-board-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-leader-kit-board-signal-running,
-  .dsh-leader-kit-board-signal-waiting { animation: none; }
+  .dsh-leader-agent-board-signal-running,
+  .dsh-leader-agent-board-signal-waiting { animation: none; }
 }
 
-.dsh-leader-kit-board-card-number {
+.dsh-leader-agent-board-card-number {
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -167,7 +167,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-caption);
 }
 
-.dsh-leader-kit-board-card-title {
+.dsh-leader-agent-board-card-title {
   flex: 1;
   min-width: 0;
   font-size: 13px;
@@ -181,7 +181,7 @@ const STYLE_TEXT = `
   overflow-wrap: anywhere;
 }
 
-.dsh-leader-kit-board-card-stalled {
+.dsh-leader-agent-board-card-stalled {
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -192,7 +192,7 @@ const STYLE_TEXT = `
 }
 
 /* 链接行与元信息行缩进 22px，对齐标题文字起点 */
-.dsh-leader-kit-board-card-links {
+.dsh-leader-agent-board-card-links {
   position: relative;
   display: flex;
   align-items: center;
@@ -206,7 +206,7 @@ const STYLE_TEXT = `
 /* 测量层：全量 chip 与「+N」的不可见副本（visibility: hidden 仍参与布局），
    只用来量真实宽度，不承载交互。标签必须与真实 chip 同构（a / button）——
    UA 默认样式只要有一条没被覆盖，量出的宽度就和渲染不一致 */
-.dsh-leader-kit-board-links-measure {
+.dsh-leader-agent-board-links-measure {
   position: absolute;
   left: 0;
   top: 0;
@@ -224,7 +224,7 @@ const STYLE_TEXT = `
    写法（110 内容 + 12 横向 padding + 1 双边边框 = 总宽 124）等价——换材质不该
    顺带把长标签截短。测量层与真实 chip 同 class，两边量到的都是这个 border-box
    宽度，排布逻辑不受影响 */
-.dsh-leader-kit-board-link-chip {
+.dsh-leader-agent-board-link-chip {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -250,7 +250,7 @@ const STYLE_TEXT = `
    边框上、与发丝线糊成一条；再往上整条落到 padding box 外，被两层 overflow
    裁掉——两处独立读数分别从 4px 与 5px 起消失，差异来自 0.5px 边框在 Chrome
    被取整成 1px（chip 实际 18px 高）。1px 留出可读的间距 */
-.dsh-leader-kit-board-link-chip:focus-visible {
+.dsh-leader-agent-board-link-chip:focus-visible {
   text-decoration: underline dotted;
   text-underline-offset: 1px;
   outline: var(--dsw-focus-ring-width, 2px) solid
@@ -259,7 +259,7 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-board-link-chip:hover {
+  .dsh-leader-agent-board-link-chip:hover {
     border-color: var(--dsw-alias-border-l4);
     background: var(--dsw-alias-interactive-bg-hover);
     text-decoration: underline dotted;
@@ -267,7 +267,7 @@ const STYLE_TEXT = `
   }
 }
 
-.dsh-leader-kit-board-link-chip-body {
+.dsh-leader-agent-board-link-chip-body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -275,20 +275,20 @@ const STYLE_TEXT = `
   overflow: hidden;
 }
 
-.dsh-leader-kit-board-link-chip-label {
+.dsh-leader-agent-board-link-chip-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.dsh-leader-kit-board-link-overflow {
+.dsh-leader-agent-board-link-overflow {
   font-family: var(--ds-font-family-code);
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-board-card-meta {
+.dsh-leader-agent-board-card-meta {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -296,7 +296,7 @@ const STYLE_TEXT = `
   padding-left: 22px;
 }
 
-.dsh-leader-kit-board-slot-chip {
+.dsh-leader-agent-board-slot-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -310,12 +310,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-board-slot-chip:hover {
+  .dsh-leader-agent-board-slot-chip:hover {
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-leader-kit-board-slot-dot {
+.dsh-leader-agent-board-slot-dot {
   display: inline-block;
   box-sizing: border-box;
   width: 6px;
@@ -326,48 +326,48 @@ const STYLE_TEXT = `
   opacity: 0.4;
 }
 
-.dsh-leader-kit-board-slot-dot-waiting {
+.dsh-leader-agent-board-slot-dot-waiting {
   background: var(--dsw-static-blue-500);
   opacity: 1;
-  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-leader-kit-board-slot-dot-unread {
+.dsh-leader-agent-board-slot-dot-unread {
   background: var(--dsw-static-blue-500);
   opacity: 1;
 }
 
-.dsh-leader-kit-board-slot-dot-running {
+.dsh-leader-agent-board-slot-dot-running {
   background: var(--dsw-alias-state-warn-primary);
   opacity: 1;
-  animation: dsh-leader-kit-board-pulse 1.6s ease-in-out infinite;
+  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
 }
 
-.dsh-leader-kit-board-slot-dot-attention {
+.dsh-leader-agent-board-slot-dot-attention {
   background: var(--dsw-alias-state-error-primary);
   opacity: 1;
 }
 
-.dsh-leader-kit-board-slot-dot-idle {
+.dsh-leader-agent-board-slot-dot-idle {
   background: var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
-.dsh-leader-kit-board-slot-dot-unknown,
-.dsh-leader-kit-board-slot-dot-empty {
+.dsh-leader-agent-board-slot-dot-unknown,
+.dsh-leader-agent-board-slot-dot-empty {
   background: transparent;
   border: 1px dashed var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-leader-kit-board-slot-dot-running,
-  .dsh-leader-kit-board-slot-dot-waiting { animation: none; }
+  .dsh-leader-agent-board-slot-dot-running,
+  .dsh-leader-agent-board-slot-dot-waiting { animation: none; }
 }
 
 /* done 卡：单行轻量变体。成品不需要抢注意力，就没有卡面材质——
    透明的行，靠 hover 与 active 卡的卡面区分 */
-.dsh-leader-kit-board-card-done {
+.dsh-leader-agent-board-card-done {
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -385,24 +385,24 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-board-card-done:hover {
+  .dsh-leader-agent-board-card-done:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-board-card-done:focus-visible {
+.dsh-leader-agent-board-card-done:focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
-.dsh-leader-kit-board-done-check {
+.dsh-leader-agent-board-done-check {
   flex: none;
   display: inline-flex;
   color: var(--dsw-alias-state-success-primary);
 }
 
-.dsh-leader-kit-board-done-title {
+.dsh-leader-agent-board-done-title {
   flex: 1;
   min-width: 0;
   font-size: 13px;
@@ -413,7 +413,7 @@ const STYLE_TEXT = `
   white-space: nowrap;
 }
 
-.dsh-leader-kit-board-done-time {
+.dsh-leader-agent-board-done-time {
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
@@ -423,13 +423,13 @@ const STYLE_TEXT = `
 }
 
 /* done 折叠区 */
-.dsh-leader-kit-board-done-section {
+.dsh-leader-agent-board-done-section {
   margin-top: 16px;
   padding-top: 6px;
   border-top: 0.5px solid var(--dsw-alias-border-l3);
 }
 
-.dsh-leader-kit-board-done-toggle {
+.dsh-leader-agent-board-done-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -447,23 +447,23 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-board-done-toggle:hover {
+  .dsh-leader-agent-board-done-toggle:hover {
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-leader-kit-board-done-chevron {
+.dsh-leader-agent-board-done-chevron {
   flex: none;
   display: inline-flex;
   transition: transform 200ms var(--ds-ease-in-out);
 }
 
-.dsh-leader-kit-board-done-chevron-open {
+.dsh-leader-agent-board-done-chevron-open {
   transform: rotate(90deg);
 }
 
-.dsh-leader-kit-board-done-count {
+.dsh-leader-agent-board-done-count {
   flex: none;
   padding: 1px 6px;
   border-radius: 999px;
@@ -476,23 +476,23 @@ const STYLE_TEXT = `
 }
 
 /* 骨架与空态 */
-.dsh-leader-kit-board-skeleton {
+.dsh-leader-agent-board-skeleton {
   height: 64px;
   border-radius: var(--dsw-radius-lg);
   background: var(--dsw-alias-bg-skeleton);
-  animation: dsh-leader-kit-board-fade 1.4s ease-in-out infinite;
+  animation: dsh-leader-agent-board-fade 1.4s ease-in-out infinite;
 }
 
-@keyframes dsh-leader-kit-board-fade {
+@keyframes dsh-leader-agent-board-fade {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-leader-kit-board-skeleton { animation: none; }
+  .dsh-leader-agent-board-skeleton { animation: none; }
 }
 
-.dsh-leader-kit-board-empty {
+.dsh-leader-agent-board-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -501,7 +501,7 @@ const STYLE_TEXT = `
   text-align: center;
 }
 
-.dsh-leader-kit-board-empty-icon {
+.dsh-leader-agent-board-empty-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -512,19 +512,19 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-board-empty-icon-success {
+.dsh-leader-agent-board-empty-icon-success {
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
   color: var(--dsw-alias-state-success-primary);
 }
 
-.dsh-leader-kit-board-empty-title {
+.dsh-leader-agent-board-empty-title {
   margin-top: 12px;
   font-size: 14px;
   line-height: 20px;
   color: var(--dsw-alias-label-secondary);
 }
 
-.dsh-leader-kit-board-empty-hint {
+.dsh-leader-agent-board-empty-hint {
   margin-top: 4px;
   font-size: 12px;
   line-height: 18px;
@@ -532,14 +532,14 @@ const STYLE_TEXT = `
 }
 
 /* 卡片详情浮层内容 */
-.dsh-leader-kit-card-detail {
+.dsh-leader-agent-card-detail {
   display: flex;
   flex-direction: column;
   min-height: 0;
   max-height: 80vh;
 }
 
-.dsh-leader-kit-card-detail-header {
+.dsh-leader-agent-card-detail-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -547,7 +547,7 @@ const STYLE_TEXT = `
   padding: 24px 24px 8px;
 }
 
-.dsh-leader-kit-card-detail-title {
+.dsh-leader-agent-card-detail-title {
   flex: 1;
   min-width: 0;
   margin: 0;
@@ -558,7 +558,7 @@ const STYLE_TEXT = `
   overflow-wrap: anywhere;
 }
 
-.dsh-leader-kit-card-detail-close {
+.dsh-leader-agent-card-detail-close {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -574,19 +574,19 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-card-detail-close:hover {
+  .dsh-leader-agent-card-detail-close:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-card-detail-meta {
+.dsh-leader-agent-card-detail-meta {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 0 24px 12px;
 }
 
-.dsh-leader-kit-card-detail-number {
+.dsh-leader-agent-card-detail-number {
   font-family: var(--ds-font-family-code);
   font-size: 11px;
   line-height: 16px;
@@ -594,7 +594,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-caption);
 }
 
-.dsh-leader-kit-card-detail-status {
+.dsh-leader-agent-card-detail-status {
   padding: 2px 8px;
   border-radius: 999px;
   corner-shape: round;
@@ -604,41 +604,41 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-card-detail-status-done {
+.dsh-leader-agent-card-detail-status-done {
   background: color-mix(in srgb, var(--dsw-alias-state-success-primary) 10%, transparent);
   color: var(--dsw-alias-state-success-primary);
 }
 
-.dsh-leader-kit-card-detail-body {
+.dsh-leader-agent-card-detail-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 0 24px 24px;
 }
 
-.dsh-leader-kit-card-detail-section {
+.dsh-leader-agent-card-detail-section {
   margin-top: 16px;
 }
 
-.dsh-leader-kit-card-detail-section:first-child {
+.dsh-leader-agent-card-detail-section:first-child {
   margin-top: 0;
 }
 
-.dsh-leader-kit-card-detail-section-head {
+.dsh-leader-agent-card-detail-section-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.dsh-leader-kit-card-detail-section-title {
+.dsh-leader-agent-card-detail-section-title {
   font-size: 11px;
   line-height: 16px;
   font-weight: 500;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-card-detail-section-action {
+.dsh-leader-agent-card-detail-section-action {
   padding: 2px 6px;
   border: 0;
   border-radius: var(--dsw-radius-sm);
@@ -650,19 +650,19 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-card-detail-section-action:hover {
+  .dsh-leader-agent-card-detail-section-action:hover {
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-leader-kit-card-detail-section-action:focus-visible {
+.dsh-leader-agent-card-detail-section-action:focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: 1px;
 }
 
-.dsh-leader-kit-card-detail-text {
+.dsh-leader-agent-card-detail-text {
   margin-top: 6px;
   font-size: 13px;
   line-height: 20px;
@@ -676,28 +676,28 @@ const STYLE_TEXT = `
    这里用宿主暴露的 data-markdown-variant 钩子把容器内的正文与链接压回原色：
    容器类 + 属性选择器是 (0,2,0)，高于 .compact 的 (0,1,0)；链接再叠标签选择器到
    (0,2,1)，高于 .compact a 的 (0,1,1)。特异性严格更高，不依赖样式表注入顺序。 */
-.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] {
+.dsh-leader-agent-card-detail-text [data-markdown-variant='compact'] {
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-leader-kit-card-detail-text [data-markdown-variant='compact'] a {
+.dsh-leader-agent-card-detail-text [data-markdown-variant='compact'] a {
   color: var(--dsw-alias-link);
 }
 
-.dsh-leader-kit-card-detail-muted {
+.dsh-leader-agent-card-detail-muted {
   margin-top: 6px;
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-card-detail-links {
+.dsh-leader-agent-card-detail-links {
   margin-top: 6px;
   display: flex;
   flex-direction: column;
 }
 
-.dsh-leader-kit-card-detail-link {
+.dsh-leader-agent-card-detail-link {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -711,23 +711,23 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-card-detail-link:hover {
+  .dsh-leader-agent-card-detail-link:hover {
     text-decoration: underline dotted;
     text-underline-offset: 3px;
   }
 }
 
 /* 键盘焦点与 hover 同一示能；不可跳转的链接渲染成 div，不在此列 */
-.dsh-leader-kit-card-detail-link:focus-visible {
+.dsh-leader-agent-card-detail-link:focus-visible {
   text-decoration: underline dotted;
   text-underline-offset: 3px;
 }
 
-.dsh-leader-kit-card-detail-link:last-child {
+.dsh-leader-agent-card-detail-link:last-child {
   border-bottom: 0;
 }
 
-.dsh-leader-kit-card-detail-link-purpose {
+.dsh-leader-agent-card-detail-link-purpose {
   min-width: 0;
   color: var(--dsw-alias-label-tertiary);
   overflow: hidden;
@@ -736,36 +736,36 @@ const STYLE_TEXT = `
 }
 
 /* 链接编辑态：每行一张小卡，标签窄、URL 占宽，用途与增删都在行内。 */
-.dsh-leader-kit-link-editor {
+.dsh-leader-agent-link-editor {
   margin-top: 6px;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.dsh-leader-kit-link-editor-empty {
+.dsh-leader-agent-link-editor-empty {
   margin: 0;
   font-size: 13px;
   line-height: 20px;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-link-editor-row {
+.dsh-leader-agent-link-editor-row {
   padding: 8px;
   border: 0.5px solid var(--dsw-alias-border-l3);
   border-radius: var(--dsw-radius-md);
   background: var(--dsw-alias-bg-layer-1);
 }
 
-.dsh-leader-kit-link-editor-main {
+.dsh-leader-agent-link-editor-main {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.dsh-leader-kit-link-editor-label,
-.dsh-leader-kit-link-editor-url,
-.dsh-leader-kit-link-editor-purpose {
+.dsh-leader-agent-link-editor-label,
+.dsh-leader-agent-link-editor-url,
+.dsh-leader-agent-link-editor-purpose {
   box-sizing: border-box;
   height: 28px;
   padding: 0 6px;
@@ -778,32 +778,32 @@ const STYLE_TEXT = `
   outline: none;
 }
 
-.dsh-leader-kit-link-editor-label {
+.dsh-leader-agent-link-editor-label {
   flex: none;
   width: 88px;
 }
 
-.dsh-leader-kit-link-editor-url {
+.dsh-leader-agent-link-editor-url {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.dsh-leader-kit-link-editor-purpose {
+.dsh-leader-agent-link-editor-purpose {
   width: 100%;
   height: 24px;
   margin-top: 6px;
   font-size: 12px;
 }
 
-.dsh-leader-kit-link-editor-label:focus-visible,
-.dsh-leader-kit-link-editor-url:focus-visible,
-.dsh-leader-kit-link-editor-purpose:focus-visible {
+.dsh-leader-agent-link-editor-label:focus-visible,
+.dsh-leader-agent-link-editor-url:focus-visible,
+.dsh-leader-agent-link-editor-purpose:focus-visible {
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -1px;
 }
 
-.dsh-leader-kit-link-editor-remove {
+.dsh-leader-agent-link-editor-remove {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -818,13 +818,13 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-link-editor-remove:hover {
+  .dsh-leader-agent-link-editor-remove:hover {
     background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-leader-kit-link-editor-add-purpose {
+.dsh-leader-agent-link-editor-add-purpose {
   margin-top: 4px;
   padding: 1px 4px;
   border: 0;
@@ -837,12 +837,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-link-editor-add-purpose:hover {
+  .dsh-leader-agent-link-editor-add-purpose:hover {
     color: var(--dsw-alias-label-primary);
   }
 }
 
-.dsh-leader-kit-link-editor-add {
+.dsh-leader-agent-link-editor-add {
   align-self: flex-start;
   padding: 4px 8px;
   border: 0;
@@ -855,25 +855,25 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-link-editor-add:hover {
+  .dsh-leader-agent-link-editor-add:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-link-editor-error {
+.dsh-leader-agent-link-editor-error {
   font-size: 12px;
   line-height: 18px;
   color: var(--dsw-alias-state-error-primary);
 }
 
-.dsh-leader-kit-link-editor-actions {
+.dsh-leader-agent-link-editor-actions {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
 }
 
-.dsh-leader-kit-link-editor-button {
+.dsh-leader-agent-link-editor-button {
   padding: 4px 12px;
   border: 0;
   border-radius: var(--dsw-radius-sm);
@@ -885,31 +885,31 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-link-editor-button:hover {
+  .dsh-leader-agent-link-editor-button:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-link-editor-button-primary {
+.dsh-leader-agent-link-editor-button-primary {
   background: var(--dsw-alias-label-primary);
   color: var(--dsw-alias-bg-layer-2);
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-link-editor-button-primary:hover {
+  .dsh-leader-agent-link-editor-button-primary:hover {
     background: var(--dsw-alias-label-primary);
     opacity: 0.9;
   }
 }
 
-.dsh-leader-kit-link-editor-button:disabled {
+.dsh-leader-agent-link-editor-button:disabled {
   cursor: default;
   opacity: 0.5;
 }
 
 /* 右栏 guide 页的入口胶囊：复刻宿主 EntryBox 的数值（380px 宽、56px 最小高、
    14/20 内边距、14px 图标间距），宿主改样式时这里要跟着改。 */
-.dsh-leader-kit-guide-entry {
+.dsh-leader-agent-guide-entry {
   display: flex;
   gap: 14px;
   align-items: center;
@@ -928,12 +928,12 @@ const STYLE_TEXT = `
 }
 
 @media (hover: hover) {
-  .dsh-leader-kit-guide-entry:hover {
+  .dsh-leader-agent-guide-entry:hover {
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
 
-.dsh-leader-kit-guide-entry-icon {
+.dsh-leader-agent-guide-entry-icon {
   display: flex;
   flex: none;
   align-items: center;
@@ -943,7 +943,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-secondary);
 }
 
-.dsh-leader-kit-guide-entry-text {
+.dsh-leader-agent-guide-entry-text {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -951,7 +951,7 @@ const STYLE_TEXT = `
   min-width: 0;
 }
 
-.dsh-leader-kit-guide-entry-title {
+.dsh-leader-agent-guide-entry-title {
   overflow: hidden;
   font-size: 14px;
   line-height: 1.4;
@@ -959,7 +959,7 @@ const STYLE_TEXT = `
   text-overflow: ellipsis;
 }
 
-.dsh-leader-kit-guide-entry-description {
+.dsh-leader-agent-guide-entry-description {
   overflow: hidden;
   color: var(--dsw-alias-label-tertiary);
   font-size: 11px;
@@ -974,7 +974,7 @@ const STYLE_TEXT = `
    引导条取交互悬停档的浅底、不叠投影，两块叠在一起才不会被读成两个输入框。
    文字档对齐宿主正文：标题 14/22 500，步骤 13/20（宿主里 11/12 只用于元信息，
    提示正文不该比它更小）。 */
-.dsh-leader-kit-guide-card {
+.dsh-leader-agent-guide-card {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -989,14 +989,14 @@ const STYLE_TEXT = `
 }
 
 /* 图标与标题首行对齐：标题行高 22、图标 16，下沉 3px 才落在同一基线上 */
-.dsh-leader-kit-guide-icon {
+.dsh-leader-agent-guide-icon {
   margin-top: 3px;
   color: var(--dsw-alias-label-tertiary);
 }
 
 /* flex:1 + min-width:0：文本块吃掉动作左侧的全部宽度，右侧不留空；
    min-width 是为了窄窗口下让文字换行而不是把动作挤出去 */
-.dsh-leader-kit-guide-body {
+.dsh-leader-agent-guide-body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
@@ -1004,20 +1004,20 @@ const STYLE_TEXT = `
   min-width: 0;
 }
 
-.dsh-leader-kit-guide-title {
+.dsh-leader-agent-guide-title {
   font-size: var(--dsw-font-s-strong-14-font-size);
   line-height: var(--dsw-font-s-strong-14-line-height);
   font-weight: var(--dsw-font-s-strong-14-font-weight);
   color: var(--dsw-alias-label-primary);
 }
 
-.dsh-leader-kit-guide-steps {
+.dsh-leader-agent-guide-steps {
   font-size: var(--dsw-font-xs-13-font-size);
   line-height: var(--dsw-font-xs-13-line-height);
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-kit-guide-actions {
+.dsh-leader-agent-guide-actions {
   display: flex;
   flex: none;
   gap: 4px;

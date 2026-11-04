@@ -9,7 +9,7 @@ import {
   planDesktopHome, planDshHomeEnv, planLinkAction, planProfileLockAction, resolveDesktopPaths,
   resolveHomePathsOrThrow, windowsExeCandidates,
 } from '../scripts/desktop-plan.mjs'
-import { LEADER_KIT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
+import { LEADER_AGENT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
 const WORKTREE = '/work/repo/.worktrees/desktop-launcher'
 const OTHER_WORKTREE = '/work/repo/.worktrees/feature-a'
@@ -38,7 +38,7 @@ test('桌面 profile 固定在 ~/.dsh/profiles/desktop', () => {
   assert.equal(paths.home, join(HOME, '.dsh'))
   assert.equal(paths.profileDir, join(HOME, '.dsh', 'profiles', DESKTOP_PROFILE))
   assert.equal(paths.packagePath, join(HOME, '.dsh', 'profiles', 'desktop', 'package.json'))
-  assert.equal(paths.linkPath, join(HOME, '.dsh', 'profiles', 'desktop', 'node_modules', LEADER_KIT_PACKAGE))
+  assert.equal(paths.linkPath, join(HOME, '.dsh', 'profiles', 'desktop', 'node_modules', LEADER_AGENT_PACKAGE))
 })
 
 test('DSH_HOME 覆盖数据根，空串按未设处理', () => {
@@ -49,9 +49,9 @@ test('DSH_HOME 覆盖数据根，空串按未设处理', () => {
 test('首次挂载：依赖写 link:，包名追加到 bundles 末尾', () => {
   const { manifest, changed } = planDesktopEnable({ manifest: desktopPackage(), worktree: WORKTREE })
   assert.equal(changed, true)
-  assert.equal(manifest.dependencies[LEADER_KIT_PACKAGE], desktopLinkSpec(WORKTREE))
+  assert.equal(manifest.dependencies[LEADER_AGENT_PACKAGE], desktopLinkSpec(WORKTREE))
   assert.deepEqual(manifest.dsh.profile.bundles, [
-    '@deepseek-ai/dsh-base', WEB_APP_BUNDLE, 'dsh-session-file-reveal', LEADER_KIT_PACKAGE,
+    '@deepseek-ai/dsh-base', WEB_APP_BUNDLE, 'dsh-session-file-reveal', LEADER_AGENT_PACKAGE,
   ])
   // 别的依赖与字段原样保留。
   assert.equal(manifest.dependencies['dsh-session-file-reveal'], 'link:./plugins/session-file-reveal')
@@ -66,17 +66,17 @@ test('挂载幂等：同一工作树再算一次没有变化', () => {
 })
 
 test('已装另一份来源时拒绝覆盖', () => {
-  const installed = desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: desktopLinkSpec(OTHER_WORKTREE) } })
+  const installed = desktopPackage({ dependencies: { [LEADER_AGENT_PACKAGE]: desktopLinkSpec(OTHER_WORKTREE) } })
   assert.throws(
     () => planDesktopEnable({ manifest: installed, worktree: WORKTREE }),
-    /已经装了一份 dsh-leader-kit/,
+    /已经装了一份 dsh-leader-agent/,
   )
-  const versioned = desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: '^0.1.0' } })
+  const versioned = desktopPackage({ dependencies: { [LEADER_AGENT_PACKAGE]: '^0.1.0' } })
   assert.throws(() => planDesktopEnable({ manifest: versioned, worktree: WORKTREE }), /已经装了一份/)
 })
 
 test('bundles 已含本插件时不重复追加', () => {
-  const manifest = desktopPackage({ bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE] })
+  const manifest = desktopPackage({ bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_AGENT_PACKAGE] })
   const { manifest: next, changed } = planDesktopEnable({ manifest, worktree: WORKTREE })
   assert.equal(changed, true) // 依赖条目还是新写的
   assert.deepEqual(next.dsh.profile.bundles, manifest.dsh.profile.bundles)
@@ -92,7 +92,7 @@ test('摘除只动本插件，其余 bundle 顺序保留', () => {
   const installed = planDesktopEnable({ manifest: desktopPackage(), worktree: WORKTREE }).manifest
   const { manifest, changed } = planDesktopDisable({ manifest: installed, worktree: WORKTREE })
   assert.equal(changed, true)
-  assert.equal(LEADER_KIT_PACKAGE in manifest.dependencies, false)
+  assert.equal(LEADER_AGENT_PACKAGE in manifest.dependencies, false)
   assert.deepEqual(manifest.dsh.profile.bundles, ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, 'dsh-session-file-reveal'])
   assert.equal(manifest.dependencies['dsh-session-file-reveal'], 'link:./plugins/session-file-reveal')
 })
@@ -109,10 +109,10 @@ test('摘除只摘当前工作树挂的那份：别处来源与判不出归属�
     /不是当前目录/,
   )
   // 插件管理装的版本同样不摘。
-  const versioned = desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: '^0.1.0' } })
+  const versioned = desktopPackage({ dependencies: { [LEADER_AGENT_PACKAGE]: '^0.1.0' } })
   assert.throws(() => planDesktopDisable({ manifest: versioned, worktree: WORKTREE }), /不是当前目录/)
   // 只出现在 bundles 里：判不出是谁挂的，不猜。
-  const orphan = desktopPackage({ bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_KIT_PACKAGE] })
+  const orphan = desktopPackage({ bundles: ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE, LEADER_AGENT_PACKAGE] })
   assert.throws(() => planDesktopDisable({ manifest: orphan, worktree: WORKTREE }), /判不出是谁挂上去的/)
 })
 
@@ -385,7 +385,7 @@ test('派生根落在工作树内的 .dev/desktop-home，形状与日常根一�
   const paths = desktopPathsOf(home)
   assert.equal(paths.home, home)
   assert.equal(paths.profileDir, join(home, 'profiles', DESKTOP_PROFILE))
-  assert.equal(paths.linkPath, join(home, 'profiles', DESKTOP_PROFILE, 'node_modules', LEADER_KIT_PACKAGE))
+  assert.equal(paths.linkPath, join(home, 'profiles', DESKTOP_PROFILE, 'node_modules', LEADER_AGENT_PACKAGE))
   // 与 npm run dev 的 .dev/home 不同目录：共用数据根会让两个实例互相写会话与卡片。
   assert.notEqual(home, join(WORKTREE, '.dev', 'home'))
 })
@@ -461,7 +461,7 @@ test('摘除分支不派生：只算派生根路径，根为空时不建目录�
 test('已装来源的说明符按链接原样取出，供派生判定用', () => {
   assert.equal(installedSpecOf(desktopPackage()), null)
   assert.equal(
-    installedSpecOf(desktopPackage({ dependencies: { [LEADER_KIT_PACKAGE]: 'link:/work/repo' } })),
+    installedSpecOf(desktopPackage({ dependencies: { [LEADER_AGENT_PACKAGE]: 'link:/work/repo' } })),
     'link:/work/repo',
   )
 })

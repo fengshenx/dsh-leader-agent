@@ -6,7 +6,7 @@
 
 每个任务一个 worktree、一个独立 dsh 实例，是这个仓库的开发形态——它同时也是本 bundle 玩法成立的前提（见 README 的[前提](../README_ZH.md#前提先跑通多-worktree-并发)）。`npm run worktree:spawn <任务名>` 建目录与分支（base 取最新 `origin/main`），进去后 `npm run dev` 起实例。
 
-`npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-kit` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
+`npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-agent` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 
 - 凭据文件跟着数据根独立，新工作树第一次起实例本来要在界面上重填 API key：启动前会把源 HOME `.credentials.yaml` 的 `refs` 并进开发实例那一份。只搬 `refs`（按环境变量名存的密钥），不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录。目标里已有的条目不动，界面里改过的值优先；要重新跟随源就删掉 `.dev/home/.credentials.yaml` 里那一条。块式与行内（`refs: {}`）两种 `refs` 节形态都认，写回替换该节；认不出、重复 `refs:`、锁超时都直接报错，不猜拼接位置。目标凭据文档不是 version 1 布局时不动——pre-release 扁平布局由宿主启动时自行迁移，先追加 `refs:` 会让它两种布局都不成立。写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。没走 `DEEPSEEK_API_KEY` 启动环境那条路：它在 dsh 的凭据解析顺序里排在存储文件之后本来就能用，但 key 会留在 agent 工具进程的环境里。
 - 端口默认交给系统分配，启动日志里打印带 token 的 URL；要固定就 `DEV_PORT=3210 npm run dev`。
@@ -16,7 +16,7 @@
 
 ## 日常实例
 
-`npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-kit` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
+`npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-agent` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
 
 桌面版：`npm run desktop` 把当前目录挂进 desktop profile（Electron 独占，CLI 起不了），改 manifest、建链接、重建产物再拉起应用，三平台各自把数据根交给应用。**worktree 里跑时数据根换成本目录的 `.dev/desktop-home`**，profile 从日常根派生（依赖与 bundle 照抄、只换插件链接），凭据 `refs` 同 `dev` 从日常根继承，日常 profile 不动：桌面 profile 只一份，派生是分支内验证又不覆盖别人的唯一办法，代价是数据与日常分两套。主 checkout 里跑仍写日常根，显式 `DSH_HOME` 时两条都不走。`--remove` 在哪个目录跑就摘哪个根；应用运行中或 profile 有锁时拒绝写入（见对应 Agent Note）。
 
@@ -32,7 +32,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 守卫：有未提交改动的、当前所在的、分支没进 `main` 且 PR 未合并的，一律拒绝（合并判据：`merge-base --is-ancestor main` 或 PR 状态）。删 worktree 前先挪 `.dev` 到 `.worktrees/.dev-stash-<任务名>`、拆掉 `node_modules` 链接再 `git worktree remove`——Windows 上不先拆时 git 会跟随 junction 删掉主 checkout / 源 profile 的依赖；失败按原 target 恢复链接并把 `.dev` 挪回，git 已注销登记时只恢复 `.dev` 并提示手工清理。`--apply` 持有 `.worktrees/.prune.lock`（活 PID 不回收）。细节见[笔记](../.agents/notes/implemented/bug-fix/2026-11-02-win32-worktree-node-modules-teardown.md)。
 
-手工装：`dsh plugin --profile web add ../dsh-leader-kit`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。npm 版本换成包名 `dsh-leader-kit`（可带 `@0.1.1`），卸载用 `dsh plugin --profile web remove dsh-leader-kit`；`engines.dsh` 不满足时安装与启动被拒绝。不装 profile 直接试跑：在 dsh 源码目录执行 `pnpm dsh web --patch <本仓>/cordis.patch.yml`。
+手工装：`dsh plugin --profile web add ../dsh-leader-agent`（改代码即生效，但会与装进同一 profile 的其他工作树互相覆盖）。npm 版本换成包名 `dsh-leader-agent`（可带 `@0.1.1`），卸载用 `dsh plugin --profile web remove dsh-leader-agent`；`engines.dsh` 不满足时安装与启动被拒绝。不装 profile 直接试跑：在 dsh 源码目录执行 `pnpm dsh web --patch <本仓>/cordis.patch.yml`。
 
 ## 测试与构建
 
@@ -50,4 +50,4 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致、提交在 `origin/main` 上（`git merge-base --is-ancestor`），再以 trusted publishing（OIDC）发布并建 GitHub Release；`ci.yml` 跑同一条 `release:check`（node 取 `24.9.0` 与最新 `24` 两档），发布 job 握着 OIDC 身份与 `contents: write`，所以 `actions/*` 都 pin 到 commit SHA。预发布走 `next` dist-tag，Release 标 prerelease。步骤与失败处理见 [release skill](../.telov/skills/release/SKILL.md)。
 
-认证不落 secret：Trusted Publisher 登记本仓与 `publish.yml`，勾选允许 `npm publish`（预发布再勾 `npm dist-tag`），登记后 2 天内要有新版本真走 OIDC，否则过期。**首次发布是例外**：包不存在时无法登记，须本机交互式 `npm publish`（2FA OTP，无 provenance），随后 bump 新版本打 tag——首发版本已在 registry，推它的 tag 会被幂等守卫跳过。步骤见 [release skill](../.telov/skills/release/SKILL.md)。
+认证不落 secret：Trusted Publisher 登记本仓与 `publish.yml`，勾选允许 `npm publish`（预发布再勾 `npm dist-tag`），登记后 2 天内要有新版本真走 OIDC，否则过期。**首次发布是例外**：包不存在时无法登记，须本机交互式 `npm publish`（2FA OTP，无 provenance），随后 bump 新版本打 tag——首发版本已在 registry，推它的 tag 会被幂等守卫跳过；改名同理（trusted publisher 绑包名，旧包 `deprecate` 手工做）。步骤见 [release skill](../.telov/skills/release/SKILL.md)。

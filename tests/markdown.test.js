@@ -47,17 +47,17 @@ test('两处调用点都渲染 Markdown 组件，旧消息回退纯文本', () =
   assert.match(view, /createElement\(Markdown, \{ source: body \}\)/)
   // 旧消息没有 report，回退的正文是协议行；纯文本才不会被 Markdown 折成一段。
   assert.match(view, /workerReportFormat\(data\)/)
-  assert.match(view, /className: 'dsh-leader-kit-worker-report__plain'/)
+  assert.match(view, /className: 'dsh-leader-agent-worker-report__plain'/)
   assert.match(
     read('src/client/worker-report-styles.js'),
-    /\.dsh-leader-kit-worker-report__plain \{[^}]*white-space: pre-wrap/,
+    /\.dsh-leader-agent-worker-report__plain \{[^}]*white-space: pre-wrap/,
   )
 })
 
 test('两处容器用 data-markdown-variant 钩子恢复正文与链接色', () => {
   const cases = [
-    ['src/client/board-styles.js', 'dsh-leader-kit-card-detail-text'],
-    ['src/client/worker-report-styles.js', 'dsh-leader-kit-worker-report__bubble'],
+    ['src/client/board-styles.js', 'dsh-leader-agent-card-detail-text'],
+    ['src/client/worker-report-styles.js', 'dsh-leader-agent-worker-report__bubble'],
   ]
   for (const [path, container] of cases) {
     const source = read(path)
@@ -83,13 +83,13 @@ test('worker 气泡折叠按块级内容计算，退回 line-clamp 会失效', (
   // 裁剪落在正文层，气泡内的展开按钮不跟着被截
   assert.match(
     source,
-    /\.dsh-leader-kit-worker-report__content\[data-collapsed='true'\] \{[^}]*max-height: calc\(2 \* var\(--dsh-leader-kit-report-line\) \+ 4px\)/,
+    /\.dsh-leader-agent-worker-report__content\[data-collapsed='true'\] \{[^}]*max-height: calc\(2 \* var\(--dsh-leader-agent-report-line\) \+ 4px\)/,
   )
-  const bubble = /\.dsh-leader-kit-worker-report__bubble \{([\s\S]*?)\n\}/.exec(source)
+  const bubble = /\.dsh-leader-agent-worker-report__bubble \{([\s\S]*?)\n\}/.exec(source)
   assert.notEqual(bubble, null, '找不到气泡规则')
   assert.equal(/max-height|overflow: hidden/.test(bubble[1]), false, '气泡本身不该裁剪，否则按钮被一起截掉')
   // 行高必须取 compact 变体的值，否则折叠水位与实际排版差半行
-  assert.match(source, /--dsh-leader-kit-report-line: calc\(20px \+ var\(--dsh-content-font-delta-secondary, 0px\)\)/)
+  assert.match(source, /--dsh-leader-agent-report-line: calc\(20px \+ var\(--dsh-content-font-delta-secondary, 0px\)\)/)
 })
 
 test('worker 气泡沿用宿主消息气泡的底色，不自混前景色', () => {
@@ -102,8 +102,8 @@ test('worker 气泡沿用宿主消息气泡的底色，不自混前景色', () =
 
 test('展开/收起按钮在气泡内，与正文是同一层的两个兄弟', () => {
   const view = read('src/client/worker-report-view.js')
-  assert.match(view, /className: 'dsh-leader-kit-worker-report__bubble'/)
-  assert.match(view, /className: 'dsh-leader-kit-worker-report__content'/)
+  assert.match(view, /className: 'dsh-leader-agent-worker-report__bubble'/)
+  assert.match(view, /className: 'dsh-leader-agent-worker-report__content'/)
   // 折叠状态挂在正文层，按钮不带折叠属性
   assert.match(view, /'data-collapsed': expanded \? undefined : 'true'/)
 })

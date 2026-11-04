@@ -9,7 +9,7 @@
  * 模型列表（`packages/llm/llm-deepseek/README.md`），其余路径收到 404 并记录，
  * 便于诊断「请求打到了别处」。
  *
- * @module dsh-leader-kit/tests/e2e/mock-llm
+ * @module dsh-leader-agent/tests/e2e/mock-llm
  */
 
 import { createServer } from 'node:http'

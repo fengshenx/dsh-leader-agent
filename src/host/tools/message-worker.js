@@ -10,7 +10,7 @@
  * 同次改名。不复用宿主全局的 `send_message` 工具：它只认宿主 subagent 体系的子
  * 会话，我们的 worker 是普通根会话，调它拿不到目标。
  *
- * @module dsh-leader-kit/host/tools/message-worker
+ * @module dsh-leader-agent/host/tools/message-worker
  */
 
 /**

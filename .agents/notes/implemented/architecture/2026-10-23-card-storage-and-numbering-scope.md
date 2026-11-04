@@ -20,7 +20,7 @@ dsh 有两个现成方向：team 任务板（覆盖任务 + 依赖 + owner + CAS
 
 **检查点的维护者与确认时间由宿主写入**。调用方只提供 summary / nextAction / blocker / outputVersion；`updatedBy` 取调用方 agent 的 session id，`updatedAt` 取宿主时间。调用方自称的确认时间不可信。
 
-**客户端取数走 `output.presentationMeta`**。`output.render` 只给模型看文本，`output.value` 不进事件流；`presentationMeta` 投影的 `meta` 才随 `tool/result` 事件持久化进 session log，是客户端唯一稳定的结构化取数通道。投影形状 `{kind:'dsh-leader-kit-cards', scope:'card'|'all', cards}`，客户端按 id 合并单卡、按全量替换列表。
+**客户端取数走 `output.presentationMeta`**。`output.render` 只给模型看文本，`output.value` 不进事件流；`presentationMeta` 投影的 `meta` 才随 `tool/result` 事件持久化进 session log，是客户端唯一稳定的结构化取数通道。投影形状 `{kind:'dsh-leader-agent-cards', scope:'card'|'all', cards}`，客户端按 id 合并单卡、按全量替换列表。
 
 **卡片归属项目由宿主在写卡时判定**。P5 起卡片记录带 `projectId` 与 `createdBy`：宿主按调用方会话反查项目（协调者走注册表指针，其它会话按 cwd 的 realpath 与项目目录相同），把归属写进记录。模型不传项目参数——它未必知道自己在哪个项目的语境里调工具。存量卡片没有 `projectId`，不迁移（记录里没有创建会话 id，无法可靠反推）。
 

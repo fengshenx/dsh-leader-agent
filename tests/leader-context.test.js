@@ -43,7 +43,7 @@ function createFakeCtx() {
  * @returns {Promise<{ directory: string, cleanup: () => Promise<void> }>} 目录与清理函数
  */
 async function createProject(content) {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-leader-'))
   if (content !== undefined) {
     await writeFile(join(directory, LEADER_CONTEXT_FILE), content, 'utf8')
   }
@@ -116,7 +116,7 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、问�
     assert.match(text, /## 项目待初始化/)
     assert.match(text, /LEADER\.md/)
     assert.match(text, /SLOTS\.md/)
-    assert.match(text, /init-leader-kit/)
+    assert.match(text, /init-leader-agent/)
     assert.match(text, /目录是空的就写带 TODO 的骨架/)
     assert.match(text, /不要创建或修改任何文件/)
     // 用户直接派活时不打断：提示自己限定触发面。
@@ -196,7 +196,7 @@ test('提示要求拒绝后不追问、不写文件，并给出彻底停用的�
     assert.match(text, /不要为了记录这个拒绝去写任何文件/)
     // 拒绝只在本会话生效，所以要给出真正能让提示消失的办法。
     assert.match(text, /自行创建 `LEADER\.md`/)
-    assert.match(text, /init-leader-kit/)
+    assert.match(text, /init-leader-agent/)
   } finally {
     await project.cleanup()
   }
@@ -261,7 +261,7 @@ test('两版内容不一致时提示以 LEADER.md 为准，且每个目录只报
 })
 
 test('旧名退回提示每个目录只报一次', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-once-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-leader-legacy-once-'))
   try {
     await writeFile(join(directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。', 'utf8')
     const logged = []
@@ -277,7 +277,7 @@ test('旧名退回提示每个目录只报一次', async () => {
 })
 
 test('只有旧名 COORDINATOR.md 时退回读取，并提示改名', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-leader-legacy-'))
   try {
     await writeFile(join(directory, LEGACY_LEADER_CONTEXT_FILE), '旧名时代的手册。', 'utf8')
     const logged = []
@@ -296,7 +296,7 @@ test('只有旧名 COORDINATOR.md 时退回读取，并提示改名', async () =
 })
 
 test('新版缺失、旧名位置读失败时返回空串并记日志', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-kit-leader-legacy-error-'))
+  const directory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-leader-legacy-error-'))
   try {
     // 旧名位置被目录占住：不是「文件不存在」，要留日志而不是当成没有手册。
     await mkdir(join(directory, LEGACY_LEADER_CONTEXT_FILE))

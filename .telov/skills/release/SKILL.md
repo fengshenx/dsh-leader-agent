@@ -1,7 +1,7 @@
 ---
 name: release
 description: 本仓发版手册：定版本号、bump、跑 release:check、开 PR、合并后打 tag 触发 CI 发布；含首次发布与失败处理。当用户要求「发版」「发布 npm 包」「bump 版本」「打个 tag」时使用。
-whenToUse: 需要把 dsh-leader-kit 的新版本发布到 npm，或排查发版失败时。
+whenToUse: 需要把 dsh-leader-agent 的新版本发布到 npm，或排查发版失败时。
 ---
 
 # 发版
@@ -11,7 +11,7 @@ whenToUse: 需要把 dsh-leader-kit 的新版本发布到 npm，或排查发版�
 ## 前提
 
 - 改动在 worktree 里（`npm run worktree:spawn <任务名>`），主 checkout 保持干净。
-- `gh` 已登录、对 `fengshenx/dsh-leader-kit` 有推 tag 权限；`main` 上的 CI 是绿的。
+- `gh` 已登录、对 `fengshenx/dsh-leader-agent` 有推 tag 权限；`main` 上的 CI 是绿的。
 - 日常发版不需要本机 `npm login` 或 OTP：认证由 CI 的 OIDC 完成。只有首次发布（包尚不存在）需要本机发布，要求账号已开 2FA。
 
 ## 一、定版本号
@@ -69,8 +69,8 @@ tag 必须指向 `main` 上的提交。`publish.yml` 会校验 tag 与 `package.
 ```bash
 gh run watch
 gh release view v<version>
-npm view dsh-leader-kit@<version> version
-npm view dsh-leader-kit@<version> dist.attestations   # 非空 = OIDC 发布并生成 provenance
+npm view dsh-leader-agent@<version> version
+npm view dsh-leader-agent@<version> dist.attestations   # 非空 = OIDC 发布并生成 provenance
 ```
 
 CI 依次：校验 → `npm ci` → OIDC 发布 → 建 Release。发布步骤幂等：版本已存在就跳过，所以 Release 失败可以直接重跑 workflow。
@@ -81,10 +81,10 @@ trusted publisher 要求包已存在，所以首个版本必须绕开 CI；但**
 
 1. 本机确认 `npm run release:check` 通过。
 2. `npm login`，然后 `npm publish`（不要带路径参数，否则跳过 `prepublishOnly`）。这一步发出 `package.json` 里的当前版本（如 0.1.0），没有 provenance。
-3. `npm view dsh-leader-kit version` 确认版本上线。
+3. `npm view dsh-leader-agent version` 确认版本上线。
 4. npmjs.com → 包 → Settings → Trusted Publisher → GitHub Actions：
    - Organization or user: `fengshenx`
-   - Repository: `dsh-leader-kit`
+   - Repository: `dsh-leader-agent`
    - Workflow filename: `publish.yml`
    - Allowed actions: `npm publish`（预发布再勾 `npm dist-tag`）
 5. **bump 到一个未发布的版本**（如 0.1.1），按第一到五节走完整流程：PR 合并后从 `main` 打 `v0.1.1` tag。这一步才是首次 OIDC 发布。
@@ -92,6 +92,10 @@ trusted publisher 要求包已存在，所以首个版本必须绕开 CI；但**
 7. 包设置 → Publishing access → 选带 (recommended) 的「Require two-factor authentication and disallow bypass 2fa tokens」；界面若同时提供更严格的「disallow tokens」，选它。该设置不影响 OIDC 发布。
 
 **为什么不能直接推 `v0.1.0`**：第 2 步已经把它发到 registry，`publish.yml` 的「版本已存在就跳过」守卫会打印「已发布，跳过 npm publish」并 exit 0——workflow 整体绿色，但 OIDC 一次都没跑，trusted publisher 配置 2 天后静默过期，而 CI 读数看不出区别。首发版本天然「已存在」，所以首发之后必须有一个新版本真走一遍 OIDC。
+
+### 包改名后：新包名等于首发
+
+trusted publisher 绑的是「包名 + 仓库 + workflow」，**仓库改名不会把它迁移过去**。包名从 `dsh-leader-kit` 改成 `dsh-leader-agent` 后，新包在 registry 上不存在 → 整套首次发布流程重走一遍（本机交互式 `npm publish` 首发 → 登记 trusted publisher → bump 新版本打 tag 验证 OIDC）。旧包由维护者手工 `npm deprecate dsh-leader-kit "renamed to dsh-leader-agent"`：deprecate 会影响所有还在用旧包的人，时机由人决定，**不要写进 CI**。
 
 备选（不想在维护者机器上登录）：建 `Read and write (stage only)` granular token，`npm stage publish` 后由维护者 `npm stage approve`（要 OTP）；它先注册 `0.0.0-stage` 占位包。同样要在登记 trusted publisher 后发一个新版本验证 OIDC。
 

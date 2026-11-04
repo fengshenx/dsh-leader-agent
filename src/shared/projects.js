@@ -7,11 +7,11 @@
  * 通道走 dsh 官方的 Typert 远程调用（`/api` 共享通道），与工作区控制器同构：
  * 宿主侧把服务注册进 Cordis，浏览器侧把同一批方法挂到 `ctx.remote` 上。
  *
- * @module dsh-leader-kit/shared/projects
+ * @module dsh-leader-agent/shared/projects
  */
 
 /** 宿主侧的 Cordis 服务键。 */
-export const PROJECT_REMOTE_SERVICE_KEY = 'dsh-leader-kitProjects'
+export const PROJECT_REMOTE_SERVICE_KEY = 'dsh-leader-agentProjects'
 
 /** 线上命名空间，即 endpoint 的 `namespace/method` 前缀。 */
 export const PROJECT_REMOTE_NAMESPACE = 'projects'

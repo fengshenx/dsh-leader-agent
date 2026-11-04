@@ -17,7 +17,7 @@
  * 落盘位置在 dsh home 下的自有目录，不占用 session 事件流——仓外插件不得新增
  * session event 类型。
  *
- * @module dsh-leader-kit/host/cards/store
+ * @module dsh-leader-agent/host/cards/store
  */
 
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
@@ -86,7 +86,7 @@ async function readStore(file, onCorrupt, io = defaultIo) {
  * @returns {object} 卡片存储接口
  */
 export function createCardStore({ home, logger = () => {}, io = defaultIo, clock = Date.now } = {}) {
-  const directory = join(home, 'dsh-leader-kit')
+  const directory = join(home, 'dsh-leader-agent')
   const file = join(directory, 'cards.json')
   const temporary = join(directory, 'cards.json.tmp')
 

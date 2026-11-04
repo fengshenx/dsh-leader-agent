@@ -5,7 +5,7 @@
  * 的结构化输出重建卡片列表，因此工具返回完整卡片对象；模型看到的是 `render`
  * 给出的简短确认，不需要读全量卡片。
  *
- * @module dsh-leader-kit/host/tools/cards
+ * @module dsh-leader-agent/host/tools/cards
  */
 
 import { randomUUID } from 'node:crypto'
@@ -271,7 +271,7 @@ function normalizeSlots(slots) {
  * @returns {object} 投影载荷
  */
 function cardMeta(scope, cards) {
-  return { kind: 'dsh-leader-kit-cards', scope, cards }
+  return { kind: 'dsh-leader-agent-cards', scope, cards }
 }
 
 /**
