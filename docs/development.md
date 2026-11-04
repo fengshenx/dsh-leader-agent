@@ -50,4 +50,4 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致、提交在 `origin/main` 上（`git merge-base --is-ancestor`），再以 trusted publishing（OIDC）发布并建 GitHub Release；`ci.yml` 跑同一条 `release:check`（node 取 `24.9.0` 与最新 `24` 两档），发布 job 握着 OIDC 身份与 `contents: write`，所以 `actions/*` 都 pin 到 commit SHA。预发布走 `next` dist-tag，Release 标 prerelease。步骤与失败处理见 [release skill](../.telov/skills/release/SKILL.md)。
 
-认证不落 secret：Trusted Publisher 登记本仓与 `publish.yml`，勾选允许 `npm publish`（预发布再勾 `npm dist-tag`），登记后 2 天内要有新版本真走 OIDC，否则过期。**首次发布是例外**：包不存在时无法登记，须本机交互式 `npm publish`（2FA OTP，无 provenance），随后 bump 新版本打 tag——首发版本已在 registry，推它的 tag 会被幂等守卫跳过。步骤见 [release skill](../.telov/skills/release/SKILL.md)。
+认证不落 secret：Trusted Publisher 登记本仓与 `publish.yml`，勾选允许 `npm publish`（预发布再勾 `npm dist-tag`），登记后 2 天内要有新版本真走 OIDC，否则过期。**首次发布是例外**：包不存在时无法登记，须本机交互式 `npm publish`（2FA OTP，无 provenance），随后 bump 新版本打 tag——首发版本已在 registry，推它的 tag 会被幂等守卫跳过；改名同理（trusted publisher 绑包名，旧包 `deprecate` 手工做）。步骤见 [release skill](../.telov/skills/release/SKILL.md)。

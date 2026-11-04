@@ -93,6 +93,10 @@ trusted publisher 要求包已存在，所以首个版本必须绕开 CI；但**
 
 **为什么不能直接推 `v0.1.0`**：第 2 步已经把它发到 registry，`publish.yml` 的「版本已存在就跳过」守卫会打印「已发布，跳过 npm publish」并 exit 0——workflow 整体绿色，但 OIDC 一次都没跑，trusted publisher 配置 2 天后静默过期，而 CI 读数看不出区别。首发版本天然「已存在」，所以首发之后必须有一个新版本真走一遍 OIDC。
 
+### 包改名后：新包名等于首发
+
+trusted publisher 绑的是「包名 + 仓库 + workflow」，**仓库改名不会把它迁移过去**。包名从 `dsh-leader-kit` 改成 `dsh-leader-agent` 后，新包在 registry 上不存在 → 整套首次发布流程重走一遍（本机交互式 `npm publish` 首发 → 登记 trusted publisher → bump 新版本打 tag 验证 OIDC）。旧包由维护者手工 `npm deprecate dsh-leader-kit "renamed to dsh-leader-agent"`：deprecate 会影响所有还在用旧包的人，时机由人决定，**不要写进 CI**。
+
 备选（不想在维护者机器上登录）：建 `Read and write (stage only)` granular token，`npm stage publish` 后由维护者 `npm stage approve`（要 OTP）；它先注册 `0.0.0-stage` 占位包。同样要在登记 trusted publisher 后发一个新版本验证 OIDC。
 
 ## 失败处理

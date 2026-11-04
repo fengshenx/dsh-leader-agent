@@ -64,6 +64,7 @@
 
 - **发布不可撤回**：npm 上同一个版本不能重发或删除，只能 `deprecated`；tag 一推上去 workflow 就会尝试发布。所以门禁全挂在上传之前（见[发布与打包](development.md#发布与打包)），别跳过 `release:check`。只从无参 `npm publish` 发布：带路径的 `npm publish <tgz>` 不跑生命周期脚本，整段门禁被跳过。
 - **provenance 只在 CI 里生成**：本地 `npm publish` 没有 OIDC 身份，包页面不会显示「Built and signed on GitHub Actions」。前提是仓库 public 且 `package.json` 的 `repository` 与 workflow 所在仓库一致。首次发布只能用本地交互式发布（包不存在时无法登记 trusted publisher），所以首个版本没有 provenance；发过首个版本后改走 OIDC 并禁掉 token 发布。
+- **包名与数据目录改名不提供兼容**：`dsh-leader-agent` 是新包，trusted publisher 绑包名、不随仓库改名迁移——新包名要重走首次发布流程（本地首发 → 登记 → bump 新版本打 tag 验 OIDC）；旧包手工 `npm deprecate` 指向新包，不进 CI。用户侧不迁移：`dsh.profile.bundles` 里的旧条目会让两个 bundle 同时 `apply`（工具注册两次、两个 dispatcher 结算同一个 `turn/end`），装前必须 `dsh plugin remove dsh-leader-kit`；旧的看板与 worker 登记也不读不迁（步骤见 README 升级一节）。
 - **git 直装拿不到客户端产物**：`lib/client.js` 不入库，仓里也没有 `prepare` 钩子。`dsh plugin add git+…` 只适合验证宿主侧；要连客户端一起验证就装 npm 版本，或本地构建后用路径装。
 - **不预检 npm 上的版本占用，幂等跳过也不比内容**：`verify:pack` 不查 registry，重复版本由 npm 自己拒；workflow 的 `npm view` 探测只为跳过已发布，不比对 digest——内容一致性由「发布前同一个提交跑过 `release:check`」保证。
 - **`verify:pack` 验的是磁盘上已有的 `lib/client.js`**：没先 `build:client` 时它把上一次的产物装进临时目录。`release:check` 先构建，所以发布链路不受影响；单跑门禁时自己保证构建过。

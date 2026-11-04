@@ -157,7 +157,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **实测**：`defineDomain` / `domainTable`（`packages/storage/storage-domain/src/spec.ts:107`）要求 zod schema，存储域服务本身是 `@deepseek-ai/dsh-storage-domain` peer 依赖，dsh 按 peer 版本与宿主严格校验。
 
-**影响**：卡片与通知队列改用自建落盘（原子写 + 读-改-写串行化），落在 `$DSH_HOME/dsh-leader-agent/`（包名从 `dsh-coordinator` 改过来，旧目录不读不迁；包未发布、无外部用户）。代价是不享受 dsh 的存储域生态（迁移、备份、跨端同步），换来的是零版本耦合。
+**影响**：卡片与通知队列改用自建落盘（原子写 + 读-改-写串行化），落在 `$DSH_HOME/dsh-leader-agent/`。代价是不享受 dsh 的存储域生态（迁移、备份、跨端同步），换来的是零版本耦合。目录名跟着包名走过两次（`dsh-coordinator` → `dsh-leader-kit` → `dsh-leader-agent`），**每次都不读不迁**：`dsh-leader-kit@0.2.1` 已发布到 npm，装过它的环境升级后看板为空、worker 登记表重建，这是明知的代价，代价清单见[已知限制](../docs/limitations.md#发布)。
 
 ### 18. 插件行名必须是纯包名，否则浏览器侧发现不到 client 半边
 

@@ -69,6 +69,19 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
 
+### 从 `dsh-leader-kit` 升级
+
+包名改成 `dsh-leader-agent`，**不提供兼容路径**。`dsh plugin add` 写进 `dsh.profile.bundles` 的是**包名**，旧条目升级后仍然在，两个 bundle 都会被 `apply`：工具注册两次、`agent/created` 订阅两次、两个 dispatcher 各结算同一个 `turn/end`（通知与唤醒都发两份）。先在你装的那个 profile 里删掉旧条目：
+
+```sh
+dsh plugin --profile web remove dsh-leader-kit
+dsh plugin --profile web add dsh-leader-agent
+```
+
+桌面版同理，把 `web` 换成 `desktop`（CLI 用桌面安装自带的那个）。
+
+数据目录随包名改为 `$DSH_HOME/dsh-leader-agent`，**不迁移**：升级后看板是空的、worker 登记表首次启动重建。旧包已 `deprecate` 指向新包。
+
 ## 预览
 
 <div align="center">

@@ -69,6 +69,17 @@ The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES
 
 For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
 
+### Upgrading from `dsh-leader-kit`
+
+The package was renamed to `dsh-leader-agent` **without a compatibility path**. `dsh plugin add` records the *package name* in `dsh.profile.bundles`, so the old entry survives and both bundles get applied: tools registered twice, two dispatchers settling the same `turn/end` (duplicate notifications and wakeups). Remove the old entry first, in the same profile you install into:
+
+```sh
+dsh plugin --profile web remove dsh-leader-kit
+dsh plugin --profile web add dsh-leader-agent
+```
+
+The data directory moved with the name (`$DSH_HOME/dsh-leader-kit` → `$DSH_HOME/dsh-leader-agent`) and is **not migrated**: boards start empty and worker registrations rebuild on first start. The old package is deprecated in favor of this one.
+
 ## Preview
 
 <div align="center">
