@@ -25,7 +25,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 | worker 生命周期、派工与结算 | [2026-10-29-worker-as-root-session.md](.agents/notes/implemented/architecture/2026-10-29-worker-as-root-session.md)、[2026-10-23-dispatch-and-wakeup.md](.agents/notes/implemented/architecture/2026-10-23-dispatch-and-wakeup.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/implemented/feature/2026-11-02-spawn-then-message-and-card-context.md) |
 | 卡片、槽位与项目绑定 | [2026-10-23-card-storage-and-numbering-scope.md](.agents/notes/implemented/architecture/2026-10-23-card-storage-and-numbering-scope.md)、[2026-10-27-project-bound-board.md](.agents/notes/implemented/feature/2026-10-27-project-bound-board.md)、[2026-11-02-spawn-then-message-and-card-context.md](.agents/notes/implemented/feature/2026-11-02-spawn-then-message-and-card-context.md) |
 | 项目级提示词（`LEADER.md` / `SLOTS.md`；旧名 `COORDINATOR.md` 只是兼容入口） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/implemented/feature/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
-| 写浏览器 e2e 场景的断言与排查方法 | [e2e-scenarios](.telov/skills/e2e-scenarios/SKILL.md)（断言纪律、失败诊断、双向验证、搭场景；按任务加载） |
+| 写浏览器 e2e 场景的断言与排查方法 | [e2e-scenarios](.agents/skills/e2e-scenarios/SKILL.md)（断言纪律、失败诊断、双向验证、搭场景；按任务加载） |
 | 跑 `npm run e2e`、查车道命令与夹具、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、文件职责、场景模板、mock 标记约定、截图落点、人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
 | 发版、发布包内容与 CI | [.telov/skills/release](.telov/skills/release/SKILL.md)（发版手册）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/implemented/process/2026-11-03-npm-oidc-publishing.md) |
@@ -38,8 +38,8 @@ index.js            包入口：导出 name / inject / apply（实现都在 src/
 src/host/           宿主侧：工具、派工器、存储、项目服务、worker 会话生命周期
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
-.agents/skills/     协议层 skill（leader-mode 派工协议、init-leader-agent 初始化方法）
-.telov/skills/      工作区运维 skill（release 发版手册、e2e-scenarios 场景写法，不进发布包）
+.agents/skills/     协议层 skill（leader-mode 派工协议、init-leader-agent 初始化方法、e2e-scenarios 场景写法）
+.telov/skills/      工作区运维 skill（release 发版手册，不进发布包）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
@@ -73,7 +73,7 @@ npm run release:check             # 发版门禁：check + build:client + verify
 
 - 只有 `node:test`，**没有 lint**：未使用的 import、死代码、拼写错误都抓不到，改完要手扫。
 - **覆盖率按 per-file 行覆盖判**：`src` 下没登记门槛的文件要求 100%，存量欠账登记在 `scripts/coverage-manifest.json`。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由，否则新增文件照样变红（机制见 [docs/development.md](docs/development.md#测试与构建)）。
-- 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——车道命令、场景模板与截图落点见 [docs/e2e-testing.md](docs/e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](.telov/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
+- 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——车道命令、场景模板与截图落点见 [docs/e2e-testing.md](docs/e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。

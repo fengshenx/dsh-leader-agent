@@ -23,7 +23,7 @@ standing docs 的体量门禁只判 `units <= ceiling`，天花板只升不降�
 - 12% 判的是余量，不是文档质量：一篇内容已经过时的短文照样可以 `ok`。
 - 不把 5% 与 12% 做成配置项：分层规则在 AGENTS.md，配置化会让每个任务自己挑阈值。
 - 小文档的整数解问题只保证不崩、建议值可落地，不承诺同时满足 5% 与 12%。
-- 只有 standing docs（根目录与 `docs/`）受管；`.agents/notes/`、`.agents/skills/` 与 `.telov/skills/` 仍不设预算。
+- 只有 standing docs（根目录与 `docs/`）受管；`.agents/notes/` 与 `.agents/skills/` 仍不设预算。
 
 ## 验证
 

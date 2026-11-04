@@ -194,7 +194,7 @@ npm run e2e                       # 浏览器 e2e
 | [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |
 | [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、截图）与人工取证规范；断言纪律与失败诊断见 `.telov/skills/e2e-scenarios/` |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、截图）与人工取证规范；断言纪律与失败诊断见 `.agents/skills/e2e-scenarios/` |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
 
