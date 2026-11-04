@@ -7,9 +7,12 @@
  * 运行时才渲染，拿不到那份构建期产物，于是 `<use>` 引用一律落空（图标尺寸为
  * 0×0，完全不可见）。
  *
- * 因此这里内联需要的字形路径。数据取自宿主 `dsh-client-ui-primitives` 的
- * `artwork.ts`（regular 字重，描边 1px），与宿主视觉一致；代价是宿主改图标
- * 时本仓要同步——这条耦合与「手写 Typert 协议形状」同类，已记在 note 的边界段。
+ * 因此这里内联需要的字形路径。字形照宿主 `dsh-client-ui-primitives` 的组件
+ * 路径内联（`0.2.1-rc.5` 在 `icons/index.tsx`，regular 字重、描边 1px）；
+ * `artwork.ts` 的 sprite 重构从 `0.2.2-alpha.2+` 起才有，按 rc.5 对照
+ * `artwork.ts` 会找不到文件。内联本身不依赖宿主版本，锚点只为可追溯；代价是
+ * 宿主改图标时本仓要同步——这条耦合与「手写 Typert 协议形状」同类，已记在
+ * note 的边界段。
  *
  * @module dsh-leader-agent/client/icons
  */
