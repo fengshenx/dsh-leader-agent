@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/fengshenx/dsh-leader-agent/security/advisories/new
+    about: 不要开公开 issue —— 私密报告只有维护者可见，修复与披露都在 advisory 里完成。
