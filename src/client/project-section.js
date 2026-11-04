@@ -1,13 +1,13 @@
 /**
  * 左栏「项目」区块的内容。
  *
- * 结构是**项目树**：项目行下面挂着该项目的会话，第一行固定是当前 leader，下面是
- * 被它派出的 worker 与被换下的旧 leader。点项目行打开 leader 会话；点行首槽位展开
- * 或收起子会话列表。
+ * 结构是**项目树**：项目行下面挂着该项目目录里的会话。点项目行展开或收起子会话
+ * 列表；leader 会话的入口在行的「更多」菜单里（项目名不再承担两个动作）。
  *
  * 排版对齐宿主的工作区浏览：小节标题用同一套行高与三级标签色，项目行用工作区
- * 行的高度、内边距、圆角与 hover 反馈；行首槽位与官方工作区行同款——平时是目录
- * 图标，悬停整行时换成展开箭头，展开时箭头旋转朝下。图标是自带的内联路径
+ * 行的高度、内边距、圆角与 hover 反馈；行首槽位与官方工作区行同款——平时是九宫格
+ * （替代宿主的目录图标，免得「项目」与「工作区」在侧边栏里同形），悬停整行时换成
+ * 展开箭头，展开时箭头旋转朝下。图标是自带的内联路径
  * （宿主 web 端运行时没有 sprite，见 `icons.js`）。
  *
  * @module dsh-leader-agent/client/project-section
@@ -17,7 +17,7 @@ import { createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } 
 import { createPortal } from 'react-dom'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
-import { buildProjectMenuItems, isLeaderRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectLeaderSessionRow, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
+import { buildProjectMenuItems, isLeaderCurrent, isLeaderRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
 
 const STYLE_ID = 'dsh-leader-agent-project-section'
@@ -105,8 +105,13 @@ const STYLE_TEXT = `
     background: var(--dsw-alias-interactive-bg-hover);
   }
 }
-/* 组里有当前会话：点亮行首文件夹，与宿主工作区树的 folderActive 同色。整行
-   底色留给会话行（leader 有自己的一行）——两层同时铺色会看成选了两个。 */
+/* 选中态与官方会话行同款：hover 用的那层底色常驻。 */
+.dsh-leader-agent-project-row[data-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+/* 组里有当前会话（被打开的 worker）：点亮行首文件夹，与宿主工作区树的
+   folderActive 同色。整行底色留给 leader 会话的选中态——两层同时铺色会看成
+   选了两个。 */
 .dsh-leader-agent-project-row[data-active='true'] .dsh-leader-agent-project-lead-folder {
   color: var(--dsw-alias-state-business-primary);
 }
@@ -149,9 +154,10 @@ const STYLE_TEXT = `
   font-size: 14px;
   line-height: 20px;
 }
-/* 行首槽位：默认目录图标，悬停整行时换成展开箭头（与官方工作区行同款）。
-   里面的图标与加载圈都是 SVG：不把这层撑成 flex 的话，SVG 按行盒基线排，圈会
-   比行中心高 1.5px（34px 行实测）。 */
+/* 行首槽位：默认九宫格（项目行就是 leader 会话的入口），悬停整行时换成展开箭头
+   （与官方工作区行同款）。里面的图标与加载圈都是 SVG：不把这层撑成 flex 的话，
+   SVG 按行盒基线排，圈会比行中心高 1.5px（34px 行实测）。类名沿用 -folder 后缀：
+   槽位位置与宿主工作区行的目录图标同源，改字形不改槽位。 */
 .dsh-leader-agent-project-lead-folder {
   display: inline-flex;
   align-items: center;
@@ -170,7 +176,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
-/* 行首加载圈：本组有活动时替换目录图标（尺寸与位置仍占行首槽位）。收起时
+/* 行首加载圈：本组有活动时替换九宫格（尺寸与位置仍占行首槽位）。收起时
    任一会话行在跑、或 leader 自己在跑；展开后只剩 leader——其它会话行自己带
    spinner，不重复画同一个状态。悬停规则对槽位容器生效，箭头照常盖住它。
    圈本身是宿主的 StateDot（state: 'ongoing'）：轨道、呼吸弧、1.5s 周期与页面
@@ -371,13 +377,6 @@ const STYLE_TEXT = `
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-/* leader 行的行首字形：颜色照项目行首的目录图标（三级标签色），不与标题抢注意力。 */
-.dsh-leader-agent-session-leader-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--dsw-alias-label-tertiary);
 }
 .dsh-leader-agent-session-title {
   flex: 1 1 auto;
@@ -679,10 +678,10 @@ function dropHalfOf(event) {
 }
 
 /**
- * 一个项目行：行首目录图标、项目名，悬停整行时行首换成展开箭头、右端露出操作按钮。
+ * 一个项目行：行首九宫格、项目名，悬停整行时行首换成展开箭头、右端露出操作按钮。
  *
- * 点行打开该项目的 leader 会话；点行首槽位折叠/展开该项目下的会话列表。leader 在
- * 子会话列表里单独占第一行（`SessionRow` 的 `leader`），项目行仍是它最短的入口。
+ * 点行打开该项目的 leader 会话；点行首槽位折叠/展开该项目下的会话列表。leader 不在
+ * 子会话列表里——它的入口就是这一行，重复列出会让入口含糊。
  *
  * @param {object} props - 组件属性
  * @returns {object} React 元素
@@ -734,17 +733,14 @@ function ProjectRow(props) {
     leaderSessionId: project.leaderSessionId,
     archivedSessionIds,
   })
-  const leaderRow = selectLeaderSessionRow({
-    leaderSessionId: project.leaderSessionId,
-    sessionRows,
-    archivedSessionIds,
-  })
-  // 整行底色归会话行：leader 有自己的行，worker 被打开时选中落在它自己那一行。
-  // 项目行只点亮行首文件夹——分层与宿主工作区树一致（工作区分组亮文件夹图标，
-  // 会话行铺整行底色）。
+  // 整行底色只给 leader 会话：那一行就是它的入口。worker 会话被打开时选中的是
+  // 下面列表里的那一行，项目行只点亮行首文件夹——分层与宿主工作区树一致
+  // （工作区分组亮文件夹图标，会话行铺整行底色）。
+  const selected = isLeaderCurrent(project, currentSessionId, archivedSessionIds)
   const active = isProjectCurrent(project, sessions, currentSessionId, archivedSessionIds)
-  // 行首加载圈只在收起时用：展开后 leader 行与 worker 行各自带 spinner，同一个
-  // 状态画两处会看成两件在跑的事。
+  // 行首加载圈 = 本组有活动，两个来源（会话行、leader 自身）在判定函数里合成，
+  // 渲染上只有一个入口。leader 在项目树下不单独出行，它跑起来时任何展开状态都
+  // 只能靠行首提示；其它会话在跑则只在收起时算——展开后会话行自己带 spinner。
   const leadActivity = showsProjectActivity({
     expanded,
     rows: childSessions,
@@ -796,8 +792,10 @@ function ProjectRow(props) {
         },
         onDragEnd: onDragFinish,
         'data-dead': openable ? undefined : 'true',
+        'data-selected': selected ? 'true' : undefined,
         'data-active': active ? 'true' : undefined,
         'data-menu-open': menuOpen ? 'true' : undefined,
+        'aria-current': selected ? 'true' : undefined,
         title: `${project.name} · ${project.directory}`,
         onClick: (event) => {
           if (event.target.closest('.dsh-leader-agent-project-actions') !== null) return
@@ -819,7 +817,7 @@ function ProjectRow(props) {
           { className: 'dsh-leader-agent-project-lead-folder' },
           leadActivity
             ? createElement(StateDot, { state: 'ongoing' })
-            : productIcon(expanded ? 'folder-open' : 'folder-close', { size: 16 }),
+            : productIcon('apps-grid-fill', { size: 16 }),
         ),
         createElement(
           'span',
@@ -912,23 +910,13 @@ function ProjectRow(props) {
       ? createElement(
           'div',
           { className: 'dsh-leader-agent-project-sessions' },
-          leaderRow === undefined && childSessions.length === 0
+          childSessions.length === 0
             ? createElement(
                 'div',
                 { className: 'dsh-leader-agent-project-notice' },
                 '该项目下还没有会话。',
               )
             : [
-                leaderRow === undefined
-                  ? null
-                  : createElement(SessionRow, {
-                      key: leaderRow.id,
-                      row: leaderRow,
-                      leader: true,
-                      selected: leaderRow.id === currentSessionId,
-                      onOpenSession,
-                      busy,
-                    }),
                 ...folded.rows.map((row) => createElement(SessionRow, {
                   key: row.id,
                   row,
@@ -1037,24 +1025,20 @@ function ProjectMenu(props) {
 /**
  * 项目下的一个会话行。
  *
- * worker 行是纯文字行：会话名在项目树里已经能看清，再加图标只会挤占标题宽度。
- * leader 行是唯一的例外——行首固定一个九宫格字形，让「这一行是项目的指挥者」
- * 在展开列表里一眼可辨；它跑起来时与其它会话行一样换成加载圈。leader 行不给归档
- * 入口：归档它等于让项目失去 leader，换人要走项目行的「换新 Leader」。悬停整行时
- * 右端露出归档入口（与官方会话行的 hover 动作同位）。
+ * 纯文字行：左边的会话图标与右边的执行者标记都不画——会话名在项目树里已经能
+ * 看清，再加图标只会挤占标题的宽度。运行中的会话仍在行首留一个状态位；悬停整
+ * 行时右端露出归档入口（与官方会话行的 hover 动作同位）。
  *
  * @param {object} props - 组件属性
- * @param {boolean} [props.leader] - 是否是当前项目的 leader 行
  * @returns {object} React 元素
  */
 function SessionRow(props) {
-  const { row, leader, selected, onOpenSession, onArchiveSession, busy } = props
+  const { row, selected, onOpenSession, onArchiveSession, busy } = props
   return createElement(
     'div',
     {
       className: 'dsh-leader-agent-session-row',
       'data-session-id': row.id,
-      'data-leader': leader === true ? 'true' : undefined,
       'data-selected': selected ? 'true' : undefined,
       'aria-current': selected ? 'page' : undefined,
       onClick: () => onOpenSession(row.id),
@@ -1063,42 +1047,32 @@ function SessionRow(props) {
     createElement(
       'span',
       { className: 'dsh-leader-agent-session-status' },
-      row.running
-        ? createElement(StateDot, { state: 'ongoing' })
-        : leader === true
-          ? createElement(
-              'span',
-              { className: 'dsh-leader-agent-session-leader-icon' },
-              productIcon('apps-grid-fill', { size: 16 }),
-            )
-          : null,
+      row.running ? createElement(StateDot, { state: 'ongoing' }) : null,
     ),
     createElement(
       'span',
       { className: 'dsh-leader-agent-session-title' },
       row.title ?? row.displayTitle ?? row.id,
     ),
-    leader === true
-      ? null
-      : createElement(
-          'div',
-          { className: 'dsh-leader-agent-session-actions' },
-          createElement(
-            'button',
-            {
-              type: 'button',
-              className: 'dsh-leader-agent-session-archive',
-              title: '归档会话：从列表移除，并摘掉卡片上绑定的槽位',
-              'aria-label': `归档会话 ${row.title ?? row.displayTitle ?? row.id}`,
-              disabled: busy,
-              onClick: (event) => {
-                // 归档按钮在行内：不拦下来会连带打开会话。
-                event.stopPropagation()
-                onArchiveSession(row.id)
-              },
-            },
-            productIcon('archive-outline', { size: 14 }),
-          ),
-        ),
+    createElement(
+      'div',
+      { className: 'dsh-leader-agent-session-actions' },
+      createElement(
+        'button',
+        {
+          type: 'button',
+          className: 'dsh-leader-agent-session-archive',
+          title: '归档会话：从列表移除，并摘掉卡片上绑定的槽位',
+          'aria-label': `归档会话 ${row.title ?? row.displayTitle ?? row.id}`,
+          disabled: busy,
+          onClick: (event) => {
+            // 归档按钮在行内：不拦下来会连带打开会话。
+            event.stopPropagation()
+            onArchiveSession(row.id)
+          },
+        },
+        productIcon('archive-outline', { size: 14 }),
+      ),
+    ),
   )
 }
