@@ -32,10 +32,9 @@ export function countDocUnits(text) {
  * 按当前值与 5% 余量算建议天花板。
  *
  * `units` 很小时「5% 余量」与「12% 上限」之间可能没有整数解（如 1 个单位），
- * 这时取最小的合法值；`units` 为 0 时任何正整数都触发 `loose`，仍返回 1 作为
- * 可登记的最小天花板，不产生 0 或负数。
+ * 这时取能落地的最小值；返回值为正整数。
  *
- * @param {number} units - 当前体量单位数
+ * @param {number} units - 当前体量单位数（调用方保证 > 0）
  * @returns {number} 建议天花板（正整数）
  */
 function recommendedCeiling(units) {
@@ -60,7 +59,9 @@ export function checkBudgets(entries) {
     }
     if (units === null) return { path, ceiling, units: null, status: 'missing' }
     if (units > ceiling) return { path, ceiling, units, status: 'over' }
-    if (units <= 0 || ceiling / units > LOOSE_RATIO) {
+    // 空文档不占预算，也不会囤配额：判 ok，避免建议值永远收不敛。
+    if (units === 0) return { path, ceiling, units, status: 'ok' }
+    if (ceiling / units > LOOSE_RATIO) {
       return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units) }
     }
     return { path, ceiling, units, status: 'ok' }
