@@ -33,11 +33,11 @@
 - **默认不开重试**：重试只会把竞态藏起来。
 - **一次只改一个变量**：两个变量同时变，失败原因就分不开。
 
-规则的操作化（等待预算、失败读数、双向验证、搭场景）写在 [e2e-scenarios 技能](../../../../.telov/skills/e2e-scenarios/SKILL.md)，车道入口在 [docs/e2e-testing.md](../../../../docs/e2e-testing.md)。
+规则的操作化（等待预算、失败读数、双向验证、搭场景）写在 [e2e-scenarios 技能](../../../skills/e2e-scenarios/SKILL.md)，车道入口在 [docs/e2e-testing.md](../../../../docs/e2e-testing.md)。
 
-### 技能放 `.telov/skills/`，不进发布包
+### 技能留在 `.agents/skills/`，仓库文档链接用绝对 URL
 
-`package.json` 的 `files` 只含 `.agents/skills/**`，而本技能要链接 `docs/e2e-testing.md` 与 `.agents/notes/` 里的决策笔记，两者都不在包里。放 `.agents/skills/` 会让装机后的链接全部指向 `node_modules/dsh-leader-agent/` 下不存在的路径；因此按[维护者专用 skill 的既有归属](../process/2026-11-03-npm-oidc-publishing.md)放 `.telov/skills/e2e-scenarios/`，`.agents/skills/` 只留随包发布、相对链接不出目录的协议层 skill。bundle 链接用例遍历全部候选并断言解析结果仍在 `.agents/skills/` 内，防止再搬回去。
+`package.json` 的 `files` 只含 `.agents/skills/**`；技能里指向 `docs/e2e-testing.md` 与 `.agents/notes/` 的相对链接在装机后不存在。技能留在 `.agents/skills/e2e-scenarios/`，这 4 条参考链接改用 `https://github.com/fengshenx/dsh-leader-agent/blob/main/...` 绝对 URL，装到用户项目也能打开。bundle 链接用例遍历全部候选，断言剩下的相对链接解析后仍在 `.agents/skills/` 内；随包 skill 不能再引用包外相对路径。
 
 ## 边界
 
@@ -50,8 +50,8 @@
 
 - 拆分 `docs/e2e-testing.md`：196 行 / 4,490 单位 → 122 行 / 2,542 单位；天花板 4,750 → 2,670（余量 5.0%）。三篇同步重设的天花板：`README.md` 3,025 / 3,177、`README_ZH.md` 4,518 / 4,744、`SLOTS.md` 649 / 682；另按 10% 约定把 `AGENTS.md` 4,280 → 4,350（3,954 的 10.0%）。
 - `npm run check`：1,069 个用例通过（17 跳过）；Agent Note 83 篇、文档工具名 15 篇、文档预算 13 篇全绿。
-- 搬走的规则在入口文档只留一行清单与链接，未留死锚点：全仓对 `docs/e2e-testing.md#...` 的链接复查为 0 条（原 `#断言纪律` 改指技能）；改动文件的相对链接解析全部可达，技能移至 `.telov/skills/e2e-scenarios/` 后 4 个相对链接仍可达。
-- 包内容：`npm pack --dry-run` 91 → 90 个文件，`e2e-scenarios`、`docs/` 与 `.agents/notes/` 都不在包内；`.agents/skills/` 只剩 leader-mode 与 init-leader-agent。
-- 双向验证（bundle 链接守卫）：把 `e2e-scenarios` 临时挪回 `.agents/skills/` → `tests/skills.test.js` 红（`e2e-scenarios: 链接 ../../../docs/e2e-testing.md 解析到 …/docs/e2e-testing.md，越出 …/.agents/skills`）；挪回 `.telov/skills/` → 9 / 9 绿。
+- 搬走的规则在入口文档只留一行清单与链接，未留死锚点：全仓对 `docs/e2e-testing.md#...` 的链接复查为 0 条（原 `#断言纪律` 改指技能）；技能留在 `.agents/skills/`，4 条仓库文档参考链接为绝对 URL，改动文件的相对链接解析全部可达。
+- 包内容：`npm pack --dry-run` 91 个文件，`e2e-scenarios` 在 `.agents/skills/` 内随包发布；`docs/` 与 `.agents/notes/` 不在包内，技能对这二者的链接是绝对 GitHub URL，装机后仍可打开。
+- 双向验证（bundle 链接守卫）：把技能里一条绝对 URL 临时改成相对 `../../../docs/e2e-testing.md` → `tests/skills.test.js` 红（`e2e-scenarios: 链接 ../../../docs/e2e-testing.md 解析到 …/docs/e2e-testing.md，越出 …/.agents/skills`）；还原绝对 URL → 9 / 9 绿。
 - 双向验证（余量上限）：把 `README.md` 天花板从 3,177 抬到 4,000 → `verify-doc-budgets` 输出 `LOOSE 3025 / 4000 README.md → 建议 3177` 并以 1 退出；`tests/doc-budget.test.js` 的「真实清单：当前读数都不超限，余量也不超过 12%」变红（15 pass / 1 fail），`npm run check` 在文档预算一步红。还原 3,177 → 16 / 16 绿、`npm run check` 全绿。
 - 车道本身的验证（mock、截图、Fail Loud、清理上限）见[浏览器 e2e 车道](2026-11-02-browser-e2e-lane.md)、[e2e 失败预算](2026-11-04-e2e-failure-budget.md)与 [e2e 清理阶段的有界等待](2026-11-04-e2e-shutdown-bounded.md)。

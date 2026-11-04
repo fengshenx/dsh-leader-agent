@@ -6,7 +6,7 @@ whenToUse: 新增或修改 tests/e2e/*.e2e.js、给 UI 行为留可复现证据�
 
 # 浏览器 e2e 场景
 
-e2e 的判据是「真实宿主 + 真实 chromium 里，可观察行为是否成立」。车道命令、文件职责、场景模板、mock 约定与截图落点见 [docs/e2e-testing.md](../../../docs/e2e-testing.md)；宿主方案的由来与从宿主搬来的确定性规则见[笔记](../../../.agents/notes/implemented/testing/2026-11-04-e2e-host-approach-and-determinism.md)。本技能只讲写场景与排查时的方法。
+e2e 的判据是「真实宿主 + 真实 chromium 里，可观察行为是否成立」。车道命令、文件职责、场景模板、mock 约定与截图落点见 [docs/e2e-testing.md](https://github.com/fengshenx/dsh-leader-agent/blob/main/docs/e2e-testing.md)；宿主方案的由来与从宿主搬来的确定性规则见[笔记](https://github.com/fengshenx/dsh-leader-agent/blob/main/.agents/notes/implemented/testing/2026-11-04-e2e-host-approach-and-determinism.md)。本技能只讲写场景与排查时的方法。
 
 ## 适用场景
 
@@ -19,7 +19,7 @@ e2e 的判据是「真实宿主 + 真实 chromium 里，可观察行为是否成
 - **断言外部世界**：DOM 的 class、`getComputedStyle` 的具体属性、磁盘上的 JSON。不读 agent 的自述文本，不拿页面里的推理文字当证据。
 - **等状态，不睡时间**。`waitFor()` 轮询到条件成立；locator 用 `contenteditable="true"`、`data-*`、可见文本这类状态条件，让 playwright 自己等。
 - **等待预算按正常耗时给**。实测单场景 3–8 秒、元素 1–2 秒到位：首次启动 20 秒、元素状态 15 秒。写 60 秒/90 秒只会让失败多等一整分钟，还把「机器慢」与「等错了元素」混成同一个症状。慢机与 2 核 CI 用 `E2E_BUDGET_SCALE=1.5` 整体放大（测试级上限走 `scenarioTimeout()`，取同一个倍率）。
-- **失败要带读数**。元素等待走 `waitForLocator()`：失败时报 locator、目标元素读数（计数、`visible`、边界盒、`display` / `visibility` / `checkVisibility`、宽高）与页面读数（会话行、工作区行、插件元素计数）。目标读数用来分开「不在 DOM」「在 DOM 但 `display:none`」「在 DOM 但零尺寸」——只数 count 时这三种是同一句超时。读数自身限 2 秒，页面主线程卡死时退化成 `{ unavailable }`；自定义读数用 `describePage()`。细节见[e2e 失败预算](../../../.agents/notes/implemented/testing/2026-11-04-e2e-failure-budget.md)。
+- **失败要带读数**。元素等待走 `waitForLocator()`：失败时报 locator、目标元素读数（计数、`visible`、边界盒、`display` / `visibility` / `checkVisibility`、宽高）与页面读数（会话行、工作区行、插件元素计数）。目标读数用来分开「不在 DOM」「在 DOM 但 `display:none`」「在 DOM 但零尺寸」——只数 count 时这三种是同一句超时。读数自身限 2 秒，页面主线程卡死时退化成 `{ unavailable }`；自定义读数用 `describePage()`。细节见[e2e 失败预算](https://github.com/fengshenx/dsh-leader-agent/blob/main/.agents/notes/implemented/testing/2026-11-04-e2e-failure-budget.md)。
 - **造状态用 seed**：目标状态直接写进数据文件（`<home>/dsh-leader-agent/cards.json`、`projects.json`），让界面去读。靠反复重启、反复点 UI 去凑瞬时态，永远对不齐。
 - **标识符必须来自本次运行**：端口、token、会话 id、数据根都从本次实例取，不硬编码上一轮残留的值。
 
@@ -59,4 +59,4 @@ e2e 的判据是「真实宿主 + 真实 chromium 里，可观察行为是否成
 - 不为了 e2e 改生产代码：场景用现有 class 与 role；需要新选择器时那是一次产品决定，不夹带。
 - 不把截图当断言：截图只解释「当时界面上是什么样」，回归靠断言。
 - 不覆盖原生控件、浮层像素位置、WebKit / Firefox：这些走人工取证，PR 里如实标注。
-- 不加 `--test-force-exit`：它会把漏清理从「挂住/超时变红」变成「绿着通过 + 孤儿进程」；有界清理见[e2e 清理笔记](../../../.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
+- 不加 `--test-force-exit`：它会把漏清理从「挂住/超时变红」变成「绿着通过 + 孤儿进程」；有界清理见[e2e 清理笔记](https://github.com/fengshenx/dsh-leader-agent/blob/main/.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
