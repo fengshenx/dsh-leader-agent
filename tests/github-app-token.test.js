@@ -44,6 +44,16 @@ test('成功时返回 token', async () => {
   assert.equal(await exchangeToken({ jwt: 'jwt', installationId: '1', fetchImpl }), 'ghs_example')
 })
 
+test('token 交换带本仓 User-Agent', async () => {
+  const seen = []
+  const fetchImpl = async (url, init) => {
+    seen.push({ url, init })
+    return { ok: true, status: 201, text: async () => '', json: async () => ({ token: 'ghs_example' }) }
+  }
+  await exchangeToken({ jwt: 'jwt', installationId: '1', fetchImpl })
+  assert.equal(seen[0].init.headers['User-Agent'], 'dsh-leader-agent')
+})
+
 test('凭据文件缺失时按 Fail Loud 报出路径', () => {
   assert.throws(
     () => readConfig({ envFile: '/nowhere/github-app.env' }),

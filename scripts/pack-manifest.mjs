@@ -11,8 +11,9 @@
 /**
  * `.agents/` 下唯一该发布的子树：协议层 skill。
  *
- * 这个目录同时住着仓内上下文（`notes/` 的决策记忆、将来的 `prompts/` 之类）与要发布
- * 的 skill，所以按「只放行 skills 前缀」正向判定，而不是逐条禁止：新增 `.agents/<目录>`
+ * 顶层点目录整体不进包（见 `isForbiddenPath`），这个前缀是唯一的例外。`.agents/`
+ * 同时住着仓内上下文（`notes/` 的决策记忆、将来的 `prompts/` 之类）与要发布的
+ * skill，所以按「只放行 skills 前缀」正向判定，而不是逐条禁止：新增 `.agents/<目录>`
  * 时默认被拦，漏写一条规则不会让文件静默进用户 `node_modules`。
  */
 export const AGENTS_SKILLS_PREFIX = '.agents/skills/'
@@ -21,21 +22,16 @@ export const AGENTS_SKILLS_PREFIX = '.agents/skills/'
  * 不该出现在发布包里的路径。
  *
  * 每条都对应一个具体的漂移风险：测试把仓内上下文带进用户的 node_modules；`scripts/`
- * 与 `build/` 是开发工具，装了也用不上；`.dev/`、`.worktrees/`、`.telov/` 是本地运行态
- * 与工作区运维资产（发版 skill 之类，只服务本仓维护者）；`.tgz` 与 `.DS_Store` 是打包
- * 过程与 macOS 的残留。
+ * 与 `build/` 是开发工具，装了也用不上；`.tgz` 与 `.DS_Store` 是打包过程与 macOS 的
+ * 残留。顶层点目录（本地运行态、工作区资产、VCS 元数据）由 `isForbiddenPath` 的通用
+ * 前缀规则接手，不在这里逐条点名——将来新增的本地状态目录也默认进不来。
  *
  * 这份名单是 `files` 白名单的补集，不是它的复述：白名单一旦放宽（比如有人写
- * `"docs/**"`、`"*.md"`），这里负责把不该发的东西拦下来。`.agents/` 例外，走
- * `isForbiddenPath` 的允许面。仓根提示词两个名字都拦：`LEADER.md` 是当前名，
- * `COORDINATOR.md` 只剩指向它的兼容入口，都是仓内上下文。
+ * `"docs/**"`、`"*.md"`），这里负责把不该发的东西拦下来。仓根提示词两个名字都拦：
+ * `LEADER.md` 是当前名，`COORDINATOR.md` 只剩指向它的兼容入口，都是仓内上下文。
  */
 export const FORBIDDEN_PATTERNS = Object.freeze([
   /(^|\/)tests\//,
-  /^\.dev\//,
-  /^\.worktrees\//,
-  /^\.telov\//,
-  /^\.github\//,
   /^AGENTS\.md$/,
   /^CLAUDE\.md$/,
   /^SLOTS\.md$/,
@@ -55,7 +51,9 @@ export const FORBIDDEN_PATTERNS = Object.freeze([
  * @returns {boolean} 不该出现时为 true
  */
 export function isForbiddenPath(path) {
-  if (path.startsWith('.agents/') && !path.startsWith(AGENTS_SKILLS_PREFIX)) return true
+  // 顶层以点开头的一律不进包：本地运行态、工作区资产、VCS 元数据都不该出现在用户的
+  // node_modules 里。唯一例外是随包发布的协议层 skill。
+  if (path.startsWith('.') && !path.startsWith(AGENTS_SKILLS_PREFIX)) return true
   return FORBIDDEN_PATTERNS.some((pattern) => pattern.test(path))
 }
 

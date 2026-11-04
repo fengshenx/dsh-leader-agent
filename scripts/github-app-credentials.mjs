@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-export const CREDENTIAL_DIR = join(homedir(), '.telov')
+export const CREDENTIAL_DIR = join(homedir(), '.dsh-leader-agent')
 export const ENV_FILE = join(CREDENTIAL_DIR, 'github-app.env')
 export const KEY_FILE = join(CREDENTIAL_DIR, 'github-app.pem')
 
@@ -64,7 +64,7 @@ export async function exchangeToken({ jwt, installationId, fetchImpl = fetch }) 
       Authorization: `Bearer ${jwt}`,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'telov-review-bot',
+      'User-Agent': 'dsh-leader-agent',
     },
   })
   if (!response.ok) {

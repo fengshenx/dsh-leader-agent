@@ -66,7 +66,7 @@ PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID
   - 撤销空白判空（`configured === ''`）：**3 红**。
   - 撤销 `os.homedir()` 回退（默认改成 `() => process.env.HOME`）：**1 红**；把 `HOME` 设成与 `os.homedir()` 相同的值（模拟 Linux CI）**仍红**——修的正是「CI 上碰巧通过」那条。
   - 还原后 66 条相关用例全绿。
-- 探针 `.telov/probe-dsh-home-paths.mjs`（不入库，只读）：`~/.dsh`→`<homedir>\.dsh`、`~/alt`→`<homedir>\alt`、`'   '`→`<homedir>\.dsh`、`rel/dev`→`<cwd>\rel\dev`；旧写法同样输入分别得字面 `~/.dsh` 与 `'   '`。dev 脚本 `DSH_HOME=~/.dsh` 时 home 与 sourceHome 同为 `<homedir>\.dsh` 且 `assertSeparateHome` 抛错。隔离用系统临时目录，不写真实 `~/.dsh`。
+- 探针（本机临时脚本，不入库，只读）：`~/.dsh`→`<homedir>\.dsh`、`~/alt`→`<homedir>\alt`、`'   '`→`<homedir>\.dsh`、`rel/dev`→`<cwd>\rel\dev`；旧写法同样输入分别得字面 `~/.dsh` 与 `'   '`。dev 脚本 `DSH_HOME=~/.dsh` 时 home 与 sourceHome 同为 `<homedir>\.dsh` 且 `assertSeparateHome` 抛错。隔离用系统临时目录，不写真实 `~/.dsh`。
 - 真实 `~/.dsh` 前后一致：88 个文件，整树（路径 + 大小 + mtime）SHA256 前后同为 `5177920…`，根目录 mtime 不变，0 条变更。
 - `npm run check`：笔记格式 70 篇、工具名 14 篇、文档预算（limitations 6705/6900）、语法检查 99 个文件通过；覆盖率门禁因存量单测失败未执行（与基线同）。本机 `home-paths.js` 单跑 `--experimental-test-coverage` 行覆盖 100%。
 - CI（Linux，Node 24 与 24.9 两个矩阵）此前对同一实现结构两轮 `check` 全过，覆盖率门禁在那边执行。

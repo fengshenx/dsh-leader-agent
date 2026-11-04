@@ -36,7 +36,7 @@
 ## 边界
 
 - **历史 Agent Note 保留原文**：`.agents/notes/` 是当时的决策记录，改词会歪曲记录；指向这些笔记的链接文件名（含 `coordinator`）同样保持原样。
-- **`COORDINATOR.md` 保留为兼容入口**：根目录仍放一个只指向 `LEADER.md` 的短文件，给 Telov 等仍按旧文件名找 leader 手册的外部工具用。插件优先读 `LEADER.md`，缺失时退回读它并记日志；这个文件同时受文档预算门禁管理，正文不承载规则。
+- **`COORDINATOR.md` 保留为兼容入口**：根目录仍放一个只指向 `LEADER.md` 的短文件，给仍按旧文件名找 leader 手册的外部工具用。插件优先读 `LEADER.md`，缺失时退回读它并记日志；这个文件同时受文档预算门禁管理，正文不承载规则。
 - **`dsh-coordinator` 历史包名**：`docs/capability-gaps.md` 记录数据目录改名来源时保留旧包名，不属于本次术语范围。
 - **`.worktrees/` 旧副本**：独立 checkout，随分支处置。
 - 旧 `projects.json` 读得出来，不需要手动重建绑定；下一次写回（改名、换 leader、拖排序）会自动落成新字段。
