@@ -22,7 +22,7 @@ npm run e2e            # 构建客户端产物 + 跑全部 e2e 场景
 npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文件
 ```
 
-`npm run e2e` 先跑 `npm run build:client`：`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错。**单跑也要先构建**：`node --test` 不构建，新 checkout / worktree 里 `lib/` 为空，症状是每个等待都超时，不是启动失败。
+`npm run e2e` 先跑 `npm run build:client`：`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错。**单跑也要先构建**：`node --test` 不构建，新 checkout / worktree 里 `lib/` 为空，症状是每个等待都超时，不是启动失败。**构建了也可能坏**：改过 `src/client/` 里的 CSS，先跑 `plugin.e2e.js` 冒烟——症状与原因见[e2e-scenarios 的失败诊断](../.agents/skills/e2e-scenarios/SKILL.md#失败诊断)。
 
 **`npm run e2e -- <文件>` 不会缩小要跑的集合**：npm 把 `--` 后面的参数追加到 script 末尾，实际执行的是 `node --test "tests/e2e/*.e2e.js" <文件>`，glob 照旧展开（实测 `tests 2`）；要单跑就绕过 npm script 直接调 `node --test`。**不加 `--test-force-exit`**：它把漏清理从「挂住/超时变红」变成「绿着通过 + 留下孤儿进程」，挂住应当暴露；已知三处已由有界清理收干净，取舍见[清理上限笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
 
