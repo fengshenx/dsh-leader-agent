@@ -7,9 +7,10 @@
  * 只升不降，收起回落到基线。宿主不导出这些函数（UI 包不为绕过包面规则开放
  * 值），只能照同一套口径自己算。
  *
- * 与宿主的已知差异：宿主还会为「有子代理在跑」「等你输入」「当前会话」抬高
- * 水位，我们手里没有这些状态源，所以只认运行中与完成未读（completed）两档——
- * 绿点是通知语义，被折在「展开其余」后面就失去了提示作用。
+ * 与宿主的已知差异：宿主还会为「有子代理在跑」「等你输入」抬高水位，我们
+ * 没有这两路状态源；运行中、完成未读（completed）与当前会话三档参与计算——
+ * 绿点是通知语义，被折在「展开其余」后面就失去提示作用；当前会话若被折掉，
+ * 点开它时完成标记清除、水位回落，这一行会当场从列表里消失。
  *
  * @module dsh-leader-agent/client/session-watermark
  */
@@ -36,18 +37,21 @@ export function watermarkRows(rows, watermark) {
  * 算出「注意力会话」要求的最小水位。
  *
  * 运行中的会话不该被折起来——用户正等着它，藏起来只会让人以为它没了；
- * 完成未读的会话同样不该被折——绿点就是这个功能要让人看见的通知。
+ * 完成未读的会话同样不该被折——绿点就是这个功能要让人看见的通知；当前会话
+ * 也要留在可见范围内，否则点开它的瞬间完成标记清除、水位回落，行会消失。
  *
  * @param {object[]} rows - 会话行
+ * @param {string} [currentSessionId] - 当前打开的会话 id
  * @returns {number} 需要的最小水位；没有注意力会话时是 0
  */
-export function requiredWatermark(rows) {
+export function requiredWatermark(rows, currentSessionId) {
   let required = 0
   for (let index = 0; index < rows.length; index += 1) {
     const position = index + 1
     if (position > SESSION_WATERMARK_AUTO_MAX) break
     const row = rows[index]
-    if (row?.running === true || row?.completed === true) required = position
+    const current = currentSessionId !== undefined && row?.id === currentSessionId
+    if (row?.running === true || row?.completed === true || current) required = position
   }
   return required
 }
@@ -72,10 +76,11 @@ export function nextWatermark(hiddenCount, watermark) {
  *
  * @param {object[]} rows - 会话行
  * @param {number} storedWatermark - 用户展开出来的水位（0 表示没展开过）
+ * @param {string} [currentSessionId] - 当前打开的会话 id
  * @returns {{ rows: object[], hiddenCount: number, expanded: boolean, expandLabel: string }} 视图
  */
-export function foldSessions(rows, storedWatermark) {
-  const baseline = Math.max(SESSION_WATERMARK_BASE, requiredWatermark(rows))
+export function foldSessions(rows, storedWatermark, currentSessionId) {
+  const baseline = Math.max(SESSION_WATERMARK_BASE, requiredWatermark(rows, currentSessionId))
   const watermark = Math.max(baseline, storedWatermark)
   const visible = watermarkRows(rows, watermark)
   return {

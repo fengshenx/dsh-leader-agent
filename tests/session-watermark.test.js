@@ -44,6 +44,12 @@ test('requiredWatermark 也抬到最后一个完成未读会话的位置', () =>
   assert.equal(requiredWatermark(makeRows(10, [2], [9])), 9)
 })
 
+test('requiredWatermark 也认当前会话：点开后水位不回落', () => {
+  assert.equal(requiredWatermark(makeRows(8), 's-6'), 6)
+  assert.equal(requiredWatermark(makeRows(8), 's-1'), 1)
+  assert.equal(requiredWatermark(makeRows(8), 'missing'), 0)
+})
+
 test('requiredWatermark 只在前 50 条内生效', () => {
   assert.equal(requiredWatermark(makeRows(80, [SESSION_WATERMARK_AUTO_MAX])), SESSION_WATERMARK_AUTO_MAX)
   assert.equal(requiredWatermark(makeRows(80, [SESSION_WATERMARK_AUTO_MAX + 1])), 0)
@@ -73,6 +79,13 @@ test('foldSessions 默认露出基准条数，运行中的会话不被折起来'
   const withCompleted = foldSessions(makeRows(8, [], [6]), 0)
   assert.equal(withCompleted.rows.length, 6)
   assert.equal(withCompleted.hiddenCount, 2)
+
+  // 点开第 6 条后 completed 清除；它成了当前会话，水位不能跟着回落，
+  // 否则这一行会在用户眼前当场消失。
+  const opened = makeRows(8)
+  const stillVisible = foldSessions(opened, 0, 's-6')
+  assert.equal(stillVisible.rows.length, 6)
+  assert.equal(stillVisible.rows[5].id, 's-6')
 })
 
 test('foldSessions 展开后全部可见并给出收起态', () => {
