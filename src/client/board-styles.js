@@ -405,7 +405,8 @@ const STYLE_TEXT = `
 .dsh-leader-agent-board-done-title {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  /* 与卡号同字号：完成区是历史浏览，字号不该比卡号更抢眼 */
+  font-size: 11px;
   line-height: 20px;
   color: var(--dsw-alias-label-tertiary);
   overflow: hidden;
@@ -473,6 +474,29 @@ const STYLE_TEXT = `
   line-height: 16px;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* 「展开其余 / 收起」：外观照宿主工作区树的 overflow 按钮（12px、三级标签色、
+   等宽行高，悬停提亮到二级色），左内边距与 done 行卡面对齐 */
+.dsh-leader-agent-board-done-more {
+  box-sizing: border-box;
+  width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 12px;
+  line-height: 28px;
+  text-align: left;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-agent-board-done-more:hover {
+    color: var(--dsw-alias-label-secondary);
+  }
 }
 
 /* 骨架与空态 */

@@ -249,6 +249,51 @@ export function sortDoneCards(cards) {
 }
 
 /**
+ * done 折叠区分页：默认露出一页，点「展开其余」再加一页。
+ *
+ * 页大小比宿主会话列表（5 条）大：已完成卡是历史浏览，30 张一页更省点击。
+ */
+export const DONE_PAGE_SIZE = 30
+
+/**
+ * 按水位切出 done 折叠区的可见卡片。
+ *
+ * 口径照宿主工作区树的会话折叠（`session-watermark.js`）：默认露出一页，点
+ * 「展开其余」再加一页，剩余不足一页时一次放完；展开到最后一页后按钮变成
+ * 「收起」，收起回落到基线。水位只升不降，直到收起。
+ *
+ * @param {readonly object[]} cards - 已排序的 done 卡
+ * @param {number} watermark - 用户展开出来的水位（0 表示没展开过）
+ * @returns {{ rows: object[], hiddenCount: number, expanded: boolean, expandLabel: string }} 视图
+ */
+export function foldDoneCards(cards, watermark) {
+  const limit = Math.max(DONE_PAGE_SIZE, watermark)
+  const rows = cards.slice(0, limit)
+  const hiddenCount = cards.length - rows.length
+  return {
+    rows,
+    hiddenCount,
+    expanded: hiddenCount === 0 && limit > DONE_PAGE_SIZE,
+    expandLabel: `展开其余 ${hiddenCount} 个卡片`,
+  }
+}
+
+/**
+ * 点「展开其余」之后的新水位。
+ *
+ * 剩余不足一整页时一次放完（Infinity），否则再放一页——最后一步不该只多露出
+ * 几张再点一次。
+ *
+ * @param {number} hiddenCount - 当前被藏起来的张数
+ * @param {number} visibleCount - 当前可见张数
+ * @returns {number} 新水位
+ */
+export function nextDoneWatermark(hiddenCount, visibleCount) {
+  if (hiddenCount <= DONE_PAGE_SIZE) return Infinity
+  return visibleCount + DONE_PAGE_SIZE
+}
+
+/**
  * 把一次改卡的结果合进看板列表。
  *
  * 只替换同 id 的那张，其余保持原引用——列表每 2 秒换一次，整份重建会让所有

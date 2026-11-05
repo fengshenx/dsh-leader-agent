@@ -21,10 +21,12 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  foldDoneCards,
   mergeCardSnapshot,
   mergeCardUpdate,
   mergeDetailCard,
   mergeSessionState,
+  nextDoneWatermark,
   slotBindingsOf,
   sortActiveCards,
   sortDoneCards,
@@ -357,6 +359,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   const [loaded, setLoaded] = useState(false)
   const [detail, setDetail] = useState(null)
   const [doneOpen, setDoneOpen] = useState(false)
+  // 已完成区的页码：组件本地状态，收起再展开不回退（宿主会话列表同样不持久化）。
+  const [doneWatermark, setDoneWatermark] = useState(0)
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -467,6 +471,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     ),
     done: sortDoneCards(cardList.filter((card) => card.status === 'done')),
   }), [cardList, states])
+  const doneFold = foldDoneCards(done, doneWatermark)
 
   const openSession = useCallback((targetSessionId) => {
     const uiWorkspace = getUiWorkspace?.()
@@ -625,7 +630,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               ? createElement(
                   'div',
                   { className: 'dsh-leader-agent-board-group' },
-                  done.map((card) => createElement(BoardCard, {
+                  doneFold.rows.map((card) => createElement(BoardCard, {
                     key: card.id,
                     card,
                     states,
@@ -635,6 +640,27 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
                     onOpenDetail: openDetail,
                     onOpenSession: openSession,
                   })),
+                  doneFold.hiddenCount === 0 && !doneFold.expanded
+                    ? null
+                    : createElement(
+                        'button',
+                        {
+                          type: 'button',
+                          className: 'dsh-leader-agent-board-done-more',
+                          'aria-expanded': doneFold.expanded,
+                          onClick: () => {
+                            if (doneFold.expanded) {
+                              setDoneWatermark(0)
+                              return
+                            }
+                            setDoneWatermark((value) => nextDoneWatermark(
+                              doneFold.hiddenCount,
+                              Math.max(value, done.length - doneFold.hiddenCount),
+                            ))
+                          },
+                        },
+                        doneFold.expanded ? '收起' : doneFold.expandLabel,
+                      ),
                 )
               : null,
           )
