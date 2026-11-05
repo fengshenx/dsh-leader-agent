@@ -16,6 +16,8 @@ dsh 原生的 subagent 工具是阻塞式：父 agent 调工具 → 子 agent �
 
 **唤醒走 `agent.followup()`**——dsh 唯一能开新 turn 的入口。实测推翻了此前的判断：唤醒失败的真因不是 inbox 投影未注册，而是**父会话已被销毁**（headless 一次性 CLI 在 turn 结束后 dispose 会话）。只要父会话存活，对空闲 agent 调 `followup()` 就能可靠唤醒。
 
+> **2026-11-06 修订**：「唯一能开新 turn 的入口」不再成立——`agent.steer()` 在会话空闲时同样直接开轮（next-step 边界），worker 续聊已改走 `steer`；完成通知（worker → leader）仍走 `followup` 的 next-turn。见 [续聊消息改走 next-step 边界](../bug-fix/2026-11-06-worker-message-next-step-injection.md)。
+
 **完成通知先落盘再唤醒**。唤醒是「投消息 + 开新 turn」，进程在唤醒前崩溃会导致通知丢失。落盘队列是崩溃窗口的唯一防线。
 
 **落盘队列的所有读-改-写走同一条 promise 链串行化**。多个 worker 同时完成时，交错读写会互相覆盖并争抢同一临时文件（实测踩到过 `ENOENT: rename ... .tmp`）。
