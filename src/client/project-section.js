@@ -750,7 +750,7 @@ function ProjectRow(props) {
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
-  const folded = foldSessions(childSessions, watermark)
+  const folded = foldSessions(childSessions, watermark, currentSessionId)
 
   const menuItems = buildProjectMenuItems(project, {
     onRename: () => setRenaming(true),

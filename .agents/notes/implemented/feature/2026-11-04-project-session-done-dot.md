@@ -22,9 +22,9 @@
 
 `getSessions` / `refreshSessionIndex` 都是 slot inject 的内联函数，宿主每次重渲染 occupant 都换新引用；把它们放进订阅 effect 的依赖，等于让宿主任何一次重渲染（实测：会话标题晚到就够）把订阅重挂——完成未读投影随之清零，跑完的绿点凭空消失。修复为 effect 依赖恒空、取值经 `useRef` 走最新一份；挂载早于会话服务就绪时轮询补挂（10 秒拿不到就 console.error，Fail Loud）。接线断言钉住这三件事（ref 存在、tracker 在 effect 内、依赖恒空）。
 
-### 完成未读会话不被折叠
+### 完成未读与当前会话不被折叠
 
-绿点是通知语义，被折进「展开其余 N 个会话」后面就看不见。`src/client/session-watermark.js` 的 `requiredWatermark` 照宿主注意力水位，除运行中外也认 `completed`，在前 50 条内把水位抬到它所在位置；长列表里「有子代理在跑」「等你输入」「当前会话」三档仍没有数据源，不参与。取舍：完成未读越多，展开的基线越高（最多 50 条），打开后投影清除、水位回落；不做则 worker 较多的项目里绿点基本不可见，与这个功能的目的冲突。
+绿点是通知语义，被折进「展开其余 N 个会话」后面就看不见。`src/client/session-watermark.js` 的 `requiredWatermark` 照宿主注意力水位，除运行中外也认 `completed` 与当前会话（`currentSessionId`），在前 50 条内把水位抬到它所在位置；长列表里「有子代理在跑」「等你输入」两档仍没有数据源，不参与。当前会话必须参与：点开绿点行后 `completed` 清除，若不认当前会话，水位当场回落，这一行会从列表里消失。取舍：完成未读越多，展开的基线越高（最多 50 条），打开后投影清除、离开该会话后水位回落；不做则 worker 较多的项目里绿点基本不可见，与这个功能的目的冲突。
 
 ## 边界
 
@@ -36,11 +36,11 @@
 ## 验证
 
 - `tests/session-completion.test.js` 9 例：首见不标记、完成跳变标记、完成时在主视图不标记、标记后打开清除且切走不重点、循环派工再标记、空闲快照不丢不补、ready 前后消失清理差异、缺 phase 容错、只迭代 `ids`（目录外的行不参与）。
-- `tests/session-watermark.test.js` 8 例：新增完成未读抬水位、50 条上限对 completed 同样生效、`foldSessions` 让第 6 条完成未读露出。
-- 双向验证：删掉 `unread.add(id)` 核心行 → 5 例红（完成跳变相关全挂）；撤掉 `requiredWatermark` 的 `completed` 分支 → 3 例红；绕开 `ids` 迭代 → 1 例红；各自还原后全绿。
-- `tests/project-panel.test.js` 补两处接线断言：渲染档位嵌套三元（ongoing 先于 done）、tracker 在订阅 effect 内实例化且结果只经 `row.completed` 一条通道进渲染；全套单测 1082 通过 / 17 跳过。
-- `tests/e2e/session-done-dot.e2e.js`（真实宿主 + mock）守完整时序：重启后已空闲的 worker 不凭空亮点 → running 圈出现后切到 leader（等行退出选中态确证视图释放）→ 完成跳变点亮绿点（title 带「已完成，待查看」）→ 打开熄灭。worker 靠 seed 登记表（`workers.json`）进项目树——归属判据是「目录 + worker 登记表」，工作区新建的普通会话不算。元素等待统一走 `waitForLocator`（预算随 #104 纪律，失败自动带页面读数），另补 mock 请求数与实例日志尾取证。worker 两轮在同一个会话里发消息，请求历史会带首轮 marker；两轮共用同一个 `MARKER_WORKER`、脚本排两步，重开 worker 后先等首轮历史「第一轮回执」上屏再发第二轮。修掉「两轮换 marker → `resolveMarker` 看到两个标记 → mock 400」后单场景连跑 5 次全绿（12.4 / 11.3 / 11.3 / 11.3 / 11.3 秒）。
+- `tests/session-watermark.test.js` 9 例：新增完成未读抬水位、50 条上限对 completed 同样生效、`foldSessions` 让第 6 条完成未读露出，以及当前会话参与水位（点开后那一行仍可见）。
+- 双向验证：删掉 `unread.add(id)` 核心行 → 5 例红（完成跳变相关全挂）；撤掉 `requiredWatermark` 的 `completed` 分支 → 3 例红；撤掉当前会话分支 → 2 例红；绕开 `ids` 迭代 → 1 例红；各自还原后全绿。
+- `tests/project-panel.test.js` 补两处接线断言：渲染档位嵌套三元（ongoing 先于 done）、tracker 在订阅 effect 内实例化且结果只经 `row.completed` 一条通道进渲染；全套单测 1083 通过 / 17 跳过。
+- `tests/e2e/session-done-dot.e2e.js`（真实宿主 + mock）守完整时序：重启后已空闲的 worker 不凭空亮点 → running 圈出现后切到 leader（等行退出选中态确证视图释放）→ 完成跳变点亮绿点（title 带「已完成，待查看」）→ 打开熄灭。worker 靠 seed 登记表（`workers.json`）进项目树——归属判据是「目录 + worker 登记表」，工作区新建的普通会话不算。元素等待统一走 `waitForLocator`（预算随 #104 纪律，失败自动带页面读数），另补 mock 请求数与实例日志尾取证。worker 两轮在同一个会话里发消息，请求历史会带首轮 marker；两轮共用同一个 `MARKER_WORKER`、脚本排两步，重开 worker 后先等首轮历史「第一轮回执」上屏再发第二轮。修掉「两轮换 marker → `resolveMarker` 看到两个标记 → mock 400」后单场景连跑 3 次全绿（17.4 / 14.8 / 13.0 秒）。
 - mock 的 `stepDelayMs`（`mock-llm.mjs` 新参数，默认 0 不影响其他场景）只负责把第二轮拉长到够「等 running 圈再切走」。提交版曾把偶发红归因到「3 秒踩 SSE 首事件超时」，实际根因是同一会话两轮换了 marker、历史里同时出现两个标记，mock 在 SSE 之前回 400，轮次没开始，绿点不可能亮；`scenario 请求数：3` 是 leader + 首轮 + 第二轮的正常次数，>3 才是宿主重发。
 - 本场景一个来回切三次视图，会放大宿主已知竞态 `Sidebar Session opening failed … reference is released`（`SidebarSessionView.dispose` 抛出，栈里无插件帧，2026-11-03 decoupled 笔记有记录）。因此窄豁免这一条消息样式（`HOST_VIEW_DISPOSE_NOISE`），其余 console.error 仍即失败；该豁免与绿点不亮的根因（mock marker 400）是两件事。
 - e2e 套件改**逐文件串行**（`package.json` 的 `e2e` 用 for 循环逐个 `node --test`）：node --test 跨文件并发在本地同时拉起 4 个 dsh 实例 + 4 个 chromium，负载把时序余量打穿，同一场景在不同步骤随机挂（done 不亮、ongoing 不出现各出现过）；`--test-concurrency=1` 则触发 node:test runner 的「Promise resolution is still pending」文件级误挂（三个场景文件 11 秒内全挂），不可用。串行后全套稳定。
-- `npm run check` 全绿：1082 通过 / 17 跳过，新文件行覆盖 100%，`docs/usage.md` 5318/5600（余量 5.04%）。
+- `npm run check` 全绿：1083 通过 / 17 跳过，新文件行覆盖 100%，`docs/usage.md` 5318/5600、`docs/limitations.md` 6787/7150（余量均 ≥5%）。
