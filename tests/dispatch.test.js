@@ -2418,6 +2418,87 @@ test('旧轮结算落盘期间投来的新消息，不会被旧轮误删', async
   assert.match(fixture.delivered[1].content[0].text, /第二轮产物/)
 })
 
+test('新轮只产空 assistant 时，通知摘要不继承旧轮文本', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const real = createNotificationStore({ home })
+  // 卡住旧轮落盘，让新消息落在「旧轮已 turn/end、结算未完成」的窗口里。
+  let releaseEnqueue
+  const gate = new Promise((resolve) => { releaseEnqueue = resolve })
+  let enqueues = 0
+  const store = {
+    ...real,
+    async enqueue(notification) {
+      enqueues += 1
+      if (enqueues === 1) await gate
+      return real.enqueue(notification)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做第一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  const settling = fixture.finishTurn(record.childId, { text: '第一轮产物' })
+  await waitFor(() => enqueues === 1)
+
+  await dispatcher.message({
+    parent,
+    sessionId: record.childId,
+    message: '接着做第二件事',
+    signal: new AbortController().signal,
+  })
+  // 宿主对空响应也会落 assistant/message（`blocksToText` 得到空串）：不能因此
+  // 沿用上一轮的文本，把旧产物标成新轮的产物。
+  await fixture.emitSessionEvent(record.childId, {
+    type: 'assistant/message',
+    data: { message: { content: [] } },
+  })
+  releaseEnqueue()
+  assert.equal(await settling, true)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  assert.equal(await fixture.finishTurn(record.childId, { withMessage: false }), true)
+  await waitFor(() => fixture.delivered.length === 2)
+  const text = fixture.delivered[1].content[0].text
+  assert.match(text, /（worker 未产出文本）/)
+  assert.doesNotMatch(text, /第一轮产物/)
+})
+
+test('续聊并入当前轮时，消息前已产出的文本仍算这一轮', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  await fixture.emitSessionEvent(record.childId, {
+    type: 'assistant/message',
+    data: { message: { content: [{ type: 'text', text: '先改完 auth.js' }] } },
+  })
+  // 纠偏消息并入当前轮；这一轮随后没有新文本，摘要应退回消息前那一条。
+  await dispatcher.message({
+    parent,
+    sessionId: record.childId,
+    message: '顺手补个测试',
+    signal: new AbortController().signal,
+  })
+  assert.equal(await fixture.finishTurn(record.childId, { withMessage: false }), true)
+  await waitFor(() => fixture.delivered.length === 1)
+  assert.match(fixture.delivered[0].content[0].text, /先改完 auth\.js/)
+})
+
 test('投递写盘失败不会重结算，也不会把新一轮产物标成这一轮', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')

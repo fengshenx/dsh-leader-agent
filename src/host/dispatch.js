@@ -166,8 +166,6 @@ export function createDispatcher({
    * @type {Map<string, { parentSessionId: string, name: string }>}
    */
   const owners = new Map()
-  /** @type {Map<string, string>} 各 worker 本轮的 assistant 文本（同一 turn 取最后一条非空），key 为会话 id */
-  const turnText = new Map()
   /** @type {Map<string, number>} 每个父会话的连续自动续行次数 */
   const resumeCounts = new Map()
   /** @type {Set<string>} 本进程注入过的通知消息 id，用于区分外部输入 */
@@ -627,14 +625,19 @@ export function createDispatcher({
     })
     // 这一轮由 leader 发起：登记在飞记录，worker 的 `turn/end` 到来时据此结算。
     // 人自己下钻跟 worker 聊的轮次不走这里，也就不会打扰 leader。
-    inflight.set(sessionId, {
+    const previous = inflight.get(sessionId)
+    const record = {
       childId: sessionId,
       parentSessionId: parent.id,
       parent,
       name: displayName,
       task: message,
       startedAt: Date.now(),
-    })
+    }
+    // 并入当前轮时承接本轮已产出的文本；旧记录若已冻结（summary 非空）说明
+    // 那一轮已结束、正在结算，新消息属于下一轮，不能继承旧产物。
+    if (previous?.summary === undefined && previous?.text !== undefined) record.text = previous.text
+    inflight.set(sessionId, record)
     if (name !== undefined) {
       try {
         await workers.rename(sessionId, name)
@@ -857,16 +860,13 @@ export function createDispatcher({
    */
   async function settleTurn(sessionId, reason) {
     const record = inflight.get(sessionId)
-    if (record === undefined) {
-      turnText.delete(sessionId)
-      return false
-    }
+    if (record === undefined) return false
     // 摘要与终态在第一次结算时冻结进记录：落盘失败后下一轮结束时重试的必须是
     // **这一轮**的产物，不能被下一轮的 assistant 文本覆盖。
     if (record.summary === undefined) {
       record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
       record.summary = record.outcome === 'completed'
-        ? turnText.get(sessionId) ?? ''
+        ? record.text ?? ''
         : describeTurnFailure(reason)
     }
     const judged = record.outcome === 'completed'
@@ -877,11 +877,8 @@ export function createDispatcher({
     // 重试不会多出一条通知。
     const notification = await emitNotification(record, judged)
     // 落盘期间 leader 可能已经投出下一轮并登记了新记录：只清自己那一条，否则
-    // 会把新记录（以及新轮先产出的文本）一起删掉，那一轮结束时就漏结算。
-    if (inflight.get(sessionId) === record) {
-      inflight.delete(sessionId)
-      turnText.delete(sessionId)
-    }
+    // 会把新记录一起删掉，那一轮结束时就漏结算。
+    if (inflight.get(sessionId) === record) inflight.delete(sessionId)
     try {
       await deliver(notification, record.parent)
     } catch (error) {
@@ -907,9 +904,12 @@ export function createDispatcher({
     const sessionId = session?.id
     if (typeof sessionId !== 'string') return undefined
     if (event?.type === 'assistant/message') {
-      if (!inflight.has(sessionId)) return undefined
+      const record = inflight.get(sessionId)
+      if (record === undefined) return undefined
       const text = blocksToText(event.data?.message?.content)
-      if (text !== '') turnText.set(sessionId, text)
+      // 空内容（宿主对空响应也会发这条）不能覆盖本轮已有的文本，但文本只记在
+      // 当前记录上：新消息若已换了一条记录，旧轮文本不会漏到新轮。
+      if (text !== '') record.text = text
       return undefined
     }
     if (event?.type !== 'turn/end') return undefined
@@ -982,7 +982,6 @@ export function createDispatcher({
       closed = true
       // 卸载后不再有派工：留着订阅会继续替已死记录结算，也会让宿主持住这个模块。
       stopTurns()
-      turnText.clear()
       if (idleTimer !== undefined) {
         clearInterval(idleTimer)
         idleTimer = undefined
