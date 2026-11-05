@@ -89,7 +89,8 @@ test('返回 sent 状态', async () => {
 test('渲染文案区分两种状态', () => {
   const tool = createMessageWorkerTool({ dispatcher: createFakeDispatcher() })
   const merged = tool.output.render({}, { sessionId: 'c1', name: '工A', status: 'merged' })
-  assert.ok(merged[0].text.includes('仍在运行'))
+  assert.ok(merged[0].text.includes('当前轮次'))
+  assert.ok(merged[0].text.includes('下一步'))
   const sent = tool.output.render({}, { sessionId: 'c1', name: '工B', status: 'sent' })
   assert.ok(sent[0].text.includes('自动回报'))
 })

@@ -1,10 +1,10 @@
 /**
  * `message_worker` 工具：给已派出的 worker 发后续消息。
  *
- * 投递走 `src/host/worker-sessions.js`：worker 的会话还在内存里就直接 `followup`
- * 投进去（并入当前执行）；进程重启后会话不在内存，先 `agents.resume` 冷恢复再从
- * 持久化日志接着跑，带完整上下文。结束后的完成通知与第一轮同源同格式
- * （`src/host/dispatch.js`）。
+ * 投递走 `src/host/worker-sessions.js`：worker 的会话还在内存里就直接 `steer`
+ * 投进它的当前轮次（下一步注入，空闲即开工）；进程重启后会话不在内存，先
+ * `agents.resume` 冷恢复再从持久化日志接着跑，带完整上下文。结束后的完成通知与
+ * 第一轮同源同格式（`src/host/dispatch.js`）。
  *
  * 参数面：`sessionId` 寻址目标 worker，`message` 是消息正文，可选 `rename` 与投递
  * 同次改名。不复用宿主全局的 `send_message` 工具：它只认宿主 subagent 体系的子
@@ -23,7 +23,7 @@ export function createMessageWorkerTool({ dispatcher }) {
   return {
     name: 'message_worker',
     description:
-      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 带着完整上下文继续执行，结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
+      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 正在跑时消息会在它的下一步注入当前轮次，空闲时立刻开工；它结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
     parameters: {
       type: 'object',
       properties: {
@@ -62,14 +62,14 @@ export function createMessageWorkerTool({ dispatcher }) {
           return [
             {
               type: 'text',
-              text: `worker「${result.name ?? result.sessionId}」仍在运行，消息已并入当前任务，随本轮执行一并回报。`,
+              text: `worker「${result.name ?? result.sessionId}」在跑或刚开工：消息已投进它的当前轮次，下一步生效，随本轮执行一并回报。`,
             },
           ]
         }
         return [
           {
             type: 'text',
-            text: `已把消息发给 worker「${result.name ?? result.sessionId}」（子会话 ${result.sessionId}），它恢复执行后会自动回报。`,
+            text: `已把消息发给 worker「${result.name ?? result.sessionId}」（子会话 ${result.sessionId}），它开始执行后会自动回报。`,
           },
         ]
       },
