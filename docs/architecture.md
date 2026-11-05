@@ -11,7 +11,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 层 | 位置 | 运行位置 | 职责 |
 |---|---|---|---|
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
-| 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、worker 回报气泡、弹窗与提示条 |
+| 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、agent 消息气泡（leader 任务 / worker 回报）、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
 | 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-leader-agent` 初始化方法 |
 
@@ -94,7 +94,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
 | leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手说明（与输入框同宽同圆角）；「了解怎么用」经宿主 `inputActions` 发一条消息：先讲协作方式，再问是否初始化 `LEADER.md` 与 `SLOTS.md`（确认前不写文件）；关闭标记存 localStorage |
-| worker 回报气泡 | 独立 Chat node kind + exclusive claim，左侧气泡、头像、名字可下钻；只渲染最后一次回报 |
+| agent 消息气泡 | leader 任务与 worker 回报各用一个独立 Chat node kind + exclusive claim，渲染成左侧气泡、头像、名字可下钻；回报只渲染最后一次的内容，任务渲染投递原文 |
 | 看板 tab 与入口 | 右栏 tab 类型静态注册；「开始」页入口接管自己那枚胶囊的渲染，只在项目会话里画出来 |
 | 浮层与提示条 | 弹窗外壳（`modal-shell.js`）与菜单复刻官方源码改写；一次性消息走宿主的 `shell.overlay` 槽位，4 秒淡出 |
 
@@ -137,7 +137,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|
 | `src/host/` | 工具注册与角色裁剪、派工与结算、worker 会话生命周期与权限继承、卡片与项目存储、项目通道、提示词注入 |
 | `src/host/tools/` | 六个工具的实现：`spawn_worker` / `message_worker` / `read_worker_session` / `create_card` / `update_card` / `list_cards` |
-| `src/client/` | 左栏项目区块与项目树、右栏看板与卡片详情、worker 回报气泡、浮层与提示条 |
+| `src/client/` | 左栏项目区块与项目树、右栏看板与卡片详情、agent 消息气泡、浮层与提示条 |
 | `src/shared/` | 两端共用的纯函数与线上类型（frontmatter 解析、卡片链接判定、项目通道方法名） |
 | `.agents/skills/` | 协议层 `leader-mode` 与项目初始化方法 `init-leader-agent` |
 | `build/`、`scripts/` | 客户端构建（原子替换）与开发实例、worktree、门禁脚本 |

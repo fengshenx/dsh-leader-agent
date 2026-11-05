@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { foldTurns, renderTranscript } from '../src/host/worker-transcript.js'
-import { WORKER_TASK_SOURCE_KIND } from '../src/host/message.js'
+import { WORKER_TASK_SOURCE_KIND } from '../src/shared/worker-task.js'
 
 /**
  * 造一条会话事件。

@@ -22,7 +22,8 @@
 import { randomUUID } from 'node:crypto'
 import { agentPresetOptions, agentPresetResumeSetup } from './agent-preset.js'
 import { inheritPermission } from './permission-inherit.js'
-import { createUserMessage, WORKER_TASK_SOURCE_KIND } from './message.js'
+import { createUserMessage } from './message.js'
+import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 
 /**
  * 创建 worker 会话管理器。

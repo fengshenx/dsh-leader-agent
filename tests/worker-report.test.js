@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { agentAvatarDataUri, agentAvatarSeed } from '../src/client/worker-report-avatar.js'
+import { messageText } from '../src/shared/message-text.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from '../src/client/worker-report-definition.js'
 import { buildNotificationText } from '../src/host/dispatch.js'
 import {
@@ -10,7 +11,6 @@ import {
   workerReportBody,
   workerReportFormat,
   workerReportSource,
-  workerReportText,
 } from '../src/shared/worker-report.js'
 
 test('worker 回报的 source 记着身份名与子会话', () => {
@@ -118,10 +118,10 @@ test('读 worker 回报的 source 时逐层判型', () => {
 })
 
 test('从内容块里取纯文本', () => {
-  assert.equal(workerReportText([{ type: 'text', text: '一' }, { type: 'text', text: '二' }]), '一\n二')
-  assert.equal(workerReportText([{ type: 'image', url: 'x' }]), '')
-  assert.equal(workerReportText([{ type: 'text' }]), '')
-  assert.equal(workerReportText('不是数组'), '')
+  assert.equal(messageText([{ type: 'text', text: '一' }, { type: 'text', text: '二' }]), '一\n二')
+  assert.equal(messageText([{ type: 'image', url: 'x' }]), '')
+  assert.equal(messageText([{ type: 'text' }]), '')
+  assert.equal(messageText('不是数组'), '')
 })
 
 test('通知正文不带说话人前缀', () => {

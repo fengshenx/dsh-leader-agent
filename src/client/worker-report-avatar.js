@@ -1,5 +1,5 @@
 /**
- * worker 头像：minidenticons 像素图案（确定性 + 内置 seed 池）
+ * agent 头像：minidenticons 像素图案（确定性 + 内置 seed 池），worker 与 leader 共用
  *
  * 同一名字恒定同一张脸，跨会话、跨重启都不换脸。头像带自己的
  * 底色（`<img>` 内部不继承 CSS 主题变量），底色明度压到 36% 以过非文本 3:1
