@@ -34,7 +34,7 @@ is incompatible with dsh 0.2.1-rc.2: requirements {"@deepseek-ai/dsh-llm":"^0.1.
 **P1 的解法**：不改 dsh，只用它的公开入口自建三条链路：
 
 - **派工**：`ctx.subagents.startActivation({ delivery: 'caller' })` 立即返回子会话 id，`activation.result` 是终态 promise——dsh 原生 spawn 工具是阻塞式，做不到「派完即返回」。
-- **唤醒**：`agent.followup(userMessage)`，dsh 唯一能开新 turn 的入口。
+- **唤醒**：`agent.followup(userMessage)`（next-turn 边界）与 `agent.steer(userMessage)`（next-step 边界）在会话空闲时都会直接开新 turn——rc.2 tag 的 `packages/core/agent-loop/src/agent.ts` 里两者都走 `send()` → `wakeDriver()`，「只有 followup 能唤醒」是旧结论。
 - **落盘**：完成通知先写盘再唤醒，进程在唤醒前崩溃不丢通知；投递失败的通知留在队列，父会话重新打开时补投。
 
 **实测结论**（sdk profile，mock LLM，全链路一次通过）：父派工 → 子会话建立并执行 → 子终态 → 父 inbox 收到「任务「写文件」已结束…」→ 父状态 `idle → running → idle`（真的被唤醒并开了新 turn）→ 通知队列清空。

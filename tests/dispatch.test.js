@@ -2321,6 +2321,103 @@ test('一轮只结算一次回报，重复上报不重复唤醒', async () => {
   assert.equal(record.childId, fixture.spawned[0].sessionId)
 })
 
+test('续聊并入当前轮：整轮只结算一次，不早报、不重复、不遗漏', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  // worker 正在跑：续聊消息并入当前轮，在飞记录仍是同一条会话的一条。
+  await dispatcher.message({
+    parent,
+    sessionId: record.childId,
+    message: '先补回归用例',
+    signal: new AbortController().signal,
+  })
+  assert.equal(dispatcher.inflightCount(), 1)
+  // 没到 turn/end 之前不能报：纠偏消息还属于当前轮。
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(fixture.delivered.length, 0)
+
+  // 整轮结束只结算一条，摘要取这一轮最后的文本。
+  assert.equal(await fixture.finishTurn(record.childId, { text: '补完用例，全绿' }), true)
+  assert.equal(dispatcher.inflightCount(), 0)
+  // 宿主重放/重复上报同一个 turn/end：不能再结算一条。
+  assert.equal(await fixture.finishTurn(record.childId, { text: '又来一条' }), false)
+
+  await waitFor(() => fixture.delivered.length === 1)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(fixture.delivered.length, 1)
+  assert.match(fixture.delivered[0].content[0].text, /补完用例，全绿/)
+  assert.doesNotMatch(fixture.delivered[0].content[0].text, /又来一条/)
+})
+
+test('旧轮结算落盘期间投来的新消息，不会被旧轮误删', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const real = createNotificationStore({ home })
+  // 把旧轮的落盘卡住，精确复现「turn/end 已到、结算还没完成」的窗口。
+  let releaseEnqueue
+  const gate = new Promise((resolve) => { releaseEnqueue = resolve })
+  let enqueues = 0
+  const store = {
+    ...real,
+    async enqueue(notification) {
+      enqueues += 1
+      if (enqueues === 1) await gate
+      return real.enqueue(notification)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做第一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  const childId = record.childId
+  // 旧轮的 turn/end 已落，结算卡在落盘上。
+  const settling = fixture.finishTurn(childId, { text: '第一轮产物' })
+  await waitFor(() => enqueues === 1)
+
+  // 窗口内 leader 又投一条：这是下一轮的在飞记录。
+  await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '接着做第二件事',
+    signal: new AbortController().signal,
+  })
+  assert.equal(dispatcher.inflightCount(), 1)
+  // 下一轮已经开始产出：旧轮结算不能把这条文本一起清掉。
+  await fixture.emitSessionEvent(childId, {
+    type: 'assistant/message',
+    data: { message: { content: [{ type: 'text', text: '第二轮产物' }] } },
+  })
+
+  releaseEnqueue()
+  assert.equal(await settling, true)
+  // 旧轮只删自己那条记录；新记录还在，等下一轮 turn/end 结算。
+  assert.equal(dispatcher.inflightCount(), 1)
+  await waitFor(() => fixture.delivered.length === 1)
+  assert.match(fixture.delivered[0].content[0].text, /第一轮产物/)
+  assert.doesNotMatch(fixture.delivered[0].content[0].text, /第二轮产物/)
+
+  assert.equal(await fixture.finishTurn(childId, { withMessage: false }), true)
+  assert.equal(dispatcher.inflightCount(), 0)
+  await waitFor(() => fixture.delivered.length === 2)
+  assert.match(fixture.delivered[1].content[0].text, /第二轮产物/)
+})
+
 test('投递写盘失败不会重结算，也不会把新一轮产物标成这一轮', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
