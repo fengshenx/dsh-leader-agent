@@ -50,7 +50,7 @@ function createFixture({ permissions } = {}) {
   let sequence = 0
 
   /**
-   * 造一个假 AgentHandle：followup 记录投递，session 供标题改写与身份判定。
+   * 造一个假 AgentHandle：`steer` 记录投递，session 供标题改写与身份判定。
    * @param {string} sessionId - 会话 id
    * @returns {object} 句柄
    */
@@ -75,11 +75,12 @@ function createFixture({ permissions } = {}) {
         agent: {
           id: sessionId,
           session,
-          followup(message) {
+          steer(message) {
             entry.messages.push(message)
             // 投递途中 worker 可能自己把上一轮报了：测试用它复现这类时序。
-            if (typeof entry.onFollowup === 'function') entry.onFollowup(message)
+            if (typeof entry.onDeliver === 'function') entry.onDeliver(message)
           },
+          followup() {},
         },
         async dispose() {
           entry.disposed = true
@@ -1810,7 +1811,7 @@ test('投递途中 worker 报完工，不误报发不出去', async () => {
   // worker 在收到续聊消息的同时把上一轮报了：报完工会从在飞表删记录，这条路径在
   // 真实环境里随时可能发生。
   const entry = fixture.spawned.find((item) => item.sessionId === record.childId)
-  entry.onFollowup = () => {
+  entry.onDeliver = () => {
     void fixture.finishTurn(record.childId, { text: '上一轮做完了' })
   }
 

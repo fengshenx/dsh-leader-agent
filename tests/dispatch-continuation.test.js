@@ -45,9 +45,10 @@ function createHost({ resumeError } = {}) {
         agent: {
           id: sessionId,
           session,
-          followup(message) {
+          steer(message) {
             entry.messages.push(message)
           },
+          followup() {},
         },
         async dispose() {
           entry.disposed = true

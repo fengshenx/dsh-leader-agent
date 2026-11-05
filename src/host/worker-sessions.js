@@ -306,6 +306,12 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
     /**
      * 给 worker 发消息。活着就直接投，不在内存就冷恢复后投。
      *
+     * 投递边界是 **next-step**（`steer`）：worker 正在跑时消息插进它当前轮次的
+     * 下一个 step，模型下一步就带着它；空闲（含冷恢复）时宿主会立刻开一轮，
+     * 这一条成为首步输入。用 `followup` 则是 next-turn 边界——worker 忙时消息
+     * 要等本轮结束才作为另一轮进入，leader 的纠偏/返工指令白等一整轮，本轮
+     * 结束时还会先按旧产物结算一条通知。
+     *
      * @param {object} options - 投递参数
      * @param {string} options.sessionId - worker 会话 id
      * @param {string} options.text - 正文
@@ -320,7 +326,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       const handle = current ?? await resumeOnce(sessionId, signal)
       const displayName = name ?? handle.agent.session?.header?.title ?? sessionId
       if (name !== undefined) renameTitle(handle, name)
-      handle.agent.followup(taskMessage(text, displayName, parentSessionId))
+      handle.agent.steer(taskMessage(text, displayName, parentSessionId))
       return resumed ? 'resumed' : 'live'
     },
 

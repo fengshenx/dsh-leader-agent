@@ -583,8 +583,9 @@ export function createDispatcher({
   /**
    * 给已派出的 worker 发后续消息。
    *
-   * 会话还在内存时消息直接投进去（并入当前执行）；进程重启后会话不在内存，先
-   * `agents.resume` 冷恢复再投。两种形态对调用方是同一步，只是回执码不同。
+   * 会话还在内存时消息直接投进它的当前轮次（下一步注入，空闲即开工）；进程重启后
+   * 会话不在内存，先 `agents.resume` 冷恢复再投。两种形态对调用方是同一步，只是
+   * 回执码不同。
    *
    * @param {object} options - 续聊参数
    * @param {object} options.parent - 调用方 agent（宿主要求精确活对象）

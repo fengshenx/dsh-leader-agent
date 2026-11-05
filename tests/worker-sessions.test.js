@@ -12,10 +12,10 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
 /**
  * 造一个假的宿主上下文：记录建/恢复/投递/销毁。
  *
- * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, followupError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
+ * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, steerError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, followupError, renameError, permissions } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, steerError, renameError, permissions } = {}) {
   const created = []
   const resumed = []
   /** 追加到会话上的 knob 事件（权限继承） */
@@ -39,7 +39,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       if (createError !== undefined) throw createError
       sequence += 1
       const sessionId = options.sessionId ?? `worker-${sequence}`
-      const entry = { options, sessionId, messages: [], disposed: false }
+      const entry = { options, sessionId, messages: [], methods: [], disposed: false }
       created.push(entry)
       return {
         agent: {
@@ -55,10 +55,12 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
               if (type === 'approval/policy') overrides[sessionId].approval = data.policy
             },
           },
-          followup(message) {
-            if (followupError !== undefined) throw followupError
+          steer(message) {
+            if (steerError !== undefined) throw steerError
+            entry.methods.push('steer')
             entry.messages.push(message)
           },
+          followup() {},
         },
         async dispose() {
           entry.disposed = true
@@ -68,15 +70,17 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
     async resume(options) {
       resumed.push(options.resumeSessionId)
       resumeOptions.push(options)
-      const entry = { options, sessionId: options.resumeSessionId, messages: [], disposed: false }
+      const entry = { options, sessionId: options.resumeSessionId, messages: [], methods: [], disposed: false }
       created.push(entry)
       return {
         agent: {
           id: entry.sessionId,
           session: { id: entry.sessionId, header: { id: entry.sessionId } },
-          followup(message) {
+          steer(message) {
+            entry.methods.push('steer')
             entry.messages.push(message)
           },
+          followup() {},
         },
         async dispose() {
           entry.disposed = true
@@ -157,6 +161,35 @@ test('建会话时用带前缀的会话 id，且不投递任务——开工等 l
   assert.equal(entry.options.meta.cwd, '/repo')
   // 建会话不产生模型调用：任务正文由 leader 的 `message_worker` 投递。
   assert.equal(entry.messages.length, 0)
+})
+
+test('投递走 steer（next-step 边界），不排 next-turn', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const { sessionId } = await sessions.spawn({ signal: new AbortController().signal })
+  await sessions.send({
+    sessionId,
+    text: '改方向：先补回归用例',
+    parentSessionId: 'leader-1',
+    signal: new AbortController().signal,
+  })
+
+  // 宿主的 `followup` 排 next-turn：worker 忙时消息要等本轮结束，纠偏指令
+  // 白等一整轮。投递必须走 `steer`，下一步就进模型上下文。
+  const entry = fixture.created[0]
+  assert.deepEqual(entry.methods, ['steer'])
+  assert.equal(entry.messages[0].content[0].text, '改方向：先补回归用例')
+
+  // 冷恢复路径同样走 steer：恢复出来的 agent 是空闲的，steer 会直接开一轮。
+  await sessions.send({
+    sessionId: 'worker-cold',
+    text: '接着做',
+    parentSessionId: 'leader-1',
+    signal: new AbortController().signal,
+  })
+  const cold = fixture.created.find((item) => item.sessionId === 'worker-cold')
+  assert.deepEqual(cold.methods, ['steer'])
 })
 
 test('建会话时继承 leader 的权限，而不是宿主的默认 preset', async () => {
