@@ -1,15 +1,18 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  DONE_PAGE_SIZE,
   STALLED_THRESHOLD_MS,
   cardSignal,
   fitLinkChips,
+  foldDoneCards,
   formatDuration,
   isCardStalled,
   mergeCardSnapshot,
   mergeCardUpdate,
   mergeDetailCard,
   mergeSessionState,
+  nextDoneWatermark,
   slotBindingsOf,
   slotViewsForCard,
   sortActiveCards,
@@ -228,6 +231,49 @@ test('done 卡按完成时间倒序', () => {
     sortDoneCards(cards).map((entry) => entry.id),
     ['new', 'mid', 'old'],
   )
+})
+
+test('done 折叠区按 30 张一页，剩余不足一页一次放完，展开完可收起', () => {
+  const many = Array.from({ length: DONE_PAGE_SIZE + 5 }, (_, index) => card({
+    id: `c${index}`,
+    number: index,
+    status: 'done',
+  }))
+
+  // 没超过一页：全露出，不给「展开其余」
+  const short = foldDoneCards(many.slice(0, DONE_PAGE_SIZE), 0)
+  assert.equal(short.rows.length, DONE_PAGE_SIZE)
+  assert.equal(short.hiddenCount, 0)
+  assert.equal(short.expanded, false)
+
+  // 超过一页：默认只露 30 张，剩余 5 张一页放完（不再分次点）
+  const first = foldDoneCards(many, 0)
+  assert.equal(first.rows.length, DONE_PAGE_SIZE)
+  assert.equal(first.rows[0].id, 'c0')
+  assert.equal(first.hiddenCount, 5)
+  assert.equal(first.expanded, false)
+  assert.equal(first.expandLabel, '展开其余 5 个卡片')
+
+  const next = nextDoneWatermark(first.hiddenCount, first.rows.length)
+  assert.equal(next, Infinity)
+  const last = foldDoneCards(many, next)
+  assert.equal(last.rows.length, many.length)
+  assert.equal(last.hiddenCount, 0)
+  assert.equal(last.expanded, true)
+
+  // 收起回基线：水位 0 时又只露一页
+  assert.equal(foldDoneCards(many, 0).rows.length, DONE_PAGE_SIZE)
+
+  // 超过两页：一次加一页，而不是一次放完
+  const longer = Array.from({ length: DONE_PAGE_SIZE * 3 }, (_, index) => card({
+    id: `d${index}`,
+    number: index,
+    status: 'done',
+  }))
+  assert.equal(nextDoneWatermark(60, 30), 60)
+  assert.equal(foldDoneCards(longer, 60).rows.length, 60)
+  assert.equal(foldDoneCards(longer, 60).hiddenCount, 30)
+  assert.equal(nextDoneWatermark(30, 60), Infinity)
 })
 
 test('停滞判定要求有绑定会话且超过阈值，非 active 不计时', () => {
