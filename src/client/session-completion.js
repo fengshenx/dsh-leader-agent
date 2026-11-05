@@ -48,13 +48,17 @@ export function createSessionCompletionTracker() {
     /**
      * 喂入一次会话列表快照并重算完成未读集合。
      *
-     * @param {object} snapshot - `sessions.list` 快照（`byId` / `phase`）
+     * @param {object} snapshot - `sessions.list` 快照（`ids` / `byId` / `phase`）
      * @returns {Set<string>} 完成未读的会话 id 集合
      */
     update(snapshot) {
       const byId = snapshot?.byId ?? {}
-      for (const [id, row] of Object.entries(byId)) {
-        const next = row?.running === true
+      // 迭代 `ids` 与宿主 reconcileStatus 对齐：subagent catalog / retained
+      // subagent fallback 行只在 byId 里，不在 ids 里，不建立完成投影。
+      for (const id of snapshot?.ids ?? Object.keys(byId)) {
+        const row = byId[id]
+        if (row === undefined) continue
+        const next = row.running === true
         const previous = running.get(id)
         if (previous === undefined) {
           running.set(id, next)
@@ -63,8 +67,10 @@ export function createSessionCompletionTracker() {
           if (next) unread.delete(id)
           else if (!isMainView(row)) unread.add(id)
         }
-        // 用户打开着的会话视为已读：绿点的语义是「完成了还没人看」，切走它
-        // 不构成一次新的完成跳变，不该重新点亮。
+      }
+      // 用户打开着的会话视为已读：绿点的语义是「完成了还没人看」，切走它不构成
+      // 一次新的完成跳变，不该重新点亮。与宿主一样按完整 byId 清（不只 ids）。
+      for (const [id, row] of Object.entries(byId)) {
         if (isMainView(row)) unread.delete(id)
       }
       if (snapshot?.phase === 'ready') {
