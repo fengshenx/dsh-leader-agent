@@ -876,8 +876,12 @@ export function createDispatcher({
     // 还在，这个 worker 下一轮结束时再结算同一份内容；`enqueue` 按 id 幂等，
     // 重试不会多出一条通知。
     const notification = await emitNotification(record, judged)
-    inflight.delete(sessionId)
-    turnText.delete(sessionId)
+    // 落盘期间 leader 可能已经投出下一轮并登记了新记录：只清自己那一条，否则
+    // 会把新记录（以及新轮先产出的文本）一起删掉，那一轮结束时就漏结算。
+    if (inflight.get(sessionId) === record) {
+      inflight.delete(sessionId)
+      turnText.delete(sessionId)
+    }
     try {
       await deliver(notification, record.parent)
     } catch (error) {

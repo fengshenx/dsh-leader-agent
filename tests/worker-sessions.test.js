@@ -60,7 +60,9 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
             entry.methods.push('steer')
             entry.messages.push(message)
           },
-          followup() {},
+          followup() {
+            entry.methods.push('followup')
+          },
         },
         async dispose() {
           entry.disposed = true
@@ -80,7 +82,9 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
             entry.methods.push('steer')
             entry.messages.push(message)
           },
-          followup() {},
+          followup() {
+            entry.methods.push('followup')
+          },
         },
         async dispose() {
           entry.disposed = true
