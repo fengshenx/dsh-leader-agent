@@ -233,7 +233,11 @@ test('done 卡按完成时间倒序', () => {
   )
 })
 
-test('done 折叠区按 30 张一页，剩余不足一页一次放完，展开完可收起', () => {
+test('看板已完成区一页 30 张', () => {
+  assert.equal(DONE_PAGE_SIZE, 30)
+})
+
+test('done 折叠区按 30 张一页，剩余不超过一页一次放完，展开完可收起', () => {
   const many = Array.from({ length: DONE_PAGE_SIZE + 5 }, (_, index) => card({
     id: `c${index}`,
     number: index,

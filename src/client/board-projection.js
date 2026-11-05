@@ -16,6 +16,8 @@
  * @module dsh-leader-agent/client/board-projection
  */
 
+import { foldRows, nextRowWatermark } from './session-watermark.js'
+
 /**
  * 停滞阈值：名下有会话但 24h 无活动。
  */
@@ -258,39 +260,31 @@ export const DONE_PAGE_SIZE = 30
 /**
  * 按水位切出 done 折叠区的可见卡片。
  *
- * 口径照宿主工作区树的会话折叠（`session-watermark.js`）：默认露出一页，点
- * 「展开其余」再加一页，剩余不足一页时一次放完；展开到最后一页后按钮变成
- * 「收起」，收起回落到基线。水位只升不降，直到收起。
+ * 口径与项目树的会话折叠共用 `session-watermark.js` 的 `foldRows`：默认露出
+ * 一页，点「展开其余」再加一页，剩余不超过一页时一次放完；展开到最后一页后
+ * 按钮变成「收起」，收起回落到基线。已完成卡没有运行中 / 完成未读这类注意力
+ * 状态，基线就是一页。
  *
  * @param {readonly object[]} cards - 已排序的 done 卡
  * @param {number} watermark - 用户展开出来的水位（0 表示没展开过）
  * @returns {{ rows: object[], hiddenCount: number, expanded: boolean, expandLabel: string }} 视图
  */
 export function foldDoneCards(cards, watermark) {
-  const limit = Math.max(DONE_PAGE_SIZE, watermark)
-  const rows = cards.slice(0, limit)
-  const hiddenCount = cards.length - rows.length
-  return {
-    rows,
-    hiddenCount,
-    expanded: hiddenCount === 0 && limit > DONE_PAGE_SIZE,
-    expandLabel: `展开其余 ${hiddenCount} 个卡片`,
-  }
+  return foldRows(cards, watermark, { pageSize: DONE_PAGE_SIZE, noun: '卡片' })
 }
 
 /**
  * 点「展开其余」之后的新水位。
  *
- * 剩余不足一整页时一次放完（Infinity），否则再放一页——最后一步不该只多露出
- * 几张再点一次。
+ * 共享口径见 `nextRowWatermark`：剩余不超过一整页时一次放完（Infinity），
+ * 否则在当前可见数上再加一页。
  *
  * @param {number} hiddenCount - 当前被藏起来的张数
  * @param {number} visibleCount - 当前可见张数
  * @returns {number} 新水位
  */
 export function nextDoneWatermark(hiddenCount, visibleCount) {
-  if (hiddenCount <= DONE_PAGE_SIZE) return Infinity
-  return visibleCount + DONE_PAGE_SIZE
+  return nextRowWatermark(hiddenCount, visibleCount, DONE_PAGE_SIZE)
 }
 
 /**

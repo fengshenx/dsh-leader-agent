@@ -3,7 +3,9 @@ import { test } from 'node:test'
 import {
   SESSION_WATERMARK_AUTO_MAX,
   SESSION_WATERMARK_BASE,
+  foldRows,
   foldSessions,
+  nextRowWatermark,
   nextWatermark,
   requiredWatermark,
   watermarkRows,
@@ -57,7 +59,43 @@ test('requiredWatermark 只在前 50 条内生效', () => {
   assert.equal(requiredWatermark(makeRows(80, [], [SESSION_WATERMARK_AUTO_MAX + 1])), 0)
 })
 
-test('nextWatermark 剩余不足一页时一次放完', () => {
+test('会话列表一页 5 条', () => {
+  assert.equal(SESSION_WATERMARK_BASE, 5)
+})
+
+test('foldRows 按页大小切行，基线高于一页时全露也不算展开完', () => {
+  const rows = makeRows(8)
+
+  const folded = foldRows(rows, 0, { pageSize: 2, noun: '会话' })
+  assert.equal(folded.rows.length, 2)
+  assert.equal(folded.hiddenCount, 6)
+  assert.equal(folded.expanded, false)
+  assert.equal(folded.expandLabel, '展开其余 6 个会话')
+
+  // 注意力会话把基线抬到 5：全部露出也还是折叠态，按钮不该凭空变成「收起」。
+  const raised = foldRows(rows, 0, { pageSize: 2, baseline: 5, noun: '会话' })
+  assert.equal(raised.rows.length, 5)
+  assert.equal(raised.hiddenCount, 3)
+  assert.equal(raised.expanded, false)
+  assert.equal(foldRows(rows, 8, { pageSize: 2, baseline: 5, noun: '会话' }).expanded, true)
+
+  // 基线正好等于全部行数：全露但用户没展开过，不能算「展开完」。
+  assert.equal(foldRows(makeRows(4), 0, { pageSize: 2, baseline: 4, noun: '会话' }).expanded, false)
+})
+
+test('foldSessions 的页大小可参数化', () => {
+  const folded = foldSessions(makeRows(8), 0, undefined, 3)
+  assert.equal(folded.rows.length, 3)
+  assert.equal(folded.hiddenCount, 5)
+  assert.equal(folded.expandLabel, '展开其余 5 个会话')
+  // 剩余 5 条 > 一页 3 条：再加一页；剩余 3 条正好一页：一次放完。
+  assert.equal(nextRowWatermark(5, 3, 3), 6)
+  assert.equal(nextRowWatermark(3, 3, 3), Number.POSITIVE_INFINITY)
+  assert.equal(nextWatermark(5, 3, 3), 6)
+  assert.equal(nextWatermark(3, 3, 3), Number.POSITIVE_INFINITY)
+})
+
+test('nextWatermark 剩余不超过一页时一次放完', () => {
   assert.equal(nextWatermark(5, 5), Number.POSITIVE_INFINITY)
   assert.equal(nextWatermark(1, 5), Number.POSITIVE_INFINITY)
   assert.equal(nextWatermark(6, 5), 10)
@@ -86,6 +124,11 @@ test('foldSessions 默认露出基准条数，运行中的会话不被折起来'
   const stillVisible = foldSessions(opened, 0, 's-6')
   assert.equal(stillVisible.rows.length, 6)
   assert.equal(stillVisible.rows[5].id, 's-6')
+
+  // 当前会话让基线正好覆盖全部行时，全露也不是用户展开出来的，按钮不应变「收起」。
+  const allVisible = foldSessions(makeRows(6), 0, 's-6')
+  assert.equal(allVisible.rows.length, 6)
+  assert.equal(allVisible.expanded, false)
 })
 
 test('foldSessions 展开后全部可见并给出收起态', () => {
