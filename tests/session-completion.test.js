@@ -11,6 +11,17 @@ const snap = (rows, phase = 'ready') => ({
 /** 造一个会话行；mainView 大于 0 表示主视图正打开着它。 */
 const row = (running, mainView = 0) => ({ running, retainedBy: { mainView } })
 
+test('投影只迭代 ids：目录外的行不登记也不标记', () => {
+  const tracker = createSessionCompletionTracker()
+  // subagent catalog 行只在 byId、不在 ids 里，宿主 reconcileStatus 也不为它建状态。
+  const first = { byId: { w1: row(true), sub: row(true) }, ids: ['w1'], phase: 'ready' }
+  const second = { byId: { w1: row(false), sub: row(false) }, ids: ['w1'], phase: 'ready' }
+  tracker.update(first)
+  const unread = tracker.update(second)
+  assert.equal(unread.has('w1'), true)
+  assert.equal(unread.has('sub'), false)
+})
+
 test('首见的空闲会话不标记：挂载前就完成的没有「刚完成」可言', () => {
   const tracker = createSessionCompletionTracker()
   assert.equal(tracker.update(snap([['w1', row(false)]])).size, 0)

@@ -7,8 +7,9 @@
  * 只升不降，收起回落到基线。宿主不导出这些函数（UI 包不为绕过包面规则开放
  * 值），只能照同一套口径自己算。
  *
- * 与宿主的已知差异：宿主还会为「有子代理在跑」「等你输入」「未读完成」「当前
- * 会话」抬高水位，我们手里只有会话行的运行态，所以只认 running。
+ * 与宿主的已知差异：宿主还会为「有子代理在跑」「等你输入」「当前会话」抬高
+ * 水位，我们手里没有这些状态源，所以只认运行中与完成未读（completed）两档——
+ * 绿点是通知语义，被折在「展开其余」后面就失去了提示作用。
  *
  * @module dsh-leader-agent/client/session-watermark
  */
@@ -34,7 +35,8 @@ export function watermarkRows(rows, watermark) {
 /**
  * 算出「注意力会话」要求的最小水位。
  *
- * 运行中的会话不该被折起来——用户正等着它，藏起来只会让人以为它没了。
+ * 运行中的会话不该被折起来——用户正等着它，藏起来只会让人以为它没了；
+ * 完成未读的会话同样不该被折——绿点就是这个功能要让人看见的通知。
  *
  * @param {object[]} rows - 会话行
  * @returns {number} 需要的最小水位；没有注意力会话时是 0
@@ -44,7 +46,8 @@ export function requiredWatermark(rows) {
   for (let index = 0; index < rows.length; index += 1) {
     const position = index + 1
     if (position > SESSION_WATERMARK_AUTO_MAX) break
-    if (rows[index]?.running === true) required = position
+    const row = rows[index]
+    if (row?.running === true || row?.completed === true) required = position
   }
   return required
 }

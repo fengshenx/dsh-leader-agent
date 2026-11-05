@@ -16,13 +16,14 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
+import { findMarkers } from './mock-script.mjs'
 import { waitFor, waitForLocator } from './harness.mjs'
 
-/** 场景标记：一个标记只表达一个场景，两段各一轮。 */
+/** 场景标记：leader 与 worker 各一个；worker 两轮共用同一个标记。 */
 const MARKER_LEADER = 'MOCK-E2E-DONE-DOT-LEADER'
-const MARKER_FIRST = 'MOCK-E2E-DONE-DOT-FIRST'
-const MARKER_SECOND = 'MOCK-E2E-DONE-DOT-SECOND'
+const MARKER_WORKER = 'MOCK-E2E-DONE-DOT-WORKER'
 const REPLY_LEADER = 'leader 回执'
+const REPLY_FIRST = '第一轮回执'
 const REPLY_SECOND = '第二轮回执'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
@@ -122,15 +123,15 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-done-dot-'))
   const mock = await startMockProvider({
     // 第二轮要在「执行中」窗口里完成页面动作（等 running 圈、切到 leader、等
-    // 选中态消失）——本地 mock 一轮只有几毫秒，动作插不进窗口。延迟不能太大：
-    // 实测 3 秒会踩中宿主对 SSE 首事件的超时阈值，请求被 abort 重发、脚本耗尽
-    // 变 400，轮次起不来（ongoing 都不出现）；1.5 秒在「够动作」与「不触超时」
-    // 之间。
+    // 选中态消失）——本地 mock 一轮只有几毫秒，动作插不进窗口，用延迟把这一轮
+    // 拉长到够动作。
     stepDelayMs: 1500,
+    // worker 两轮在同一个会话里发消息：请求历史会带上首轮的标记。两轮共用
+    // 同一个 marker、脚本里排两步，`resolveMarker` 才不会在历史里同时看到两个
+    // 标记而回 400（失败时就是这条，与轮次延迟无关）。
     scripts: {
       [MARKER_LEADER]: [{ text: REPLY_LEADER }],
-      [MARKER_FIRST]: [{ text: '第一轮回执' }],
-      [MARKER_SECOND]: [{ text: REPLY_SECOND }],
+      [MARKER_WORKER]: [{ text: REPLY_FIRST }, { text: REPLY_SECOND }],
     },
   })
   const problems = []
@@ -177,15 +178,15 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
   })
 
   await composer.click()
-  await composer.fill(`${MARKER_FIRST} 收工即可`)
+  await composer.fill(`${MARKER_WORKER} 收工即可`)
   await composer.press('Enter')
-  await waitForLocator(bootstrapPage.getByText('第一轮回执').first(), { description: '第一轮回复上屏' })
+  await waitForLocator(bootstrapPage.getByText(REPLY_FIRST).first(), { description: '第一轮回复上屏' })
   const workerId = await currentSessionId(bootstrapPage)
   assert.equal(typeof workerId, 'string', '应当能读到 worker 会话 id')
   await bootstrapContext.close()
   await first.stop({ keepRoot: true })
 
-  const worker = sessionContaining(first.home, '第一轮回执')
+  const worker = sessionContaining(first.home, REPLY_FIRST)
   assert.notEqual(worker, null, 'worker 会话日志应已落盘')
   assert.equal(worker.id, workerId, '日志里的会话应与页面上选中的会话一致')
   assert.equal(worker.cwd, leader.cwd, '工作区新建会话应与 leader 同目录，否则不归属项目')
@@ -216,8 +217,11 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
   await workerRow.click()
   const secondComposer = page.locator('div[role="textbox"][contenteditable="true"]').first()
   await waitForLocator(secondComposer, { description: 'worker 会话的输入框' })
+  // 先等首轮历史在这个页面里上屏：第二轮请求要带上完整历史，marker 也只在这一
+  // 份历史里出现；不等就可能把「历史未加载」当成「单 marker」，红起来像时序问题。
+  await waitForLocator(page.getByText(REPLY_FIRST).first(), { description: 'worker 会话历史里的第一轮回执' })
   await secondComposer.click()
-  await secondComposer.fill(`${MARKER_SECOND} 收工即可`)
+  await secondComposer.fill(`${MARKER_WORKER} 收工即可`)
   await secondComposer.press('Enter')
   await waitForLocator(workerRow.locator('[data-state="ongoing"]'), { description: 'worker 行的运行中加载圈' })
 
@@ -237,11 +241,20 @@ test('worker 跑完且没人看亮绿点，打开后熄灭', { timeout: 180_000 
   try {
     await waitForLocator(workerRow.locator('[data-state="done"]'), { description: '完成跳变点亮的绿点' })
   } catch (error) {
-    // 页面读数 waitForLocator 已带；这里补它拿不到的两样——mock 收到的 scenario
-    // 请求数（>2 说明宿主重发了请求、脚本耗尽变 400，轮次起不来）与实例日志尾。
+    // 页面读数 waitForLocator 已带；这里补它拿不到的三样——mock 收到的 scenario
+    // 请求数（leader + 首轮 + 第二轮共 3 次；>3 才是宿主重发）、最后一次请求的
+    // markers（历史里混进两个标记会让 mock 回 400）与实例日志尾。
     const scenarioRequests = mock.requests.filter((request) => request.kind === 'scenario')
+    const last = scenarioRequests[scenarioRequests.length - 1]
+    let markers = []
+    try {
+      markers = last === undefined ? [] : findMarkers(JSON.parse(last.body))
+    } catch {
+      markers = ['<body 解析失败>']
+    }
     throw new Error(
-      `${error instanceof Error ? error.message : String(error)}；scenario 请求数：${scenarioRequests.length}；`
+      `${error instanceof Error ? error.message : String(error)}；scenario 请求数：${scenarioRequests.length}`
+      + `（预期 3，>3 才是宿主重发）；最后一次 markers：${markers.join(', ') || '（无）'}；`
       + `实例日志尾：${instance.logs.join('').slice(-1500)}`,
       { cause: error },
     )

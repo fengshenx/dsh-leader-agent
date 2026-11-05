@@ -13,12 +13,14 @@ import {
  * 造一批会话行。
  * @param {number} count - 条数
  * @param {number[]} [runningAt] - 运行中的位置（从 1 数）
+ * @param {number[]} [completedAt] - 完成未读的位置（从 1 数）
  * @returns {object[]} 会话行
  */
-function makeRows(count, runningAt = []) {
+function makeRows(count, runningAt = [], completedAt = []) {
   return Array.from({ length: count }, (_, index) => ({
     id: `s-${index + 1}`,
     running: runningAt.includes(index + 1),
+    completed: completedAt.includes(index + 1),
   }))
 }
 
@@ -36,9 +38,17 @@ test('requiredWatermark 抬到最后一个运行中会话说在的位置', () =>
   assert.equal(requiredWatermark(makeRows(10, [2, 9])), 9)
 })
 
+test('requiredWatermark 也抬到最后一个完成未读会话的位置', () => {
+  assert.equal(requiredWatermark(makeRows(10, [], [6])), 6)
+  assert.equal(requiredWatermark(makeRows(10, [8], [3])), 8)
+  assert.equal(requiredWatermark(makeRows(10, [2], [9])), 9)
+})
+
 test('requiredWatermark 只在前 50 条内生效', () => {
   assert.equal(requiredWatermark(makeRows(80, [SESSION_WATERMARK_AUTO_MAX])), SESSION_WATERMARK_AUTO_MAX)
   assert.equal(requiredWatermark(makeRows(80, [SESSION_WATERMARK_AUTO_MAX + 1])), 0)
+  assert.equal(requiredWatermark(makeRows(80, [], [SESSION_WATERMARK_AUTO_MAX])), SESSION_WATERMARK_AUTO_MAX)
+  assert.equal(requiredWatermark(makeRows(80, [], [SESSION_WATERMARK_AUTO_MAX + 1])), 0)
 })
 
 test('nextWatermark 剩余不足一页时一次放完', () => {
@@ -58,6 +68,11 @@ test('foldSessions 默认露出基准条数，运行中的会话不被折起来'
   const withRunning = foldSessions(makeRows(8, [7]), 0)
   assert.equal(withRunning.rows.length, 7)
   assert.equal(withRunning.hiddenCount, 1)
+
+  // 绿点是通知：第 6 条完成未读被折起来就看不见了，水位要把它露出来。
+  const withCompleted = foldSessions(makeRows(8, [], [6]), 0)
+  assert.equal(withCompleted.rows.length, 6)
+  assert.equal(withCompleted.hiddenCount, 2)
 })
 
 test('foldSessions 展开后全部可见并给出收起态', () => {
