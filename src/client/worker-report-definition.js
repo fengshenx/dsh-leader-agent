@@ -15,7 +15,8 @@
  * @module dsh-leader-agent/client/worker-report-definition
  */
 
-import { readWorkerReportSource, workerReportText } from '../shared/worker-report.js'
+import { readWorkerReportSource } from '../shared/worker-report.js'
+import { messageText } from '../shared/message-text.js'
 
 /** worker 回报消息的节点 kind（渲染器的 dispatch key）。 */
 export const WORKER_REPORT_NODE_KIND = 'dsh-leader-agent-worker-report'
@@ -47,7 +48,7 @@ export const workerReportDefinition = {
       seq: event.seq,
       time: event.time,
       messageId: String(event.data.id),
-      text: workerReportText(event.data.content),
+      text: messageText(event.data.content),
       name: source.name,
       childSessionId: source.childSessionId,
       // 最后一次回报的内容：界面渲染它，协议字段（子会话 id、状态、下一步）

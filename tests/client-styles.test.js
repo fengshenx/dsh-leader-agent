@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
 import { ensureBoardStyles } from '../src/client/board-styles.js'
-import { ensureWorkerReportStyles } from '../src/client/worker-report-styles.js'
+import { ensureAgentBubbleStyles } from '../src/client/agent-bubble-styles.js'
 
 /**
  * 造一个够用的 document 桩。
@@ -44,17 +44,17 @@ test('看板样式表注入一次，重复调用不重复追加', () => {
   assert.match(head[0].textContent, /\.dsh-leader-agent-board/)
 })
 
-test('worker 回报样式表注入一次，重复调用不重复追加', () => {
+test('agent 气泡样式表注入一次，重复调用不重复追加', () => {
   const head = installDocument()
-  ensureWorkerReportStyles()
-  ensureWorkerReportStyles()
+  ensureAgentBubbleStyles()
+  ensureAgentBubbleStyles()
   assert.equal(head.length, 1)
-  assert.equal(head[0].id, 'dsh-leader-agent-worker-report')
-  assert.match(head[0].textContent, /\.dsh-leader-agent-worker-report/)
+  assert.equal(head[0].id, 'dsh-leader-agent-agent-bubble')
+  assert.match(head[0].textContent, /\.dsh-leader-agent-agent-bubble/)
 })
 
 test('没有 document 时直接返回，不抛错', () => {
   delete globalThis.document
   ensureBoardStyles()
-  ensureWorkerReportStyles()
+  ensureAgentBubbleStyles()
 })
