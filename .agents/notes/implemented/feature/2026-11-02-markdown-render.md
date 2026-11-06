@@ -42,7 +42,7 @@
 
 ### compact 变体的颜色在本仓覆盖
 
-宿主 `MarkdownText` 的 CSS 里，`.markdown` 设 `color: --dsw-alias-label-primary`、`.compact` 设 `--dsw-alias-label-tertiary`，两者挂在同一个根节点上、特异性同为 (0,1,0)，`.compact` 靠源顺序胜出；链接同理，`.compact a` 的 `color: inherit` 压过 `.markdown a` 的 `--dsw-alias-link`。两处容器原本都是 primary 正文，直接复用 compact 会把正文改暗、链接失去链接色。本仓在 `.dsh-leader-agent-card-detail-text` 与 `.dsh-leader-agent-worker-report__bubble` 内用宿主暴露的 `data-markdown-variant="compact"` 钩子压回 primary / link 色：容器类 + 属性选择器是 (0,2,0)，高于 `.compact` 的 (0,1,0)；链接再叠标签选择器到 (0,2,1)，高于 `.compact a` 的 (0,1,1)。特异性严格更高，不依赖哈希类名，也不依赖样式表注入顺序。
+宿主 `MarkdownText` 的 CSS 里，`.markdown` 设 `color: --dsw-alias-label-primary`、`.compact` 设 `--dsw-alias-label-tertiary`，两者挂在同一个根节点上、特异性同为 (0,1,0)，`.compact` 靠源顺序胜出；链接同理，`.compact a` 的 `color: inherit` 压过 `.markdown a` 的 `--dsw-alias-link`。两处容器原本都是 primary 正文，直接复用 compact 会把正文改暗、链接失去链接色。本仓在 `.dsh-leader-agent-card-detail-text` 与 `.dsh-leader-agent-agent-bubble__bubble`（2026-11-06 起由 `dsh-leader-agent-worker-report__bubble` 改名，见 [2026-11-06-leader-task-bubble.md](2026-11-06-leader-task-bubble.md)）内用宿主暴露的 `data-markdown-variant="compact"` 钩子压回 primary / link 色：容器类 + 属性选择器是 (0,2,0)，高于 `.compact` 的 (0,1,0)；链接再叠标签选择器到 (0,2,1)，高于 `.compact a` 的 (0,1,1)。特异性严格更高，不依赖哈希类名，也不依赖样式表注入顺序。
 
 ### 气泡材质跟宿主消息气泡
 
@@ -71,7 +71,7 @@
 
 - 单测 657 例全绿；`tests/markdown.test.js` 新增 8 例：走基线模块、固定 compact、构建期 external 清单、两处调用点接线、折叠实现不再是 line-clamp（含「气泡本身不裁剪」）、展开开关在气泡内、气泡底色用 `--dsw-specific-bubble`、compact 颜色覆盖；`tests/worker-report.test.js` 新增 4 例（`workerReportFormat`：旧消息回退纯文本、单换行连接的旧回报走纯文本（含块级标记反例）、空行分隔的新回报走 Markdown、失败原因纯文本）；`tests/dispatch.test.js` 新增 1 例（多块产物摘要用 `\n\n` 连接，通知正文仍用单换行）。
 - 下限核对读数：`git show dsh-v0.2.1-rc.2:packages/client/web/src/platform.ts` 与 `seed.ts` 在 tag 上与仓库 HEAD 内容一致——`ui-primitives` 在 `platform.ts:13` 的 `PLATFORM_MODULES` 条目里、`seed.ts:18` 静态 import 进 `:26` 的 `getStaticModules`，容器在两者都有 `satisfies` 对齐。安装产物里查不到这些文件（`files` 只发 `lib/`），所以核对对象只能是源码仓同 tag。
-- 双向验证（原接线）：把 `worker-report-view.js` 的 `createElement(Markdown, { source: body })` 改回裸 `body`，「两处调用点都渲染 Markdown 组件」变红；还原后全绿。
+- 双向验证（原接线）：把 `worker-report-view.js` 的 `createElement(Markdown, { source: body })` 改回裸 `body`（2026-11-06 起这段接线移到 `agent-bubble-view.js`），「两处调用点都渲染 Markdown 组件」变红；还原后全绿。
 - 双向验证（颜色覆盖）：删掉两个样式文件里的 `[data-markdown-variant='compact']` 覆盖规则 → 「两处容器用 data-markdown-variant 钩子恢复正文与链接色」变红（报 `src/client/board-styles.js 没有把正文色恢复成 primary`）；还原后全绿。
 - 双向验证（旧消息回退）：把 `workerReportFormat` 改成恒返回 `'markdown'` → 「旧消息回退的整条正文走纯文本」变红；把 view 改回无条件渲染 `Markdown` → 「两处调用点都渲染 Markdown 组件，旧消息回退纯文本」变红；各自还原后全绿。
 - 双向验证（多块摘要）：把 `buildWorkerReport` 的 `blocksToText(..., '\n\n')` 改回默认单换行 → 「多块产物摘要按空行连接」变红；还原后全绿。

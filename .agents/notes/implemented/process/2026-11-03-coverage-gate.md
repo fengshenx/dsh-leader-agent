@@ -44,7 +44,7 @@
 - 覆盖率与 e2e 是两条证据：登记进 `unmeasured` 不等于该文件被验证过，client 组件的行为仍归 `npm run e2e`。
 - 客户端组件一旦抽出纯函数、能被单测 import，就该从 `unmeasured` 移到 `thresholds` 或直接 100%——清单过期会由「登记了却出现在报告里」这条判据当场报出来。
 - Node 24.22 不支持 `/* node:coverage ignore next */`（实测该行仍计入未覆盖），所以不可达的防御分支按死代码删掉，不为凑覆盖率写走不到该行的测试。第一批里 `codecFor` 的未知类型 throw 就是这样处理的：改成静态映射查表，拼错的类型名在初始化时抛 TypeError，仍然 Fail Loud。表用 `Object.create(null)` 起——普通字面量会把 `toString` / `valueOf` / `constructor` 这些原型链键查成函数，拼错成它们时反而不抛，注释里「未知键必抛」的承诺就不成立。
-- 「常量文件测不了」这个判断要分开看：CSS 模板（`board-styles.js`、`worker-report-styles.js`）只要给 `document` 一个桩就能加载到 100%，不该登记成不可加载；真正拿不到的是依赖宿主模块表的文件（`icons.js` 的 `react`、`markdown.js` 的 `MarkdownText`、`client/index.js` 的注册链）。
+- 「常量文件测不了」这个判断要分开看：CSS 模板（`board-styles.js`、`agent-bubble-styles.js`）只要给 `document` 一个桩就能加载到 100%，不该登记成不可加载；真正拿不到的是依赖宿主模块表的文件（`icons.js` 的 `react`、`markdown.js` 的 `MarkdownText`、`client/index.js` 的注册链）。
 
 ## 验证
 

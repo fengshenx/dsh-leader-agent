@@ -1,6 +1,6 @@
 # 会话归档与回报气泡
 
-**范围**：`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`src/client/project-section.js`、`src/client/icons.js`、`src/client/index.js`、`src/client/worker-report-view.js`、`src/client/worker-report-styles.js`、`src/host/cards/store.js`、`src/host/worker-registry.js`、`src/host/projects/remote.js`、`src/shared/projects.js`、`tests/project-panel.test.js`、`tests/cards-store.test.js`、`tests/worker-registry.test.js`、`tests/projects-remote.test.js`、`README.md`、`docs/e2e-testing.md`
+**范围**：`src/client/project-panel.js`、`src/client/project-panel-logic.js`、`src/client/project-section.js`、`src/client/icons.js`、`src/client/index.js`、`src/client/worker-report-view.js`、`src/client/agent-bubble-styles.js`（原 `worker-report-styles.js`，2026-11-06 起改名，见 [2026-11-06-leader-task-bubble.md](2026-11-06-leader-task-bubble.md)）、`src/host/cards/store.js`、`src/host/worker-registry.js`、`src/host/projects/remote.js`、`src/shared/projects.js`、`tests/project-panel.test.js`、`tests/cards-store.test.js`、`tests/worker-registry.test.js`、`tests/projects-remote.test.js`、`README.md`、`docs/e2e-testing.md`
 
 ## 背景
 

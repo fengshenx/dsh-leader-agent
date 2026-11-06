@@ -12,7 +12,7 @@ leader 用 `message_worker` 投给 worker 的消息，在 worker 会话里显示
 
 新增 `dsh-leader-agent-worker-task` 节点定义，`match` 只认 `user/message` + `surfaceOp === 'append'` + `source.kind === 'dsh-leader-agent/worker-task'`，用 `exclusive: true` 让官方定义不再处理它。`start` 把正文、时间与 `parentSessionId` 装进状态，`buildViewNode` 的分组位置与官方同类节点一致：回合首步给 `exchange`（开启新 exchange），其余给 `input`。省掉 `groupTree` 会让节点落进回合的过程折叠区被默认隐藏——worker 收到任务却看不见。
 
-认领失败（宿主版本漂移、注册没生效）时退回官方上下文行，内容不丢；旧记录只要 `source` 里有 `parentSessionId` 也按气泡渲染，不另做迁移。
+认领失败（宿主版本漂移、注册没生效）时退回官方上下文行，内容不丢；旧记录只要 `source.kind` 仍是 `dsh-leader-agent/worker-task` 且带 `parentSessionId` 也按气泡渲染，不另做迁移。#112（`478232a`）把包名从 `dsh-leader-kit` 改成 `dsh-leader-agent` 时 kind 一起换了，改名前的 `dsh-leader-kit/worker-task` 记录不被认领，退回官方上下文行。
 
 ### 与 worker 回报共用一套气泡组件
 
@@ -35,6 +35,6 @@ host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的�
 ## 验证
 
 - 新增 7 条单测（`tests/worker-task.test.js`）：source 逐层判型、`match` 只认追加的任务消息、`start`/`buildViewNode` 的状态与分组、正文格式、文本提取、客户端入口接线。
-- `npm test`：1107 条，1090 通过 / 17 skip；`npm run build:client` 通过（客户端产物重建）。
+- `npm test`：1117 条，1100 通过 / 17 skip（rebase 到 `main@676ef30` 后重跑，含 #122 新增的 10 条结算用例）；`npm run build:client` 通过（客户端产物重建）。
 - 双向验证：删掉 `src/client/index.js` 里的任务气泡注册 → `客户端入口把任务节点定义与渲染器都挂上` 变红（fail 1）；还原 → 全绿。这条断言守住「定义、kind 与渲染器三者一起挂上」，只挂 view 或只挂定义都会红。
 - 真机读数：未取证（原因见上一条边界）；本地已用真实宿主 + 从 `~/.dsh` 复制的 worker 会话尝试，但重启后 worker 会话不在 `ctx.sessions.list` 里（已知限制），项目树不亮行，无法在不派工的情况下打开目标会话。
