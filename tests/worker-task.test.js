@@ -126,6 +126,22 @@ test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () =
     hardBreakMarkdown('- ```\n  code\n\t```\n后一行\n再一行'),
     '- ```\n  code\n\t```\n后一行  \n再一行',
   )
+  // 块引用的容器前缀里带 tab：`>\t` 开栏与普通 `> ` 关闭行是同一个容器，关闭行的
+  // 缩进相对它自己的块引用内容起始列算，不能用开栏行的绝对列去减。
+  assert.equal(
+    hardBreakMarkdown('>\t```\n>\tcode\n> ```\n> 后一行\n> 再一行'),
+    '>\t```\n>\tcode\n> ```\n> 后一行  \n> 再一行',
+  )
+  // 反向：`> ` 开栏 + `>\t` 关闭行。
+  assert.equal(
+    hardBreakMarkdown('> ```\n> code\n>\t```\n> 后一行\n> 再一行'),
+    '> ```\n> code\n>\t```\n> 后一行  \n> 再一行',
+  )
+  // `> \t`（空格 + tab）开栏同样是合法围栏：代码内容不能被补空格。
+  assert.equal(
+    hardBreakMarkdown('> \t```\n> code\n> ```\n> 后一行\n> 再一行'),
+    '> \t```\n> code\n> ```\n> 后一行  \n> 再一行',
+  )
   // 块引用没带 `>` 的行说明容器已经结束，围栏随之结束，后面的正文照常补硬换行。
   assert.equal(
     hardBreakMarkdown('> ```\n> code\n普通行\n再一行'),
