@@ -35,7 +35,7 @@ host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的�
 - 用户气泡不折叠：长任务全文展示。worker 回报气泡仍默认两行、超出给「展示更多」。
 - 任务正文与 assistant 内容同套 Markdown，**不与宿主用户消息的纯文本路径一致**：单换行按 Markdown 合并，不复原日志式换行；需要断行时用空行或 Markdown 语法，标题、列表、围栏同样按 Markdown 渲染。宿主用户消息本身是 `UserTextRun` + `pre-wrap`，这里是刻意的产品取舍。
 - 气泡布局没有单测（React 组件 + 宿主模块表），仓库仍不引 jsdom；`tests/markdown.test.js` 的源码断言覆盖右对齐、无身份头、`Markdown` 接线、`variant: compact`、宽度上限（70.2% / 82%）、`10px 16px` 内边距、时间与复制按钮、令牌色值。
-- 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。任务气泡的渲染另有 `1bec9f3` 的真机探针取证（`strong` 与行内 `code` 各至少 1 处、内层气泡 521px、右对齐、时间与复制位置）；`edfa079` 沿用同一 `Markdown` 组件与 compact 变体，只去掉行级预处理；外壳、时钟、复制按钮与 `WorkerTaskView` 的 props 不变，读数继续适用。要覆盖派工得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
+- 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。任务气泡的渲染另有 `1bec9f3` 的真机探针取证（`strong` 与行内 `code` 各至少 1 处、内层气泡 521px、右对齐、时间与复制位置）；`edfa079` 沿用同一 `Markdown` 组件与 compact 变体，去掉了 `hardBreakMarkdown`；同时移除了 `__content` 包装与气泡行高覆盖（含 `--dsh-leader-agent-worker-task-line`），补了 `title` / `aria-label`。521px（70.2% 上限）、右对齐、时间与复制位置仍由未改的 `max-width`、`align-items` 与 `meta` 支撑，读数可继续引用。要覆盖派工得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
 
 ## 验证
 

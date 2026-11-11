@@ -20,6 +20,8 @@ dsh 的 bundle 有两半：host 半边跑在 Node 进程，client 半边跑在�
 
 **构建期的 external 与 manifest 的 external 是两件事**。前者决定哪些 import 留在产物外（必须含 react），后者是给宿主的模块请求清单（只含非基线模块）。二者一度共用同一份清单——`build/client.mjs` 直接读 `package.json` 的 `dsh.client.external` 当 esbuild 的 external——于是删掉冗余声明会把 React 打进产物。已拆开：构建期由 `BASELINE_EXTERNALS` 自持，manifest 侧不再声明。
 
+**基线复核锚点**（按宿主 tag 对照）：`PLATFORM_MODULES` 在 `packages/client/web/src/platform.ts`；`seed.ts:9-19` 把 rc.2 的四个宿主自有包（`dsh-client-store` / `dsh-client-ui-slots` / `dsh-client-ui-primitives` / `dsh-client-ui-dockkit`）静态 import 进 `:26` 的 `getStaticModules`，这些 `src/` 文件不在 npm 安装包里（`files` 只发 `lib/`）。基线之外的宿主 UI 包可由另一个插件行 supplier 的模块引入，判定见 `scripts/verify-client-packages.ts:352-381`。本包 manifest 的 `dsh.client.platform` 是 `web`，ACP / headless / SDK 组合不加载客户端半边。
+
 **面板订阅会话事件窗口，不另存一份卡片**。纯 session projection 路线走不通——仓外事件类型不进宿主读路径（见 capability-gaps 第 8 条）。可行的取法是 `ctx.sessions.retain(sessionId, { source })` → `reference.ready` → `reference.binding.eventSource`（`ObservableSnapshot<SessionEventWindow>`），筛出 `tool/result` 事件取其 `meta` 投影重放。全量投影清空视图，单卡投影覆盖一张卡。
 
 **Tab 类型 id 兼作面板注册键**。`SidebarRightTabDefinition.id` 是实现身份，也是它在 `sidebar.right.pane.tab` 座里的注册键；`kind` 只用来区分「这类 Tab 是什么」，`openTab` 按 kind 寻址。

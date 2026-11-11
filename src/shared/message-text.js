@@ -50,8 +50,8 @@ export function messageText(content, separator = '\n') {
  *
  * leader 任务气泡不走这条判据：它与 assistant 内容同套 Markdown（`Markdown`
  * 包装的基线 `MarkdownText`，`compact` 变体），原文直接交给渲染器、单换行按
- * Markdown 合并。这里服务的是 worker 回报（失败原因、旧回报回退的协议行必须
- * 保持纯文本）。
+ * Markdown 合并。这里只服务 worker 回报的 `report` 判据；失败原因在
+ * `workerReportFormat` 里提前走纯文本，旧回报回退的协议行也保持纯文本。
  *
  * @param {unknown} text - 正文
  * @returns {'markdown' | 'text'} 渲染方式
