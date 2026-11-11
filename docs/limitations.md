@@ -9,9 +9,10 @@
 - **续聊消息在 worker 的下一步才进上下文**：`message_worker` 走 inbox 的 next-step 边界，worker 正在跑时消息要等当前 step 结束才被取走——卡在长工具调用里的 worker 不会立刻看到，本 bundle 也没有中止它的手段（见 [worker 的控制面](#worker-的控制面)）。这与完成通知的 next-turn 边界是两件事。
 - **不能新增 session event 类型**：dsh 要求仓外事件带 `ignorable` 标记且不进读路径，因此卡片与通知状态走自有落盘文件。
 - **项目级手册没有 watcher，改动只在下一次模型请求生效**。正在跑的那一轮不会变；两者都是增量信息，不生成兜底正文（协议层 skill 已覆盖通用方法）。leader 手册只对项目注册表里指到该会话的 leader 生效——项目索引还没重建完的那一轮不注入，下一轮补上。机制与缺失处理见[项目级提示词与协议层](architecture.md#项目级提示词与协议层)。
-- **历史消息不追溯**。改造前发出的通知在 session log 里就是普通用户消息，重放仍按老形态渲染（右对齐、无头像）。
+- **历史消息不追溯**。改造前发出的通知在 session log 里就是普通用户消息，重放仍按老形态渲染（右对齐、无头像）。leader 任务消息是例外，但有边界：#112（`478232a`，包名改为 `dsh-leader-agent`）之后落盘、且带 `source.parentSessionId` 的任务消息，旧记录同样按新的用户气泡渲染；改名前的 `dsh-leader-kit/worker-task` 记录不认领，退回官方上下文行。
 - **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-leader-agent/worker-report`），因此这三处全部跳过它，也不会被误当成用户说的话。
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/implemented/feature/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
+- **leader 任务气泡没有身份头**。它按用户消息的形态渲染（右侧、无头像与名字，正文与 assistant 内容同套 Markdown（`MarkdownText` compact），单换行按 Markdown 合并、不复原日志式换行；需要断行用空行或 Markdown 语法），所以不显示 leader 是谁，也不能从气泡跳到 leader 会话；`source.parentSessionId` 仍是来源凭证，没有它的历史消息不认领，退回官方上下文行（不是右侧气泡）。
 - **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样挂进输入框上方的「消息队列」条（实测 busy 时直接投会显示「2 queued messages」，与人的消息混在一起）。代价是 leader 正忙时回报要多等这一轮（边界见 [笔记](../.agents/notes/implemented/architecture/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
 - **worker 头像在深色主题下轮廓弱**（既定取舍，不是待修项）。气泡底是前景色混出的 4% 一层，36% 的蓝紫色相落上去只有 1.35:1，块的外轮廓看不出边界；头像本身仍可辨。头像池只有 63 个 seed，worker 多时会有撞图（3 个约 4.7%，5 个约 15%），名字就在头像旁边，不影响身份识别。
 - **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`scripts/desktop-plan.mjs` 取值 trim（`home-paths.js` 照抄宿主：判空 trim、取值不 trim），因为它算出的绝对路径要经 `--env DSH_HOME=` 交给应用。代价：`DSH_HOME=' /x '` 在桌面侧得 `/x`、CLI 侧得 `<cwd>/ /x `。
@@ -36,7 +37,7 @@
 - **卡片详情浮层是打开瞬间的快照**。卡片随后被 leader 更新，浮层不会跟着刷新，要关掉重开；本浮层自己保存的链接会立刻回填到浮层与卡面。链接编辑不进乐观并发：详情里的 revision 是打开时的，用它做 `expectedRevision` 会在 leader 改过卡后稳定冲突，而用户表达的意图就是「这些链接现在是这样」。
 - **卡面不显示所属项目/工作区**。看板已经按项目过滤，卡面不必再重复标注（无 workspace chip）。
 - **「等你输入」档暂无数据源**。宿主的待处理交互机制在（`pendingInteraction`），但当前没有任何域发布它，这一档不会亮；机制与档位都留着，等真有域发布时自动生效。「未读」档已实测跑通。
-- **气泡折叠没有布局单测**。折叠水位按 compact 行高算 `max-height`（2 × 20px 行高 + 22px padding/border），是否出现「展示更多」要在 DOM 上量 `scrollHeight` 与 `clientHeight`；本仓不引 jsdom，真实布局只能用浏览器取证（[e2e-testing.md](e2e-testing.md)）。实现形态有源码断言：`tests/markdown.test.js` 钉住折叠不再用 `-webkit-line-clamp`、行高取 compact 值。旧回报走纯文本 `pre-wrap`：没有 `report` 的（回退整条通知正文，协议行）与多行 `report` 既无块级标记又无空行的（早期落盘多块用单个换行连接，Markdown 会折成一段），都不被 Markdown 折行；有空行或块级标记的照常走 Markdown。
+- **worker 回报气泡的折叠没有布局单测**。折叠水位按 compact 行高算 `max-height`（2 × 20px 行高 + 22px padding/border），是否出现「展示更多」要在 DOM 上量 `scrollHeight` 与 `clientHeight`；本仓不引 jsdom，真实布局只能用浏览器取证（[e2e-testing.md](e2e-testing.md)）。实现形态有源码断言：`tests/markdown.test.js` 钉住折叠不再用 `-webkit-line-clamp`、行高取 compact 值。leader 任务按用户消息形态全文展示，不折叠。旧回报走纯文本 `pre-wrap`：没有 `report` 的（回退整条通知正文，协议行）与多行 `report` 既无块级标记又无空行的（早期落盘多块用单个换行连接，Markdown 会折成一段），都不被 Markdown 折行；有空行或块级标记的照常走 Markdown。
 - **归档入口只在有 hover 的设备上出现**。按钮的显示挂在 `@media (hover: hover)` 上（与官方会话行一致），触屏上不会出现；归档本身是宿主能力，也可以在别处完成，本区块会跟着 `archivedSessionIds` 快照把行藏掉。
 
 ## 项目、树与工作区

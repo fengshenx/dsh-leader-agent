@@ -9,7 +9,8 @@
  * @module dsh-leader-agent/host/worker-transcript
  */
 
-import { blocksToText, WORKER_TASK_SOURCE_KIND } from './message.js'
+import { messageText } from '../shared/message-text.js'
+import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 
 /** 单条消息正文的保留上限。 */
 const MESSAGE_LIMIT = 2000
@@ -77,7 +78,7 @@ export function foldTurns(events) {
       }
       case 'user/message': {
         const item = current ?? open()
-        const text = blocksToText(data.content)
+        const text = messageText(data.content)
         if (text === '') break
         // 三种生产者共用 `user/message`，只有 `source.kind` 区分：靠它把宿主注入的
         // 上下文（换目录、plan 模式、hooks）与真正的投递正文分开，否则注入会占掉
@@ -90,7 +91,7 @@ export function foldTurns(events) {
       }
       case 'assistant/message': {
         const item = current ?? open()
-        const text = blocksToText(data.message?.content, '\n\n')
+        const text = messageText(data.message?.content, '\n\n')
         if (text !== '') item.assistant.push(text)
         break
       }
@@ -139,7 +140,7 @@ export function foldTurns(events) {
  * @returns {string} 失败原因
  */
 function describeToolFailure(data) {
-  const reason = data.error?.reason ?? data.error?.name ?? blocksToText(data.message?.content)
+  const reason = data.error?.reason ?? data.error?.name ?? messageText(data.message?.content)
   return clip(typeof reason === 'string' && reason !== '' ? reason : '未说明原因', REASON_LIMIT)
 }
 

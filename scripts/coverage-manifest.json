@@ -1,5 +1,6 @@
 {
   "unmeasured": {
+    "src/client/agent-bubble-view.js": "agent 消息气泡组件（React.createElement），单测无渲染环境，行为由 e2e/真机覆盖",
     "src/client/board-card.js": "看板卡片组件（React.createElement），单测无渲染环境，行为由 npm run e2e 的看板场景覆盖",
     "src/client/board-guide-entry.js": "看板空态引导入口，挂在宿主 sidebar 注入点上，只有真实宿主能加载",
     "src/client/board.js": "看板外壳组件，依赖宿主模块表，归 e2e",
@@ -7,15 +8,16 @@
     "src/client/card-links-editor.js": "链接编辑器组件，归 e2e",
     "src/client/confirm-dialog.js": "确认弹层组件，归 e2e",
     "src/client/guide-card.js": "引导卡组件（React.createElement），挂在宿主 conversation.input.dock，只有真实宿主能加载；触发与关闭逻辑已由 tests/guide-card-logic.test.js 覆盖",
-    "src/client/leader-view.js": "leader 运行态视图组件，归 e2e",
     "src/client/icons.js": "图标 SVG 常量，没有逻辑",
     "src/client/index.js": "客户端入口：注册项目树、看板与 sidebar 注入，只能由宿主加载",
+    "src/client/leader-view.js": "leader 运行态视图组件，归 e2e",
     "src/client/markdown.js": "MarkdownText 适配层，复用宿主基线模块，单测里拿不到那个模块表",
     "src/client/modal-shell.js": "弹层外壳（焦点陷阱与 Escape 处理），归 e2e",
     "src/client/project-panel.js": "项目面板组件，归 e2e",
     "src/client/project-section.js": "项目树分区组件，归 e2e",
     "src/client/toast-view.js": "toast 渲染组件，归 e2e",
-    "src/client/worker-report-view.js": "worker 报告渲染组件，归 e2e"
+    "src/client/worker-report-view.js": "worker 报告渲染组件，归 e2e",
+    "src/client/worker-task-view.js": "leader 任务气泡组件，依赖宿主模块表，归 e2e"
   },
   "thresholds": {
     "src/client/project-board-monitor.js": {

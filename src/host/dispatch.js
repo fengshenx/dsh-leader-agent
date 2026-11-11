@@ -34,7 +34,8 @@
  * @module dsh-leader-agent/host/dispatch
  */
 
-import { createUserMessage, blocksToText } from './message.js'
+import { createUserMessage } from './message.js'
+import { messageText } from '../shared/message-text.js'
 import { foldTurns, renderTranscript } from './worker-transcript.js'
 import { workerReportSource } from '../shared/worker-report.js'
 
@@ -77,7 +78,7 @@ export function buildNotificationText(record, outcome) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
     lines.push(`失败原因：${reason}`)
   } else {
-    const summary = blocksToText(outcome.result?.output ?? [])
+    const summary = messageText(outcome.result?.output ?? [])
     lines.push(summary === '' ? '产物摘要：（worker 未产出文本）' : `产物摘要：\n${summary}`)
   }
   lines.push('下一步：按 leader 协议判断验收、返工或派新工。')
@@ -99,7 +100,7 @@ export function buildWorkerReport(outcome) {
     return `失败：${reason}`.slice(0, NOTIFICATION_LIMIT)
   }
   // 气泡按 Markdown 渲染：块间要空行，单个 \n 是软换行，多块会被折成一段。
-  const summary = blocksToText(outcome.result?.output ?? [], '\n\n')
+  const summary = messageText(outcome.result?.output ?? [], '\n\n')
   return (summary === '' ? '（worker 未产出文本）' : summary).slice(0, NOTIFICATION_LIMIT)
 }
 
@@ -906,7 +907,7 @@ export function createDispatcher({
     if (event?.type === 'assistant/message') {
       const record = inflight.get(sessionId)
       if (record === undefined) return undefined
-      const text = blocksToText(event.data?.message?.content)
+      const text = messageText(event.data?.message?.content)
       // 空内容（宿主对空响应也会发这条）不能覆盖本轮已有的文本，但文本只记在
       // 当前记录上：新消息若已换了一条记录，旧轮文本不会漏到新轮。
       if (text !== '') record.text = text

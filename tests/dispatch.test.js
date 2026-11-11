@@ -717,7 +717,7 @@ test('worker 最后一次回报的内容只取产物摘要或失败原因', () =
 test('多块产物摘要按空行连接，交给 Markdown 渲染时不被折成一段', () => {
   const output = [{ type: 'text', text: '第一段' }, { type: 'text', text: '第二段' }]
   assert.equal(buildWorkerReport({ ok: true, result: { output } }), '第一段\n\n第二段')
-  // 通知正文仍用单换行：同一个 blocksToText，分隔符由调用点决定。
+  // 通知正文仍用单换行：同一个 messageText，分隔符由调用点决定。
   const text = buildNotificationText({ name: 'w', childId: 'c' }, { ok: true, result: { output } })
   assert.equal(text.includes('产物摘要：\n第一段\n第二段'), true)
 })
@@ -2453,7 +2453,7 @@ test('新轮只产空 assistant 时，通知摘要不继承旧轮文本', async 
     message: '接着做第二件事',
     signal: new AbortController().signal,
   })
-  // 宿主对空响应也会落 assistant/message（`blocksToText` 得到空串）：不能因此
+  // 宿主对空响应也会落 assistant/message（`messageText` 得到空串）：不能因此
   // 沿用上一轮的文本，把旧产物标成新轮的产物。
   await fixture.emitSessionEvent(record.childId, {
     type: 'assistant/message',

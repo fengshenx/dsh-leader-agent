@@ -27,6 +27,8 @@ import { createReadySignal } from './ready-signal.js'
 import { ToastOverlay } from './toast-view.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from './worker-report-definition.js'
 import { WorkerReportView } from './worker-report-view.js'
+import { WORKER_TASK_NODE_KIND, workerTaskDefinition } from './worker-task-definition.js'
+import { WorkerTaskView } from './worker-task-view.js'
 
 /**
  * 本插件在宿主注册表里的身份：tab 类型 id、面板与入口的注册键都用它。
@@ -141,7 +143,7 @@ export function apply(ctx) {
     // 引导卡与视图入口共用输入框上方那个 dock 槽：新建项目后 leader 会话里
     // 一句话都没有，卡在这里说清下一步，发出第一句话即消失。
     mountGuideCard(conversationCtx)
-    mountWorkerReport(conversationCtx)
+    mountMessageBubbles(conversationCtx)
   })
 
   // 项目命名空间挂在官方 gateway client 的 `ctx.remote` 上。远程通道由官方
@@ -184,29 +186,37 @@ function mountBoardMonitor(ctx) {
 }
 
 /**
- * 注册 worker 回报的会话节点定义与渲染器。
+ * 注册 agent 消息的会话节点定义与渲染器。
  *
- * 定义用 exclusive claim 接管带 worker 标记的 `user/message`，让它们不再走官方的
- * 右对齐用户气泡；渲染器按节点 kind 注册，键必须等于 kind。
+ * 两类消息共用同一套注册机制：leader 派给 worker 的任务（worker 会话里，渲染成
+ * 右侧用户气泡）与 worker 的回报（leader 会话里，渲染成左侧 agent 气泡）。定义都用
+ * exclusive claim 接管带自家 `source.kind` 的 `user/message`，让它们不再走官方
+ * 上下文行；渲染器按节点 kind 注册，键必须等于 kind。
  *
  * @param {object} ctx - 客户端 Cordis 上下文（已注入 `uiConversation`）
  * @returns {void}
  */
-function mountWorkerReport(ctx) {
-  try {
-    ctx.uiConversation.events.register(workerReportDefinition)
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
-    ctx.logger?.error?.(`dsh-leader-agent: worker 回报节点注册失败：${message}`)
-    return
+function mountMessageBubbles(ctx) {
+  const bubbles = [
+    { kind: WORKER_TASK_NODE_KIND, definition: workerTaskDefinition, view: WorkerTaskView, label: 'leader 任务' },
+    { kind: WORKER_REPORT_NODE_KIND, definition: workerReportDefinition, view: WorkerReportView, label: 'worker 回报' },
+  ]
+  for (const bubble of bubbles) {
+    try {
+      ctx.uiConversation.events.register(bubble.definition)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      ctx.logger?.error?.(`dsh-leader-agent: ${bubble.label}节点注册失败：${message}`)
+      continue
+    }
+    ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+      name: 'conversation.chat.node',
+      key: bubble.kind,
+      // `uiWorkspace` 只挂在 web-app bundle 上，写进 inject 的服务缺失会让整个插件
+      // 挂起——惰性获取，点击名字时才取。
+      inject: () => ({
+        openSession: (sessionId) => ctx.get('uiWorkspace')?.openSession(sessionId),
+      }),
+    }, bubble.view)), `dsh-leader-agent ${bubble.label}渲染器`)
   }
-  ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
-    name: 'conversation.chat.node',
-    key: WORKER_REPORT_NODE_KIND,
-    // `uiWorkspace` 只挂在 web-app bundle 上，写进 inject 的服务缺失会让整个插件
-    // 挂起——惰性获取，点击名字时才取。
-    inject: () => ({
-      openSession: (sessionId) => ctx.get('uiWorkspace')?.openSession(sessionId),
-    }),
-  }, WorkerReportView)), 'dsh-leader-agent worker 回报渲染器')
 }
