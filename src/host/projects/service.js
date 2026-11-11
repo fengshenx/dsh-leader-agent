@@ -95,8 +95,9 @@ export function assertUsableName(name) {
  * @param {object} options - 选项
  * @param {object} options.store - 项目注册表存储
  * @param {object} options.ctx - Cordis 上下文
- * @param {(directory: string, sessionId: string) => Promise<string>} [options.createLeaderSession] - 建 leader 会话。
- *   必须使用传入的 `sessionId`：leader 身份在建会话之前就登记了，换成别的 id 会让工具面裁成普通会话
+ * @param {(directory: string, sessionId: string) => Promise<{ sessionId: string, handle?: object }>} [options.createLeaderSession] - 建 leader 会话。
+ *   必须使用传入的 `sessionId`：leader 身份在建会话之前就登记了，换成别的 id 会让工具面裁成普通会话。
+ *   还要把宿主返回的 `AgentHandle` 一并交出来：撤销时只能靠它的 `dispose()`
  * @param {(sessionId: string) => Promise<boolean | undefined>} [options.sessionExists] - 判断会话是否仍存在
  * @param {(sessionId: string) => boolean} options.isWorkerSession - worker 会话判定。
  *   会话头看不出身份（worker 是普通根会话），列项目的会话树只能按登记表判。
@@ -167,17 +168,29 @@ export function createProjectService({
   /**
    * 撤销一个刚建成的 leader 会话。
    *
-   * dsh 没有「删除会话」的公开能力（`sessionController` 只提供创建与导航），因此
-   * 这里只能尽力把 agent 停掉；残留的会话记录会落在左栏的「未分组」桶里，不影响
-   * 项目数据。撤销失败必须记日志，不能静默吞掉。
+   * 宿主没有「按 id 停掉已存在会话」的公开能力：`agents.get()` 返回裸 `Agent`
+   * （`packages/core/agent/src/index.ts:568`），`ctx.sessions` 只给会话对象、没有
+   * dispose 入口。唯一能停掉 agent 的是建会话时返回的 `AgentHandle.dispose()`
+   * （`packages/core/agent/src/index.ts:147`）——它停 loop、等退场、摘注册表并
+   * 把会话从 store 里移除。所以句柄必须随创建结果一路留下来。
    *
-   * @param {string} sessionId - 会话 id
+   * 拿不到句柄时大声记日志：会话会留在左栏的「未分组」桶里，不能假装撤掉了。
+   *
+   * @param {{ sessionId?: string, handle?: { dispose: () => Promise<void> } }} created - 建会话的结果
    * @returns {Promise<void>} 撤销完成
    */
-  async function abandonLeaderSession(sessionId) {
+  async function abandonLeaderSession(created) {
+    const sessionId = typeof created?.sessionId === 'string' ? created.sessionId : '未知会话'
+    const handle = created?.handle
+    if (typeof handle?.dispose !== 'function') {
+      logger(
+        `dsh-leader-agent: 撤销 leader 会话 ${sessionId} 失败：建会话路径没有交出 AgentHandle，`
+        + '会话未能停止，会留在会话列表里',
+      )
+      return
+    }
     try {
-      const agent = ctx.get('agents')?.get?.(sessionId)
-      await agent?.dispose?.()
+      await handle.dispose()
     } catch (error) {
       logger(
         `dsh-leader-agent: 撤销 leader 会话 ${sessionId} 失败：`
@@ -194,13 +207,12 @@ export function createProjectService({
    * 有它，于是被裁成普通会话——`spawn_worker` / `message_worker` / `list_cards`
    * 全没。裁错的限制不会自己松开，要等这个会话下次冷恢复重算。
    *
-   * 所以 id 由这里预生成、先登记，再让宿主用它建会话。两条建会话路径都接受传入
-   * 的 id（`sessionController.create({ sessionId })` 与 `agents.create({ sessionId })`）。
+   * 所以 id 由这里预生成、先登记，再让宿主用它建会话（`agents.create({ sessionId })`）。
    *
    * 登记时只写 `directory`：`projectId` 要等项目记录落盘才有，调用方补。
    *
    * @param {string} directory - 项目目录绝对路径
-   * @returns {Promise<string>} 建成的会话 id
+   * @returns {Promise<{ sessionId: string, handle?: object }>} 建成的会话与宿主句柄
    * @throws {Error} 建会话失败，或建成后的 id 与预定的不同
    */
   async function openRegisteredLeaderSession(directory) {
@@ -213,15 +225,15 @@ export function createProjectService({
       leaderIndex.delete(sessionId)
       throw error
     }
-    if (created !== sessionId) {
+    if (created?.sessionId !== sessionId) {
       // 建会话的实现没按契约用传入的 id：占位登记在错的键上，工具面也已经裁错了
       // 一轮。这个契约由我们自己的 createLeaderSessionWithCtx 保证，破了说明
       // 宿主换了行为，必须当场停下而不是留一个工具面残缺的 leader。
       leaderIndex.delete(sessionId)
       await abandonLeaderSession(created)
-      throw new Error(`leader 会话建成了 ${created}，预定的是 ${sessionId}：建会话的实现必须使用传入的 id`)
+      throw new Error(`leader 会话建成了 ${created?.sessionId}，预定的是 ${sessionId}：建会话的实现必须使用传入的 id`)
     }
-    return sessionId
+    return created
   }
 
   /**
@@ -444,7 +456,8 @@ export function createProjectService({
       const displayName = assertUsableName(name ?? fallbackName)
 
       // 先建会话再建记录：会话建不出来时项目不落盘，失败路径没有半条记录。
-      const leaderSessionId = await openRegisteredLeaderSession(normalizedDirectory)
+      const created = await openRegisteredLeaderSession(normalizedDirectory)
+      const leaderSessionId = created.sessionId
       const draft = store.draft({
         name: displayName,
         directory: normalizedDirectory,
@@ -456,7 +469,7 @@ export function createProjectService({
         inserted = await store.insert(draft)
       } catch (error) {
         leaderIndex.delete(leaderSessionId)
-        await abandonLeaderSession(leaderSessionId)
+        await abandonLeaderSession(created)
         throw error
       }
       leaderIndex.set(leaderSessionId, {
@@ -692,7 +705,8 @@ export function createProjectService({
       if (project === undefined) throw new Error(`项目不存在：${id}`)
       // 目录没了先给可读的中文原因：宿主建会话时会 mkdir 目录，但这里先停下更清楚。
       await assertUsableDirectory(project.directory)
-      const leaderSessionId = await openRegisteredLeaderSession(project.directory)
+      const created = await openRegisteredLeaderSession(project.directory)
+      const leaderSessionId = created.sessionId
       let updated
       try {
         // 退役列表与改绑同一次写入：分开写的话，中途失败会留下一条「leader 已换、
@@ -713,7 +727,7 @@ export function createProjectService({
         })
       } catch (error) {
         leaderIndex.delete(leaderSessionId)
-        await abandonLeaderSession(leaderSessionId)
+        await abandonLeaderSession(created)
         throw error
       }
       // 对齐放在失败路径之外：这次写已经落盘、新会话就是记录里的 leader，重读失败
@@ -759,32 +773,26 @@ export function createProjectService({
 /**
  * 用宿主服务建一个 leader 会话。
  *
- * 优先走 `sessionController`（官方完整路径：建 agent、带上默认模型），它只挂在
- * web-app bundle 上；缺失时退回 `agents` 注册表直接建 agent——`agents` 由 base
- * bundle 提供，所有 profile 都有。两个服务都走惰性获取：它们不在本插件的
- * `inject` 列表里，声明成必需依赖会让不含该服务的 profile 整个插件挂起。
+ * 走 `agents.create`：它把 `AgentHandle` 交给调用方，而句柄是**唯一**能停掉这条
+ * 会话的能力——宿主的 `agents.get()` 只返回裸 `Agent`，`sessions` 没有 dispose
+ * 入口。`sessionController.create` 只回 `{ sessionId }`（`SessionCreateValue`），
+ * handle 收在宿主手里，项目落盘失败时就没法撤销了。
  *
- * 走 `sessionController` 时只带 `cwd`：项目不创建也不挂接 dsh 工作区，会话因此不
- * 归属任何分组。
+ * 代价是要自己补齐 `sessionController` 在创建时做的组合：`agents.create` 不解析
+ * 也不挂 preset（见 `agentPresetOptions`），默认模型同样要自己给。
  *
- * `sessionId` 由调用方给定，两条路径都原样用它建会话——leader 身份在建会话之前
- * 就登记好了，换成别的 id 会让工具面裁成普通会话（见
- * `openRegisteredLeaderSession`）。
+ * `sessionId` 由调用方给定，宿主原样用它建会话——leader 身份在建会话之前就登记
+ * 好了，换成别的 id 会让工具面裁成普通会话（见 `openRegisteredLeaderSession`）。
  *
  * @param {object} ctx - Cordis 上下文
  * @param {string} directory - 项目目录绝对路径
  * @param {string} sessionId - 会话 id，由调用方预生成
- * @returns {Promise<string>} 建成的会话 id
+ * @returns {Promise<{ sessionId: string, handle: object }>} 建成的会话与宿主句柄
  */
 export async function createLeaderSessionWithCtx(ctx, directory, sessionId) {
-  const controller = ctx.get('sessionController')
-  if (controller !== undefined && typeof controller.create === 'function') {
-    const created = await controller.create({ cwd: directory, sessionId })
-    return created.sessionId
-  }
   const agents = ctx.get('agents')
   if (agents === undefined || typeof agents.create !== 'function') {
-    throw new Error('当前组合既没有 sessionController 也没有 agents 服务，无法建立 leader 会话')
+    throw new Error('当前组合没有 agents 服务，无法建立 leader 会话')
   }
   const defaults = ctx.get('agentDefaultModel')
   // 和 worker 同理：`agents.create` 不挂 preset，不挂就没有 bash / read。
@@ -806,7 +814,10 @@ export async function createLeaderSessionWithCtx(ctx, directory, sessionId) {
       ...preset.agentPreset === undefined ? {} : { agentPreset: preset.agentPreset },
     },
   })
-  return handle?.agent?.id ?? sessionId
+  return {
+    sessionId: handle?.agent?.id ?? sessionId,
+    handle,
+  }
 }
 
 /**

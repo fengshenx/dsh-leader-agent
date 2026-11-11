@@ -49,14 +49,17 @@ function createContext() {
 /**
  * 造一个假的 leader 会话工厂。
  *
- * 与真实实现同一个契约：用调用方传入的 `sessionId` 建会话并原样返回。
+ * 与真实实现同一个契约：用调用方传入的 `sessionId` 建会话，原样返回 id，并把
+ * 宿主句柄交出去（撤销只能靠它）。不传 `dispose` 时模拟「宿主没给句柄」的契约
+ * 破口，用来守降级日志。
  *
  * @param {object} [options] - 选项
  * @param {boolean} [options.fail] - 建会话是否失败
  * @param {(sessionId: string) => void} [options.onCreate] - 建会话时的钩子，用来观察那一刻的注册表状态
- * @returns {((directory: string, sessionId: string) => Promise<string>) & { calls: string[], ids: string[] }} 工厂与记录
+ * @param {(sessionId: string) => Promise<void> | void} [options.dispose] - 假 AgentHandle 的 dispose
+ * @returns {((directory: string, sessionId: string) => Promise<{ sessionId: string, handle?: object }>) & { calls: string[], ids: string[] }} 工厂与记录
  */
-function createSessionFactory({ fail = false, onCreate } = {}) {
+function createSessionFactory({ fail = false, onCreate, dispose } = {}) {
   const calls = []
   const ids = []
   const factory = async (directory, sessionId) => {
@@ -64,23 +67,29 @@ function createSessionFactory({ fail = false, onCreate } = {}) {
     ids.push(sessionId)
     onCreate?.(sessionId)
     if (fail) throw new Error('建会话失败')
-    return sessionId
+    return {
+      sessionId,
+      ...dispose === undefined
+        ? {}
+        : { handle: { dispose: async () => { await dispose(sessionId) } } },
+    }
   }
   factory.calls = calls
   factory.ids = ids
   return factory
 }
 
-test('没有 sessionController 时也挂 agent preset：否则 leader 没有 bash / read', async () => {
+test('建 leader 会话挂 agent preset，并把 AgentHandle 交出来以便撤销', async () => {
   const mounts = []
   let captured
+  const dispose = async () => {}
   const ctx = {
     get: (name) => {
       if (name === 'agents') {
         return {
           async create(options) {
             captured = options
-            return { agent: { id: options.sessionId } }
+            return { agent: { id: options.sessionId }, dispose }
           },
         }
       }
@@ -94,8 +103,10 @@ test('没有 sessionController 时也挂 agent preset：否则 leader 没有 bas
     },
   }
 
-  const sessionId = await createLeaderSessionWithCtx(ctx, '/repo', 'session-x')
-  assert.equal(sessionId, 'session-x')
+  const created = await createLeaderSessionWithCtx(ctx, '/repo', 'session-x')
+  assert.equal(created.sessionId, 'session-x')
+  // 撤销只能靠这个句柄：宿主没有按 id 停 agent 的入口。
+  assert.equal(created.handle.dispose, dispose)
   assert.equal(typeof captured.setup, 'function')
   // preset 投影同样要写，否则 resume 与 UI 都读不到这个会话跑在哪个 preset 上
   assert.equal(captured.meta.agentPreset, 'standard')
@@ -243,9 +254,13 @@ test('建会话的实现没按契约用传入 id 时当场失败', async () => {
   // 占位登记在预生成的 id 上，替身却建了别的会话：工具面已经按普通会话裁过一轮，
   // 继续下去只会留一个用不了的 leader
   let wanted
+  const disposed = []
   const createLeaderSession = async (directory, sessionId) => {
     wanted = sessionId
-    return 'session-someone-else'
+    return {
+      sessionId: 'session-someone-else',
+      handle: { dispose: async () => { disposed.push(sessionId) } },
+    }
   }
   const service = makeService({
     store,
@@ -259,6 +274,8 @@ test('建会话的实现没按契约用传入 id 时当场失败', async () => {
     () => service.create({ directory: workspace, name: 'alpha' }),
     /建会话的实现必须使用传入的 id/,
   )
+  // 建成的那条也不留：报错之前先撤销，句柄只在创建的那一刻有。
+  assert.deepEqual(disposed, [wanted])
   assert.deepEqual(await store.list(), [])
   // 预生成 id 的占位也要撤掉，不能留一个「leader 身份指向不存在的会话」的条目
   assert.equal(service.isLeaderSession(wanted), false)
@@ -823,21 +840,18 @@ test('迁移从注册表取工作区实体：list 只给 id 时也能摘', async
 test('建项目落盘失败时撤销刚建的 leader 会话', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
-  const factory = createSessionFactory()
   const disposed = []
+  const factory = createSessionFactory({ dispose: (sessionId) => { disposed.push(sessionId) } })
   const service = makeService({
     store: { ...store, insert: async () => { throw new Error('写盘失败') } },
-    ctx: {
-      get: (key) => (key === 'agents'
-        ? { get: (sessionId) => ({ dispose: async () => { disposed.push(sessionId) } }) }
-        : undefined),
-    },
+    ctx: createContext(),
     createLeaderSession: factory,
     sessionExists: async () => true,
   })
 
   await assert.rejects(() => service.create({ directory: workspace, name: 'alpha' }), /写盘失败/)
-  // 会话已经建出来了却没登记成项目：不撤销就留一个孤儿 leader。
+  // 会话已经建出来了却没登记成项目：不撤销就留一个孤儿 leader。撤销走的是创建时
+  // 拿到的 AgentHandle.dispose()——宿主没有按 id 停 agent 的入口。
   assert.deepEqual(disposed, [factory.ids[0]])
 })
 
@@ -847,18 +861,35 @@ test('撤销 leader 会话失败只记日志，不掩盖原始错误', async () 
   const lines = []
   const service = makeService({
     store: { ...store, insert: async () => { throw new Error('写盘失败') } },
-    ctx: {
-      get: (key) => (key === 'agents'
-        ? { get: () => ({ dispose: async () => { throw new Error('停不掉') } }) }
-        : undefined),
-    },
-    createLeaderSession: createSessionFactory(),
+    ctx: createContext(),
+    createLeaderSession: createSessionFactory({
+      dispose: async () => { throw new Error('停不掉') },
+    }),
     sessionExists: async () => true,
     logger: (line) => lines.push(line),
   })
 
   await assert.rejects(() => service.create({ directory: workspace, name: 'alpha' }), /写盘失败/)
   assert.equal(lines.some((line) => line.includes('撤销 leader 会话') && line.includes('停不掉')), true)
+})
+
+test('建会话路径没交出 AgentHandle 时大声记日志，不假装撤销成功', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const lines = []
+  const service = makeService({
+    store: { ...store, insert: async () => { throw new Error('写盘失败') } },
+    ctx: createContext(),
+    // 不传 dispose：模拟宿主/实现没把唯一能停会话的句柄交出来。
+    createLeaderSession: createSessionFactory(),
+    sessionExists: async () => true,
+    logger: (line) => lines.push(line),
+  })
+
+  await assert.rejects(() => service.create({ directory: workspace, name: 'alpha' }), /写盘失败/)
+  // 不能静默当成功：日志要说清哪条会话没停掉、以及为什么。
+  assert.equal(lines.some((line) => line.includes('撤销 leader 会话') && line.includes('AgentHandle')), true)
+  assert.equal(lines.some((line) => line.includes('留') && line.includes('会话列表')), true)
 })
 
 test('删除不存在的项目返回 undefined', async () => {
@@ -872,14 +903,23 @@ test('删除不存在的项目返回 undefined', async () => {
   assert.equal(await service.remove('missing'), undefined)
 })
 
-test('建 leader 会话只传 cwd 与 sessionId，不碰工作区', async () => {
+test('建 leader 会话只带 cwd 与 sessionId，不碰工作区，也不走 sessionController', async () => {
   const calls = []
+  let controllerCalls = 0
   const ctx = {
     get: (key) => {
-      if (key === 'sessionController') {
+      if (key === 'agents') {
         return {
           create: async (options) => {
             calls.push(options)
+            return { agent: { id: options.sessionId }, dispose: async () => {} }
+          },
+        }
+      }
+      if (key === 'sessionController') {
+        return {
+          create: async (options) => {
+            controllerCalls += 1
             return { sessionId: options.sessionId }
           },
         }
@@ -887,9 +927,14 @@ test('建 leader 会话只传 cwd 与 sessionId，不碰工作区', async () => 
       return undefined
     },
   }
-  const sessionId = await createLeaderSessionWithCtx(ctx, '/tmp/demo', 'session-given')
-  assert.equal(sessionId, 'session-given')
-  assert.deepEqual(calls, [{ cwd: '/tmp/demo', sessionId: 'session-given' }])
+  const created = await createLeaderSessionWithCtx(ctx, '/tmp/demo', 'session-given')
+  assert.equal(created.sessionId, 'session-given')
+  // sessionController 只回 { sessionId }，句柄收在宿主手里；撤销要靠 agents.create 的返回值。
+  assert.equal(controllerCalls, 0)
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0].sessionId, 'session-given')
+  assert.deepEqual(calls[0].meta, { cwd: '/tmp/demo' })
+  assert.equal('workspaceId' in calls[0], false)
 })
 
 test('建项目不发起任何模型调用', async () => {
@@ -1128,7 +1173,7 @@ test('没有可用的建会话服务时明确报错', async () => {
   const ctx = { get: () => undefined }
   await assert.rejects(
     () => createLeaderSessionWithCtx(ctx, '/tmp/demo', 'session-1'),
-    /既没有 sessionController 也没有 agents 服务/,
+    /没有 agents 服务/,
   )
 })
 

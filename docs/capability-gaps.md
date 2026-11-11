@@ -367,7 +367,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 建会话时还要写 `meta.agentPreset`（`CreateAgentOptions.meta` 的公开字段）：`sessionController` 建会话就写，resume 与 UI 都从会话投影读回。只挂 `setup` 不写投影，会话能跑但投影是空的。
 - 读回投影的入口在 rc.2 是 `ctx.get('sessionProjections').stateOf(session, 'agentPreset')`（registry 自己也这么读，`packages/preset/agent-preset-registry/src/index.ts:357`）。**registry 的 `presetForSession()` 是 0.2.2-alpha.2 才有的**，rc.2 上只有 sessionController 有同名方法——按下限写代码时别用它。
 
-**影响**：绕开 `sessionController` 建会话时（本 bundle 为了 worker 常驻与冷恢复必须走 `agents.create`），必须自己把 `agentPresets.mount(agentCtx, id)` 塞进 `setup`、并把 id 写进 `meta.agentPreset`。漏了三处都中招：建 worker、冷恢复 worker、没有 `sessionController` 时建 leader——症状统一为「会话能建起来，但模型没有 bash / read，连 `pwd` 都跑不了」。
+**影响**：绕开 `sessionController` 建会话时（本 bundle 的 worker 与 leader 都走 `agents.create`），必须自己把 `agentPresets.mount(agentCtx, id)` 塞进 `setup`、并把 id 写进 `meta.agentPreset`。漏了三处都中招：建 worker、冷恢复 worker、建 leader——症状统一为「会话能建起来，但模型没有 bash / read，连 `pwd` 都跑不了」。
 
 **相邻的坑**：`tools.get(name)` 省略 scope 等于**全局视图**。web-app 把 `tool-subagent` / `tool-subagent-control` / `tool-subagent-fork` 在宿主平面 `disabled: true`（`packages/bundle/web-app/cordis.patch.yml`），改由 preset 子树注册——用 `get(name)` 探测这三件会全部返回 undefined。工具名存在性只能靠 `restrict()` 的失败来判（见 `src/host/tools/gate.js` 的 `applyToolGate`）。
 
@@ -452,6 +452,21 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 **影响**：既然同 section，「组头所在 section 里有没有可见会话行」这个 DOM 判据**并不恒假**——组里还有用户自己的会话时判得准。组内的行**全被插件自己的排除集隐藏**（`dsh-leader-agent-excluded-session`）时，判据看到一排带隐藏类的行、得出「组里没内容」，会连组头一起藏——这是宿主结构下的必然结果，不是判据的缺陷：`markUngroupedHeader` 只按渲染结果判，不复刻宿主的数据层可见性规则（取舍见 `docs/limitations.md` 的「未分组」组头那条），代价就落在这个形态上，方向仍是宁可留一个空组头也不误伤用户自己的会话。项目目录失效后仍排除它的会话正好落进这里，用户看到「未分组整组消失，卸载插件就回来」——所以修复只能落在排除集上（客户端不再按目录可用性排除），不在 DOM 结构上。
 
 **本仓不再改这个判据**：`089b5a6`（#101）已给 `markUngroupedHeader` 加「组内还有可见的『展开其余 N 个会话』就不藏」的兜底，把上面那个形态压到只剩「行全被排除且没有展开按钮」；另一种偏差是快照滞后（组里有会话但行还没画出来，判据看到空 section）——未复现，属理论边界。回归用例是 `tests/e2e/project-directory-gone.e2e.js`（删掉 `directoryUsable` 过滤必红）。
+
+---
+
+### 46. 没有「按 id 停掉活 agent」的公开能力——只能 dispose 创建时的句柄
+
+**目标形态**：建项目或换 leader 落盘失败时，停掉刚建出来的 leader 会话，不留孤儿。
+
+**dsh 实测**（`0.2.1-rc.2`）：
+
+- `ctx.agents.get(id)` 返回裸 `Agent`，只有 `id` / `session` / `steer` / `followup` 等运行时面，**没有 dispose**（`packages/core/agent/src/index.ts:568-569`、`runtime-types.ts:164-231`）。
+- 唯一能停掉 agent 的是 `agents.create()` / `agents.resume()` 返回的 `AgentHandle.dispose()`：停 loop、等退场、摘注册表、把会话从 store 移除（`packages/core/agent/src/index.ts:147-163`；实现 `packages/core/agent-loop/src/index.ts:594-600`）。
+- `ctx.sessions` 只有 `create` / `get` / `list` 等，没有按 id 移除的入口（`packages/core/session/src/index.ts:1111`、`:1352`）。
+- `sessionController.create()` 只回 `SessionCreateValue` `{ sessionId, agentPreset? }`，handle 留在宿主手里（`packages/api/session-controller/src/types.ts:299-305`）。
+
+**影响**：撤销能力只在创建方手里。本 bundle 因此把 leader 会话的创建也改走 `agents.create()`（与 worker 同一条路），创建结果把 `AgentHandle` 交给项目服务；落盘失败时 `dispose()`。没有拿到句柄就等于没有撤销能力——这时只能大声记日志，会话会留在左栏「未分组」里（见 `docs/limitations.md`）。`resume()` 也能拿句柄，但对已存在会话会抢写句柄，不能拿来撤销。
 
 ---
 
