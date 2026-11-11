@@ -48,9 +48,10 @@ export function messageText(content, separator = '\n') {
  * 含空行（`\n\n` 是段落边界）、含行首块级标记（标题、列表、围栏、表格、引用）。
  * 其余多行正文交给 Markdown 会被软换行折成一段——那是逐行协议字段的坑。
  *
- * leader 任务气泡不走这条判据：它与宿主用户消息同路径，正文按纯文本渲染，
- * 换行由宿主气泡的 `pre-wrap` 保留。这里服务的是 worker 回报（失败原因、旧回报
- * 回退的协议行必须保持纯文本）。
+ * leader 任务气泡不走这条判据：它与 assistant 内容同套 Markdown（`Markdown`
+ * 包装的基线 `MarkdownText`，`compact` 变体），原文直接交给渲染器、单换行按
+ * Markdown 合并。这里服务的是 worker 回报（失败原因、旧回报回退的协议行必须
+ * 保持纯文本）。
  *
  * @param {unknown} text - 正文
  * @returns {'markdown' | 'text'} 渲染方式
