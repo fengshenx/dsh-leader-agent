@@ -121,6 +121,11 @@ test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () =
     hardBreakMarkdown('- ```\n  code\n  ```\n  第一行\n  第二行'),
     '- ```\n  code\n  ```\n  第一行  \n  第二行',
   )
+  // tab 缩进的关闭围栏按列识别：`- ``` ` 内容起始第 2 列，行首 tab 展开到第 4 列。
+  assert.equal(
+    hardBreakMarkdown('- ```\n  code\n\t```\n后一行\n再一行'),
+    '- ```\n  code\n\t```\n后一行  \n再一行',
+  )
   // 块引用没带 `>` 的行说明容器已经结束，围栏随之结束，后面的正文照常补硬换行。
   assert.equal(
     hardBreakMarkdown('> ```\n> code\n普通行\n再一行'),

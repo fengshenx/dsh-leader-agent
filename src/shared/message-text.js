@@ -46,16 +46,34 @@ const QUOTE_PREFIX = /^ {0,3}>[ \t]?/
 const LIST_PREFIX = /^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+/
 
 /**
+ * 把文本从 `startColumn` 列往后推进，返回推进后的列号。
+ *
+ * tab 按 CommonMark 展开到下一个 4 列边界，且展开宽度取决于它所在的列：容器前缀里
+ * 也可能出现 tab（例如 `>\t`），不能按字符数累加。
+ *
+ * @param {string} text - 要推进的文本
+ * @param {number} startColumn - 起始列号（0 起）
+ * @returns {number} 推进后的列号
+ */
+function advanceColumns(text, startColumn) {
+  let column = startColumn
+  for (const char of text) {
+    column = char === '\t' ? column + 4 - (column % 4) : column + 1
+  }
+  return column
+}
+
+/**
  * 去掉行首的块引用与列表容器前缀，只用于判断这一行是不是代码块边界。
  *
  * 任务正文里用 `> ``` ` 或 `- ``` ` 包住代码块时，围栏不在行首；不剥掉容器前缀
  * 会把它当普通行，代码内容被补上硬换行空格。容器可以嵌套，循环剥到稳定为止。
- * 同时记下剥掉的前缀宽度与块引用层数：围栏里的关闭行按容器缩进退到内容起始列
- * 再比对，不能靠再剥一次容器标记（那会误伤代码内容）。
+ * 同时记下前缀的列宽与块引用层数：围栏里的关闭行按容器列宽退到内容起始列再比对，
+ * 不能靠再剥一次容器标记（那会误伤代码内容）。
  *
  * @param {string} line - 原始行
  * @returns {{ content: string, quotes: number, indent: number }} 去掉前缀后的内容、
- *   块引用层数与前缀总宽度
+ *   块引用层数与前缀总列宽
  */
 function stripContainers(line) {
   let rest = line
@@ -66,13 +84,13 @@ function stripContainers(line) {
     if (quote !== null) {
       rest = rest.slice(quote[0].length)
       quotes += 1
-      indent += quote[0].length
+      indent = advanceColumns(quote[0], indent)
       continue
     }
     const list = LIST_PREFIX.exec(rest)
     if (list !== null) {
       rest = rest.slice(list[0].length)
-      indent += list[0].length
+      indent = advanceColumns(list[0], indent)
       continue
     }
     return { content: rest, quotes, indent }
@@ -84,26 +102,28 @@ function stripContainers(line) {
  *
  * 围栏内是字面量，开栏后不能再剥行首的 `>` / `- `：代码里的 `> ``` ` / `- ``` `
  * 不是容器标记，误剥会把真正的代码行当成关闭行。块引用是每行都带的容器结构，
- * 按开栏时的层数剥掉；列表续行用缩进而不是重复列表标记，所以只按开栏时的前缀
- * 宽度退到内容起始列。
+ * 按开栏时的层数剥掉；列表续行用缩进而不是重复列表标记，所以只按开栏时的列宽
+ * 判断围栏相对容器内容起始列的缩进（0–3 列，tab 按 4 列边界展开）。
  *
  * @param {string} line - 原始行
  * @param {{ char: string, length: number, quotes: number, indent: number }} fence -
- *   开栏时的字符、长度与容器信息
+ *   开栏时的字符、长度与容器信息（`indent` 为列宽）
  * @returns {boolean | null} 是否关闭；`null` 表示块引用容器已经不在这一行上
  */
 function closesFence(line, fence) {
   let rest = line
-  let stripped = 0
+  let column = 0
   for (let index = 0; index < fence.quotes; index += 1) {
     const quote = QUOTE_PREFIX.exec(rest)
     if (quote === null) return null
+    column = advanceColumns(quote[0], column)
     rest = rest.slice(quote[0].length)
-    stripped += quote[0].length
   }
-  const spaces = /^ */.exec(rest)[0].length
-  rest = rest.slice(Math.min(spaces, Math.max(0, fence.indent - stripped)))
-  const marker = FENCE_MARKER.exec(rest)
+  const leading = /^[ \t]*/.exec(rest)[0]
+  const markerColumn = advanceColumns(leading, column)
+  const relative = markerColumn - fence.indent
+  if (relative < 0 || relative > 3) return false
+  const marker = FENCE_MARKER.exec(rest.slice(leading.length))
   if (marker === null) return false
   return marker[1][0] === fence.char && marker[1].length >= fence.length && marker[2].trim() === ''
 }
@@ -117,7 +137,8 @@ function closesFence(line, fence) {
  *
  * 围栏代码块与缩进代码块内的换行是代码内容，不能补空格；空行本来就是段落边界，
  * 也不需要补。围栏按开栏字符与长度配对，避免把代码块里的 ``` 当成结束；围栏在
- * 块引用或列表里时先剥掉容器前缀再判断是否开栏，关闭行则按开栏时的容器缩进比对。
+ * 块引用或列表里时先剥掉容器前缀再判断是否开栏，关闭行则按开栏时的容器列宽比对
+ * （tab 按 CommonMark 展开到 4 列边界）。
  *
  * @param {string} text - Markdown 源码
  * @returns {string} 软换行已改成硬换行的源码
