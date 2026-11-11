@@ -35,7 +35,7 @@ host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的�
 - 用户气泡不折叠：长任务全文展示。worker 回报气泡仍默认两行、超出给「展示更多」。
 - 任务正文与 assistant 内容同套 Markdown，**不与宿主用户消息的纯文本路径一致**：单换行按 Markdown 合并，不复原日志式换行；需要断行时用空行或 Markdown 语法，标题、列表、围栏同样按 Markdown 渲染。宿主用户消息本身是 `UserTextRun` + `pre-wrap`，这里是刻意的产品取舍。
 - 气泡布局没有单测（React 组件 + 宿主模块表），仓库仍不引 jsdom；`tests/markdown.test.js` 的源码断言覆盖右对齐、无身份头、`Markdown` 接线、`variant: compact`、宽度上限（70.2% / 82%）、`10px 16px` 内边距、时间与复制按钮、令牌色值。
-- 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。任务气泡没有单独的真机读数：worker 会话默认不在侧栏，复制日志成普通会话会被宿主当成未知会话重建；`MarkdownText` 的实际渲染（`**加粗**`、围栏、`# 标题`）因此没有本 PR 的 DOM 读数，只能由 `Markdown` 接线断言与宿主既有渲染器保证。要覆盖派工得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
+- 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。任务气泡的渲染另有 `1bec9f3` 的真机探针取证（`strong` 与行内 `code` 各至少 1 处、内层气泡 521px、右对齐、时间与复制位置）；`edfa079` 沿用同一 `Markdown` 组件与 compact 变体，去掉了 `hardBreakMarkdown`；同时移除了 `__content` 包装与气泡行高覆盖（含 `--dsh-leader-agent-worker-task-line`），补了 `title` / `aria-label`。521px（70.2% 上限）、右对齐、时间与复制位置仍由未改的 `max-width`、`align-items` 与 `meta` 支撑，读数可继续引用。要覆盖派工得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
 
 ## 验证
 
@@ -46,4 +46,4 @@ host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的�
 - `npm run e2e`：8/8 场景通过（`env -u DSH_PROFILE`）。
 - 双向验证：删掉 `src/client/index.js` 里的任务气泡注册 → `客户端入口把任务节点定义与渲染器都挂上` 变红；还原 → 全绿。把正文换回 `UserTextRun`（或去掉 `Markdown` 包装）→ `任务正文交给 Markdown 渲染，不做行级改写` 变红；还原 → 全绿。去掉 `[data-markdown-variant='compact']` 颜色钩子 → `三处容器用 data-markdown-variant 钩子恢复正文与链接色` 变红；还原 → 全绿。
 - 双向验证（视觉）：`align-items: flex-end` 改成 `flex-start`、`* 0.702` 改回 `* 1`、`padding: 10px 16px` 改成 `8px 16px`、`formatBubbleClock(data.time)` 改成 `0`、`writeText(body)` 改成 `writeText('')`，五种改法都让最后一个用例变红；还原 → 全绿。
-- 宿主源码读数（rc.5 asar）：宿主用户消息是 `UserMessageBubble` + `conversation.user.text` → `UserText` / `UserTextRun` 纯文本，气泡 CSS `_bubble_1sgyj_1` 的 `white-space: pre-wrap` 保留单换行；这是本仓任务气泡**没有**跟随的路径。任务气泡走 `MarkdownText` compact，单换行按 Markdown 合并。任务气泡的 `**加粗**` / 围栏 / `# 标题` 没有本 PR 的 DOM 读数（原因见上一条边界）；`npm run e2e` 8/8 覆盖插件加载与既有场景，`Markdown` 接线由单测钉住。
+- 宿主源码读数（rc.5 asar）：宿主用户消息是 `UserMessageBubble` + `conversation.user.text` → `UserText` / `UserTextRun` 纯文本，气泡 CSS `_bubble_1sgyj_1` 的 `white-space: pre-wrap` 保留单换行；这是本仓任务气泡**没有**跟随的路径。任务气泡走 `MarkdownText` compact，单换行按 Markdown 合并。`1bec9f3` 已取证 `strong` 与行内 `code` 的实际渲染（见上一条边界）；`edfa079` 复用同一 `Markdown` 组件与 compact 变体，`npm run e2e` 8/8 覆盖插件加载与既有场景，接线由单测钉住。
