@@ -20,7 +20,7 @@ leader 用 `message_worker` 投给 worker 的消息，在 worker 会话里显示
 
 ### 任务正文始终走 Markdown，逐行结构补硬换行
 
-leader 写任务时常把「做什么 / 边界 / 验收」各占一行，直接交给 Markdown 会被软换行折成一段；退回纯文本又会让 `**粗体**`、行内代码显示成字面量。`hardBreakMarkdown`（`src/shared/message-text.js`）给非空、非代码、非段落边界的行补两个尾随空格，GFM 渲染成 `<br>`，行内语法照常生效。围栏代码块按字符与长度配对，缩进代码块与已有硬换行不碰；开栏允许最多 3 列前导缩进（tab 按列算，`> \t``` ` 也认）；关闭行的缩进相对它自己的块引用内容起始列计算，列表缩进沿用开栏时的相对列宽（tab 按 CommonMark 展开到 4 列边界）——嵌套列表、`>\t` 开栏 + `> ` 关闭行、tab 缩进的关闭行都照样关得掉，围栏里以 `> ``` ` / `- ``` ` 开头的代码行也不会被误当成关闭行。worker 回报仍用 `bubbleFormat` 的判据：失败原因与旧回报的协议行保持纯文本。
+leader 写任务时常把「做什么 / 边界 / 验收」各占一行，直接交给 Markdown 会被软换行折成一段；退回纯文本又会让 `**粗体**`、行内代码显示成字面量。宿主的 `MarkdownText` 不接受 `breaks` 等软换行选项（本地 rc.5 的组件 props 只有 `text` / `streaming` / `labels` / `fileMentions` / `pathImages` / `variant` / `omitHtml` / `textInteractionSource`，解析链也没有对应开关），所以只能在源码层补硬换行：`hardBreakMarkdown`（`src/shared/message-text.js`）给非空、非代码、非段落边界的行补两个尾随空格，GFM 渲染成 `<br>`，行内语法照常生效。围栏代码块按字符与长度配对，缩进代码块与已有硬换行不碰。围栏的容器结构不再用绝对列猜：开栏时记下 `>` 容器栈与列表项内容起始列，之后每行先按栈核对（块引用看每行仍有的 `>` 标记，列表看缩进是否仍到内容起始列），关闭行只按「最内层容器内容起始列 + 0–3 列」判定；列表项在关闭行结束（`> - ``` ` 的关闭行只带 `> `）时围栏随之结束。开栏允许最多 3 列前导缩进，tab 按列展开，`>\t` / `> \t` 都能认。围栏里以 `> ``` ` / `- ``` ` 开头的代码行仍是字面量，不会被误判成关闭行。worker 回报仍用 `bubbleFormat` 的判据：失败原因与旧回报的协议行保持纯文本。
 
 ### 文本与格式判据收进 shared
 
@@ -32,15 +32,16 @@ host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的�
 - 只认追加事件（`surfaceOp === 'append'`）：替换副本只应留在模型侧，不进人类转录，官方同类定义也是这条口径。
 - 用户气泡不折叠：长任务全文展示。worker 回报气泡仍默认两行、超出给「展示更多」。
 - 气泡布局没有单测（React 组件 + 宿主模块表），仓库仍不引 jsdom；`tests/markdown.test.js` 的源码断言覆盖右对齐、无身份头、Markdown 接线、宽度上限（70.2% / 82%）、`10px 16px` 内边距、时间与复制按钮、令牌色值，实际观感靠真机探针。
+- 围栏判定是逐行的容器栈状态机，不是完整的 CommonMark 容器解析：只按开栏行上的 `>` 与列表标记建栈，懒续行、HTML block 等其它块结构不在覆盖范围；未覆盖的容器组合仍可能让围栏提前或延后结束。
 - 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。真机探针用「把一份真实 worker 会话日志复制进临时数据根、从侧栏打开」取证，它验证渲染，不验证派工链路，也不入库。要覆盖派工得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
 
 ## 验证
 
-- 更新单测：`tests/worker-task.test.js` 覆盖 source 判型、`match`、`start`/`buildViewNode`、硬换行（含嵌套列表关闭围栏、围栏内 `> ``` ` / `- ``` ` 代码行、表格行与关闭围栏后的状态恢复）与客户端入口接线；`tests/bubble-clock.test.js` 覆盖三种时间形态；`tests/client-styles.test.js` 覆盖新样式表的幂等注入；`tests/markdown.test.js` 覆盖右侧用户气泡的形态（宽度上限、内边距、时间、复制、title / aria-label）与 Markdown 接线。
-- `npm test`：1120 条，1103 通过 / 17 skip。
-- `npm run check`：全绿（笔记 90 篇、文档预算、108 文件语法、覆盖率 1103 用例 / 79 源文件 / 61 加载 / 53 个 100% / 18 未测量）。
+- 更新单测：`tests/worker-task.test.js` 覆盖 source 判型、`match`、`start`/`buildViewNode`、硬换行（含 `围栏容器栈覆盖块引用与列表的关闭边界` 的 8 行用例表、嵌套列表关闭围栏、围栏内 `> ``` ` / `- ``` ` 代码行、表格行与关闭围栏后的状态恢复）与客户端入口接线；`tests/bubble-clock.test.js` 覆盖三种时间形态；`tests/client-styles.test.js` 覆盖新样式表的幂等注入；`tests/markdown.test.js` 覆盖右侧用户气泡的形态（宽度上限、内边距、时间、复制、title / aria-label）与 Markdown 接线。
+- `npm test`：1121 条，1104 通过 / 17 skip。
+- `npm run check`：全绿（笔记 90 篇、文档预算、108 文件语法、覆盖率 1104 用例 / 79 源文件 / 61 加载 / 53 个 100% / 18 未测量）。
 - `npm run build:client`：通过（客户端产物重建，含 `dsh-leader-agent-worker-task`、`hardBreakMarkdown` 与「Leader 派发的任务」提示）。
 - `npm run e2e`：8/8 场景通过（`env -u DSH_PROFILE`）。
 - 双向验证：删掉 `src/client/index.js` 里的任务气泡注册 → `客户端入口把任务节点定义与渲染器都挂上` 变红；还原 → 全绿。把 `hardBreakMarkdown(body)` 改回 `body` → `气泡渲染 Markdown 组件，旧消息回退纯文本` 变红；还原 → 全绿。把 `align-items: flex-end` 改成 `flex-start` → `leader 任务用右侧用户气泡：无身份头、不折叠、正文只给 Markdown` 变红；还原 → 全绿。
-- 双向验证（围栏启发式）：去掉 `closesFence` 里按容器缩进的退让 → `任务正文始终按 Markdown 渲染，逐行结构补成硬换行` 变红（嵌套列表关闭行后丢硬换行）；还原 → 全绿。把围栏内的关闭判断改回「先 `stripContainers` 再比对」→ 同用例变红（`code` 被补两个尾随空格）；还原 → 全绿。把关闭行的前导空白匹配改回只认空格（`/^ */`）→ 同用例变红（tab 缩进的关闭行没关掉、尾部丢硬换行）；还原 → 全绿。把关闭行缩进改回按开栏行的绝对列比较 → 同用例变红（`>\t` 开栏 + `> ` 关闭行丢硬换行）；还原 → 全绿。把开栏的前导缩进改回只认空格 → 同用例变红（`> \t``` ` 不被认、`> code` 被补两个空格）；还原 → 全绿。测试钉住的视觉细节也逐个撤过：`* 0.702` 改回 `* 1`、`padding: 10px 16px` 改成 `8px 16px`、`formatBubbleClock(data.time)` 改成 `0`、`writeText(body)` 改成 `writeText('')`，四种改法都让最后一个用例变红；还原 → 全绿。
+- 双向验证（围栏状态机）：把 `fenceLineState` 的容器栈判定换回 `fa1521b` 的绝对列比较（临时替换整个 `src/shared/message-text.js`）→ `围栏容器栈覆盖块引用与列表的关闭边界` 的阻断用例（`> - ```\n>   code\n> ```\n> 后一行...`）变红，尾部丢硬换行；还原 → 8 行全绿。把开栏的前导缩进改回只认空格 → 同用例表第 5 行变红（`> \t``` ` 不被认、`> code` 被补两个空格）；还原 → 全绿。测试钉住的视觉细节也逐个撤过：`* 0.702` 改回 `* 1`、`padding: 10px 16px` 改成 `8px 16px`、`formatBubbleClock(data.time)` 改成 `0`、`writeText(body)` 改成 `writeText('')`，四种改法都让最后一个用例变红；还原 → 全绿。
 - 真机读数（`DSH_PROFILE=web`，真实宿主 rc.5 + 从 `~/.dsh` 复制的 worker 会话，chromium 1440×900）：侧栏打开 worker 会话后，两条任务消息都渲染成 `data-chat-flow-kind="dsh-leader-agent-worker-task"` 的气泡；内层气泡宽 521px（内容栏 742px 的 70.2% 上限）、右对齐、`rgb(237, 243, 254)` 底色、20px 圆角、`10px 16px` 内边距，`data-markdown-variant="compact"`，`strong` 5 处、行内 `code` 28 处；同一会话里自己发的用户气泡右边缘与任务气泡对齐，但那段 `**加粗**` 显示为字面量——这正是「用户气泡 + Markdown」的刻意差异。截图 `.dev` 下临时取证，不入库。

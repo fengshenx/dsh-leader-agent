@@ -172,6 +172,54 @@ test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () =
   assert.equal(hardBreakMarkdown('    缩进代码\n正文'), '    缩进代码\n正文')
 })
 
+test('围栏容器栈覆盖块引用与列表的关闭边界', () => {
+  // 状态机在开栏时记下容器栈，之后逐行核对；关闭行相对最内层容器内容起始列缩进 0–3。
+  // 1. 顶层围栏，关闭后照常补硬换行。
+  assert.equal(
+    hardBreakMarkdown('```\ncode\n```\n后一行\n再一行'),
+    '```\ncode\n```\n后一行  \n再一行',
+  )
+  // 2. 列表围栏，2 空格缩进的关闭行。
+  assert.equal(
+    hardBreakMarkdown('- ```\n  code\n  ```\n  后一行\n  再一行'),
+    '- ```\n  code\n  ```\n  后一行  \n  再一行',
+  )
+  // 3. 块引用围栏。
+  assert.equal(
+    hardBreakMarkdown('> ```\n> code\n> ```\n> 后一行\n> 再一行'),
+    '> ```\n> code\n> ```\n> 后一行  \n> 再一行',
+  )
+  // 4. `>\t` 开栏 + 普通 `> ` 关闭行：关闭行按自己的块引用内容起始列算缩进。
+  assert.equal(
+    hardBreakMarkdown('>\t```\n>\tcode\n> ```\n> 后一行\n> 再一行'),
+    '>\t```\n>\tcode\n> ```\n> 后一行  \n> 再一行',
+  )
+  // 5. `> \t` 开栏：tab 按列算进前导缩进，代码行不能被补空格。
+  assert.equal(
+    hardBreakMarkdown('> \t```\n> code\n> ```\n> 后一行\n> 再一行'),
+    '> \t```\n> code\n> ```\n> 后一行  \n> 再一行',
+  )
+  // 6. 块引用里再嵌列表项：关闭行只剩 `> `，列表项在这一行结束，围栏随之关闭。
+  assert.equal(
+    hardBreakMarkdown('> - ```\n>   code\n> ```\n> 后一行\n> 再一行'),
+    '> - ```\n>   code\n> ```\n> 后一行  \n> 再一行',
+  )
+  // 7. 围栏里以 `> ``` ` / `- ``` ` 开头的行是代码内容，原样保留。
+  assert.equal(
+    hardBreakMarkdown('```\n> ```\ncode\n```\n后一行\n再一行'),
+    '```\n> ```\ncode\n```\n后一行  \n再一行',
+  )
+  assert.equal(
+    hardBreakMarkdown('- ```\n  - ```\n  code\n  ```\n后一行\n再一行'),
+    '- ```\n  - ```\n  code\n  ```\n后一行  \n再一行',
+  )
+  // 8. 反向：`> ` 开栏 + `>\t` 关闭行。
+  assert.equal(
+    hardBreakMarkdown('> ```\n> code\n>\t```\n> 后一行\n> 再一行'),
+    '> ```\n> code\n>\t```\n> 后一行  \n> 再一行',
+  )
+})
+
 test('从内容块里取纯文本时判型，块间分隔符可换', () => {
   assert.equal(messageText([{ type: 'text', text: '一' }, { type: 'image', url: 'x' }, { type: 'text', text: '二' }]), '一\n二')
   assert.equal(messageText([{ type: 'text', text: '一' }, { type: 'text', text: '二' }], '\n\n'), '一\n\n二')
