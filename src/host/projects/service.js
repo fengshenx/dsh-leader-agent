@@ -170,11 +170,12 @@ export function createProjectService({
    *
    * 宿主没有「按 id 停掉已存在会话」的公开能力：`agents.get()` 返回裸 `Agent`
    * （`packages/core/agent/src/index.ts:568`），`ctx.sessions` 只给会话对象、没有
-   * dispose 入口。唯一能停掉 agent 的是建会话时返回的 `AgentHandle.dispose()`
+   * dispose 入口。唯一能拆除 agent 的是建会话时返回的 `AgentHandle.dispose()`
    * （`packages/core/agent/src/index.ts:147`）——它停 loop、等退场、摘注册表并
-   * 把会话从 store 里移除。所以句柄必须随创建结果一路留下来。
+   * 把会话从活的 session store 里移除；已落盘的会话日志不删。所以句柄必须随
+   * 创建结果一路留下来。
    *
-   * 拿不到句柄时大声记日志：会话会留在左栏的「未分组」桶里，不能假装撤掉了。
+   * 拿不到句柄时大声记日志：活会话会留在左栏的「未分组」桶里，不能假装撤掉了。
    *
    * @param {{ sessionId?: string, handle?: { dispose: () => Promise<void> } }} created - 建会话的结果
    * @returns {Promise<void>} 撤销完成
@@ -703,7 +704,7 @@ export function createProjectService({
     async replaceLeader(id) {
       const project = await store.get(id)
       if (project === undefined) throw new Error(`项目不存在：${id}`)
-      // 目录没了先给可读的中文原因：宿主建会话时会 mkdir 目录，但这里先停下更清楚。
+      // 目录没了先给可读的中文原因：会话建在已删目录上没有意义，这里先停下更清楚。
       await assertUsableDirectory(project.directory)
       const created = await openRegisteredLeaderSession(project.directory)
       const leaderSessionId = created.sessionId

@@ -115,6 +115,35 @@ test('建 leader 会话挂 agent preset，并把 AgentHandle 交出来以便撤�
   assert.deepEqual(mounts, [agentCtx])
 })
 
+test('建 leader 会话时带上默认模型选择', async () => {
+  let captured
+  const ctx = {
+    get: (name) => {
+      if (name === 'agents') {
+        return {
+          async create(options) {
+            captured = options
+            return { agent: { id: options.sessionId }, dispose: async () => {} }
+          },
+        }
+      }
+      if (name === 'agentDefaultModel') {
+        return {
+          currentSelection: () => ({ provider: 'mock', model: 'mock-echo', reasoningEffort: 'high' }),
+        }
+      }
+      return undefined
+    },
+  }
+
+  await createLeaderSessionWithCtx(ctx, '/repo', 'session-model')
+  const options = captured.agentOptions
+  // 缺这一块，系统提示里的 {{model}} 没有值，leader 首轮就失败（worker 路径踩过）。
+  assert.equal(options.provider, 'mock')
+  assert.equal(options.model, 'mock-echo')
+  assert.equal(options.reasoningEffort, 'high')
+})
+
 test('建项目会建 leader 会话并绑定', async () => {
   const { home, workspace } = await makeWorkspace()
   const store = createProjectStore({ home })
@@ -301,6 +330,47 @@ test('换 leader 时改绑失败也撤掉占位，旧 leader 身份不变', asyn
   assert.equal(service.directoryOfLeader(factory.ids[0]), workspace)
   assert.equal(service.directoryOfLeader(factory.ids[1]), undefined)
   assert.equal((await store.get(project.id)).leaderSessionId, factory.ids[0])
+})
+
+test('换 leader 改绑失败时撤销新建的会话', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const disposed = []
+  const factory = createSessionFactory({ dispose: (sessionId) => { disposed.push(sessionId) } })
+  // 建项目走真实 store，只有改绑失败：这条路径上的新会话也必须被摘掉。
+  const service = makeService({
+    store: { ...store, update: async () => { throw new Error('改绑失败') } },
+    ctx: createContext(),
+    createLeaderSession: factory,
+    sessionExists: async () => true,
+  })
+  await service.loadIndex()
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  // 建项目成功不是本条用例的关注面：清掉它，只看改绑失败这一笔。
+  disposed.length = 0
+
+  await assert.rejects(() => service.replaceLeader(project.id), /改绑失败/)
+  // 只撤新建的那条；旧 leader 仍是记录里的 leader，不能顺手停掉。
+  assert.deepEqual(disposed, [factory.ids[1]])
+})
+
+test('建项目与换 leader 成功时不撤销会话', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const disposed = []
+  const factory = createSessionFactory({ dispose: (sessionId) => { disposed.push(sessionId) } })
+  const service = makeService({
+    store,
+    ctx: createContext(),
+    createLeaderSession: factory,
+    sessionExists: async () => true,
+  })
+  await service.loadIndex()
+
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  await service.replaceLeader(project.id)
+  // 撤销只属于失败回滚；成功路径停掉 leader 会让记录指向一条不再活跃的会话。
+  assert.deepEqual(disposed, [])
 })
 
 test('换新 leader 时，新会话在建立那一刻也已经登记', async () => {

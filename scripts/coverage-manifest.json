@@ -41,7 +41,7 @@
       "reason": "宿主权限快照的异常形态，逐步补"
     },
     "src/host/projects/service.js": {
-      "lines": 97,
+      "lines": 98,
       "reason": "项目服务里失败与并发分支，逐步补"
     },
     "src/host/tools/cards.js": {
