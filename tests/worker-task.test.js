@@ -103,13 +103,43 @@ test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () =
   // 标题、列表、表格行补空格不影响块级解析。
   assert.equal(hardBreakMarkdown('## 目标\n修登录'), '## 目标  \n修登录')
   assert.equal(hardBreakMarkdown('- 一\n- 二'), '- 一  \n- 二')
+  assert.equal(hardBreakMarkdown('| 列 | 值 |\n| - | - |'), '| 列 | 值 |  \n| - | - |')
   // 围栏代码块内的换行是代码内容，不能改；围栏按字符与长度配对。
-  assert.equal(hardBreakMarkdown('```js\nconst a = 1\nconst b = 2\n```'), '```js\nconst a = 1\nconst b = 2\n```')
-  assert.equal(hardBreakMarkdown('~~~\ncode\n~~~~\n后一行'), '~~~\ncode\n~~~~\n后一行')
-  assert.equal(hardBreakMarkdown('```\na\n~~~\nb'), '```\na\n~~~\nb')
+  // 关闭行后至少跟两行正文：尾行本来就不补空格，只留尾行证明不了状态已恢复。
+  assert.equal(
+    hardBreakMarkdown('```js\nconst a = 1\nconst b = 2\n```\n后一行\n再一行'),
+    '```js\nconst a = 1\nconst b = 2\n```\n后一行  \n再一行',
+  )
+  assert.equal(hardBreakMarkdown('~~~\ncode\n~~~~\n后一行\n再一行'), '~~~\ncode\n~~~~\n后一行  \n再一行')
+  assert.equal(hardBreakMarkdown('```\na\n~~~\nb\n```\n后一行\n再一行'), '```\na\n~~~\nb\n```\n后一行  \n再一行')
   // 围栏套在块引用或列表里：先剥容器前缀，代码内容仍不能被补空格。
-  assert.equal(hardBreakMarkdown('> ```\n> code\n> ```'), '> ```\n> code\n> ```')
-  assert.equal(hardBreakMarkdown('- ```\n  code\n  ```'), '- ```\n  code\n  ```')
+  assert.equal(
+    hardBreakMarkdown('> ```\n> code\n> ```\n> 第一行\n> 第二行'),
+    '> ```\n> code\n> ```\n> 第一行  \n> 第二行',
+  )
+  assert.equal(
+    hardBreakMarkdown('- ```\n  code\n  ```\n  第一行\n  第二行'),
+    '- ```\n  code\n  ```\n  第一行  \n  第二行',
+  )
+  // 块引用没带 `>` 的行说明容器已经结束，围栏随之结束，后面的正文照常补硬换行。
+  assert.equal(
+    hardBreakMarkdown('> ```\n> code\n普通行\n再一行'),
+    '> ```\n> code\n普通行  \n再一行',
+  )
+  // 嵌套列表：关闭围栏缩进到容器内容起始列，不能因为多出缩进就永远关不掉。
+  assert.equal(
+    hardBreakMarkdown('- 外层：\n  - ```js\n    const x = 1\n    ```\n后一行\n再一行'),
+    '- 外层：  \n  - ```js\n    const x = 1\n    ```\n后一行  \n再一行',
+  )
+  // 围栏里以 `> ``` ` / `- ``` ` 开头的行是代码内容，不能当成关闭行，否则后续代码被补空格。
+  assert.equal(
+    hardBreakMarkdown('```\n> ```\ncode\n```\n后一行\n再一行'),
+    '```\n> ```\ncode\n```\n后一行  \n再一行',
+  )
+  assert.equal(
+    hardBreakMarkdown('- ```\n  - ```\n  code\n  ```\n后一行\n再一行'),
+    '- ```\n  - ```\n  code\n  ```\n后一行  \n再一行',
+  )
   // 块引用里的逐行正文仍要保留换行。
   assert.equal(hardBreakMarkdown('> 第一行\n> 第二行'), '> 第一行  \n> 第二行')
   // 空的块引用行是段落边界，不补空格。

@@ -122,8 +122,18 @@ test('leader 任务用右侧用户气泡：无身份头、不折叠、正文只�
   assert.equal(view.includes('data-collapsed'), false)
   assert.equal(view.includes('展示更多'), false)
   assert.match(view, /className: 'dsh-leader-agent-worker-task__meta'/)
+  // 底部 chrome 与官方消息同形：时间取消息时间，复制写原始正文（不是补过硬换行的源码）。
+  assert.match(view, /formatBubbleClock\(data\.time\)/)
+  assert.match(view, /navigator\.clipboard\.writeText\(body\)/)
+  assert.match(view, /productIcon\(copied \? 'check-outline' : 'copy-outline'/)
+  // 气泡靠内容与 Markdown 渲染区分，没有独立视觉标识；title / aria-label 只做读屏与悬停提示。
+  assert.match(view, /'aria-label': 'Leader 派发的任务'/)
+  assert.match(view, /title: 'Leader 派发的任务'/)
   const styles = read('src/client/worker-task-styles.js')
   assert.match(styles, /\.dsh-leader-agent-worker-task \{[^}]*align-items: flex-end/)
+  // 宽度上限取内容栏的 70.2%（至多 82%），内边距与宿主用户气泡一致。
+  assert.match(styles, /max-width: min\(calc\(var\(--dsh-chat-content-width, 748px\) \* 0\.702\), 82%\)/)
+  assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*padding: 10px 16px;/)
   assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*background: var\(--dsw-specific-bubble\)/)
   assert.equal(styles.includes('-webkit-line-clamp'), false)
   assert.equal(/#[0-9a-fA-F]{3,8}\b/.test(styles), false, '样式里出现了写死的色值')

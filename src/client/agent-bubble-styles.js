@@ -1,5 +1,5 @@
 /**
- * agent 气泡的样式：leader 派来的任务与 worker 的回报共用一套。
+ * worker 回报的左侧 agent 气泡样式。
  *
  * 颜色与圆角全部走宿主 `--dsw-*` 令牌，不写死色值。组件能从基线模块 import，样式
  * 拿不到：宿主包的 CSS module 在构建期编译成哈希类名、映射留在宿主产物里（包的
@@ -86,14 +86,13 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-link);
 }
 
-/* 纯文本正文：worker 回报的旧消息（没有 report，回退整条通知正文）与失败原因、
-   leader 任务里逐行写的工作面（做什么 / 边界 / 验收各占一行）都走这里。逐行
-   内容交给 Markdown 会被软换行折成一段。 */
+/* 纯文本正文：worker 回报的旧消息（没有 report，回退整条通知正文）与失败原因走这里。
+   逐行内容交给 Markdown 会被软换行折成一段。 */
 .dsh-leader-agent-agent-bubble__plain {
   white-space: pre-wrap;
 }
 
-/* 默认只露两行：一条任务或回报动辄一屏，先给摘要，细节按需展开。
+/* 默认只露两行：一次回报动辄一屏，先给摘要，细节按需展开。
    正文是块级元素（段落、列表、代码块），line-clamp 只能截纯文本行；按行高算
    max-height 才对块级内容生效。多出的 4px 是 compact 段落的上边距，不加会把第二行
    的下缘裁掉。裁剪只落在正文层，气泡内的展开按钮不跟着被截。 */

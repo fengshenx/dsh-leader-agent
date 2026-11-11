@@ -56,6 +56,9 @@ export function WorkerTaskView({ node }) {
         className: 'dsh-leader-agent-worker-task__bubble',
         // 与宿主用户气泡同一标记，便于界面侧把这块内容当消息正文处理。
         'data-message-bubble': '',
+        // 形态与用户自己的消息一样，只能靠内容判断来源；这两条只做悬停与读屏提示。
+        title: 'Leader 派发的任务',
+        'aria-label': 'Leader 派发的任务',
       },
       createElement(
         'div',
