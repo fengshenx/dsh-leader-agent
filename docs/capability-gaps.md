@@ -465,7 +465,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 唯一能**彻底拆除** agent 的是 `agents.create()` / `agents.resume()` 返回的 `AgentHandle.dispose()`：停 loop、等退场、摘注册表、把会话从活的 store 移除（`packages/core/agent/src/index.ts:147-163`；实现 `packages/core/agent-loop/src/index.ts:594-600`）。`Agent.cancel()`（`runtime-types.ts:183`）只停当前 turn，`workspaceRegistry.archiveSession(id, { stopActivity: true })`（`packages/workspace/workspace/src/index.ts:365`）只停工作并写归档集合，两者都不摘注册表，不是 teardown。
 - `ctx.sessions` 只有 `create` / `get` / `list` 等，没有按 id 移除的入口（`packages/core/session/src/index.ts:1111`、`:1352`）。
 - `sessionController.create()` 只回 `SessionCreateValue` `{ sessionId, agentPreset? }`，handle 留在宿主手里（`packages/api/session-controller/src/types.ts:299-305`）。
-- `dispose()` 也不删已落盘的会话日志：它只 close/drain 持久化句柄，宿主没有删除会话的公开 API。新建的空会话在 `session/created` 上就会由 `permissionPresets` 写入权限事实并落盘（见第 41 条）；进程重启后它可能作为空会话重新出现（按源码推断，未端到端复现）。
+- `dispose()` 也不删已落盘的会话日志：它只 close/drain 持久化句柄，宿主没有删除会话的公开 API。新建的空会话在 `session/created` 上就写入权限事实（见第 41 条），落盘由持久化的写入缓冲负责，`dispose()` 的 close/drain 把它落盘（`packages/session/session-persistence-jsonl/src/storage.ts:274-280`、`:223-240`）；进程重启后它可能作为空会话重新出现（按源码推断，未端到端复现）。
 
 **影响**：撤销能力只在创建方手里。本 bundle 因此把 leader 会话的创建也改走 `agents.create()`（与 worker 同一条路），创建结果把 `AgentHandle` 交给项目服务；落盘失败时 `dispose()` 停活会话。已落盘的空会话可能重启后重现。没有拿到句柄就等于没有撤销能力——这时只能大声记日志，活会话会留在左栏「未分组」里（见 `docs/limitations.md`）。`resume()` 也能拿句柄，但对已存在会话会抢写句柄，不能拿来撤销。
 
