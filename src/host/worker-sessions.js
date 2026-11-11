@@ -26,6 +26,25 @@ import { createUserMessage } from './message.js'
 import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 
 /**
+ * 宿主以「会话已有活写句柄」拒绝冷恢复时，换成使用者能照做的说明。
+ *
+ * 按 `name` 判而不匹配文案：rc.2 的 `SessionAlreadyOwnedError` 只设 `name`，
+ * 文案会随版本调整。
+ *
+ * @param {unknown} error - `agents.resume()` 抛出的错误
+ * @param {string} sessionId - 目标会话 id
+ * @returns {unknown} 原错误，或带 `cause` 的说明错误
+ */
+function explainOccupiedError(error, sessionId) {
+  const occupied = error instanceof Error && error.name === 'SessionAlreadyOwnedError'
+  if (!occupied) return error
+  return new Error(
+    `message_worker: 会话 ${sessionId} 正被另一个会话窗口占用（宿主还在使用它），暂时不能把消息投进去；请先关闭打开它的窗口再试，或直接在那个窗口里继续对话。`,
+    { cause: error },
+  )
+}
+
+/**
  * 创建 worker 会话管理器。
  *
  * @param {object} options - 选项
@@ -54,18 +73,18 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   /**
    * 把会话标题改成 worker 显示名。
    *
-   * @param {object} handle - AgentHandle
+   * @param {object} agent - 宿主的活 Agent
    * @param {string} name - 显示名
    * @returns {void}
    */
-  function renameTitle(handle, name) {
+  function renameTitle(agent, name) {
     const sessionTitle = ctx.get('sessionTitle')
     if (sessionTitle === undefined) {
       logger('dsh-leader-agent: 当前组合缺 sessionTitle 服务，worker 会话标题保持宿主默认')
       return
     }
     try {
-      sessionTitle.rename(handle.agent.session, name)
+      sessionTitle.rename(agent.session, name)
     } catch (error) {
       logger(`dsh-leader-agent: worker 会话标题改名被拒：${error instanceof Error ? error.message : String(error)}`)
     }
@@ -117,7 +136,26 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
    * @returns {void}
    */
   function presentOne(handle, sessionId, name) {
-    if (typeof name === 'string' && name !== '') renameTitle(handle, name)
+    if (typeof name === 'string' && name !== '') renameTitle(handle.agent, name)
+  }
+
+  /**
+   * 把任务消息投进指定 agent 的当前轮次。
+   *
+   * @param {object} agent - 宿主的活 Agent（`AgentHandle.agent` 或 `agents.get()`）
+   * @param {'live' | 'resumed'} form - 投递形态
+   * @param {object} options - 投递参数
+   * @param {string} options.sessionId - 会话 id
+   * @param {string} options.text - 正文
+   * @param {string} [options.name] - 顺手改的显示名
+   * @param {string} options.parentSessionId - leader 会话 id
+   * @returns {'live' | 'resumed'} 投递形态
+   */
+  function deliver(agent, form, { sessionId, text, name, parentSessionId }) {
+    const displayName = name ?? agent.session?.header?.title ?? sessionId
+    if (name !== undefined) renameTitle(agent, name)
+    agent.steer(taskMessage(text, displayName, parentSessionId))
+    return form
   }
 
   /**
@@ -313,6 +351,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * 要等本轮结束才作为另一轮进入，leader 的纠偏/返工指令白等一整轮，本轮
      * 结束时还会先按旧产物结算一条通知。
      *
+     * 「活着」有两层：本模块的 `live` 表，以及宿主自己的活 agent 表。GUI 打开
+     * 或启动时恢复过的会话只在后者里，写句柄随它的 agent 常驻、不随 `turn/end`
+     * 释放——这时去 `agents.resume()` 会被宿主判成「已有活写句柄」。必须先复用
+     * 宿主 agent 直接投递，投不了才冷恢复。
+     *
      * @param {object} options - 投递参数
      * @param {string} options.sessionId - worker 会话 id
      * @param {string} options.text - 正文
@@ -323,12 +366,22 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      */
     async send({ sessionId, text, name, parentSessionId, signal }) {
       const current = live.get(sessionId)
-      const resumed = current === undefined
-      const handle = current ?? await resumeOnce(sessionId, signal)
-      const displayName = name ?? handle.agent.session?.header?.title ?? sessionId
-      if (name !== undefined) renameTitle(handle, name)
-      handle.agent.steer(taskMessage(text, displayName, parentSessionId))
-      return resumed ? 'resumed' : 'live'
+      if (current !== undefined) {
+        return deliver(current.agent, 'live', { sessionId, text, name, parentSessionId })
+      }
+      // 复用宿主 agent 但不登记进 live：dispose 是持有句柄那一方的所有权，这里
+      // 只是借它的作用域投递，不能替宿主收掉一个被人打开着的会话。
+      const active = ctx.get('agents')?.get(sessionId)
+      if (active !== undefined) {
+        return deliver(active, 'live', { sessionId, text, name, parentSessionId })
+      }
+      let handle
+      try {
+        handle = await resumeOnce(sessionId, signal)
+      } catch (error) {
+        throw explainOccupiedError(error, sessionId)
+      }
+      return deliver(handle.agent, 'resumed', { sessionId, text, name, parentSessionId })
     },
 
     /**

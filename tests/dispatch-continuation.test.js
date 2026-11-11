@@ -67,6 +67,10 @@ function createHost({ resumeError } = {}) {
       resumed.push(resumeSessionId)
       return createHandle(resumeSessionId).handle
     },
+    // 这里的「插件重启」同时重启了宿主：进程里没有活着的老 agent。
+    get() {
+      return undefined
+    },
   }
 
   /** 订阅上来的 `session/event` 监听器 */

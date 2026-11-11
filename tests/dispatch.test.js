@@ -43,6 +43,8 @@ function createFixture({ permissions } = {}) {
   const titles = new Map()
   /** 父会话 agent（测试用 `agents.set` 挂进来） */
   const parents = new Map()
+  /** 宿主的活 agent 表：`agents.get()` 读它，dispose 后移除 */
+  const hostAgents = new Map()
   /** 订阅上来的 `session/event` 监听器 */
   const sessionEventListeners = []
   /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
@@ -69,21 +71,24 @@ function createFixture({ permissions } = {}) {
       },
     }
     sessions.set(sessionId, session)
+    const agent = {
+      id: sessionId,
+      session,
+      steer(message) {
+        entry.messages.push(message)
+        // 投递途中 worker 可能自己把上一轮报了：测试用它复现这类时序。
+        if (typeof entry.onDeliver === 'function') entry.onDeliver(message)
+      },
+      followup() {},
+    }
+    hostAgents.set(sessionId, agent)
     return {
       entry,
       handle: {
-        agent: {
-          id: sessionId,
-          session,
-          steer(message) {
-            entry.messages.push(message)
-            // 投递途中 worker 可能自己把上一轮报了：测试用它复现这类时序。
-            if (typeof entry.onDeliver === 'function') entry.onDeliver(message)
-          },
-          followup() {},
-        },
+        agent,
         async dispose() {
           entry.disposed = true
+          hostAgents.delete(sessionId)
           sessions.delete(sessionId)
         },
       },
@@ -106,10 +111,8 @@ function createFixture({ permissions } = {}) {
     },
     get(sessionId) {
       const parent = parents.get(sessionId)
-      if (parent !== undefined) return { agent: parent }
-      const found = spawned.find((item) => item.sessionId === sessionId && !item.disposed)
-      if (found === undefined) return undefined
-      return { agent: { id: sessionId, session: sessions.get(sessionId), followup() {} } }
+      if (parent !== undefined) return parent
+      return hostAgents.get(sessionId)
     },
     /** 测试用：把父会话 agent 挂进注册表，供通知投递解析。 */
     set(sessionId, agent) {
