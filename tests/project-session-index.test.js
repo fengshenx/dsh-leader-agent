@@ -40,7 +40,7 @@ function createSessionFactory() {
   const ids = []
   const factory = async (directory, sessionId) => {
     ids.push(sessionId)
-    return sessionId
+    return { sessionId }
   }
   factory.ids = ids
   return factory

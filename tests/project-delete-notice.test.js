@@ -47,7 +47,7 @@ async function makeChain() {
     store,
     ctx,
     isWorkerSession: () => false,
-    createLeaderSession: async (target, sessionId) => sessionId,
+    createLeaderSession: async (target, sessionId) => ({ sessionId }),
     sessionExists: async () => true,
   })
   const remote = createProjectRemote({

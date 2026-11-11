@@ -367,7 +367,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 建会话时还要写 `meta.agentPreset`（`CreateAgentOptions.meta` 的公开字段）：`sessionController` 建会话就写，resume 与 UI 都从会话投影读回。只挂 `setup` 不写投影，会话能跑但投影是空的。
 - 读回投影的入口在 rc.2 是 `ctx.get('sessionProjections').stateOf(session, 'agentPreset')`（registry 自己也这么读，`packages/preset/agent-preset-registry/src/index.ts:357`）。**registry 的 `presetForSession()` 是 0.2.2-alpha.2 才有的**，rc.2 上只有 sessionController 有同名方法——按下限写代码时别用它。
 
-**影响**：绕开 `sessionController` 建会话时（本 bundle 为了 worker 常驻与冷恢复必须走 `agents.create`），必须自己把 `agentPresets.mount(agentCtx, id)` 塞进 `setup`、并把 id 写进 `meta.agentPreset`。漏了三处都中招：建 worker、冷恢复 worker、没有 `sessionController` 时建 leader——症状统一为「会话能建起来，但模型没有 bash / read，连 `pwd` 都跑不了」。
+**影响**：绕开 `sessionController` 建会话时（本 bundle 的 worker 与 leader 都走 `agents.create`），必须自己把 `agentPresets.mount(agentCtx, id)` 塞进 `setup`、并把 id 写进 `meta.agentPreset`。漏了三处都中招：建 worker、冷恢复 worker、建 leader——症状统一为「会话能建起来，但模型没有 bash / read，连 `pwd` 都跑不了」。
 
 **相邻的坑**：`tools.get(name)` 省略 scope 等于**全局视图**。web-app 把 `tool-subagent` / `tool-subagent-control` / `tool-subagent-fork` 在宿主平面 `disabled: true`（`packages/bundle/web-app/cordis.patch.yml`），改由 preset 子树注册——用 `get(name)` 探测这三件会全部返回 undefined。工具名存在性只能靠 `restrict()` 的失败来判（见 `src/host/tools/gate.js` 的 `applyToolGate`）。
 
@@ -390,7 +390,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **dsh 实测**（`0.2.1-rc.2`）：
 
-- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,428`、`pinInitialPermission()`）。
+- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,437-442`、`pinInitialPermission()`）。
 - **preset 身份不编码在 knob 值里**：`permissionPresets.current(session)` 是 `derive()` 的结果，把 knob 值折回配置表。`auto` 的 bundle（`danger-full-access` + `ask`）不匹配任何配置 preset，所以只写 knobs 时 `derive()` 落到 `custom`；而 auto-review 的审查门判据正是 `permissionPresets.current(session) === 'auto'`（`packages/experimental/auto-review/src/index.ts:689`）。宿主 subagent 因此只在父会话的显式身份是 `auto` / `danger-full-access` 时额外写 `permission/preset`（`packages/subagent/subagent/src/child-agent.ts:248-278` 的 `captureDelegatedPolicyOverrides` / `appendDelegatedPolicyOverrides`）。`pinInitialPermission()` 对已有 `auto` 身份的会话要求 auto 集成在场（`autoAdmit` 缺失时抛错），这是宿主自身契约。
 - 有效值 = 会话覆盖 ?? 部署默认：`sandboxPolicy.resolve({ session })`（`packages/sandbox/sandbox-policy/src/index.ts:197-205`）与 `approval.overrideOf(session) ?? approval.config.policy`（`packages/interaction/user-approval/src/index.ts:244-253`），两处在 rc.2 就有。
 - 会话覆盖的写路径是 `sandbox/mode` 与 `approval/policy` 两条 session event，都接受 `source: 'delegation'`（宿主 subagent 就给子会话钉 `approvalPolicy: 'never'`，`packages/subagent/subagent/src/child-agent.ts:271-277`）。仓外插件可以直接 append 这两条**已知**事件，不违反「不能新增 session event 类型」（第 8 条）。
@@ -452,6 +452,22 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 **影响**：既然同 section，「组头所在 section 里有没有可见会话行」这个 DOM 判据**并不恒假**——组里还有用户自己的会话时判得准。组内的行**全被插件自己的排除集隐藏**（`dsh-leader-agent-excluded-session`）时，判据看到一排带隐藏类的行、得出「组里没内容」，会连组头一起藏——这是宿主结构下的必然结果，不是判据的缺陷：`markUngroupedHeader` 只按渲染结果判，不复刻宿主的数据层可见性规则（取舍见 `docs/limitations.md` 的「未分组」组头那条），代价就落在这个形态上，方向仍是宁可留一个空组头也不误伤用户自己的会话。项目目录失效后仍排除它的会话正好落进这里，用户看到「未分组整组消失，卸载插件就回来」——所以修复只能落在排除集上（客户端不再按目录可用性排除），不在 DOM 结构上。
 
 **本仓不再改这个判据**：`089b5a6`（#101）已给 `markUngroupedHeader` 加「组内还有可见的『展开其余 N 个会话』就不藏」的兜底，把上面那个形态压到只剩「行全被排除且没有展开按钮」；另一种偏差是快照滞后（组里有会话但行还没画出来，判据看到空 section）——未复现，属理论边界。回归用例是 `tests/e2e/project-directory-gone.e2e.js`（删掉 `directoryUsable` 过滤必红）。
+
+---
+
+### 46. 没有「按 id 拆除活 agent」的公开能力——只能 dispose 创建时的句柄
+
+**目标形态**：建项目或换 leader 落盘失败时，让刚建出来的 leader 会话不再活跃，不留活会话。
+
+**dsh 实测**（`0.2.1-rc.2`）：
+
+- `ctx.agents.get(id)` 返回裸 `Agent`，只有 `id` / `session` / `steer` / `followup` 等运行时面，**没有 dispose**（`packages/core/agent/src/index.ts:568-569`、`runtime-types.ts:164-231`）。
+- 唯一能**彻底拆除** agent 的是 `agents.create()` / `agents.resume()` 返回的 `AgentHandle.dispose()`：停 loop、等退场、摘注册表、把会话从活的 store 移除（`packages/core/agent/src/index.ts:147-163`；实现 `packages/core/agent-loop/src/index.ts:594-600`）。`Agent.cancel()`（`runtime-types.ts:183`）只停当前 turn，`workspaceRegistry.archiveSession(id, { stopActivity: true })`（`packages/workspace/workspace/src/index.ts:365`）只停工作并写归档集合，两者都不摘注册表，不是 teardown。
+- `ctx.sessions` 只有 `create` / `get` / `list` 等，没有按 id 移除的入口（`packages/core/session/src/index.ts:1111`、`:1352`）。
+- `sessionController.create()` 只回 `SessionCreateValue` `{ sessionId, agentPreset? }`，handle 留在宿主手里（`packages/api/session-controller/src/types.ts:299-305`）。
+- `dispose()` 也不删已落盘的会话日志：它只 close/drain 持久化句柄，宿主没有删除会话的公开 API。新建的空会话在 `session/created` 上就写入权限事实（见第 41 条），落盘由持久化的写入缓冲负责，`dispose()` 的 close/drain 把它落盘（`packages/session/session-persistence-jsonl/src/storage.ts:274-280`、`:223-240`）；进程重启后它可能作为空会话重新出现（按源码推断，未端到端复现）。
+
+**影响**：撤销能力只在创建方手里。本 bundle 因此把 leader 会话的创建也改走 `agents.create()`（与 worker 同一条路），创建结果把 `AgentHandle` 交给项目服务；落盘失败时 `dispose()` 停活会话。已落盘的空会话可能重启后重现。没有拿到句柄就等于没有撤销能力——这时只能大声记日志，活会话会留在左栏「未分组」里（见 `docs/limitations.md`）。`resume()` 也能拿句柄，但对已存在会话会抢写句柄，不能拿来撤销。
 
 ---
 
