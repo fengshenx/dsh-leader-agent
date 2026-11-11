@@ -12,7 +12,7 @@
 - **历史消息不追溯**。改造前发出的通知在 session log 里就是普通用户消息，重放仍按老形态渲染（右对齐、无头像）。leader 任务消息是例外，但有边界：#112（`478232a`，包名改为 `dsh-leader-agent`）之后落盘、且带 `source.parentSessionId` 的任务消息，旧记录同样按新的用户气泡渲染；改名前的 `dsh-leader-kit/worker-task` 记录不认领，退回官方上下文行。
 - **worker 回报不进会话标题、turn 摘要与 markdown 转录导出**。宿主只把 `source.kind === 'user'` 的消息算作真人输入；本仓的回报用自定义 source kind（`dsh-leader-agent/worker-report`），因此这三处全部跳过它，也不会被误当成用户说的话。
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/implemented/feature/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
-- **leader 任务气泡没有身份头**。它按用户消息的形态渲染（右侧、无头像与名字），所以不显示 leader 是谁，也不能从气泡跳到 leader 会话；`source.parentSessionId` 仍是来源凭证，没有它的历史消息不认领，退回官方上下文行（不是右侧气泡）。
+- **leader 任务气泡没有身份头**。它按用户消息的形态渲染（右侧、无头像与名字，正文走宿主用户消息的纯文本路径 `UserTextRun` + `pre-wrap`，单换行保留、不做 Markdown 解析），所以不显示 leader 是谁，也不能从气泡跳到 leader 会话；`source.parentSessionId` 仍是来源凭证，没有它的历史消息不认领，退回官方上下文行（不是右侧气泡）。
 - **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样挂进输入框上方的「消息队列」条（实测 busy 时直接投会显示「2 queued messages」，与人的消息混在一起）。代价是 leader 正忙时回报要多等这一轮（边界见 [笔记](../.agents/notes/implemented/architecture/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
 - **worker 头像在深色主题下轮廓弱**（既定取舍，不是待修项）。气泡底是前景色混出的 4% 一层，36% 的蓝紫色相落上去只有 1.35:1，块的外轮廓看不出边界；头像本身仍可辨。头像池只有 63 个 seed，worker 多时会有撞图（3 个约 4.7%，5 个约 15%），名字就在头像旁边，不影响身份识别。
 - **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`scripts/desktop-plan.mjs` 取值 trim（`home-paths.js` 照抄宿主：判空 trim、取值不 trim），因为它算出的绝对路径要经 `--env DSH_HOME=` 交给应用。代价：`DSH_HOME=' /x '` 在桌面侧得 `/x`、CLI 侧得 `<cwd>/ /x `。

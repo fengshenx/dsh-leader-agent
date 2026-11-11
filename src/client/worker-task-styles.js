@@ -4,7 +4,8 @@
  * 颜色与圆角全部走宿主 `--dsw-*` 令牌，不写死色值。形态照宿主用户消息的
  * `UserMessageBubble` 与 `userStack`（`packages/client/ui-primitives/src/UserMessageBubble.module.css`、
  * `packages/client/ui-chat/src/client/chat/MessageItem.module.css`）：同一个气泡底色、
- * 圆角与内边距，宽度上限同样取内容栏的 70.2%。
+ * 圆角、内边距与 `white-space: pre-wrap`，宽度上限同样取内容栏的 70.2%。正文因此
+ * 和宿主用户消息一样保留单换行，不做行级改写。
  *
  * 不能直接 import 宿主的 `UserMessageBubble`：它是 rc.2 之后才加进基线
  * `ui-primitives` 的导出，本仓 `engines.dsh` 下限仍是 rc.2，静态 import 在旧宿主上
@@ -25,9 +26,6 @@ const STYLE_TEXT = `
 }
 
 .dsh-leader-agent-worker-task__bubble {
-  /* 行高与 MarkdownText 的 compact 变体一致（20px + 次级字号增量），
-     气泡的正文是块级元素，容器行高只影响气泡自身的排版基线。 */
-  --dsh-leader-agent-worker-task-line: calc(20px + var(--dsh-content-font-delta-secondary, 0px));
   box-sizing: border-box;
   max-width: min(calc(var(--dsh-chat-content-width, 748px) * 0.702), 82%);
   /* 与宿主消息气泡同一材质：--dsw-specific-bubble 是主题给气泡的专属底色，
@@ -37,24 +35,11 @@ const STYLE_TEXT = `
   border-radius: var(--dsw-radius-xl);
   padding: 10px 16px;
   font-size: var(--dsh-content-font-size, 14px);
-  line-height: var(--dsh-leader-agent-worker-task-line);
+  /* 与宿主用户气泡一致：pre-wrap 保留原文换行；22px 是宿主气泡的行高。 */
+  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-primary);
+  white-space: pre-wrap;
   word-break: break-word;
-}
-
-.dsh-leader-agent-worker-task__content {
-  width: 100%;
-}
-
-/* 同 card-detail-text：compact 变体把正文压成三级标签色、链接变成 inherit。
-   容器类 + data-markdown-variant 是 (0,2,0)，压过 .compact 的 (0,1,0)；
-   链接到 (0,2,1)，压过 .compact a 的 (0,1,1)——特异性更高，不靠注入顺序。 */
-.dsh-leader-agent-worker-task__bubble [data-markdown-variant='compact'] {
-  color: var(--dsw-alias-label-primary);
-}
-
-.dsh-leader-agent-worker-task__bubble [data-markdown-variant='compact'] a {
-  color: var(--dsw-alias-link);
 }
 
 .dsh-leader-agent-worker-task__meta {

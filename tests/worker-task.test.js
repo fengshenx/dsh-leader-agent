@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { WORKER_TASK_NODE_KIND, workerTaskDefinition } from '../src/client/worker-task-definition.js'
-import { hardBreakMarkdown, messageText } from '../src/shared/message-text.js'
+import { messageText } from '../src/shared/message-text.js'
 import { WORKER_TASK_SOURCE_KIND, readWorkerTaskSource } from '../src/shared/worker-task.js'
 
 test('读 leader 任务的 source 时逐层判型', () => {
@@ -92,155 +92,33 @@ test('节点定义按官方口径给分组位置：回合首步开启新 exchang
   assert.equal(workerTaskDefinition.buildViewNode({ key: 'k', id: 'm1', state: undefined }), null)
 })
 
-test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () => {
-  assert.equal(hardBreakMarkdown(''), '')
-  assert.equal(hardBreakMarkdown(null), '')
-  assert.equal(hardBreakMarkdown('改一下 `src/host/message.js`'), '改一下 `src/host/message.js`')
-  // 逐行的「做什么 / 边界 / 验收」补两个尾随空格，GFM 渲染成 <br>。
-  assert.equal(hardBreakMarkdown('第一行\n第二行'), '第一行  \n第二行')
-  // 空行已经是段落边界，不再补空格。
-  assert.equal(hardBreakMarkdown('第一段\n\n第二段'), '第一段\n\n第二段')
-  // 标题、列表、表格行补空格不影响块级解析。
-  assert.equal(hardBreakMarkdown('## 目标\n修登录'), '## 目标  \n修登录')
-  assert.equal(hardBreakMarkdown('- 一\n- 二'), '- 一  \n- 二')
-  assert.equal(hardBreakMarkdown('| 列 | 值 |\n| - | - |'), '| 列 | 值 |  \n| - | - |')
-  // 围栏代码块内的换行是代码内容，不能改；围栏按字符与长度配对。
-  // 关闭行后至少跟两行正文：尾行本来就不补空格，只留尾行证明不了状态已恢复。
-  assert.equal(
-    hardBreakMarkdown('```js\nconst a = 1\nconst b = 2\n```\n后一行\n再一行'),
-    '```js\nconst a = 1\nconst b = 2\n```\n后一行  \n再一行',
-  )
-  assert.equal(hardBreakMarkdown('~~~\ncode\n~~~~\n后一行\n再一行'), '~~~\ncode\n~~~~\n后一行  \n再一行')
-  assert.equal(hardBreakMarkdown('```\na\n~~~\nb\n```\n后一行\n再一行'), '```\na\n~~~\nb\n```\n后一行  \n再一行')
-  // 围栏套在块引用或列表里：按开栏时的容器栈核对，代码内容仍不能被补空格。
-  assert.equal(
-    hardBreakMarkdown('> ```\n> code\n> ```\n> 第一行\n> 第二行'),
-    '> ```\n> code\n> ```\n> 第一行  \n> 第二行',
-  )
-  assert.equal(
-    hardBreakMarkdown('- ```\n  code\n  ```\n  第一行\n  第二行'),
-    '- ```\n  code\n  ```\n  第一行  \n  第二行',
-  )
-  // tab 缩进的关闭围栏按列识别：`- ``` ` 内容起始第 2 列，行首 tab 展开到第 4 列。
-  assert.equal(
-    hardBreakMarkdown('- ```\n  code\n\t```\n后一行\n再一行'),
-    '- ```\n  code\n\t```\n后一行  \n再一行',
-  )
-  // 块引用的容器前缀里带 tab：`>\t` 开栏与普通 `> ` 关闭行是同一个容器，关闭行的
-  // 缩进相对它自己的块引用内容起始列算，不能用开栏行的绝对列去减。
-  assert.equal(
-    hardBreakMarkdown('>\t```\n>\tcode\n> ```\n> 后一行\n> 再一行'),
-    '>\t```\n>\tcode\n> ```\n> 后一行  \n> 再一行',
-  )
-  // 反向：`> ` 开栏 + `>\t` 关闭行。
-  assert.equal(
-    hardBreakMarkdown('> ```\n> code\n>\t```\n> 后一行\n> 再一行'),
-    '> ```\n> code\n>\t```\n> 后一行  \n> 再一行',
-  )
-  // `> \t`（空格 + tab）开栏同样是合法围栏：代码内容不能被补空格。
-  assert.equal(
-    hardBreakMarkdown('> \t```\n> code\n> ```\n> 后一行\n> 再一行'),
-    '> \t```\n> code\n> ```\n> 后一行  \n> 再一行',
-  )
-  // 块引用没带 `>` 的行说明容器已经结束，围栏随之结束，后面的正文照常补硬换行。
-  assert.equal(
-    hardBreakMarkdown('> ```\n> code\n普通行\n再一行'),
-    '> ```\n> code\n普通行  \n再一行',
-  )
-  // 嵌套列表：关闭围栏缩进到容器内容起始列，不能因为多出缩进就永远关不掉。
-  assert.equal(
-    hardBreakMarkdown('- 外层：\n  - ```js\n    const x = 1\n    ```\n后一行\n再一行'),
-    '- 外层：  \n  - ```js\n    const x = 1\n    ```\n后一行  \n再一行',
-  )
-  // 围栏里以 `> ``` ` / `- ``` ` 开头的行是代码内容，不能当成关闭行，否则后续代码被补空格。
-  assert.equal(
-    hardBreakMarkdown('```\n> ```\ncode\n```\n后一行\n再一行'),
-    '```\n> ```\ncode\n```\n后一行  \n再一行',
-  )
-  assert.equal(
-    hardBreakMarkdown('- ```\n  - ```\n  code\n  ```\n后一行\n再一行'),
-    '- ```\n  - ```\n  code\n  ```\n后一行  \n再一行',
-  )
-  // 块引用里的逐行正文仍要保留换行。
-  assert.equal(hardBreakMarkdown('> 第一行\n> 第二行'), '> 第一行  \n> 第二行')
-  // 空的块引用行是段落边界，不补空格。
-  assert.equal(hardBreakMarkdown('第一行\n>\n第二行'), '第一行\n>\n第二行')
-  // 已经是硬换行的行不重复补；反斜杠后补空格会改掉换行语义。
-  assert.equal(hardBreakMarkdown('第一行  \n第二行'), '第一行  \n第二行')
-  assert.equal(hardBreakMarkdown('第一行\\\n第二行'), '第一行\\\n第二行')
-  // 缩进代码块同理。
-  assert.equal(hardBreakMarkdown('    缩进代码\n正文'), '    缩进代码\n正文')
-})
-
-test('围栏容器栈覆盖块引用与列表的关闭边界', () => {
-  // 状态机在开栏时记下容器栈，之后逐行核对；关闭行相对最内层容器内容起始列缩进 0–3。
-  // 1. 顶层围栏，关闭后照常补硬换行。
-  assert.equal(
-    hardBreakMarkdown('```\ncode\n```\n后一行\n再一行'),
-    '```\ncode\n```\n后一行  \n再一行',
-  )
-  // 2. 列表围栏，2 空格缩进的关闭行。
-  assert.equal(
-    hardBreakMarkdown('- ```\n  code\n  ```\n  后一行\n  再一行'),
-    '- ```\n  code\n  ```\n  后一行  \n  再一行',
-  )
-  // 3. 块引用围栏。
-  assert.equal(
-    hardBreakMarkdown('> ```\n> code\n> ```\n> 后一行\n> 再一行'),
-    '> ```\n> code\n> ```\n> 后一行  \n> 再一行',
-  )
-  // 4. `>\t` 开栏 + 普通 `> ` 关闭行：关闭行按自己的块引用内容起始列算缩进。
-  assert.equal(
-    hardBreakMarkdown('>\t```\n>\tcode\n> ```\n> 后一行\n> 再一行'),
-    '>\t```\n>\tcode\n> ```\n> 后一行  \n> 再一行',
-  )
-  // 5. `> \t` 开栏：tab 按列算进前导缩进，代码行不能被补空格。
-  assert.equal(
-    hardBreakMarkdown('> \t```\n> code\n> ```\n> 后一行\n> 再一行'),
-    '> \t```\n> code\n> ```\n> 后一行  \n> 再一行',
-  )
-  // 6. 块引用里再嵌列表项：`> ``` ` 的列表缩进不足，列表项结束；这一行在引用里
-  // 新开一个围栏，尾部两行是第二个围栏的代码内容，不能补硬换行。
-  assert.equal(
-    hardBreakMarkdown('> - ```\n>   code\n> ```\n> 后一行\n> 再一行'),
-    '> - ```\n>   code\n> ```\n> 后一行\n> 再一行',
-  )
-  // 6b. 合法关闭行：`>   ``` ` 的 2 列 residual 够到列表内容起始列，围栏关闭，
-  // 尾部回到段落，必须补硬换行。与 6 的 0 residual 反例分开钉住。
-  assert.equal(
-    hardBreakMarkdown('> - ```\n>   code\n>   ```\n> 后一行\n> 再一行'),
-    '> - ```\n>   code\n>   ```\n> 后一行  \n> 再一行',
-  )
-  // 7. 围栏里以 `> ``` ` / `- ``` ` 开头的行是代码内容，原样保留。
-  assert.equal(
-    hardBreakMarkdown('```\n> ```\ncode\n```\n后一行\n再一行'),
-    '```\n> ```\ncode\n```\n后一行  \n再一行',
-  )
-  assert.equal(
-    hardBreakMarkdown('- ```\n  - ```\n  code\n  ```\n后一行\n再一行'),
-    '- ```\n  - ```\n  code\n  ```\n后一行  \n再一行',
-  )
-  // 8. 反向：`> ` 开栏 + `>\t` 关闭行。
-  assert.equal(
-    hardBreakMarkdown('> ```\n> code\n>\t```\n> 后一行\n> 再一行'),
-    '> ```\n> code\n>\t```\n> 后一行  \n> 再一行',
-  )
-})
-
-test('列表项结束后的行按外层容器重新解析，不是关闭行', () => {
-  // 行在列表内容起始列之前：列表项结束，这一行是外层容器里的新开栏行，
-  // markdown-it 把后面的行算进新围栏的代码块，不能补硬换行。
-  const unchanged = (source) => assert.equal(hardBreakMarkdown(source), source)
-  // 简单列表内容起始第 2 列：关闭行只缩进 0 / 1 列。
-  unchanged('- ```\n  code\n```\n后一行\n再一行')
-  unchanged('- ```\n  code\n ```\n后一行\n再一行')
-  // 列表内容起始第 4 列：关闭行缩进 1–3 列都不够。
-  unchanged('  - ```\n    code\n ```\n后一行\n再一行')
-  unchanged('  - ```\n    code\n  ```\n后一行\n再一行')
-  unchanged('  - ```\n    code\n   ```\n后一行\n再一行')
-  // `- \t` 的列表内容同样起始第 4 列：1 / 3 空格关闭行都不够。
-  unchanged('- \t```\n    code\n ```\n后一行\n再一行')
-  unchanged('- \t```\n    code\n   ```\n后一行\n再一行')
+test('任务正文原样交给宿主用户消息同款纯文本渲染器', () => {
+  const source = readFileSync(new URL('../src/client/worker-task-view.js', import.meta.url), 'utf8')
+  // 断言一：正文原样透传。与宿主用户消息同一条路径，纯文本叶子是 UserTextRun，
+  // 不是 MarkdownText；视图只把 body 交给它，不再拼源码。
+  assert.match(source, /import \{ UserTextRun \} from '@deepseek-ai\/dsh-client-ui-primitives'/)
+  assert.match(source, /createElement\(UserTextRun, \{ text: body \}\)/)
+  assert.equal(source.includes('hardBreakMarkdown'), false)
+  assert.equal(source.includes('MarkdownText'), false)
+  assert.equal(source.includes("from './markdown.js'"), false)
+  // 断言二：含围栏/引用/列表的普通文本不被任何行级改写，definition 与视图都逐字保留。
+  const body = '任务说明\n```\ncode\n```\n> 引用\n- 列表'
+  assert.equal(messageText([{ type: 'text', text: body }]), body)
+  const event = {
+    type: 'user/message',
+    seq: 1,
+    time: 1,
+    data: {
+      id: 'm1',
+      source: { kind: WORKER_TASK_SOURCE_KIND, parentSessionId: 'leader-1' },
+      content: [{ type: 'text', text: body }],
+    },
+  }
+  const state = workerTaskDefinition.start({}, { event, location: { kind: 'turn' } })
+  assert.equal(state.text, body)
+  // 断言三：多行行为与宿主用户消息一致——换行由宿主气泡同款的 pre-wrap 保留。
+  const styles = readFileSync(new URL('../src/client/worker-task-styles.js', import.meta.url), 'utf8')
+  assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*white-space: pre-wrap/)
 })
 
 test('从内容块里取纯文本时判型，块间分隔符可换', () => {

@@ -41,7 +41,7 @@ test('构建期把 ui-primitives 留在产物外，与 react 同列', () => {
   )
 })
 
-test('气泡渲染 Markdown 组件，旧消息回退纯文本', () => {
+test('卡片详情与 worker 回报走 Markdown，旧回报回退纯文本', () => {
   assert.match(read('src/client/card-detail.js'), /createElement\(Markdown, \{ source: sections\.spec \}\)/)
   const view = read('src/client/agent-bubble-view.js')
   assert.match(view, /createElement\(Markdown, \{ source: body \}\)/)
@@ -52,18 +52,12 @@ test('气泡渲染 Markdown 组件，旧消息回退纯文本', () => {
     read('src/client/agent-bubble-styles.js'),
     /\.dsh-leader-agent-agent-bubble__plain \{[^}]*white-space: pre-wrap/,
   )
-  // leader 任务始终走 Markdown：逐行结构由硬换行保住，不再按格式判据回退纯文本。
-  const task = read('src/client/worker-task-view.js')
-  assert.match(task, /hardBreakMarkdown\(body\)/)
-  assert.match(task, /createElement\(Markdown, \{ source: hardBreakMarkdown\(body\) \}\)/)
-  assert.equal(task.includes('bubbleFormat'), false)
 })
 
 test('两处容器用 data-markdown-variant 钩子恢复正文与链接色', () => {
   const cases = [
     ['src/client/board-styles.js', 'dsh-leader-agent-card-detail-text'],
     ['src/client/agent-bubble-styles.js', 'dsh-leader-agent-agent-bubble__bubble'],
-    ['src/client/worker-task-styles.js', 'dsh-leader-agent-worker-task__bubble'],
   ]
   for (const [path, container] of cases) {
     const source = read(path)
@@ -114,7 +108,7 @@ test('展开/收起按钮在气泡内，与正文是同一层的两个兄弟', (
   assert.match(view, /'data-collapsed': expanded \? undefined : 'true'/)
 })
 
-test('leader 任务用右侧用户气泡：无身份头、不折叠、正文只给 Markdown', () => {
+test('leader 任务用右侧用户气泡：无身份头、不折叠、正文与宿主用户消息同路径', () => {
   const view = read('src/client/worker-task-view.js')
   // 用户气泡没有头像、名字与折叠开关：这三样都是 agent 气泡的形态。
   assert.equal(view.includes('agentAvatarDataUri'), false)
@@ -122,11 +116,17 @@ test('leader 任务用右侧用户气泡：无身份头、不折叠、正文只�
   assert.equal(view.includes('data-collapsed'), false)
   assert.equal(view.includes('展示更多'), false)
   assert.match(view, /className: 'dsh-leader-agent-worker-task__meta'/)
-  // 底部 chrome 与官方消息同形：时间取消息时间，复制写原始正文（不是补过硬换行的源码）。
+  // 正文是宿主用户消息的纯文本叶子，不做 Markdown 解析或行级改写。
+  assert.match(view, /from '@deepseek-ai\/dsh-client-ui-primitives'/)
+  assert.match(view, /createElement\(UserTextRun, \{ text: body \}\)/)
+  assert.equal(view.includes('hardBreakMarkdown'), false)
+  assert.equal(view.includes('MarkdownText'), false)
+  assert.equal(view.includes("from './markdown.js'"), false)
+  // 底部 chrome 与官方消息同形：时间取消息时间，复制写原始正文。
   assert.match(view, /formatBubbleClock\(data\.time\)/)
   assert.match(view, /navigator\.clipboard\.writeText\(body\)/)
   assert.match(view, /productIcon\(copied \? 'check-outline' : 'copy-outline'/)
-  // 气泡靠内容与 Markdown 渲染区分，没有独立视觉标识；title / aria-label 只做读屏与悬停提示。
+  // 气泡靠内容区分，没有独立视觉标识；title / aria-label 只做读屏与悬停提示。
   assert.match(view, /'aria-label': 'Leader 派发的任务'/)
   assert.match(view, /title: 'Leader 派发的任务'/)
   const styles = read('src/client/worker-task-styles.js')
@@ -135,6 +135,10 @@ test('leader 任务用右侧用户气泡：无身份头、不折叠、正文只�
   assert.match(styles, /max-width: min\(calc\(var\(--dsh-chat-content-width, 748px\) \* 0\.702\), 82%\)/)
   assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*padding: 10px 16px;/)
   assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*background: var\(--dsw-specific-bubble\)/)
+  // 断言三：多行行为与宿主用户消息一致——宿主用户气泡用 pre-wrap 保留单换行，
+  // 任务气泡跟同一行高与同一换行机制，不自己补硬换行。
+  assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*white-space: pre-wrap/)
+  assert.match(styles, /line-height: calc\(22px \+ var\(--dsh-content-font-delta, 0px\)\)/)
   assert.equal(styles.includes('-webkit-line-clamp'), false)
   assert.equal(/#[0-9a-fA-F]{3,8}\b/.test(styles), false, '样式里出现了写死的色值')
 })
