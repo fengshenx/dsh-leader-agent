@@ -4,8 +4,9 @@
  * 颜色与圆角全部走宿主 `--dsw-*` 令牌，不写死色值。形态照宿主用户消息的
  * `UserMessageBubble` 与 `userStack`（`packages/client/ui-primitives/src/UserMessageBubble.module.css`、
  * `packages/client/ui-chat/src/client/chat/MessageItem.module.css`）：同一个气泡底色、
- * 圆角、内边距与 `white-space: pre-wrap`，宽度上限同样取内容栏的 70.2%。正文因此
- * 和宿主用户消息一样保留单换行，不做行级改写。
+ * 圆角、内边距，宽度上限同样取内容栏的 70.2%。正文与 assistant 内容同套 Markdown
+ * （`MarkdownText` compact），行高与段距由 Markdown 块排版处理，气泡不设
+ * `white-space` / `line-height` 覆盖。
  *
  * 不能直接 import 宿主的 `UserMessageBubble`：它是 rc.2 之后才加进基线
  * `ui-primitives` 的导出，本仓 `engines.dsh` 下限仍是 rc.2，静态 import 在旧宿主上
@@ -35,11 +36,19 @@ const STYLE_TEXT = `
   border-radius: var(--dsw-radius-xl);
   padding: 10px 16px;
   font-size: var(--dsh-content-font-size, 14px);
-  /* 与宿主用户气泡一致：pre-wrap 保留原文换行；22px 是宿主气泡的行高。 */
-  line-height: calc(22px + var(--dsh-content-font-delta, 0px));
   color: var(--dsw-alias-label-primary);
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* compact 变体把正文压成三级标签色、链接变成 inherit；容器内按属性钩子压回原色。
+   与 card-detail-text 相同：容器类 + data-markdown-variant 是 (0,2,0)，压过
+   .compact 的 (0,1,0)；链接到 (0,2,1)，压过 .compact a 的 (0,1,1)。 */
+.dsh-leader-agent-worker-task__bubble [data-markdown-variant='compact'] {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-worker-task__bubble [data-markdown-variant='compact'] a {
+  color: var(--dsw-alias-link);
 }
 
 .dsh-leader-agent-worker-task__meta {

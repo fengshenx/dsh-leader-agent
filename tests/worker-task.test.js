@@ -92,15 +92,14 @@ test('节点定义按官方口径给分组位置：回合首步开启新 exchang
   assert.equal(workerTaskDefinition.buildViewNode({ key: 'k', id: 'm1', state: undefined }), null)
 })
 
-test('任务正文原样交给宿主用户消息同款纯文本渲染器', () => {
+test('任务正文交给 Markdown 渲染，不做行级改写', () => {
   const source = readFileSync(new URL('../src/client/worker-task-view.js', import.meta.url), 'utf8')
-  // 断言一：正文原样透传。与宿主用户消息同一条路径，纯文本叶子是 UserTextRun，
-  // 不是 MarkdownText；视图只把 body 交给它，不再拼源码。
-  assert.match(source, /import \{ UserTextRun \} from '@deepseek-ai\/dsh-client-ui-primitives'/)
-  assert.match(source, /createElement\(UserTextRun, \{ text: body \}\)/)
+  // 断言一：正文原样交给 Markdown 包装（内部是基线 MarkdownText），不补硬换行。
+  assert.match(source, /import \{ Markdown \} from '\.\/markdown\.js'/)
+  assert.match(source, /createElement\(Markdown, \{ source: body, variant: 'compact' \}\)/)
   assert.equal(source.includes('hardBreakMarkdown'), false)
-  assert.equal(source.includes('MarkdownText'), false)
-  assert.equal(source.includes("from './markdown.js'"), false)
+  assert.equal(source.includes('UserTextRun'), false)
+  assert.equal(source.includes("from '@deepseek-ai/dsh-client-ui-primitives'"), false)
   // 断言二：含围栏/引用/列表的普通文本不被任何行级改写，definition 与视图都逐字保留。
   const body = '任务说明\n```\ncode\n```\n> 引用\n- 列表'
   assert.equal(messageText([{ type: 'text', text: body }]), body)
@@ -116,9 +115,11 @@ test('任务正文原样交给宿主用户消息同款纯文本渲染器', () =>
   }
   const state = workerTaskDefinition.start({}, { event, location: { kind: 'turn' } })
   assert.equal(state.text, body)
-  // 断言三：多行行为与宿主用户消息一致——换行由宿主气泡同款的 pre-wrap 保留。
+  // 断言三：单换行交给 Markdown 合并；气泡不再设 pre-wrap / line-height 覆盖。
   const styles = readFileSync(new URL('../src/client/worker-task-styles.js', import.meta.url), 'utf8')
-  assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*white-space: pre-wrap/)
+  assert.equal(styles.includes('pre-wrap'), false)
+  assert.doesNotMatch(styles, /line-height\s*:/)
+  assert.match(readFileSync(new URL('../src/client/markdown.js', import.meta.url), 'utf8'), /variant = 'compact'/)
 })
 
 test('从内容块里取纯文本时判型，块间分隔符可换', () => {
@@ -128,6 +129,11 @@ test('从内容块里取纯文本时判型，块间分隔符可换', () => {
   assert.equal(messageText([null, 3, 'x']), '')
   assert.equal(messageText('不是数组'), '')
   assert.equal(messageText(undefined), '')
+})
+
+test('message-text 只导出两个公共函数', async () => {
+  const module = await import('../src/shared/message-text.js')
+  assert.deepEqual(Object.keys(module).sort(), ['bubbleFormat', 'messageText'])
 })
 
 test('客户端入口把任务节点定义与渲染器都挂上', () => {

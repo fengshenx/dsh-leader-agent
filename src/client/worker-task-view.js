@@ -3,17 +3,18 @@
  *
  * 在 worker 的会话里，leader 用 `message_worker` 投进来的任务渲染成右侧、与用户
  * 自己发的消息同形的气泡：没有身份头与头像——在 worker 的会话里，leader 就是那个
- * “user”，宿主自己的用户消息也不带名字。正文走宿主用户消息同一条纯文本路径：
- * 原样交给 `UserTextRun`，换行由气泡的 `white-space: pre-wrap` 保留，不做 Markdown
- * 解析或行级改写。气泡下方一行是时间与复制按钮，与官方消息的底部 chrome 同形。
+ * “user”，宿主自己的用户消息也不带名字。正文与 assistant 内容同套 Markdown 渲染：
+ * 原文交给 `Markdown` 包装（内部为基线 `MarkdownText`，`compact` 变体），不做行级改写；单换行按 Markdown
+ * 合并，需要断行用空行或 Markdown 语法。气泡下方一行是时间与复制按钮，与官方
+ * 消息的底部 chrome 同形。
  *
  * @module dsh-leader-agent/client/worker-task-view
  */
 
 import { createElement, useLayoutEffect, useState } from 'react'
-import { UserTextRun } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ensureWorkerTaskStyles } from './worker-task-styles.js'
 import { formatBubbleClock } from './bubble-clock.js'
+import { Markdown } from './markdown.js'
 import { productIcon } from './icons.js'
 
 /**
@@ -55,14 +56,13 @@ export function WorkerTaskView({ node }) {
         className: 'dsh-leader-agent-worker-task__bubble',
         // 与宿主用户气泡同一标记，便于界面侧把这块内容当消息正文处理。
         'data-message-bubble': '',
-        'data-text-interaction-source': '',
         // 形态与用户自己的消息一样，只能靠内容判断来源；这两条只做悬停与读屏提示。
         title: 'Leader 派发的任务',
         'aria-label': 'Leader 派发的任务',
       },
-      // 与宿主用户消息同一条纯文本路径：原文直接交给 UserTextRun，不补硬换行、
-      // 不按 Markdown 解析；气泡的 pre-wrap 负责保留换行。
-      createElement(UserTextRun, { text: body }),
+      // 与 assistant 内容同套 Markdown：原文直接交给基线 MarkdownText，不补硬换行、
+      // 不做行级改写；单换行按 Markdown 合并。
+      createElement(Markdown, { source: body, variant: 'compact' }),
     ),
     createElement(
       'div',
