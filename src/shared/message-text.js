@@ -118,8 +118,9 @@ function isFenceClose(rest, baseColumn, fence) {
  * 用开栏时的容器栈核对围栏里的一行。
  *
  * 块引用按行重复标记，逐层剥；列表续行靠缩进，缩进不到内容起始列说明列表项
- * 已经在这一行结束，围栏随之结束。列表项结束时如果这一行在剩余容器里是关闭行，
- * 仍要按关闭行处理——`> - ``` ` 的关闭行常常只带 `> `，不带列表缩进。
+ * 已经在这一行结束，围栏随之结束。这一行要按外层容器重新解析：它可能是新围栏
+ * 的开栏行（`> - ``` ` 后面只带 `> ` 的 `> ``` ` 就是这种情况），不能拿外层列
+ * 把它当关闭行——markdown-it 会把它算成引用里的第二个围栏，尾部行是代码内容。
  *
  * @param {string} line - 原始行
  * @param {{ char: string, length: number,
@@ -142,7 +143,7 @@ function fenceLineState(line, fence) {
     }
     const leading = /^[ \t]*/.exec(rest)[0]
     if (advanceColumns(leading, column) < container.contentColumn) {
-      return isFenceClose(rest, column, fence) ? 'close' : 'outside'
+      return 'outside'
     }
     const needed = container.contentColumn - column
     if (needed > 0 && leading.startsWith(' '.repeat(needed))) {

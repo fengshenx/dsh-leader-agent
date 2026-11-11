@@ -112,7 +112,7 @@ test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () =
   )
   assert.equal(hardBreakMarkdown('~~~\ncode\n~~~~\n后一行\n再一行'), '~~~\ncode\n~~~~\n后一行  \n再一行')
   assert.equal(hardBreakMarkdown('```\na\n~~~\nb\n```\n后一行\n再一行'), '```\na\n~~~\nb\n```\n后一行  \n再一行')
-  // 围栏套在块引用或列表里：先剥容器前缀，代码内容仍不能被补空格。
+  // 围栏套在块引用或列表里：按开栏时的容器栈核对，代码内容仍不能被补空格。
   assert.equal(
     hardBreakMarkdown('> ```\n> code\n> ```\n> 第一行\n> 第二行'),
     '> ```\n> code\n> ```\n> 第一行  \n> 第二行',
@@ -199,10 +199,17 @@ test('围栏容器栈覆盖块引用与列表的关闭边界', () => {
     hardBreakMarkdown('> \t```\n> code\n> ```\n> 后一行\n> 再一行'),
     '> \t```\n> code\n> ```\n> 后一行  \n> 再一行',
   )
-  // 6. 块引用里再嵌列表项：关闭行只剩 `> `，列表项在这一行结束，围栏随之关闭。
+  // 6. 块引用里再嵌列表项：`> ``` ` 的列表缩进不足，列表项结束；这一行在引用里
+  // 新开一个围栏，尾部两行是第二个围栏的代码内容，不能补硬换行。
   assert.equal(
     hardBreakMarkdown('> - ```\n>   code\n> ```\n> 后一行\n> 再一行'),
-    '> - ```\n>   code\n> ```\n> 后一行  \n> 再一行',
+    '> - ```\n>   code\n> ```\n> 后一行\n> 再一行',
+  )
+  // 6b. 合法关闭行：`>   ``` ` 的 2 列 residual 够到列表内容起始列，围栏关闭，
+  // 尾部回到段落，必须补硬换行。与 6 的 0 residual 反例分开钉住。
+  assert.equal(
+    hardBreakMarkdown('> - ```\n>   code\n>   ```\n> 后一行\n> 再一行'),
+    '> - ```\n>   code\n>   ```\n> 后一行  \n> 再一行',
   )
   // 7. 围栏里以 `> ``` ` / `- ``` ` 开头的行是代码内容，原样保留。
   assert.equal(
@@ -218,6 +225,22 @@ test('围栏容器栈覆盖块引用与列表的关闭边界', () => {
     hardBreakMarkdown('> ```\n> code\n>\t```\n> 后一行\n> 再一行'),
     '> ```\n> code\n>\t```\n> 后一行  \n> 再一行',
   )
+})
+
+test('列表项结束后的行按外层容器重新解析，不是关闭行', () => {
+  // 行在列表内容起始列之前：列表项结束，这一行是外层容器里的新开栏行，
+  // markdown-it 把后面的行算进新围栏的代码块，不能补硬换行。
+  const unchanged = (source) => assert.equal(hardBreakMarkdown(source), source)
+  // 简单列表内容起始第 2 列：关闭行只缩进 0 / 1 列。
+  unchanged('- ```\n  code\n```\n后一行\n再一行')
+  unchanged('- ```\n  code\n ```\n后一行\n再一行')
+  // 列表内容起始第 4 列：关闭行缩进 1–3 列都不够。
+  unchanged('  - ```\n    code\n ```\n后一行\n再一行')
+  unchanged('  - ```\n    code\n  ```\n后一行\n再一行')
+  unchanged('  - ```\n    code\n   ```\n后一行\n再一行')
+  // `- \t` 的列表内容同样起始第 4 列：1 / 3 空格关闭行都不够。
+  unchanged('- \t```\n    code\n ```\n后一行\n再一行')
+  unchanged('- \t```\n    code\n   ```\n后一行\n再一行')
 })
 
 test('从内容块里取纯文本时判型，块间分隔符可换', () => {
