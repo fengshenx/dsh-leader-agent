@@ -26,15 +26,16 @@ Error: session "worker-…" is already owned by an active write handle
 
 ### 错误翻译
 
-冷恢复仍可能撞上写句柄被占（典型是**另一个 dsh 进程**持锁）。`SessionAlreadyOwnedError` 按 `name` / `code` 判定，不匹配文案——宿主只保证错误类型的身份，文案会随版本调整。翻成：
+冷恢复仍可能撞上写句柄被占（典型是**另一个 dsh 进程**持锁）。`SessionAlreadyOwnedError` 只按 `name` 判定，不匹配文案——rc.2 的宿主只设 `name`、没有 `code`，文案会随版本调整，夹具照这个真实面构造。翻成：
 
-> worker 会话 `<id>` 正被宿主占用（已有窗口打开它的写句柄），不能在这里冷恢复；请先关闭那个会话窗口再试，或直接在那个窗口里继续对话。
+> message_worker: 会话 `<id>` 正被另一个会话窗口占用（宿主还在使用它），暂时不能把消息投进去；请先关闭打开它的窗口再试，或直接在那个窗口里继续对话。
 
 原始错误放进 `cause`，宿主的类型、`sessionId` 与原文都保留给排障。文案相同但类型不对的错误原样抛出，不误伤。
 
 ## 边界
 
 - **只解决同进程**：宿主活 agent 能被 `agents.get()` 拿到时才可复用。跨进程持锁（另一个 dsh 进程开着同一会话）仍然不能冷恢复，只能给出上面的提示。这条限制记在 `docs/limitations.md`。
+- **teardown 窗口内有一个窄竞争，本 PR 不加防护**。宿主销毁会话的顺序是 cancel → whenIdle → `scope.dispose` → close → **最后**才从注册表摘除（rc.2 `agent-loop`），`agents.get()` 在这段窗口里仍能命中。用户关标签/归档与 leader 投递同时发生时，复用路径会拿到一个正在 dispose 的 agent 并 `steer`；宿主把「disposal 之后的 send」定为调用方 bug，后果可能是 `steer` 抛错，也可能消息静默丢失。不防护的理由：宿主没有暴露「正在 dispose」的可观测判据，事后重查一次 `agents.get()` 也只能缩小窗口、不能消除，还把一次投递变成两次判断；窗口窄且未实测，出现时按「重发」处理。
 - 复用的会话不进 `live`，插件卸载后它仍在宿主里活着；这是有意的所有权边界，不是遗漏。
 - 回执格式不变：`send()` 仍返回 `live` / `resumed`，`message_worker` 仍映射成 `merged` / `sent`。复用路径归 `live` → `merged`，因为宿主的空闲活 agent 收到 `steer` 会立刻开一轮，与插件自己的活 worker 同义。
 - 宿主活 agent 若正在跑人自己发起的一轮，投递仍走 next-step 边界，与该轮的 `turn/end` 结算规则不变。
@@ -45,7 +46,7 @@ Error: session "worker-…" is already owned by an active write handle
   - `live` 未命中但 `agents.get()` 有活 agent → 直接投递、`resume` 未被调用、不登记进 `live`；
   - `get()` 返回 undefined → 仍走冷恢复；
   - `resume()` 抛 `SessionAlreadyOwnedError` → 人话错误，`cause` 是原错误；
-  - 文案相同但 `name` 不对的错误不翻译，`code` 命中时仍翻译。
+  - 文案相同但 `name` 不对的错误不翻译。
 - 夹具按宿主 rc.2 的真实形状补 `get()`：返回裸 `Agent`，`create` / `resume` 进活表、`dispose` 移除；`dispatch-continuation` 的「插件重启」场景同时重启宿主，`get()` 返回 undefined。
 - 双向验证：撤掉「复用活 agent」分支 → 用例①红；撤掉错误翻译 → 用例③红；还原后全绿。读数记在 PR。
 - `npm run check` 全绿（1108 通过 / 17 跳过；`worker-sessions.js` 行覆盖 100%）。

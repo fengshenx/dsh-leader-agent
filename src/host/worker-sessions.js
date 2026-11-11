@@ -28,18 +28,18 @@ import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 /**
  * 宿主以「会话已有活写句柄」拒绝冷恢复时，换成使用者能照做的说明。
  *
- * 按 `name` / `code` 判而不匹配文案：宿主只保证错误类型的身份，文案随版本调整。
+ * 按 `name` 判而不匹配文案：rc.2 的 `SessionAlreadyOwnedError` 只设 `name`，
+ * 文案会随版本调整。
  *
  * @param {unknown} error - `agents.resume()` 抛出的错误
  * @param {string} sessionId - 目标会话 id
  * @returns {unknown} 原错误，或带 `cause` 的说明错误
  */
 function explainOccupiedError(error, sessionId) {
-  const occupied = error instanceof Error
-    && (error.name === 'SessionAlreadyOwnedError' || error.code === 'SessionAlreadyOwnedError')
+  const occupied = error instanceof Error && error.name === 'SessionAlreadyOwnedError'
   if (!occupied) return error
   return new Error(
-    `worker 会话 ${sessionId} 正被宿主占用（已有窗口打开它的写句柄），不能在这里冷恢复；请先关闭那个会话窗口再试，或直接在那个窗口里继续对话。`,
+    `message_worker: 会话 ${sessionId} 正被另一个会话窗口占用（宿主还在使用它），暂时不能把消息投进去；请先关闭打开它的窗口再试，或直接在那个窗口里继续对话。`,
     { cause: error },
   )
 }

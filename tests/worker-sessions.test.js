@@ -711,15 +711,18 @@ test('冷恢复撞上宿主的 SessionAlreadyOwnedError 时翻成人话并保留
   }).catch((reason) => reason)
 
   assert.ok(error instanceof Error)
-  assert.match(error.message, /worker 会话 worker-busy/)
-  assert.match(error.message, /正被宿主占用/)
+  assert.match(error.message, /^message_worker:/)
+  assert.match(error.message, /会话 worker-busy/)
+  assert.match(error.message, /正被另一个会话窗口占用/)
   assert.match(error.message, /关闭/)
+  // 使用者可读：不暴露「冷恢复」这类内部术语。
+  assert.doesNotMatch(error.message, /冷恢复/)
   // 原始错误完整保留，排障时还能看到宿主的类型与文案。
   assert.equal(error.cause, occupied)
   assert.equal(error.cause.message, occupied.message)
 })
 
-test('错误翻译按 name/code 判类型，不误伤文案相同的其他错误', async () => {
+test('错误翻译只认错误类型，不误伤文案相同的其他错误', async () => {
   const other = Object.assign(
     new Error('session "worker-x" is already owned by an active write handle'),
     { name: 'SomeOtherError' },
@@ -731,16 +734,6 @@ test('错误翻译按 name/code 判类型，不误伤文案相同的其他错误
     signal: new AbortController().signal,
   }).catch((reason) => reason)
   assert.equal(passThrough, other)
-
-  // 宿主若改走 code 而不是 name，仍要认出来。
-  const byCode = Object.assign(new Error('宿主换了说法'), { code: 'SessionAlreadyOwnedError' })
-  const translated = await createWorkerSessions({ ctx: withResumeError(createFixture(), byCode) }).send({
-    sessionId: 'worker-y',
-    text: '接着做',
-    parentSessionId: 'c',
-    signal: new AbortController().signal,
-  }).catch((reason) => reason)
-  assert.equal(translated.cause, byCode)
 })
 
 test('续聊不带名字时不改标题，消息署名取会话头里的标题', async () => {
