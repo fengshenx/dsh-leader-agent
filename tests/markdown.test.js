@@ -52,12 +52,18 @@ test('气泡渲染 Markdown 组件，旧消息回退纯文本', () => {
     read('src/client/agent-bubble-styles.js'),
     /\.dsh-leader-agent-agent-bubble__plain \{[^}]*white-space: pre-wrap/,
   )
+  // leader 任务始终走 Markdown：逐行结构由硬换行保住，不再按格式判据回退纯文本。
+  const task = read('src/client/worker-task-view.js')
+  assert.match(task, /hardBreakMarkdown\(body\)/)
+  assert.match(task, /createElement\(Markdown, \{ source: hardBreakMarkdown\(body\) \}\)/)
+  assert.equal(task.includes('bubbleFormat'), false)
 })
 
 test('两处容器用 data-markdown-variant 钩子恢复正文与链接色', () => {
   const cases = [
     ['src/client/board-styles.js', 'dsh-leader-agent-card-detail-text'],
     ['src/client/agent-bubble-styles.js', 'dsh-leader-agent-agent-bubble__bubble'],
+    ['src/client/worker-task-styles.js', 'dsh-leader-agent-worker-task__bubble'],
   ]
   for (const [path, container] of cases) {
     const source = read(path)
@@ -106,4 +112,19 @@ test('展开/收起按钮在气泡内，与正文是同一层的两个兄弟', (
   assert.match(view, /className: 'dsh-leader-agent-agent-bubble__content'/)
   // 折叠状态挂在正文层，按钮不带折叠属性
   assert.match(view, /'data-collapsed': expanded \? undefined : 'true'/)
+})
+
+test('leader 任务用右侧用户气泡：无身份头、不折叠、正文只给 Markdown', () => {
+  const view = read('src/client/worker-task-view.js')
+  // 用户气泡没有头像、名字与折叠开关：这三样都是 agent 气泡的形态。
+  assert.equal(view.includes('agentAvatarDataUri'), false)
+  assert.equal(view.includes('AgentBubble'), false)
+  assert.equal(view.includes('data-collapsed'), false)
+  assert.equal(view.includes('展示更多'), false)
+  assert.match(view, /className: 'dsh-leader-agent-worker-task__meta'/)
+  const styles = read('src/client/worker-task-styles.js')
+  assert.match(styles, /\.dsh-leader-agent-worker-task \{[^}]*align-items: flex-end/)
+  assert.match(styles, /\.dsh-leader-agent-worker-task__bubble \{[^}]*background: var\(--dsw-specific-bubble\)/)
+  assert.equal(styles.includes('-webkit-line-clamp'), false)
+  assert.equal(/#[0-9a-fA-F]{3,8}\b/.test(styles), false, '样式里出现了写死的色值')
 })

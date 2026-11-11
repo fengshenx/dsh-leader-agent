@@ -1,4 +1,4 @@
-# leader 任务在 worker 会话里渲染成气泡
+# leader 任务在 worker 会话里渲染成用户气泡
 
 ## 背景
 
@@ -14,27 +14,31 @@ leader 用 `message_worker` 投给 worker 的消息，在 worker 会话里显示
 
 认领失败（宿主版本漂移、注册没生效）时退回官方上下文行，内容不丢；旧记录只要 `source.kind` 仍是 `dsh-leader-agent/worker-task` 且带 `parentSessionId` 也按气泡渲染，不另做迁移。#112（`478232a`）把包名从 `dsh-leader-kit` 改成 `dsh-leader-agent` 时 kind 一起换了，改名前的 `dsh-leader-kit/worker-task` 记录不被认领，退回官方上下文行。
 
-### 与 worker 回报共用一套气泡组件
+### 渲染成用户气泡，而不是 agent 气泡
 
-布局、折叠、复制、时间与 `MarkdownText` 的接线从 `worker-report-view.js` 抽到 `agent-bubble-view.js`，样式类名从 `dsh-leader-agent-worker-report__*` 改成中性的 `dsh-leader-agent-agent-bubble__*`；两个 view 只负责把节点状态翻成属性。任务气泡的身份是角色名「Leader」，头像种子取 `parentSessionId`（多个 leader 各是各的脸），点名字打开发起任务的会话。
+在 worker 的会话里，leader 就是那个「user」：消息要驱动 worker 的回合，形态上也该和用户自己的消息一致。`WorkerTaskView` 因此右对齐、无头像与名字、不折叠，只保留用户气泡的底色、圆角、内边距与最大宽度；气泡下方是时间与复制按钮。宿主的 `UserMessageBubble` 是 rc.2 之后才加进基线 `ui-primitives` 的导出，`engines.dsh` 下限仍是 rc.2，静态 import 在旧宿主上会拿到 `undefined`，所以按 `UserMessageBubble.module.css` 与 `MessageItem.module.css` 的数值用 `--dsw-*` 令牌复刻，不引宿主内部包。worker 回报继续用左侧 agent 气泡（`agent-bubble-view.js`），两套形态分开，不再共享布局。
 
-正文格式沿用回报气泡的判据：单行、含空行或行首块级标记走 Markdown，逐行协议字段走纯文本——leader 写任务时常把「做什么 / 边界 / 验收」各占一行，交给 Markdown 会被软换行折成一段。
+### 任务正文始终走 Markdown，逐行结构补硬换行
+
+leader 写任务时常把「做什么 / 边界 / 验收」各占一行，直接交给 Markdown 会被软换行折成一段；退回纯文本又会让 `**粗体**`、行内代码显示成字面量。`hardBreakMarkdown`（`src/shared/message-text.js`）给非空、非代码、非段落边界的行补两个尾随空格，GFM 渲染成 `<br>`，行内语法照常生效。围栏代码块按字符与长度配对，缩进代码块与已有硬换行不碰。worker 回报仍用 `bubbleFormat` 的判据：失败原因与旧回报的协议行保持纯文本。
 
 ### 文本与格式判据收进 shared
 
-host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的两份拷贝；client 又不能 import `src/host/message.js`（带 `node:crypto`）。两者合并到 `src/shared/message-text.js`（`messageText` 与 `bubbleFormat`），host 的通知正文、转录折叠与两个气泡共用。`workerReportFormat` 保持原签名，内部改调 `bubbleFormat`。
+host 的 `blocksToText` 与 shared 的 `workerReportText` 是同一份实现的两份拷贝；client 又不能 import `src/host/message.js`（带 `node:crypto`）。两者合并到 `src/shared/message-text.js`（`messageText`、`bubbleFormat`、`hardBreakMarkdown`），host 的通知正文、转录折叠与两个气泡共用 `messageText`；时钟抽到 `src/client/bubble-clock.js`。`workerReportFormat` 保持原签名，内部改调 `bubbleFormat`。
 
 ## 边界
 
-- 气泡上的名字固定是「Leader」，不是 leader 的会话标题：`message_worker` 落盘的 `source` 只有 `parentSessionId`，没有显示名。名字可点击跳回那个会话。
-- 不认领没有 `parentSessionId` 的历史消息：身份按钮没有落点，退回官方上下文行比硬造一个不能点的气泡好。
+- 任务气泡没有身份头：不显示 leader 名字与头像，也不能点名字跳回 leader 会话。`source.parentSessionId` 仍随消息落盘并作为认领凭证（没有它退回官方上下文行），但不再驱动界面。
 - 只认追加事件（`surfaceOp === 'append'`）：替换副本只应留在模型侧，不进人类转录，官方同类定义也是这条口径。
-- 气泡布局没有单测（React 组件 + 宿主模块表），仓库仍不引 jsdom；`tests/markdown.test.js` 的源码断言覆盖「折叠不用 line-clamp、行高取 compact 值」与类名接线，实际观感要靠真机。
-- 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。要覆盖得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
+- 用户气泡不折叠：长任务全文展示。worker 回报气泡仍默认两行、超出给「展示更多」。
+- 气泡布局没有单测（React 组件 + 宿主模块表），仓库仍不引 jsdom；`tests/markdown.test.js` 的源码断言覆盖右对齐、无身份头、Markdown 接线与令牌色值，实际观感靠真机探针。
+- 本 PR 没有派工场景的 e2e：mock 的脚本游标是全局单值，且 `message_worker` 需要上一步 `spawn_worker` 结果里的动态会话 id，现有 mock 无法表达。真机探针用「把一份真实 worker 会话日志复制进临时数据根、从侧栏打开」取证，它验证渲染，不验证派工链路，也不入库。要覆盖派工得先给 mock 按 session 分游标、并支持从工具结果取参，那是独立的一步。
 
 ## 验证
 
-- 新增 7 条单测（`tests/worker-task.test.js`）：source 逐层判型、`match` 只认追加的任务消息、`start`/`buildViewNode` 的状态与分组、正文格式、文本提取、客户端入口接线。
-- `npm test`：1117 条，1100 通过 / 17 skip（rebase 到 `main@676ef30` 后重跑，含 #122 新增的 10 条结算用例）；`npm run build:client` 通过（客户端产物重建）。
-- 双向验证：删掉 `src/client/index.js` 里的任务气泡注册 → `客户端入口把任务节点定义与渲染器都挂上` 变红（fail 1）；还原 → 全绿。这条断言守住「定义、kind 与渲染器三者一起挂上」，只挂 view 或只挂定义都会红。
-- 真机读数：未取证（原因见上一条边界）；本地已用真实宿主 + 从 `~/.dsh` 复制的 worker 会话尝试，但重启后 worker 会话不在 `ctx.sessions.list` 里（已知限制），项目树不亮行，无法在不派工的情况下打开目标会话。
+- 更新单测：`tests/worker-task.test.js` 覆盖 source 判型、`match`、`start`/`buildViewNode`、硬换行与客户端入口接线；`tests/bubble-clock.test.js` 覆盖三种时间形态；`tests/client-styles.test.js` 覆盖新样式表的幂等注入；`tests/markdown.test.js` 覆盖右侧用户气泡的形态与 Markdown 接线。
+- `npm test`：1120 条，1103 通过 / 17 skip。
+- `npm run check`：全绿（笔记 90 篇、文档预算、108 文件语法、覆盖率 61 个加载文件 / 53 个行覆盖 100%）。
+- `npm run build:client`：通过（客户端产物重建，含 `dsh-leader-agent-worker-task` 与 `hardBreakMarkdown`）。
+- 双向验证：删掉 `src/client/index.js` 里的任务气泡注册 → `客户端入口把任务节点定义与渲染器都挂上` 变红；还原 → 全绿。把 `hardBreakMarkdown(body)` 改回 `body` → `气泡渲染 Markdown 组件，旧消息回退纯文本` 变红；还原 → 全绿。把 `align-items: flex-end` 改成 `flex-start` → `leader 任务用右侧用户气泡：无身份头、不折叠、正文只给 Markdown` 变红；还原 → 全绿。
+- 真机读数（`DSH_PROFILE=web`，真实宿主 rc.5 + 从 `~/.dsh` 复制的 worker 会话，chromium 1440×900）：侧栏打开 worker 会话后，两条任务消息都渲染成 `data-chat-flow-kind="dsh-leader-agent-worker-task"` 的气泡；内层气泡宽 521px（内容栏 742px 的 70.2% 上限）、右对齐、`rgb(237, 243, 254)` 底色、20px 圆角、`10px 16px` 内边距，`data-markdown-variant="compact"`，`strong` 5 处、行内 `code` 28 处；同一会话里自己发的用户气泡右边缘与任务气泡对齐，但那段 `**加粗**` 显示为字面量——这正是「用户气泡 + Markdown」的刻意差异。截图 `.dev` 下临时取证，不入库。

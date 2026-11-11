@@ -143,7 +143,7 @@ export function apply(ctx) {
     // 引导卡与视图入口共用输入框上方那个 dock 槽：新建项目后 leader 会话里
     // 一句话都没有，卡在这里说清下一步，发出第一句话即消失。
     mountGuideCard(conversationCtx)
-    mountAgentMessages(conversationCtx)
+    mountMessageBubbles(conversationCtx)
   })
 
   // 项目命名空间挂在官方 gateway client 的 `ctx.remote` 上。远程通道由官方
@@ -188,15 +188,15 @@ function mountBoardMonitor(ctx) {
 /**
  * 注册 agent 消息的会话节点定义与渲染器。
  *
- * 两类消息用同一个形态：leader 派给 worker 的任务（worker 会话里）与 worker 的
- * 回报（leader 会话里）。定义都用 exclusive claim 接管带自家 `source.kind` 的
- * `user/message`，让它们不再走官方上下文行；渲染器按节点 kind 注册，键必须等于
- * kind。
+ * 两类消息共用同一套注册机制：leader 派给 worker 的任务（worker 会话里，渲染成
+ * 右侧用户气泡）与 worker 的回报（leader 会话里，渲染成左侧 agent 气泡）。定义都用
+ * exclusive claim 接管带自家 `source.kind` 的 `user/message`，让它们不再走官方
+ * 上下文行；渲染器按节点 kind 注册，键必须等于 kind。
  *
  * @param {object} ctx - 客户端 Cordis 上下文（已注入 `uiConversation`）
  * @returns {void}
  */
-function mountAgentMessages(ctx) {
+function mountMessageBubbles(ctx) {
   const bubbles = [
     { kind: WORKER_TASK_NODE_KIND, definition: workerTaskDefinition, view: WorkerTaskView, label: 'leader 任务' },
     { kind: WORKER_REPORT_NODE_KIND, definition: workerReportDefinition, view: WorkerReportView, label: 'worker 回报' },

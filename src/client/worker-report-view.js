@@ -3,7 +3,7 @@
  *
  * 只负责把节点状态翻成气泡属性：身份是 worker，正文是最后一次回报（没有就退回
  * 整条通知正文），点击名字打开 worker 的子会话。布局与折叠在
- * `agent-bubble-view.js`，与 leader 任务气泡共用。
+ * `agent-bubble-view.js`；leader 任务走右侧用户气泡，不共用这套形态。
  *
  * @module dsh-leader-agent/client/worker-report-view
  */

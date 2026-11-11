@@ -7,7 +7,7 @@
  * 但说话人是 leader，不是用户，也不是宿主注入的系统通知。
  *
  * 这里注册独立节点 kind，用 exclusive claim 接管这一类消息：认领成功后官方定义不再
- * 处理它，消息由本插件的渲染器呈现成左侧、带 leader 身份的气泡。影响面只有
+ * 处理它，消息由本插件的渲染器呈现成右侧、与用户消息同形的气泡。影响面只有
  * `dsh-leader-agent/worker-task` 这一类消息，普通用户输入与其他上下文不动。
  *
  * 认领失败时（宿主版本漂移、本定义没注册上）消息退回官方上下文行，内容不丢，只是
@@ -49,9 +49,6 @@ export const workerTaskDefinition = {
       time: event.time,
       messageId: String(event.data.id),
       text: messageText(event.data.content),
-      // 气泡的身份按钮指向发起任务的会话；leader 的显示名在 source 里没有落盘，
-      // 界面上用角色名，点开会话能看到它的标题。
-      parentSessionId: source.parentSessionId,
     }
   },
   update: (context) => context.state,

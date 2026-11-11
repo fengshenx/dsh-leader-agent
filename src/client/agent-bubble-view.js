@@ -1,5 +1,5 @@
 /**
- * agent 消息气泡的渲染组件：leader 派来的任务与 worker 的回报共用。
+ * worker 回报气泡的渲染组件。
  *
  * 形态：身份头（头像 + 名字）在气泡上方单独一行，气泡本身左对齐、用宿主消息气泡
  * 的底色、无描边——读起来像另一个 agent 在说话，而不是用户在说话。
@@ -14,35 +14,12 @@
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
 import { agentAvatarDataUri } from './worker-report-avatar.js'
 import { ensureAgentBubbleStyles } from './agent-bubble-styles.js'
+import { formatBubbleClock } from './bubble-clock.js'
 import { Markdown } from './markdown.js'
 import { productIcon } from './icons.js'
 
 /**
- * 把时间戳格式成消息时钟。
- *
- * 与宿主的 `formatMessageClock` 同口径（zh-CN 模板）：今天只显示时分；同年往日
- * 显示「M月D日 时分」；跨年再加年份。宿主按 i18n 模板渲染（英文环境下是
- * `M/D`），本仓不做多语言，固定用中文形态。
- *
- * @param {number} time - 毫秒时间戳
- * @returns {string} 时钟文本
- */
-function formatBubbleClock(time) {
-  const date = new Date(time)
-  const now = new Date()
-  const clock = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-  if (date.getFullYear() === now.getFullYear()
-    && date.getMonth() === now.getMonth()
-    && date.getDate() === now.getDate()) {
-    return clock
-  }
-  const day = `${date.getMonth() + 1}月${date.getDate()}日`
-  const md = date.getFullYear() === now.getFullYear() ? day : `${date.getFullYear()}年${day}`
-  return `${md} ${clock}`
-}
-
-/**
- * 渲染一条 agent 消息气泡。
+ * 渲染一条 worker 回报气泡。
  *
  * @param {object} props - 组件属性
  * @param {string} props.name - 说话方的显示名（身份头文本）

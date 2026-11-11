@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { WORKER_TASK_NODE_KIND, workerTaskDefinition } from '../src/client/worker-task-definition.js'
-import { bubbleFormat, messageText } from '../src/shared/message-text.js'
+import { hardBreakMarkdown, messageText } from '../src/shared/message-text.js'
 import { WORKER_TASK_SOURCE_KIND, readWorkerTaskSource } from '../src/shared/worker-task.js'
 
 test('读 leader 任务的 source 时逐层判型', () => {
@@ -10,7 +10,7 @@ test('读 leader 任务的 source 时逐层判型', () => {
     readWorkerTaskSource({ kind: WORKER_TASK_SOURCE_KIND, name: 'w', parentSessionId: 'leader-1' }),
     { parentSessionId: 'leader-1' },
   )
-  // 没有发起会话就认不出身份按钮指向哪里：退回官方上下文行，不硬造气泡。
+  // 没有来源凭证的 kind 标记不足以证明是 leader 派发的任务：退回官方上下文行。
   assert.equal(readWorkerTaskSource({ kind: WORKER_TASK_SOURCE_KIND, name: 'w' }), null)
   assert.equal(readWorkerTaskSource({ kind: WORKER_TASK_SOURCE_KIND, parentSessionId: '' }), null)
   assert.equal(readWorkerTaskSource({ kind: WORKER_TASK_SOURCE_KIND, parentSessionId: 1 }), null)
@@ -41,7 +41,7 @@ test('节点定义只认领追加的 leader 任务消息', () => {
   assert.equal(workerTaskDefinition.match({ type: 'assistant/message', data: {} }), null)
 })
 
-test('节点定义把任务正文与发起会话装进视图节点', () => {
+test('节点定义把任务正文装进视图节点', () => {
   const event = {
     type: 'user/message',
     seq: 12,
@@ -54,7 +54,6 @@ test('节点定义把任务正文与发起会话装进视图节点', () => {
   }
   const state = workerTaskDefinition.start({}, { event, location: { kind: 'turn' } })
   assert.equal(state.text, '修一下登录\n跑测试')
-  assert.equal(state.parentSessionId, 'leader-1')
   assert.equal(state.seq, 12)
   assert.equal(state.time, 1700)
   assert.equal(state.messageId, 'm1')
@@ -71,11 +70,11 @@ test('节点定义把任务正文与发起会话装进视图节点', () => {
   assert.equal(node.anchorSeq, 12)
   assert.equal(node.visibility, 'visible')
   assert.equal(node.groupTree, 'input')
-  assert.equal(node.data.parentSessionId, 'leader-1')
+  assert.deepEqual(node.data, state)
 })
 
 test('节点定义按官方口径给分组位置：回合首步开启新 exchange', () => {
-  const state = { seq: 1, time: 1, messageId: 'm1', text: 'x', parentSessionId: 'leader-1' }
+  const state = { seq: 1, time: 1, messageId: 'm1', text: 'x' }
   const first = workerTaskDefinition.buildViewNode({
     key: 'k',
     id: 'm1',
@@ -93,14 +92,33 @@ test('节点定义按官方口径给分组位置：回合首步开启新 exchang
   assert.equal(workerTaskDefinition.buildViewNode({ key: 'k', id: 'm1', state: undefined }), null)
 })
 
-test('任务正文的渲染格式：单行、空行与块级标记走 Markdown，逐行协议字段走纯文本', () => {
-  assert.equal(bubbleFormat(''), 'text')
-  assert.equal(bubbleFormat(null), 'text')
-  assert.equal(bubbleFormat('改一下 `src/host/message.js`'), 'markdown')
-  assert.equal(bubbleFormat('第一行\n第二行'), 'text')
-  assert.equal(bubbleFormat('第一段\n\n第二段'), 'markdown')
-  assert.equal(bubbleFormat('## 目标\n修登录'), 'markdown')
-  assert.equal(bubbleFormat('- 修登录\n- 跑测试'), 'markdown')
+test('任务正文始终按 Markdown 渲染，逐行结构补成硬换行', () => {
+  assert.equal(hardBreakMarkdown(''), '')
+  assert.equal(hardBreakMarkdown(null), '')
+  assert.equal(hardBreakMarkdown('改一下 `src/host/message.js`'), '改一下 `src/host/message.js`')
+  // 逐行的「做什么 / 边界 / 验收」补两个尾随空格，GFM 渲染成 <br>。
+  assert.equal(hardBreakMarkdown('第一行\n第二行'), '第一行  \n第二行')
+  // 空行已经是段落边界，不再补空格。
+  assert.equal(hardBreakMarkdown('第一段\n\n第二段'), '第一段\n\n第二段')
+  // 标题、列表、表格行补空格不影响块级解析。
+  assert.equal(hardBreakMarkdown('## 目标\n修登录'), '## 目标  \n修登录')
+  assert.equal(hardBreakMarkdown('- 一\n- 二'), '- 一  \n- 二')
+  // 围栏代码块内的换行是代码内容，不能改；围栏按字符与长度配对。
+  assert.equal(hardBreakMarkdown('```js\nconst a = 1\nconst b = 2\n```'), '```js\nconst a = 1\nconst b = 2\n```')
+  assert.equal(hardBreakMarkdown('~~~\ncode\n~~~~\n后一行'), '~~~\ncode\n~~~~\n后一行')
+  assert.equal(hardBreakMarkdown('```\na\n~~~\nb'), '```\na\n~~~\nb')
+  // 围栏套在块引用或列表里：先剥容器前缀，代码内容仍不能被补空格。
+  assert.equal(hardBreakMarkdown('> ```\n> code\n> ```'), '> ```\n> code\n> ```')
+  assert.equal(hardBreakMarkdown('- ```\n  code\n  ```'), '- ```\n  code\n  ```')
+  // 块引用里的逐行正文仍要保留换行。
+  assert.equal(hardBreakMarkdown('> 第一行\n> 第二行'), '> 第一行  \n> 第二行')
+  // 空的块引用行是段落边界，不补空格。
+  assert.equal(hardBreakMarkdown('第一行\n>\n第二行'), '第一行\n>\n第二行')
+  // 已经是硬换行的行不重复补；反斜杠后补空格会改掉换行语义。
+  assert.equal(hardBreakMarkdown('第一行  \n第二行'), '第一行  \n第二行')
+  assert.equal(hardBreakMarkdown('第一行\\\n第二行'), '第一行\\\n第二行')
+  // 缩进代码块同理。
+  assert.equal(hardBreakMarkdown('    缩进代码\n正文'), '    缩进代码\n正文')
 })
 
 test('从内容块里取纯文本时判型，块间分隔符可换', () => {
