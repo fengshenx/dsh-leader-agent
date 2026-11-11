@@ -390,7 +390,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **dsh 实测**（`0.2.1-rc.2`）：
 
-- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,428`、`pinInitialPermission()`）。
+- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,437-442`、`pinInitialPermission()`）。
 - **preset 身份不编码在 knob 值里**：`permissionPresets.current(session)` 是 `derive()` 的结果，把 knob 值折回配置表。`auto` 的 bundle（`danger-full-access` + `ask`）不匹配任何配置 preset，所以只写 knobs 时 `derive()` 落到 `custom`；而 auto-review 的审查门判据正是 `permissionPresets.current(session) === 'auto'`（`packages/experimental/auto-review/src/index.ts:689`）。宿主 subagent 因此只在父会话的显式身份是 `auto` / `danger-full-access` 时额外写 `permission/preset`（`packages/subagent/subagent/src/child-agent.ts:248-278` 的 `captureDelegatedPolicyOverrides` / `appendDelegatedPolicyOverrides`）。`pinInitialPermission()` 对已有 `auto` 身份的会话要求 auto 集成在场（`autoAdmit` 缺失时抛错），这是宿主自身契约。
 - 有效值 = 会话覆盖 ?? 部署默认：`sandboxPolicy.resolve({ session })`（`packages/sandbox/sandbox-policy/src/index.ts:197-205`）与 `approval.overrideOf(session) ?? approval.config.policy`（`packages/interaction/user-approval/src/index.ts:244-253`），两处在 rc.2 就有。
 - 会话覆盖的写路径是 `sandbox/mode` 与 `approval/policy` 两条 session event，都接受 `source: 'delegation'`（宿主 subagent 就给子会话钉 `approvalPolicy: 'never'`，`packages/subagent/subagent/src/child-agent.ts:271-277`）。仓外插件可以直接 append 这两条**已知**事件，不违反「不能新增 session event 类型」（第 8 条）。
@@ -465,7 +465,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 唯一能**彻底拆除** agent 的是 `agents.create()` / `agents.resume()` 返回的 `AgentHandle.dispose()`：停 loop、等退场、摘注册表、把会话从活的 store 移除（`packages/core/agent/src/index.ts:147-163`；实现 `packages/core/agent-loop/src/index.ts:594-600`）。`Agent.cancel()`（`runtime-types.ts:183`）只停当前 turn，`workspaceRegistry.archiveSession(id, { stopActivity: true })`（`packages/workspace/workspace/src/index.ts:365`）只停工作并写归档集合，两者都不摘注册表，不是 teardown。
 - `ctx.sessions` 只有 `create` / `get` / `list` 等，没有按 id 移除的入口（`packages/core/session/src/index.ts:1111`、`:1352`）。
 - `sessionController.create()` 只回 `SessionCreateValue` `{ sessionId, agentPreset? }`，handle 留在宿主手里（`packages/api/session-controller/src/types.ts:299-305`）。
-- `dispose()` 也不删已落盘的会话日志：它只 close/drain 持久化句柄，宿主没有删除会话的公开 API。宿主测试演示了 dispose 后还能重新 `open` 同一会话（`packages/core/agent-loop/tests/resume.spec.ts:240-254`）；进程重启后它可能作为空会话重新出现（按源码推断，未端到端复现）。
+- `dispose()` 也不删已落盘的会话日志：它只 close/drain 持久化句柄，宿主没有删除会话的公开 API。新建的空会话在 `session/created` 上就会由 `permissionPresets` 写入权限事实并落盘（见第 41 条）；进程重启后它可能作为空会话重新出现（按源码推断，未端到端复现）。
 
 **影响**：撤销能力只在创建方手里。本 bundle 因此把 leader 会话的创建也改走 `agents.create()`（与 worker 同一条路），创建结果把 `AgentHandle` 交给项目服务；落盘失败时 `dispose()` 停活会话。已落盘的空会话可能重启后重现。没有拿到句柄就等于没有撤销能力——这时只能大声记日志，活会话会留在左栏「未分组」里（见 `docs/limitations.md`）。`resume()` 也能拿句柄，但对已存在会话会抢写句柄，不能拿来撤销。
 

@@ -56,7 +56,7 @@ rc.2 没有「按 id 停掉已存在会话/agent」的公开入口：
   - 第一轮（53 例）：撤掉 `abandonLeaderSession` 里的 `handle.dispose()` → **53 / 50 pass / 3 fail**；把无句柄分支改回静默 `return` → **53 / 52 pass / 1 fail**；还原均全绿。
   - 复审补充后（56 例），三条新用例各用一个独立 mutation：
     - 删 `replaceLeader` catch 里的 `abandonLeaderSession(created)` → **56 / 55 pass / 1 fail**：「换 leader 改绑失败时撤销新建的会话」红；还原 → 56 / 56。
-    - 在 `create()` 成功路径插入 `abandonLeaderSession(created)` → **56 / 55 pass / 1 fail**：「建项目与换 leader 成功时不撤销会话」红；还原 → 56 / 56。
+    - 在 `create()` 成功路径插入 `abandonLeaderSession(created)` → **56 / 54 pass / 2 fail**：「建项目与换 leader 成功时不撤销会话」红；「换 leader 改绑失败时撤销新建的会话」清空前的 `disposed === []` 断言也红（先钉住 create 成功不 dispose）；还原 → 56 / 56。
     - 删 `createLeaderSessionWithCtx` 的 `agentOptions` 块 → **56 / 55 pass / 1 fail**：「建 leader 会话时带上默认模型选择」红；还原 → 56 / 56。
 - `npm test`：1129 tests / 1112 pass / 17 skip / 0 fail。
 - `npm run check`：全绿（Note 格式、文档工具名、文档预算、语法 108 文件、覆盖率 1112 用例；`src/host/projects/service.js` 行覆盖 98.45%，门槛 98%）。

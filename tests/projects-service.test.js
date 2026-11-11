@@ -346,7 +346,8 @@ test('换 leader 改绑失败时撤销新建的会话', async () => {
   })
   await service.loadIndex()
   const project = await service.create({ directory: workspace, name: 'alpha' })
-  // 建项目成功不是本条用例的关注面：清掉它，只看改绑失败这一笔。
+  // 建项目成功不该撤销；清空前先钉一次，避免本条对「create 成功就 dispose」失明。
+  assert.deepEqual(disposed, [])
   disposed.length = 0
 
   await assert.rejects(() => service.replaceLeader(project.id), /改绑失败/)
