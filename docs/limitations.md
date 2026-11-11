@@ -7,6 +7,7 @@
 - **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即销毁，没有载体接收完成通知——这是宿主语义，不是本 bundle 的缺陷。
 - **报告结算依赖轮次正常结束**：结算点在宿主的 `turn/end` 事件上。进程在 worker 跑完之前被杀，那一轮就不会结算（在飞表在内存里，重启即空），leader 也就收不到这次通知；重启后它会看到 worker 会话还在，可以自己打开看或续聊。订阅 `session/event` 不做能力探测：`Context` 永远有 `on`，下限 rc.2 已提供该事件与 `turn/end`，这是版本契约。
 - **续聊消息在 worker 的下一步才进上下文**：`message_worker` 走 inbox 的 next-step 边界，worker 正在跑时消息要等当前 step 结束才被取走——卡在长工具调用里的 worker 不会立刻看到，本 bundle 也没有中止它的手段（见 [worker 的控制面](#worker-的控制面)）。这与完成通知的 next-turn 边界是两件事。
+- **会话被别的进程持有时不能冷恢复**。同进程里被 GUI 打开或启动时恢复的 worker，`message_worker` 会复用宿主已有的活 agent 直接投递（[修法](../.agents/notes/implemented/bug-fix/2026-11-11-session-write-handle-reuse.md)，#126）；写句柄在另一个 dsh 进程手里时，`agents.resume()` 仍会撞上 `SessionAlreadyOwnedError`，本 bundle 只能把宿主错误翻成「先关闭占用它的窗口」的提示，不能跨进程接管。
 - **不能新增 session event 类型**：dsh 要求仓外事件带 `ignorable` 标记且不进读路径，因此卡片与通知状态走自有落盘文件。
 - **项目级手册没有 watcher，改动只在下一次模型请求生效**。正在跑的那一轮不会变；两者都是增量信息，不生成兜底正文（协议层 skill 已覆盖通用方法）。leader 手册只对项目注册表里指到该会话的 leader 生效——项目索引还没重建完的那一轮不注入，下一轮补上。机制与缺失处理见[项目级提示词与协议层](architecture.md#项目级提示词与协议层)。
 - **历史消息不追溯**。改造前发出的通知在 session log 里就是普通用户消息，重放仍按老形态渲染（右对齐、无头像）。leader 任务消息是例外，但有边界：#112（`478232a`，包名改为 `dsh-leader-agent`）之后落盘、且带 `source.parentSessionId` 的任务消息，旧记录同样按新的用户气泡渲染；改名前的 `dsh-leader-kit/worker-task` 记录不认领，退回官方上下文行。

@@ -18,6 +18,8 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
 function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, steerError, renameError, permissions } = {}) {
   const created = []
   const resumed = []
+  /** 宿主的活 agent 表：`agents.get()` 读它，dispose 后移除 */
+  const hostAgents = new Map()
   /** 追加到会话上的 knob 事件（权限继承） */
   const appended = []
   /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
@@ -41,31 +43,34 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       const sessionId = options.sessionId ?? `worker-${sequence}`
       const entry = { options, sessionId, messages: [], methods: [], disposed: false }
       created.push(entry)
-      return {
-        agent: {
+      const agent = {
+        id: sessionId,
+        session: {
           id: sessionId,
-          session: {
-            id: sessionId,
-            header: { id: sessionId },
-            append(type, data) {
-              appended.push({ id: sessionId, type, data })
-              // 覆盖事件落盘后该会话的有效权限就变了：回读实际值的路径靠这份状态。
-              overrides[sessionId] ??= {}
-              if (type === 'sandbox/mode') overrides[sessionId].sandbox = data.mode
-              if (type === 'approval/policy') overrides[sessionId].approval = data.policy
-            },
-          },
-          steer(message) {
-            if (steerError !== undefined) throw steerError
-            entry.methods.push('steer')
-            entry.messages.push(message)
-          },
-          followup() {
-            entry.methods.push('followup')
+          header: { id: sessionId },
+          append(type, data) {
+            appended.push({ id: sessionId, type, data })
+            // 覆盖事件落盘后该会话的有效权限就变了：回读实际值的路径靠这份状态。
+            overrides[sessionId] ??= {}
+            if (type === 'sandbox/mode') overrides[sessionId].sandbox = data.mode
+            if (type === 'approval/policy') overrides[sessionId].approval = data.policy
           },
         },
+        steer(message) {
+          if (steerError !== undefined) throw steerError
+          entry.methods.push('steer')
+          entry.messages.push(message)
+        },
+        followup() {
+          entry.methods.push('followup')
+        },
+      }
+      hostAgents.set(sessionId, agent)
+      return {
+        agent,
         async dispose() {
           entry.disposed = true
+          if (hostAgents.get(sessionId) === agent) hostAgents.delete(sessionId)
         },
       }
     },
@@ -74,22 +79,28 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       resumeOptions.push(options)
       const entry = { options, sessionId: options.resumeSessionId, messages: [], methods: [], disposed: false }
       created.push(entry)
-      return {
-        agent: {
-          id: entry.sessionId,
-          session: { id: entry.sessionId, header: { id: entry.sessionId } },
-          steer(message) {
-            entry.methods.push('steer')
-            entry.messages.push(message)
-          },
-          followup() {
-            entry.methods.push('followup')
-          },
+      const agent = {
+        id: entry.sessionId,
+        session: { id: entry.sessionId, header: { id: entry.sessionId } },
+        steer(message) {
+          entry.methods.push('steer')
+          entry.messages.push(message)
         },
-        async dispose() {
-          entry.disposed = true
+        followup() {
+          entry.methods.push('followup')
         },
       }
+      hostAgents.set(entry.sessionId, agent)
+      return {
+        agent,
+        async dispose() {
+          entry.disposed = true
+          if (hostAgents.get(entry.sessionId) === agent) hostAgents.delete(entry.sessionId)
+        },
+      }
+    },
+    get(sessionId) {
+      return hostAgents.get(sessionId)
     },
   }
 
@@ -145,7 +156,67 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       return undefined
     },
   }
-  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, appended }
+
+  /**
+   * 模拟宿主自己打开的会话：只在宿主活表里，不在插件的 `live` 表里。
+   *
+   * GUI 打开或启动时恢复过的会话就是这个形态——写句柄跟着宿主的 agent 常驻。
+   *
+   * @param {string} sessionId - 会话 id
+   * @param {{ title?: string }} [options] - 会话头标题
+   * @returns {object} 记录投递的条目
+   */
+  function openHostSession(sessionId, { title } = {}) {
+    const entry = { sessionId, messages: [], methods: [] }
+    hostAgents.set(sessionId, {
+      id: sessionId,
+      session: {
+        id: sessionId,
+        header: { id: sessionId, ...(title === undefined ? {} : { title }) },
+      },
+      steer(message) {
+        entry.methods.push('steer')
+        entry.messages.push(message)
+      },
+      followup() {
+        entry.methods.push('followup')
+      },
+    })
+    return entry
+  }
+
+  /**
+   * 模拟宿主销毁会话：只从宿主活表里摘掉，插件看不到 dispose 回调。
+   *
+   * @param {string} sessionId - 会话 id
+   * @returns {void}
+   */
+  function disposeHost(sessionId) {
+    hostAgents.delete(sessionId)
+  }
+
+  return { ctx, created, resumed, resumeOptions, titles, requested, mounts, mountIds, appended, hostAgents, openHostSession, disposeHost }
+}
+
+/**
+ * 让冷恢复抛出指定错误，其余上下文照常。
+ *
+ * @param {object} fixture - 夹具
+ * @param {unknown} error - `agents.resume()` 要抛的错误
+ * @returns {object} 上下文
+ */
+function withResumeError(fixture, error) {
+  return {
+    ...fixture.ctx,
+    get(key) {
+      const value = fixture.ctx.get(key)
+      if (key !== 'agents') return value
+      return {
+        ...value,
+        async resume() { throw error },
+      }
+    },
+  }
 }
 
 test('建会话时用带前缀的会话 id，且不投递任务——开工等 leader 的消息', async () => {
@@ -584,6 +655,94 @@ test('不在内存时续聊走冷恢复，并重新算作 worker', async () => {
   assert.equal(fixture.titles.at(-1).title, '新名字')
 })
 
+test('插件活表未命中但宿主里有活 agent 时直接投递，不冷恢复也不接管生命周期', async () => {
+  const fixture = createFixture()
+  // GUI 打开或启动时恢复过的 worker：写句柄跟着宿主的 agent 常驻，插件 live 表里没有。
+  const host = fixture.openHostSession('worker-gui', { title: '旧工' })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const form = await sessions.send({
+    sessionId: 'worker-gui',
+    text: '接着做',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(form, 'live')
+  assert.deepEqual(fixture.resumed, [])
+  assert.deepEqual(host.methods, ['steer'])
+  assert.equal(host.messages[0].content[0].text, '接着做')
+  // 署名仍取宿主会话头里的标题，不因为不在 live 表就退回裸 id。
+  assert.equal(host.messages[0].source.name, '旧工')
+  // 不登记进 live：dispose 是宿主的所有权，插件卸载不能收掉一个人打开着的会话。
+  assert.equal(sessions.get('worker-gui'), undefined)
+  assert.equal(await sessions.dispose('worker-gui'), false)
+})
+
+test('宿主里也没有活 agent 时才走冷恢复', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  const form = await sessions.send({
+    sessionId: 'worker-cold',
+    text: '接着做',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(form, 'resumed')
+  assert.deepEqual(fixture.resumed, ['worker-cold'])
+})
+
+test('冷恢复撞上宿主的 SessionAlreadyOwnedError 时翻成人话并保留 cause', async () => {
+  const fixture = createFixture()
+  // 照宿主 rc.2 的构造：`name` 是类名，`sessionId` 是被占用的会话；message 用宿主原文。
+  const occupied = Object.assign(
+    new Error('session "worker-busy" is already owned by an active write handle'),
+    { name: 'SessionAlreadyOwnedError', sessionId: 'worker-busy' },
+  )
+  const sessions = createWorkerSessions({ ctx: withResumeError(fixture, occupied) })
+
+  const error = await sessions.send({
+    sessionId: 'worker-busy',
+    text: '接着做',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  }).catch((reason) => reason)
+
+  assert.ok(error instanceof Error)
+  assert.match(error.message, /worker 会话 worker-busy/)
+  assert.match(error.message, /正被宿主占用/)
+  assert.match(error.message, /关闭/)
+  // 原始错误完整保留，排障时还能看到宿主的类型与文案。
+  assert.equal(error.cause, occupied)
+  assert.equal(error.cause.message, occupied.message)
+})
+
+test('错误翻译按 name/code 判类型，不误伤文案相同的其他错误', async () => {
+  const other = Object.assign(
+    new Error('session "worker-x" is already owned by an active write handle'),
+    { name: 'SomeOtherError' },
+  )
+  const passThrough = await createWorkerSessions({ ctx: withResumeError(createFixture(), other) }).send({
+    sessionId: 'worker-x',
+    text: '接着做',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  }).catch((reason) => reason)
+  assert.equal(passThrough, other)
+
+  // 宿主若改走 code 而不是 name，仍要认出来。
+  const byCode = Object.assign(new Error('宿主换了说法'), { code: 'SessionAlreadyOwnedError' })
+  const translated = await createWorkerSessions({ ctx: withResumeError(createFixture(), byCode) }).send({
+    sessionId: 'worker-y',
+    text: '接着做',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  }).catch((reason) => reason)
+  assert.equal(translated.cause, byCode)
+})
+
 test('续聊不带名字时不改标题，消息署名取会话头里的标题', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
@@ -844,6 +1003,7 @@ test('冷恢复完成后清掉在飞记录：forget 之后再 send 会重新恢�
 
   // 宿主销毁会话后 forget：活表清空。在飞记录要是在完成后没清，下一次 send 会
   // 命中那个已完成的旧 promise，拿到旧 handle——恢复根本不会再发生。
+  fixture.disposeHost('worker-1')
   sessions.forget('worker-1')
   await new Promise((resolve) => { setTimeout(resolve, 0) })
   await sessions.send({ sessionId: 'worker-1', text: '三', parentSessionId: 'c', signal })
