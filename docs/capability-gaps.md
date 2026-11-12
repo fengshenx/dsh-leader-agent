@@ -253,7 +253,9 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **dsh 实测**：左栏正文区只有**一个** `sidebar.workspaces` 槽（single，已被宿主的 `WorkspaceBrowser` 占；重复注册抛 `single slot "sidebar.workspaces" already has a registration`，`packages/client/ui-slots/src/index.ts:1220-1222`），slot 机制没有 decorator/HOC 或包装能力（`packages/client/ui-workspace/src/client/rows/WorkspaceBrowser.tsx` 与 `deriveGroups` 都未导出，无法复用渲染逻辑）。左栏可用的 list 槽只有两个：`sidebar.panellist`（occupant 只放 glyph，须与 `main` 同 id 成对注册）与 `sidebar.footer.action`（occupant 可渲染任意内容，位置在工作区下方、设置按钮上方，`packages/client/ui-sidebar/src/client/SidebarRoot.tsx:405-412`）。
 
-**可行的取位办法**：左栏的 DOM 结构是「面板列表 `nav` → 工作区 → 底部区」。footer occupant 里放一个锚点，向上找到第一个**子树含 `nav`** 的祖先作为左栏根，再用 React portal 把内容搬进落点。落点随宿主版本不同：`0.2.1` 的 `nav` 是左栏根的直接子元素，插在它与下一个兄弟（工作区容器）之间即可；`0.2.2` 起两者同处一个滚动网格（`grid-template-rows: 8px max-content 2px max-content`，`nav` 第 2 行、工作区第 4 行、第 3 行是 2px 分隔），在 `nav` 后面插新元素会被摆进那 2px 分隔里压扁，必须改插到工作区容器的顶部。判据不能写成「直接子元素含 `nav`」：`0.2.2` 上会一路走到 `null`，区块静默退回栏底（`sidebar.footer.action`），功能都在、位置全错。宿主结构再变导致找不到落点时，内容退回原槽渲染——降级路径必须留着。
+**可行的取位办法**：左栏的 DOM 结构是「面板列表 `nav` → 工作区 → 底部区」。footer occupant 里放一个锚点，从锚点向上找到第一个**子树含 `nav`** 的祖先作为左栏根（footer 到左栏根之间没有别的 `nav`；`nav` 本身在会话、设置、聊天等面也渲染，不能按「全页唯一」认），再用 React portal 把内容搬进落点。落点随宿主版本不同：`0.2.1` 的 `nav` 是左栏根的直接子元素，插在它与下一个兄弟（工作区容器）之间即可；`0.2.2` 起两者同处一个滚动网格（`grid-template-rows: 8px max-content 2px max-content`，`nav` 第 2 行、工作区第 4 行、第 3 行的 2px 分隔由 `::after` 占着），在 `nav` 后面插新元素会被网格自动摆进第 1 行第 1 列那格 `4px × 8px` 的空单元格，区块被压成 4px 宽竖条，必须改插到工作区容器的顶部。判据不能写成「直接子元素含 `nav`」：`0.2.2` 上会一路走到 `null`，区块静默退回栏底（`sidebar.footer.action`），功能都在、位置全错。宿主结构再变导致找不到落点时，内容退回原槽渲染——降级路径必须留着。
+
+**长期要宿主提供 list slot**：DOM 取位只能跟着宿主结构演化，落点是否成立取决于 `nav` 与工作区之间的实际结构（`placementSpot` 也没有独立校验「下一个兄弟就是工作区」）。要稳定拿到「与工作区并列的区块」，需要宿主在左栏提供一个位于工作区之上、occupant 可渲染任意内容的 list slot，或给 `sidebar.workspaces` 增加可包装/并列的能力；在此之前只能沿用上面的取位与 footer 降级。
 
 ### 28. Typert 远程方法的名字要避开官方命名空间服务的保留字
 
