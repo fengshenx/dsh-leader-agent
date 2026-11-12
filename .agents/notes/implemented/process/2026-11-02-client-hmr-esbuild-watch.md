@@ -2,7 +2,7 @@
 
 ## 背景
 
-宿主 Web 组合默认挂着 `@deepseek-ai/dsh-client-hmr`（`dsh-v0.2.1-rc.2` 的 `packages/bundle/web-app/cordis.patch.yml` 已有该行）：node 侧每 500ms stat-poll graph 里每个插件行的 client 产物，`mtime/ctime/size` 任一变化就 `clientModules.rebuilt(id)` → SSE `/plugins/events` → 浏览器 `entries.reload(id, rev)` 拆旧 fiber 重新 `apply`。第三方 `link:` 包的 `clientPath` 解析到工作树里的 `lib/client.js`，本来就在 poll 范围内。
+宿主 Web 组合默认挂着 `@deepseek-ai/dsh-client-hmr`（`dsh-v0.2.2-rc.2` 的 web-app bundle（`dsh-web-app/cordis.patch.yml:222`）已有该行）：node 侧每 500ms stat-poll graph 里每个插件行的 client 产物，`mtime/ctime/size` 任一变化就 `clientModules.rebuilt(id)` → SSE `/plugins/events` → 浏览器 `entries.reload(id, rev)` 拆旧 fiber 重新 `apply`。第三方 `link:` 包的 `clientPath` 解析到工作树里的 `lib/client.js`，本来就在 poll 范围内。
 
 本仓此前只在 `npm run dev` 里同步构建一次，改 `src/client/` 必须手动重建再手动刷新页面。整条链路里唯一缺的就是构建侧的常驻监听。起步时基于 `f531c62`；`main` 上 #52 把 `MarkdownText` 引进来后，外部模块清单必须跟着扩到 `ui-primitives`，否则 rebase 后构建直接失败。
 

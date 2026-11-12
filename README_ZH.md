@@ -13,7 +13,7 @@
   <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
   <a href="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
-  <img alt="dsh 版本要求" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
+  <img alt="dsh 版本要求" src="https://img.shields.io/badge/dsh-%3E%3D0.2.2--rc.2-4b6fff?style=flat-square">
   <img alt="状态" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
   <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
   <a href="https://github.com/fengshenx/dsh-leader-agent/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
@@ -65,7 +65,7 @@ dsh plugin --profile web add dsh-leader-agent
 dsh web
 ```
 
-profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出来缺 web-app bundle，客户端半边不加载。需要 dsh `>=0.2.1-rc.2 <0.3.0`。
+profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出来缺 web-app bundle，客户端半边不加载。需要 dsh `>=0.2.2-rc.2 <0.3.0`。
 
 指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
 

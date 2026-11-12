@@ -10,7 +10,7 @@
 
 ### 判据用宿主会话快照的 `blank`，不用消息计数或时间窗
 
-`conversation.input.dock` 的 owner 是 `InputZone { session: SessionSnapshot; input: InputState }`，组件拿到的 props 里直接有当前会话快照；`SessionSnapshot.blank` 就是宿主自己的「这个会话还没有对话」口径。下发时长按 `engines.dsh` 下限核对过：`dsh-v0.2.1-rc.2` 的 `packages/api/session-controller/src/client/contract/snapshot.ts:85` 已有 `blank`，`packages/client/ui-conversation/src/client/contract/slots.ts:384` 的 `InputZone` 也已是这个形状。所以 issue 里「先读消息计数、再退时间窗」的两条退路都没有用上。
+`conversation.input.dock` 的 owner 是 `InputZone { session: SessionSnapshot; input: InputState }`，组件拿到的 props 里直接有当前会话快照；`SessionSnapshot.blank` 就是宿主自己的「这个会话还没有对话」口径。下发时长按 `engines.dsh` 下限核对过：`dsh-v0.2.2-rc.2` 的 `packages/api/session-controller/src/client/contract/snapshot.ts:85` 已有 `blank`，`packages/client/ui-conversation/src/client/contract/slots.ts:384` 的 `InputZone` 也已是这个形状。所以 issue 里「先读消息计数、再退时间窗」的两条退路都没有用上。
 
 `blank` 比「消息数」更贴语义：宿主在首个 prompt 被接受时把它翻假（`sessions/manager.ts` 的 `handleBlank(false)`），本地发送即生效，不比等 durable 事件晚。测试里也验证了它跨进程成立——重启实例后同一个空会话仍被判为 blank，卡片照常出现。
 

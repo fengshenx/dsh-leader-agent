@@ -49,7 +49,7 @@ chip 改用 `box-sizing: border-box` 后，`max-width` 取 123px 而不是 110px
 
 ## 证据
 
-隔离实例（`dsh 0.2.1-rc.2`，即 `engines.dsh` 下限）：`projects.json` 与 `cards.json` 直接 seed 出 3 张 active + 2 张 done，看板在右栏渲染；浅色与深色主题各截一张，done 折叠区展开截一张。改前（透明列表）与改后（卡面材质）取自同一会话的同一批卡片。
+隔离实例（`dsh 0.2.1-rc.2`，当时的 `engines.dsh` 下限）：`projects.json` 与 `cards.json` 直接 seed 出 3 张 active + 2 张 done，看板在右栏渲染；浅色与深色主题各截一张，done 折叠区展开截一张。改前（透明列表）与改后（卡面材质）取自同一会话的同一批卡片。
 
 `npm run check` 全绿，其中 `tests/board-styles.test.js` 的 10 例把本次依赖的宿主硬规则固化成回归：样式表可解析且规则数不塌、`50%`/`999px` 必须配 `corner-shape: round`、可点击链接在 hover 与焦点下都有点状下划线、chip 的下划线偏移取真机定下来的 1px、裁切带里的焦点环必须内嵌（`outline-offset` 严格小于 0，取 0 仍会被裁成两段）、`:hover` 必须在 hover 媒体查询里、中性边框必须 0.5px、中性 border 不得与 elevation 投影同规则、引用的 `--dsw-*` token 必须在白名单内（名字打错时 CSS 不报错、取值静默变空）、信号点的状态变体必须写在基础规则之后（否则同特异性下被基础档覆盖）。样式表写在 JS 模板字符串里，宿主 `ui-theme` 的 scanner 只扫 `packages/`，这几条只能本仓自己守。
 

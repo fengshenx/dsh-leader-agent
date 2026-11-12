@@ -1,6 +1,6 @@
 # 能力缺口清单（P0–P5 实测）
 
-本清单由 P0–P5 阶段在真实 dsh（0.2.1-rc.2）上实测得出，不是文档推断。每条给出对比形态、dsh 实测现状、证据与影响。**目标形态**指希望达成的能力，**参照形态**指已有实现的实际做法；本仓是否已达成，看条目结论。条目里的 P0–P5 是早期交付阶段编号，此后不再维护，保留原样只为读懂当时的分期。
+本清单由 P0–P5 阶段在真实 dsh（0.2.1-rc.2）上实测得出，不是文档推断。2026-11-12 起 `engines.dsh` 下限抬到 `0.2.2-rc.2`；下列读数仍按当时版本保留，新区间未逐条复测。每条给出对比形态、dsh 实测现状、证据与影响。**目标形态**指希望达成的能力，**参照形态**指已有实现的实际做法；本仓是否已达成，看条目结论。条目里的 P0–P5 是早期交付阶段编号，此后不再维护，保留原样只为读懂当时的分期。
 
 复现环境：macOS arm64，dsh `0.2.1-rc.2`，web、headless 与 sdk 三个 profile。
 
@@ -365,7 +365,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - `agents.create({ sessionId, setup })` / `agents.resume({ resumeSessionId, setup })` 都接受 `setup`，但**不会**自己解析或挂 preset；不传 `setup` 的会话，工具面里没有这些内建工具。
 - `agentPresets.mount(ctx, id?)` 在 rc.2 就有（`packages/preset/agent-preset-registry/src/index.ts`），省略 id 用 `defaultId`。
 - 建会话时还要写 `meta.agentPreset`（`CreateAgentOptions.meta` 的公开字段）：`sessionController` 建会话就写，resume 与 UI 都从会话投影读回。只挂 `setup` 不写投影，会话能跑但投影是空的。
-- 读回投影的入口在 rc.2 是 `ctx.get('sessionProjections').stateOf(session, 'agentPreset')`（registry 自己也这么读，`packages/preset/agent-preset-registry/src/index.ts:357`）。**registry 的 `presetForSession()` 是 0.2.2-alpha.2 才有的**，rc.2 上只有 sessionController 有同名方法——按下限写代码时别用它。
+- 读回投影的入口在 rc.2 是 `ctx.get('sessionProjections').stateOf(session, 'agentPreset')`（registry 自己也这么读，`packages/preset/agent-preset-registry/src/index.ts:357`）。**registry 的 `presetForSession()` 是 0.2.2-alpha.2 才有的**，rc.2 上只有 sessionController 有同名方法——按旧下限写代码时别用它；下限抬到 `0.2.2-rc.2` 后 registry 已带它，本仓的兼容路径仍在，清理见 Agent Note「宿主下限抬到 0.2.2-rc.2」。
 
 **影响**：绕开 `sessionController` 建会话时（本 bundle 的 worker 与 leader 都走 `agents.create`），必须自己把 `agentPresets.mount(agentCtx, id)` 塞进 `setup`、并把 id 写进 `meta.agentPreset`。漏了三处都中招：建 worker、冷恢复 worker、建 leader——症状统一为「会话能建起来，但模型没有 bash / read，连 `pwd` 都跑不了」。
 
@@ -390,7 +390,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **dsh 实测**（`0.2.1-rc.2`）：
 
-- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,437-442`、`pinInitialPermission()`）。
+- `permissionPresets` 在 **`session/created`** 上对每个会话调 `pinInitialPermission()`（`ctx.on("session/created", …)`，没有 `prepend`；构造时还会对 `ctx.sessions.list()` 里的既有会话补一遍；0.2.2-rc.2 起改挂 `agent/created` 并加 `{ prepend: true }`）：三个 knob 都为空且没有 seeded 边界的新会话，直接写 `permission/preset` + `sandbox/mode` + `approval/policy`，值取自**用户默认 preset**（`defaultPreset`），与父会话当前选择无关（`packages/interaction/permission-presets/src/index.ts:245-249,437-442`、`pinInitialPermission()`）。
 - **preset 身份不编码在 knob 值里**：`permissionPresets.current(session)` 是 `derive()` 的结果，把 knob 值折回配置表。`auto` 的 bundle（`danger-full-access` + `ask`）不匹配任何配置 preset，所以只写 knobs 时 `derive()` 落到 `custom`；而 auto-review 的审查门判据正是 `permissionPresets.current(session) === 'auto'`（`packages/experimental/auto-review/src/index.ts:689`）。宿主 subagent 因此只在父会话的显式身份是 `auto` / `danger-full-access` 时额外写 `permission/preset`（`packages/subagent/subagent/src/child-agent.ts:248-278` 的 `captureDelegatedPolicyOverrides` / `appendDelegatedPolicyOverrides`）。`pinInitialPermission()` 对已有 `auto` 身份的会话要求 auto 集成在场（`autoAdmit` 缺失时抛错），这是宿主自身契约。
 - 有效值 = 会话覆盖 ?? 部署默认：`sandboxPolicy.resolve({ session })`（`packages/sandbox/sandbox-policy/src/index.ts:197-205`）与 `approval.overrideOf(session) ?? approval.config.policy`（`packages/interaction/user-approval/src/index.ts:244-253`），两处在 rc.2 就有。
 - 会话覆盖的写路径是 `sandbox/mode` 与 `approval/policy` 两条 session event，都接受 `source: 'delegation'`（宿主 subagent 就给子会话钉 `approvalPolicy: 'never'`，`packages/subagent/subagent/src/child-agent.ts:271-277`）。仓外插件可以直接 append 这两条**已知**事件，不违反「不能新增 session event 类型」（第 8 条）。
@@ -410,13 +410,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 提交 `7333a38c7a`（2026-10-26，Fixes #7320）把激活放进 `NSOperationQueue.mainQueue.addOperationWithBlock(...)`，等 modal 循环启动后再激活。该提交只进了 `0.2.2-alpha.2` 及之后（`git tag --contains 7333a38c7a` → `dsh-v0.2.2-alpha.2`），`rc.2`～`rc.5` 逐个 tag 核验均为修复前形态。
 - web 端走哪条选择器由 `dsh-host-directory-picker-auto` 启动时判定：darwin + loopback bind + 非 SSH 启动 → `native`，所以本机 web 实例弹的就是这个 NSOpenPanel。
 
-**影响**：本仓「加项目」只读调用 `uiWorkspace.pickDirectory()`，面板由宿主进程的 `osascript` 弹出、激活时机也在那支脚本里——bundle 侧没有任何 hook 能改它，也不能自带一条目录选择路径（浏览器拿不到绝对路径）。因此这一条只能靠升级宿主修复：`dsh` 升到 `0.2.2-alpha.2` 或更新的 `0.2.x`。本仓的工具与 UI 仍按 `engines.dsh` 下限 `0.2.1-rc.2` 的 API 面写，升级宿主不改这条规矩。
+**影响**：本仓「加项目」只读调用 `uiWorkspace.pickDirectory()`，面板由宿主进程的 `osascript` 弹出、激活时机也在那支脚本里——bundle 侧没有任何 hook 能改它，也不能自带一条目录选择路径（浏览器拿不到绝对路径）。因此这一条只能靠升级宿主修复：`dsh` 升到 `0.2.2-alpha.2` 或更新的 `0.2.x`。本仓的工具与 UI 仍按 `engines.dsh` 下限 `0.2.2-rc.2` 的 API 面写，升级宿主不改这条规矩。
 
 ### 43. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
 
 **目标形态**：看板右栏首次打开默认 400px（或至少允许插件给宽度偏好）。
 
-**dsh 实测**（`0.2.1-rc.5`，安装包 `@deepseek-ai/dsh-client-ui-layout` / `dsh-client-ui-sidebar-right`；`engines.dsh` 下限 `0.2.1-rc.2` 未复测）：
+**dsh 实测**（`0.2.1-rc.5`，安装包 `@deepseek-ai/dsh-client-ui-layout` / `dsh-client-ui-sidebar-right`；当时的 `engines.dsh` 下限 `0.2.1-rc.2` 未复测）：
 
 - 宽度由 `dsh-client-ui-layout` 的 AppFrame 算：`RIGHTBAR_DEFAULT_RATIO = .45`，首次 `openRightbar()` 时执行 `rightbar ??= Math.max(300, Math.round(viewportWidth * .45))`；此后保留当前 px 偏好（首开计算值或拖拽值），且是**内存态**，刷新即失（该包 README 的 Known Limitations：layout state resets on reload）。
 - `ctx.layout` 的公开面只有 `selectPanel` / `beginNavigation` / `toggleSidebar` / `openRightbar(track, fullscreen)` / `closeRightbar`，没有设置宽度的动作；存 `rightbar` 的 `layoutInfo` 是包内 store，第三方拿不到。编译产物里 `LayoutController` 实例另有普通属性 `panels`，`ctx.layout.panels.setRightbar(400)` 今天技术上可达；但公开面没声明，属宿主私有实现、重构即失效，违反「不 hack 宿主内部」铁律，已评估不采用。

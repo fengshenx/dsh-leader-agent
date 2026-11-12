@@ -5,7 +5,7 @@
 ## 宿主语义与运行形态
 
 - **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即销毁，没有载体接收完成通知——这是宿主语义，不是本 bundle 的缺陷。
-- **报告结算依赖轮次正常结束**：结算点在宿主的 `turn/end` 事件上。进程在 worker 跑完之前被杀，那一轮就不会结算（在飞表在内存里，重启即空），leader 也就收不到这次通知；重启后它会看到 worker 会话还在，可以自己打开看或续聊。订阅 `session/event` 不做能力探测：`Context` 永远有 `on`，下限 rc.2 已提供该事件与 `turn/end`，这是版本契约。
+- **报告结算依赖轮次正常结束**：结算点在宿主的 `turn/end` 事件上。进程在 worker 跑完之前被杀，那一轮就不会结算（在飞表在内存里，重启即空），leader 也就收不到这次通知；重启后它会看到 worker 会话还在，可以自己打开看或续聊。订阅 `session/event` 不做能力探测：`Context` 永远有 `on`，下限 `0.2.2-rc.2` 已提供该事件与 `turn/end`，这是版本契约。
 - **续聊消息在 worker 的下一步才进上下文**：`message_worker` 走 inbox 的 next-step 边界，worker 正在跑时消息要等当前 step 结束才被取走——卡在长工具调用里的 worker 不会立刻看到，本 bundle 也没有中止它的手段（见 [worker 的控制面](#worker-的控制面)）。这与完成通知的 next-turn 边界是两件事。
 - **会话被别的进程持有时不能冷恢复**。同进程里被 GUI 打开或启动恢复的 worker，`message_worker` 会复用宿主已有的活 agent 直接投递（[修法](../.agents/notes/implemented/bug-fix/2026-11-11-session-write-handle-reuse.md)，#126）；写句柄在别的 dsh 进程手里时，`agents.resume()` 仍会撞上 `SessionAlreadyOwnedError`，本 bundle 只能提示「先关闭占用它的窗口」，不能跨进程接管。
 - **不能新增 session event 类型**：dsh 要求仓外事件带 `ignorable` 标记且不进读路径，因此卡片与通知状态走自有落盘文件。
@@ -61,8 +61,8 @@
 - **客户端依赖解析走宿主的冻结模块表**：`PLATFORM_MODULES`（rc.2 的宿主自有包为 `dsh-client-store` / `dsh-client-ui-slots` / `dsh-client-ui-primitives` / `dsh-client-ui-dockkit`）没有跨版本承诺，宿主把条目移出基线后，产物里的外部 `require` 解析失败，客户端半边在模块求值阶段整个起不来——`engines.dsh` 下限升级时按 tag 对照 `platform.ts`，不按本机最新版。本仓复用 `ui-primitives` 的 `MarkdownText`（卡片说明与两个气泡）与 `StateDot`（项目行与会话行的运行中加载圈）；`StateDot` 的代价是运行中只有灰圈、项目行激活态消失（`.spinner` 固定 `label-tertiary`，样式随宿主 `apps/web` 产物，插件不自带）。基线之外的宿主 UI 包不保证可用；`Modal` / `Menu` 虽在基线内，仍照宿主源码复制改写（类名换 `dsh-leader-agent-modal-*`，动机是定制而非「用不了」），宿主改 `MarkdownText` 的签名与排版、或改弹窗/菜单时要同步；组件与样式分属两个产物是既有宿主契约，本仓不做兜底复刻。ACP / headless / SDK 不加载客户端半边；自建壳缺宿主样式时组件只剩 SVG 默认填充（`<circle>` 初始 `fill: black`，未实测）。机制与基线清单见[客户端构建约束](../.agents/notes/implemented/architecture/2026-10-23-client-side-findings-and-build-constraints.md)。
 - **leader 会话形态依赖宿主的会话视图服务**。宿主没提供 `uiConversation` 服务时（它不在机器可读的插件 API 目录里，属于版本耦合面），leader 会话退化成官方欢迎页（居中输入框），本 bundle 不阻断打开会话，也不自绘替代界面。
 - **图标数据与宿主 `ui-primitives` 耦合**。宿主 web 端把图标在构建期内联进产物，运行时 DOM 里没有 sprite 节点，第三方 bundle 在运行时渲染只能自己带路径数据——本次新增的 `apps-add-outline` 路径取自宿主 `ui-primitives`（regular 字重）：`0.2.1-rc.5` 在 `packages/client/ui-primitives/src/icons/index.tsx`（`IconAppsAddOutlineRegular`），`0.2.2-alpha.2+` 的 sprite 重构把它移到 `icons/artwork.ts`。内联本身不依赖宿主版本，版本锚点只为可追溯；宿主改图标时本仓要同步。
-- **工具面裁剪靠宿主的 `tools.restrict()`**。已发布的最新 dsh（`0.2.1-rc.4`）里 `tools.register()` 仍只收一个参数，按步求值的 `when` 只在源码仓 HEAD 上，所以裁剪落在 `agent/created` 时对 `agent.ctx` 调一次 `restrict({ deny })`。leader 身份来自项目注册表——**索引重建完成前不裁**：这时候问不出谁是 leader，而少给工具会让 leader 首轮干不成活；工具面这一层的宽松只对读类工具安全，派工前另行 `awaitIndex()` 并复核身份。
-- **浏览器侧 → 宿主侧走 Typert 远程通道**（命名空间 `projects`，经官方 `/api` 共享通道）。dsh 的 `connection.rpc.handle` 对仓外插件不可用（注册作用域拿不到 `webServer`），`/api` 又被官方 gateway 占用；Typert 的 SRC 回退通道允许第三方按协议形状注册服务，但代价是**手写的协议形状与宿主版本耦合**——本仓对齐宿主 `0.2.1-rc.2`（标记属性名、`version:1` 描述符、`typertRemote` 绑定字段、方法形参即 wire 字段名），宿主改契约时本仓要同步改。远程方法名还要避开官方命名空间服务的保留字（撞名会让整个命名空间挂不上）。
+- **工具面裁剪靠宿主的 `tools.restrict()`**。`tools.register()` 在 `0.2.2-rc.2` 已有按步求值的 `when`，但它是按 step 求值的谓词，不是会话级的工具面裁剪，所以裁剪仍落在 `agent/created` 时对 `agent.ctx` 调一次 `restrict({ deny })`。leader 身份来自项目注册表——**索引重建完成前不裁**：这时候问不出谁是 leader，而少给工具会让 leader 首轮干不成活；工具面这一层的宽松只对读类工具安全，派工前另行 `awaitIndex()` 并复核身份。
+- **浏览器侧 → 宿主侧走 Typert 远程通道**（命名空间 `projects`，经官方 `/api` 共享通道）。dsh 的 `connection.rpc.handle` 对仓外插件不可用（注册作用域拿不到 `webServer`），`/api` 又被官方 gateway 占用；Typert 的 SRC 回退通道允许第三方按协议形状注册服务，但代价是**手写的协议形状与宿主版本耦合**——本仓对齐宿主 `0.2.2-rc.2`（标记属性名、`version:1` 描述符、`typertRemote` 绑定字段、方法形参即 wire 字段名），宿主改契约时本仓要同步改。远程方法名还要避开官方命名空间服务的保留字（撞名会让整个命名空间挂不上）。
 
 ## 发布
 

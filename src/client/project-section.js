@@ -340,7 +340,7 @@ const STYLE_TEXT = `
 /* 会话行逐项照官方工作区会话行（宿主 Rows.module.css 的 sessionRow 与
    sessionRow 下的 title）：行高 32、行内不设 gap（标题自带左右外边距）、文字用
    一级标签色。左右内边距照官方两代写法：0.2.2 起行用透明边框吃掉 paint-inset、
-   padding 只留 row_padding 与它的差，hover 背景才会比内容窄一圈；rc.2 这两个变量
+   padding 只留 row_padding 与它的差，hover 背景才会比内容窄一圈；0.2.1-rc.2 这两个变量
    都不存在，落到 8 / 0，与那版硬编码的 8px 一致。 */
 .dsh-leader-agent-session-row {
   display: flex;
@@ -386,14 +386,14 @@ const STYLE_TEXT = `
   text-overflow: ellipsis;
   white-space: nowrap;
   /* 与官方工作区会话行同字号（宿主 Rows.module.css 的 .title）。左外边距是
-     刻意写的变量加兜底：rc.2 那版硬编码 4px（仓里没有这个变量），0.2.2 起官方
+     刻意写的变量加兜底：0.2.1-rc.2 那版硬编码 4px（仓里没有这个变量），0.2.2 起官方
      改用 --dsh-sidebar-label-gap（6px）。别简化成硬编码，否则另一版会错位。 */
   font-size: 14px;
   line-height: 20px;
   margin: 0 6px 0 var(--dsh-sidebar-label-gap, 4px);
 }
 /* 归档按钮：外观照官方会话行的 hover 动作（三级标签色、悬停提亮）。
-   尺寸取宿主 0.2.2 的形态：24×24 目标 + -4px 负边距，净占位 16×16；rc.2 那版
+   尺寸取宿主 0.2.2 的形态：24×24 目标 + -4px 负边距，净占位 16×16；0.2.1-rc.2 那版
    直接是 16×16 无负边距，净占位相同，两版视觉一致。容器不加外边距——负边距
    由按钮自己带，容器再补一份会把图标推离行右边缘。 */
 .dsh-leader-agent-session-actions {
@@ -434,8 +434,8 @@ const STYLE_TEXT = `
 }
 /* 展开/收起按钮：外观照官方工作区树的 overflow 按钮（12px、三级标签色、
    与会话行同样的行高，悬停时提亮到二级色）。左内边距必须落在会话行标题的
-   左边缘上，否则文字会比标题缩进一截：官方 rc.2 是 calc(28px + 缩进)，0.2.2
-   改成 calc(row_padding + 16 + label_gap + 缩进)。写成同一公式、给 rc.2 没有的
+   左边缘上，否则文字会比标题缩进一截：官方 0.2.1-rc.2 是 calc(28px + 缩进)，0.2.2
+   改成 calc(row_padding + 16 + label_gap + 缩进)。写成同一公式、给 0.2.1-rc.2 没有的
    变量兜底，那版得 28、0.2.2 得 34，两版都与标题对齐。右内边距两版都是 12。 */
 .dsh-leader-agent-session-overflow {
   width: 100%;

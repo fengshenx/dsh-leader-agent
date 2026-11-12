@@ -122,7 +122,8 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
         return { resolve: async () => ({ id: 'standard' }) }
       }
       if (key === 'agentPresets' && !missingPresets) {
-        // 方法面照 rc.2：registry 只有 resolve / mount，没有 presetForSession()。
+        // 方法面故意只给 resolve / mount：新下限的 registry 已带
+        // presetForSession()，夹具不提供它，锁住现实现只走投影。
         return {
           async resolve(id) { return { id: id ?? 'standard' } },
           async mount(agentCtx, id) {
@@ -131,9 +132,9 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
           },
         }
       }
-      // 冷恢复的 preset 从会话投影读（rc.2 的 registry 也走这条路）。投影值与
+      // 冷恢复的 preset 从会话投影读（registry 自己也走这条路）。投影值与
       // 默认 id 故意不同，否则用例区分不出「读了投影」和「用了默认」。
-      // 权限服务照 rc.2 的方法面：sandboxPolicy 只有 resolve / overrideOf，
+      // 权限服务照下限的方法面：sandboxPolicy 只有 resolve / overrideOf，
       // approval 只有 overrideOf 与 config.policy。默认不提供（大多数用例与权限无关）。
       if (key === 'sandboxPolicy' && permissions !== undefined) {
         return {
@@ -282,7 +283,7 @@ test('建会话时继承 leader 的权限，而不是宿主的默认 preset', as
     signal: new AbortController().signal,
   })
 
-  // 宿主的 permissionPresets 在 `session/created` 上给新会话 pin 的是用户默认 preset
+  // 宿主的 permissionPresets 在 `agent/created` 上给新会话 pin 的是用户默认 preset
   // （夹具默认 workspace-write + ask）；leader 的覆盖必须在首轮之前落到 worker 上。
   assert.deepEqual(fixture.appended, [
     { id: sessionId, type: 'sandbox/mode', data: { mode: 'danger-full-access', source: 'delegation' } },

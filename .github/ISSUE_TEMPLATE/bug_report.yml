@@ -22,7 +22,7 @@ body:
     attributes:
       label: dsh 版本
       description: 宿主自身的版本（`dsh --version`）
-      placeholder: 0.2.1-rc.2
+      placeholder: 0.2.2-rc.2
     validations:
       required: true
 

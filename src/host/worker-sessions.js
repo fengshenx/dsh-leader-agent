@@ -317,7 +317,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         throw error
       }
       live.set(sessionId, handle)
-      // 权限要在首轮之前落定：宿主的 permissionPresets 已在 `session/created` 上给
+      // 权限要在首轮之前落定：宿主的 permissionPresets 已在 `agent/created` 上给
       // 这条新会话 pin 了**用户默认** preset，这里用 leader 的有效值覆盖它。
       const permission = inheritPermission({ ctx, fromSession: permissionFrom, toSession: handle.agent.session, logger })
       if (!deferPresentation) presentOne(handle, sessionId, name)

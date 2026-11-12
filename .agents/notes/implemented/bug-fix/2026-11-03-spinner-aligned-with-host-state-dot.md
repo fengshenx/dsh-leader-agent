@@ -16,7 +16,7 @@
 
 **两处渲染都改成宿主基线模块的 `StateDot`（`state: 'ongoing'`），删掉自绘样式与关键帧。**
 
-- 组件来自 `@deepseek-ai/dsh-client-ui-primitives`，与 `MarkdownText` 同一条路径：`PLATFORM_MODULES` 基线模块、构建期 `BASELINE_EXTERNALS` 留在产物外、运行时同一实例。`dsh-v0.2.1-rc.2` 的 `index.ts` 已导出 `StateDot`，下限版本可用。
+- 组件来自 `@deepseek-ai/dsh-client-ui-primitives`，与 `MarkdownText` 同一条路径：`PLATFORM_MODULES` 基线模块、构建期 `BASELINE_EXTERNALS` 留在产物外、运行时同一实例。新下限 `dsh-v0.2.2-rc.2` 的 web 产物里仍有 `StateDot`，下限版本可用。
 - 不传 `size`：`ongoing` 默认 14px，与官方会话行 `Rows.module.css` 的 `.slot`（16×20）里放的是同一尺寸；本仓 `.dsh-leader-agent-session-status` 与 `.dsh-leader-agent-project-lead` 也是同一个槽位。
 - 装饰语义由组件自带（`aria-hidden="true"`），不再手写。
 - 删掉 `.dsh-leader-agent-project-spinner` / `.dsh-leader-agent-session-spinner` 两条规则与 `@keyframes dsh-leader-agent-spin`，全仓不再有第二套加载圈。

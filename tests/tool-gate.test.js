@@ -14,10 +14,9 @@ import {
 /**
  * 造一个 agent 假件，并记录作用域上的 restrict 调用。
  *
- * 方法面照 `engines.dsh` 的下限（0.2.1-rc.2）构造：只有 `restrict` / `get` /
- * `schemas`。夹具多给一个宿主方法就会掩盖版本缺口——`definitions()` 是
- * 0.2.2-alpha.2 才加的，在 0.2.1-rc.2 上调用是 TypeError，而那个调用落在
- * `agent/created` 上，会让每个会话创建都失败。
+ * 方法面只给 `restrict` / `get` / `schemas`，故意比新下限（`0.2.2-rc.2`）窄：
+ * 夹具多给一个宿主方法就会掩盖版本缺口，少给则能测出 gate 代码去用新方法。
+ * `definitions()` 在 `0.2.2-alpha.2` 才加、新下限已带它，但这个夹具不提供。
  *
  * @param {string} id - 会话 id
  * @param {string[]} [registered] - 该作用域里已注册的全局工具名，默认包含三件宿主工具
@@ -189,9 +188,10 @@ test('宿主没装 subagent 控制工具时跳过那三件，不拿未注册的�
   assert.deepEqual(leader.restrictions, [])
 })
 
-test('只依赖 engines 下限的 tools 方法面', () => {
-  // 0.2.1-rc.2 的 ToolsService 没有 definitions()。这个调用落在 agent/created 上，
-  // 一旦用上就是每个会话创建都 TypeError——而且夹具给了假方法就测不出来。
+test('裁剪路径不依赖 definitions()（夹具故意不提供）', () => {
+  // 新下限 0.2.2-rc.2 的 ToolsService 有 definitions()（0.2.2-alpha.2 引入），
+  // 但夹具比真实面窄：gate 代码一旦用上它，这里就会失败。调用落在 agent/created
+  // 上，真漏到下限之外就是每个会话创建都 TypeError。
   const leader = makeAgent('c')
   assert.equal(typeof leader.ctx.tools.definitions, 'undefined')
   assert.doesNotThrow(() => applyToolGate({

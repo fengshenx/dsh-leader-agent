@@ -5,7 +5,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 **核心铁律：**
 
 - 注释、文档、日志用中文，保留专业术语；Agent Note **文件名用英文**（`YYYY-MM-DD-<english-title>.md`），正文中文
-- **宿主 API 按 `engines.dsh` 下限挑**（现在是 `>=0.2.1-rc.2`），不按本机最新版。只在更新版本才有的方法会在下限版本上抛 `TypeError`，而这类调用多半落在 `agent/created` 上——等于每个会话创建都失败。不确定某 API 何时引入就查宿主仓库的 tag
+- **宿主 API 按 `engines.dsh` 下限挑**（现在是 `>=0.2.2-rc.2`），不按本机最新版。只在更新版本才有的方法会在下限版本上抛 `TypeError`，而这类调用多半落在 `agent/created` 上——等于每个会话创建都失败。不确定某 API 何时引入就查宿主仓库的 tag
 - **不改宿主仓库、不 import 宿主内部包、不 peer 依赖 dsh 包**：宿主产物与版本会漂移，带内部依赖的 bundle 会周期性失效（理由见 `src/host/message.js` 头注释）
 - **worker 是本 bundle 用 `ctx.agents.create` 建的常驻根会话**，不走宿主 subagent 机制；宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它们无效（`interrupt_agent` 还会返回假成功回执）
 - **禁止直接修改主 checkout**：改动落在 `.worktrees/<任务名>`，主 checkout 保持干净
@@ -73,7 +73,7 @@ npm run release:check             # 发版门禁：check + build:client + verify
 - 只有 `node:test`，**没有 lint**：未使用的 import、死代码、拼写错误都抓不到，改完要手扫。
 - **覆盖率按 per-file 行覆盖判**：`src` 下没登记门槛的文件要求 100%，存量欠账登记在 `scripts/coverage-manifest.json`。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由，否则新增文件照样变红（机制见 [docs/development.md](docs/development.md#测试与构建)）。
 - 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——车道命令、场景模板与截图落点见 [docs/e2e-testing.md](docs/e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
-- **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。
+- **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给下限版本确实有的 `restrict` / `get` / `schemas`。
 - **修 bug 做双向验证**：精确撤销修复 → 对应用例变红 → 还原 → 全绿。没变红先怀疑用例（断言是否落在真实可观测量上），别先怀疑实现。
 - 重大修复固化永久回归用例，并在同 PR 的 Agent Note 写明原因。
 - 工具名只有一处来源：`src/host/index.js` 的 `createBundleTools`（门禁比对用的是它的 `documentedToolNames`）。`SLOTS.md`、`LEADER.md`、`.agents/skills/**/*.md` 与 `docs/release.md`（维护者手册，见 `MAINTAINER_DOCS`）里反引号写的工具名由 `scripts/verify-doc-tool-names.mjs` 比对，删工具时漏改文档 `npm run check` 会红。

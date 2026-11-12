@@ -923,8 +923,8 @@ export function createDispatcher({
   }
 
   // cordis 的 Context 永远有 `on`（返回 disposer），所以这里不做出厂能力探测：
-  // 订阅不到事件只可能是宿主低于 `engines.dsh` 下限（rc.2 已提供 `session/event`
-  // 与 `turn/end`），那是版本契约问题，不是装配期能判定的事。
+  // 订阅不到事件只可能是宿主低于 `engines.dsh` 下限（0.2.2-rc.2 已提供
+  // `session/event` 与 `turn/end`），那是版本契约问题，不是装配期能判定的事。
   const stopTurns = ctx.on('session/event', (session, event) => observeTurn(session, event))
 
   return {

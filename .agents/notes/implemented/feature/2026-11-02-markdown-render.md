@@ -4,7 +4,7 @@
 
 卡片详情浮层的「说明」段与 worker 回报气泡的正文都是人手写的 Markdown：标题、列表、行内代码、代码块、表格在 worker 的产物摘要里随处可见。两处此前都按纯文本渲染（`white-space: pre-wrap`），语法字符原样显示，读的人得自己解析结构。
 
-落地前先核对宿主有没有现成能力。宿主 web 端的聊天消息本身就是 Markdown，渲染器是 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`；而 `ui-primitives` 自 `dsh-v0.2.1-rc.2`（`engines.dsh` 下限）起就在 `PLATFORM_MODULES` 基线里，`seed.ts` 把它静态 import 进冻结模块表，注释写明「every bundle sees the same instance」。基线里的宿主自有包不止它一个（rc.2 还有 `client-store` / `ui-slots` / `ui-dockkit`），本仓只用到 `ui-primitives`。
+落地前先核对宿主有没有现成能力。宿主 web 端的聊天消息本身就是 Markdown，渲染器是 `@deepseek-ai/dsh-client-ui-primitives` 的 `MarkdownText`；而 `ui-primitives` 自 `dsh-v0.2.1-rc.2`（当时的 `engines.dsh` 下限）起就在 `PLATFORM_MODULES` 基线里，`seed.ts` 把它静态 import 进冻结模块表，注释写明「every bundle sees the same instance」。基线里的宿主自有包不止它一个（rc.2 还有 `client-store` / `ui-slots` / `ui-dockkit`），本仓只用到 `ui-primitives`。
 
 ## 决策
 

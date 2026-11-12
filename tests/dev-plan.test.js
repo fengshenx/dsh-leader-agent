@@ -18,7 +18,7 @@ function sourcePackage() {
     name: 'dsh-profile-web',
     private: true,
     dependencies: {
-      '@deepseek-ai/dsh-experimental-agent-team-profile': '0.2.1-rc.2',
+      '@deepseek-ai/dsh-experimental-agent-team-profile': '0.2.2-rc.2',
       'dsh-remind': 'link:/home/user/code/dsh-remind',
       'dsh-leader-agent': 'link:/home/user/code/dsh-leader-agent',
     },
@@ -82,7 +82,7 @@ test('派生 package.json 把插件依赖换成工作树链接，其余依赖照
   const derived = deriveProfilePackage(sourcePackage(), WORKTREE)
   assert.equal(derived.dependencies[LEADER_AGENT_PACKAGE], `link:${WORKTREE}`)
   assert.equal(derived.dependencies['dsh-remind'], 'link:/home/user/code/dsh-remind')
-  assert.equal(derived.dependencies['@deepseek-ai/dsh-experimental-agent-team-profile'], '0.2.1-rc.2')
+  assert.equal(derived.dependencies['@deepseek-ai/dsh-experimental-agent-team-profile'], '0.2.2-rc.2')
 })
 
 test('派生 package.json 不改入参', () => {

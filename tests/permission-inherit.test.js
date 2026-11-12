@@ -56,7 +56,7 @@ function assertNoUndefinedKeys(permission) {
 }
 
 /**
- * 造上下文假件，方法面照 `engines.dsh` 下限（0.2.1-rc.2）：`sandboxPolicy` 只有
+ * 造上下文假件，方法面照 `engines.dsh` 下限（0.2.2-rc.2）：`sandboxPolicy` 只有
  * `resolve` / `overrideOf`，`approval` 只有 `overrideOf` 与 `config.policy`，
  * `permissionPresets` 只有 `current`。
  *

@@ -125,8 +125,8 @@ test('链路行的裁切带里，chip 的焦点环内嵌绘制', () => {
 })
 
 test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默回落成空值）', () => {
-  // 白名单只收 dsh-v0.2.1-rc.2（engines.dsh 下限）里确实定义过的名字，逐条在宿主
-  // tag 源码核过。名字打错时 CSS 不报错、只是取值变空，真机上表现为「样式没生效」
+  // 白名单只收 dsh-v0.2.2-rc.2（engines.dsh 下限）里确实定义过的名字，逐条在宿主
+  // web 产物与 ui-theme 源码核过。名字打错时 CSS 不报错、只是取值变空，真机上表现为「样式没生效」
   const known = new Set([
     '--dsw-alias-bg-layer-1',
     '--dsw-alias-bg-layer-2',

@@ -147,7 +147,7 @@ function createFixture({ permissions } = {}) {
       }
       if (key === 'sessionPersistence') return { append() {} }
       if (key === 'sessionQuery') return { observeSession() {} }
-      // 权限服务照 rc.2 的方法面；默认不提供，只有权限继承用例打开。
+      // 权限服务照下限的方法面；默认不提供，只有权限继承用例打开。
       if (key === 'sandboxPolicy' && permissions !== undefined) {
         return {
           resolve: ({ session }) => ({ mode: overrides[session.id]?.sandbox ?? permissions.sandbox?.[session.id] ?? 'workspace-write' }),

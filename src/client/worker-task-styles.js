@@ -8,9 +8,11 @@
  * （`MarkdownText` compact），行高与段距由 Markdown 块排版处理，气泡不设
  * `white-space` / `line-height` 覆盖。
  *
- * 不能直接 import 宿主的 `UserMessageBubble`：它是 rc.2 之后才加进基线
- * `ui-primitives` 的导出，本仓 `engines.dsh` 下限仍是 rc.2，静态 import 在旧宿主上
- * 拿到 `undefined`。组件本身只是一层带类名的 div，样式按令牌照抄即可。
+ * 不能直接 import 宿主的 `UserMessageBubble`：写这段时 `engines.dsh` 下限是 0.2.1-rc.2，
+ * 而它是 0.2.1-rc.2 之后才加进基线 `ui-primitives` 的导出，静态 import 在旧宿主上会拿到
+ * `undefined`。新下限 0.2.2-rc.2 已带这个导出；本 PR 不改静态 import，清理清单见
+ * Agent Note「宿主下限抬到 0.2.2-rc.2」。组件本身只是一层带类名的 div，样式按
+ * 令牌照抄即可。
  *
  * @module dsh-leader-agent/client/worker-task-styles
  */

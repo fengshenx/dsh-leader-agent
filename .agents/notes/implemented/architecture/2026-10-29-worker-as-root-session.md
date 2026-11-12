@@ -47,7 +47,7 @@
 
 **不做空闲回收**。做了就回到「用完销毁」。常驻到归档或应用退出，未归档 worker 上限 50（`force` 逃逸）因此成为必要护栏。
 
-**宿主 API 面按 `engines.dsh` 下限挑，不按本机最新版**。工具面裁剪里要探测「某工具是否已注册」，用的是 `ctx.tools.get(name)` 而不是 `definitions()`——后者是 `0.2.2-alpha.2` 才加的，`engines` 下限 `0.2.1-rc.2` 上没有它，而这个调用落在 `agent/created` 上，用错就是每个会话创建都 `TypeError`。`tests/tool-gate.test.js` 的夹具照 rc.2 的方法面构造（只有 `restrict` / `get` / `schemas`）：夹具多给一个宿主方法就会掩盖版本缺口。
+**宿主 API 面按 `engines.dsh` 下限挑，不按本机最新版**。工具面裁剪里要探测「某工具是否已注册」，用的是 `ctx.tools.get(name)` 而不是 `definitions()`——后者是 `0.2.2-alpha.2` 才加的，写这条规则时 `engines` 下限 `0.2.1-rc.2` 上没有它，而这个调用落在 `agent/created` 上，用错就是每个会话创建都 `TypeError`。下限后来抬到 `0.2.2-rc.2`，`definitions()` 已在下限内，但「按现役下限挑 API」这条规则不变；`tests/tool-gate.test.js` 的夹具仍比真实面窄（只有 `restrict` / `get` / `schemas`）：夹具多给一个宿主方法就会掩盖版本缺口。
 
 **deny 之前先确认工具真的注册了**。`restrict()` 遇到未注册的全局工具名直接抛错，而 `COORDINATOR_UNUSABLE_TOOLS` 来自可被部署禁用的宿主组合（`agent-team-profile` 就把它 `disabled: true`）。所以只 deny 当前存在的；本 bundle 自己注册的工具不做这层过滤——那些缺失是装配错误，应该大声报出来。
 

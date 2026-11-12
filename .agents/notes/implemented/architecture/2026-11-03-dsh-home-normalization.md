@@ -4,7 +4,7 @@
 
 PR#97 修了「进程环境没有 `HOME` 时 `resolveDshHome()` 抛 `ERR_INVALID_ARG_TYPE`」，审查同时发现范围外的问题：`resolveDshHome()` 只判空就返回 `DSH_HOME` 原值，而宿主 `@deepseek-ai/dsh-home-paths` 对同一个变量有自己的准则。两边算出的数据根不一致时，本 bundle 的文件会写到宿主不认的位置，或读不到已有数据。
 
-`engines.dsh` 下限是 `>=0.2.1-rc.2`，所以规则要按 rc.2 与最新版各核一遍：`npm pack` 拉 rc.2 的 `lib/index.js`，与本机 rc.5 的那份逐行比对，两版 `expandHomePath` / `resolveRoot` / `resolveDshHome` 逐字相同。核对结论是宿主规则在两版之间没有漂移，本仓不需要按版本分支。
+当时 `engines.dsh` 下限是 `>=0.2.1-rc.2`，所以规则要按 rc.2 与最新版各核一遍：`npm pack` 拉 rc.2 的 `lib/index.js`，与本机 rc.5 的那份逐行比对，两版 `expandHomePath` / `resolveRoot` / `resolveDshHome` 逐字相同。核对结论是宿主规则在两版之间没有漂移，本仓不需要按版本分支。
 
 ## 决策
 

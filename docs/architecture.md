@@ -163,7 +163,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 | 约束 | 落点 |
 |---|---|
-| 宿主 API 按下限挑（`>=0.2.1-rc.2 <0.3.0`） | 落在 `agent/created` 上的新 API 最危险：下限版本抛一次 `TypeError` 就是每个会话创建都失败，引入前先查宿主仓库的 tag |
+| 宿主 API 按下限挑（`>=0.2.2-rc.2 <0.3.0`） | 落在 `agent/created` 上的新 API 最危险：下限版本抛一次 `TypeError` 就是每个会话创建都失败，引入前先查宿主仓库的 tag |
 | 不改宿主仓库、不 import 宿主内部包、不 peer 依赖 dsh 包 | 零运行时依赖的边界见[分层](#分层)；理由写在 `src/host/message.js` 头注释 |
 | 身份先于会话（[第 37 条](capability-gaps.md)） | `src/host/tools/gate.js` 在 `agent/created` 上按身份 `restrict({ deny })`；leader 身份先写进项目注册表，再建会话 |
 | 不能新增 session event 类型（[第 8 条](capability-gaps.md)） | 卡片、通知、项目状态各自独立落盘（`cards/`、`notification-store.js`、`projects/`），会话侧只做 projection |

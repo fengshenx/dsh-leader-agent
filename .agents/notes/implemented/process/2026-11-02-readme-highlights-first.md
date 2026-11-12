@@ -24,7 +24,7 @@ README 在 2026-11-02 做过一次瘦身（见 [README 只留用法](2026-11-02-
 **顶栏加视觉层**：
 
 - logo 手写矢量 SVG，深浅两版，`<picture>` + `prefers-color-scheme` 切换。图形是 Leader 节点扇出到三个 worker（中间那个亮着表示执行中）加一块看板，无外链、无位图依赖。内容区按实际尺寸收窄到 470×104，README 用 `width="560"` 放大显示，避免右侧留一大截空白。
-- 徽章只写**真实成立**的状态：MIT（`LICENSE` 存在）、`dsh >=0.2.1-rc.2`（`engines.dsh` 下限）、`developer preview`（dsh 现状）。不写 npm 版本与下载量（未发布）、不写 CI（没有 workflow，写了就是假状态）、不写收录与榜单（没有记录）。这些图是 shields.io 静态徽章，不依赖仓库状态。
+- 徽章只写**真实成立**的状态：MIT（`LICENSE` 存在）、`dsh >=0.2.2-rc.2`（`engines.dsh` 下限）、`developer preview`（dsh 现状）。不写 npm 版本与下载量（未发布）、不写 CI（没有 workflow，写了就是假状态）、不写收录与榜单（没有记录）。这些图是 shields.io 静态徽章，不依赖仓库状态。
 
 **语言：`README.md` 英文（默认），`README_ZH.md` 中文**，两版顶部互相切换。默认英文是因为仓库面向 dsh 的插件生态，英文是 GitHub 与 npm 的默认阅读语言；中文版不是翻译附录，而是与英文版同级的正文——两边都在顶栏放 logo 与切换入口，不写「本文是译文」。logo 分四份（`logo-en` / `logo-en-dark` / `logo-zh` / `logo-zh-dark`），因为副标题跟着语言走：英文 `One Leader, ten features in parallel`，中文「一个 Leader 带你并行推进开发与 Review」。
 

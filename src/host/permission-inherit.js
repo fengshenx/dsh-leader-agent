@@ -2,7 +2,8 @@
  * 新建的 worker 会话继承 leader 的权限（沙箱模式 + 审批策略）。
  *
  * worker 是 `agents.create` 建的普通根会话，宿主的 `permissionPresets` 在
- * `session/created` 上给每个新会话 pin **用户默认 preset**（`pinInitialPermission()`）
+ * `agent/created`（`{ prepend: true }`）上给每个新会话 pin **用户默认 preset**
+ * （`pinInitialPermission()`）
  * ——leader 自己切过的 `danger-full-access` / `never` 不会跟过来。于是同一个命令
  * leader 能跑，worker 被沙箱拒绝；需要审批的调用还会落空：审批 answerer 按会话 UI
  * 作用域注册（`ui-approval` 的 `ctx.sessions.scopeOf(owner)`），后台 worker 的会话

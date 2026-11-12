@@ -75,10 +75,11 @@ export async function agentPresetOptions(ctx, logger) {
 /**
  * 读会话投影里记的 preset id。
  *
- * `engines.dsh` 下限（0.2.1-rc.2）的 registry **没有** `presetForSession()`——
- * 那是 sessionController 自己的方法，registry 到 0.2.2-alpha.2 才有。rc.2 上
- * registry 自己也是从 `sessionProjections.stateOf(session, 'agentPreset')` 读，
- * 这里照同一条路走。
+ * 旧下限（0.2.1-rc.2）的 registry **没有** `presetForSession()`——那是
+ * sessionController 自己的方法，registry 到 0.2.2-alpha.2 才有。新下限
+ * 0.2.2-rc.2 的 registry 已带它，但本 PR 不改走那条路：现实现照 registry 自己的
+ * 读法走 `sessionProjections.stateOf(session, 'agentPreset')`，兼容路径的清理
+ * 见 Agent Note「宿主下限抬到 0.2.2-rc.2」。
  *
  * 投影服务缺席（组合没有它）时记一行日志再按默认 preset 处理——用户换过的
  * preset 会静默丢失，正是这一系列 bug 的原始形态，不能无声。服务在却缺

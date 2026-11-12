@@ -1,9 +1,10 @@
 /**
  * 工具面分配：按调用方角色决定这个会话能看见哪些工具。
  *
- * 宿主（0.2.1-rc.2）的 `tools.register()` 不接受按步条件，`tools.restrict()`
- * 才是可用的裁剪面——它要求 scoped context（`agent.ctx`），所以裁剪必须在
- * 会话创建时对该 agent 的上下文调用一次。
+ * 宿主（0.2.2-rc.2）的 `tools.register()` 有按步条件（`options.when`），但它是
+ * 按 step 求值的谓词，不是会话级的工具面裁剪；按身份裁剪要用 `tools.restrict()`——它要求
+ * scoped context（`agent.ctx`），所以裁剪必须在会话创建时对该 agent 的上下文
+ * 调用一次。
  *
  * 三种角色：
  *
@@ -135,8 +136,9 @@ export async function canWriteCardsFor({ sessionId, isLeaderSession, isWorkerSes
  * 不能用 `get(name)` 做存在性探测：省略 scope 等于**全局视图**，而 web-app 把
  * 这三件在宿主平面 `disabled: true`、改由 preset 子树注册（`cordis.patch.yml`
  * 的 tool-subagent* 行）——全局视图里没有它们，探测会把三件全部误判成「不存在」，
- * 限制就悄悄失效了。`definitions()` 是 0.2.2-alpha.2 才加的方法，`engines.dsh`
- * 下限 0.2.1-rc.2 上没有它，别在裁剪路径上引入。
+ * 限制就悄悄失效了。`definitions()` 从 0.2.2-alpha.2 才有，新下限 0.2.2-rc.2
+ * 已带它；但这里仍走「先整批 restrict、遇到未知名逐件重试」，没有引入它——
+ * 换探测面会改变缺工具组合的失败形态，另议。
  *
  * 顺带记一笔：摘掉这三件后，preset 提供的 `subagent` / `subagent_fork` 仍在，
  * leader 于是「能派不能跟」。这两个是通用能力（只读探索也用得上），暂时留着；
