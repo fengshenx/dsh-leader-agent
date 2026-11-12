@@ -22,8 +22,9 @@
  * **位置**：宽侧栏里区块插在「自动化任务」面板行之下、工作区列表之上。左栏正文
  * 区只有 `sidebar.workspaces` 一个槽且已被官方工作区浏览占用，slot 机制没有装饰
  * 或包装能力，第三方无法在它旁边插入并列区块——所以这里按宿主左栏的结构，在
- * 面板列表之后安一个容器，用 portal 把内容渲染进去。锚点找不到时内容退回底部
- * 槽，不至于消失。
+ * 面板列表之后安一个容器，用 portal 把内容渲染进去；0.2.2 起面板列表与工作区
+ * 同处一个滚动网格，落点改到工作区容器顶部（见 `placementSpot`）。锚点找不到
+ * 时内容退回底部槽，不至于消失。
  *
  * 窄侧栏（56px 导轨）放不下列表，改为一个入口按钮 + 浮层。
  *
@@ -752,10 +753,11 @@ export function ProjectPanel(props) {
 }
 
 /**
- * 找左栏根容器：向上找到第一个「直接子元素里有面板列表 nav」的祖先。
+ * 找左栏根容器：向上找到第一个子树里有面板列表 `nav` 的祖先。
  *
- * 插槽 occupant 在宿主树里的层数随宿主版本变，固定层数会失配；「最近的、且直接
- * 含有 nav 的祖先」这个判据在宿主改版时自然落空，退回原位渲染。
+ * 插槽 occupant 在宿主树里的层数随宿主版本变，固定层数会失配。判据不能要求
+ * `nav` 是直接子元素：0.2.2 起宿主把面板列表与工作区一起包进滚动网格，`nav`
+ * 下沉了一层，按老判据会一路走到 `null`，区块只能退回栏底。
  *
  * @param {Element} anchor - 锚点元素
  * @returns {Element | null} 左栏根容器
@@ -763,19 +765,46 @@ export function ProjectPanel(props) {
 function findSidebarRoot(anchor) {
   let node = anchor.parentElement
   while (node !== null) {
-    if (node.querySelector(':scope > nav') !== null) return node
+    if (node.querySelector('nav') !== null) return node
     node = node.parentElement
   }
   return null
 }
 
 /**
+ * 算出容器插在哪：面板列表之后、工作区列表之前。
+ *
+ * 两个版本的宿主结构不同，落点也不同：
+ *
+ * - 0.2.1：`nav` 是左栏根的直接子元素，下一个兄弟就是工作区容器。直接插在二者
+ *   之间。
+ * - 0.2.2 起：`nav` 与工作区同处一个滚动网格，`grid-template-rows` 固定为
+ *   「上留白 / 面板列表 / 2px 分隔 / 工作区」。在 `nav` 后面插新元素会被自动
+ *   摆进那 2px 的分隔行压扁，因此改为插进工作区容器的顶部——视觉顺序仍是
+ *   「面板列表 → 项目 → 工作区」，且跟随宿主一起滚动。
+ *
+ * 找不到可用落点时返回 null，内容退回原位渲染。
+ *
+ * @param {Element} root - 左栏根容器
+ * @param {Element} nav - 面板列表
+ * @returns {{ parent: Element, before: Element | null } | null} 落点
+ */
+function placementSpot(root, nav) {
+  if (nav.parentElement === root) {
+    return { parent: root, before: nav.nextElementSibling }
+  }
+  const region = nav.nextElementSibling
+  if (region === null) return null
+  return { parent: region, before: region.firstElementChild }
+}
+
+/**
  * 把区块安到左栏的面板列表之下、工作区列表之上。
  *
  * 宿主左栏的正文区只有一个 `sidebar.workspaces` 槽（已被官方工作区浏览占用），
- * 第三方插件没有并列区块的注册位。宿主的面板列表是一个 `nav`，它的下一个兄弟
- * 元素就是工作区所在的滚动区——在两者之间插一个容器即可得到想要的位置。宿主
- * 改版导致找不到锚点时，内容退回原处渲染，功能不受影响。
+ * 第三方插件没有并列区块的注册位，只能在宿主 DOM 里找落点（见
+ * {@link placementSpot}）。宿主改版导致找不到锚点时，内容退回原处渲染，功能
+ * 不受影响。
  *
  * @param {object} props - 组件属性
  * @param {object} props.children - 区块内容
@@ -790,12 +819,14 @@ function SidebarPlacement(props) {
     if (anchor === null) return undefined
     const root = findSidebarRoot(anchor)
     if (root === null) return undefined
-    const nav = root.querySelector(':scope > nav')
+    const nav = root.querySelector('nav')
     if (nav === null) return undefined
+    const spot = placementSpot(root, nav)
+    if (spot === null) return undefined
     const host = document.createElement('div')
     host.setAttribute('data-dsh-leader-agent-projects', '')
     host.style.flex = 'none'
-    nav.insertAdjacentElement('afterend', host)
+    spot.parent.insertBefore(host, spot.before)
     setContainer(host)
     return () => {
       host.remove()
