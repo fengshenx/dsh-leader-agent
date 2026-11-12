@@ -48,7 +48,13 @@ git push -u origin feature/<任务名>
 gh pr create --fill
 ```
 
-等 CI 绿、PR 合并。合并与 approve 需用户明确指令。
+等 CI 绿后，在主 checkout 合并（在 worktree 内执行会让下一节的 `git checkout main` 因 `main` 已被 worktree 占用而失败）：
+
+```bash
+gh pr merge <n> --merge
+```
+
+合并与 approve 需用户明确指令。合并方式见 `AGENTS.md` 的「提交与 PR → 合并方式」；`--squash` 会被 GitHub 拒绝。分支删除交给收尾的 `worktree:prune --apply --delete-remote`，不要给 merge 加 `--delete-branch`。
 
 ## 五、合并后打 tag
 
