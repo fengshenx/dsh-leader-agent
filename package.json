@@ -33,6 +33,7 @@
     "test": "node --test tests/*.test.js",
     "test:coverage": "node scripts/verify-coverage.mjs",
     "e2e": "npm run build:client && for f in tests/e2e/*.e2e.js; do node --test \"$f\" || exit 1; done",
+    "e2e:desktop": "node scripts/e2e-desktop.mjs",
     "e2e:install": "playwright install chromium",
     "check": "node scripts/verify-agent-note-format.mjs && node scripts/verify-doc-tool-names.mjs && node scripts/verify-doc-budgets.mjs && node scripts/check-syntax.mjs && node scripts/verify-coverage.mjs",
     "build:client": "node build/client.mjs",

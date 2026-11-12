@@ -26,6 +26,8 @@ npm run build:client && node --test tests/e2e/plugin.e2e.js   # 只跑一个文�
 
 **`npm run e2e -- <文件>` 不会缩小要跑的集合**：npm 把 `--` 后面的参数追加到 script 末尾，实际执行的是 `node --test "tests/e2e/*.e2e.js" <文件>`，glob 照旧展开（实测 `tests 2`）；要单跑就绕过 npm script 直接调 `node --test`。**不加 `--test-force-exit`**：它把漏清理从「挂住/超时变红」变成「绿着通过 + 留下孤儿进程」，挂住应当暴露；已知三处已由有界清理收干净，取舍见[清理上限笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
 
+桌面版比 npm `latest` 先发时，用 `npm run e2e:desktop` 跑桌面内置的宿主（macOS；`DSH_DESKTOP_APP` 可换安装位置）；npm 下限那条仍要绿。
+
 前提：`dsh` 装好，且源 profile（默认 `~/.dsh/profiles/web`）里装过本插件——与 `npm run dev` 相同，缺任何一个都会当场报错并给出可照做的修法。Node 需要 22.15+（`session-logs.mjs` 的 zstd 与 `node --test` 的 glob），旧版本上是 import 期就崩。
 
 ### 文件职责
