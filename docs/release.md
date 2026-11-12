@@ -54,7 +54,7 @@ gh pr create --fill
 gh pr merge <n> --merge
 ```
 
-合并与 approve 需用户明确指令。本仓只允许 merge commit（仓库设置里 squash 与 rebase 都是关的），`--squash` 会被 GitHub 拒绝。分支删除交给收尾的 `worktree:prune --apply --delete-remote`，不要给 merge 加 `--delete-branch`。
+合并与 approve 需用户明确指令。合并方式见 `AGENTS.md` 的「提交与 PR → 合并方式」；`--squash` 会被 GitHub 拒绝。分支删除交给收尾的 `worktree:prune --apply --delete-remote`，不要给 merge 加 `--delete-branch`。
 
 ## 五、合并后打 tag
 
