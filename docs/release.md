@@ -46,10 +46,15 @@ git add -A
 git commit -m "chore(release): <version>"
 git push -u origin feature/<任务名>
 gh pr create --fill
-gh pr merge <n> --merge --delete-branch
 ```
 
-等 CI 绿、PR 合并。合并与 approve 需用户明确指令。本仓只允许 merge commit（仓库设置里 squash 与 rebase 都是关的），`--squash` 会被 GitHub 拒绝。
+等 CI 绿后，在主 checkout 合并（在 worktree 内执行会让下一节的 `git checkout main` 因 `main` 已被 worktree 占用而失败）：
+
+```bash
+gh pr merge <n> --merge
+```
+
+合并与 approve 需用户明确指令。本仓只允许 merge commit（仓库设置里 squash 与 rebase 都是关的），`--squash` 会被 GitHub 拒绝。分支删除交给收尾的 `worktree:prune --apply --delete-remote`，不要给 merge 加 `--delete-branch`。
 
 ## 五、合并后打 tag
 
