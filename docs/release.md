@@ -46,9 +46,10 @@ git add -A
 git commit -m "chore(release): <version>"
 git push -u origin feature/<任务名>
 gh pr create --fill
+gh pr merge <n> --merge --delete-branch
 ```
 
-等 CI 绿、PR 合并。合并与 approve 需用户明确指令。
+等 CI 绿、PR 合并。合并与 approve 需用户明确指令。本仓只允许 merge commit（仓库设置里 squash 与 rebase 都是关的），`--squash` 会被 GitHub 拒绝。
 
 ## 五、合并后打 tag
 
