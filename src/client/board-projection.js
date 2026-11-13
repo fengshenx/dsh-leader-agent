@@ -165,6 +165,21 @@ function slotStateOf(sessionId, states) {
 }
 
 /**
+ * 卡片的分类标签。
+ *
+ * `cards.json` 是人可编辑的真源，手改成 null / 数字 / 纯空白都算脏数据：只要不是
+ * 非空字符串就当没设。卡面头部与详情浮层共用这一条判据，两处不会各显示一套。
+ *
+ * @param {object} card - 卡片
+ * @returns {string | null} 分类文本；未分类时为 null
+ */
+export function cardKind(card) {
+  if (typeof card?.kind !== 'string') return null
+  const trimmed = card.kind.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+/**
  * 卡片信号灯：由名下槽位会话聚合。
  *
  * 取名下槽位里档位最高的一档。优先级：等你输入 > 需注意 > 执行中 > 未读 >

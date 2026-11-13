@@ -148,6 +148,20 @@ function hasSpec(card) {
 }
 
 /**
+ * 分类行：卡面头部的只读短标签。
+ *
+ * 与规格、链接一样显式成行：省略会让模型把「没有分类」读成「工具不给分类」，
+ * 而「这张卡该补分类」正是它会做的下一步动作。
+ *
+ * @param {object} card - 卡片
+ * @returns {string} 分类行
+ */
+function renderKind(card) {
+  const kind = typeof card.kind === 'string' ? card.kind.trim() : ''
+  return `  kind: ${kind === '' ? '无' : kind}`
+}
+
+/**
  * 链接列表摘要：只给身份（标签），地址与用途留给单卡查询。
  *
  * @param {object} card - 卡片
@@ -187,6 +201,7 @@ function renderSlots(card) {
  */
 function renderCardBrief(card) {
   const lines = [cardHeading(card)]
+  lines.push(renderKind(card))
   lines.push(`  spec: ${hasSpec(card) ? '有' : '无'}`)
   lines.push(`  links: ${summarizeLinks(card)}`)
   const slots = renderSlots(card)
@@ -202,6 +217,7 @@ function renderCardBrief(card) {
  */
 function renderCardDetail(card) {
   const lines = [cardHeading(card)]
+  lines.push(renderKind(card))
   if (hasSpec(card)) {
     lines.push('  spec:', ...card.spec.split('\n').map((line) => `    ${line}`))
   }

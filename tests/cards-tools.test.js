@@ -1012,3 +1012,87 @@ test('worker 不能建卡：建卡与派工是 leader 的一条动作链', async
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('建卡与改卡支持分类：trim 落盘，空串清除，脏值直接拒收', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardkind-'))
+  try {
+    const store = createCardStore({ home })
+    const createCard = createCreateCardTool({ store })
+    const updateCard = createUpdateCardTool({ store })
+    const leader = { agent: { id: 'leader-1' }, signal: undefined }
+
+    const created = await createCard.execute({ title: '任务', kind: '  研发  ' }, leader)
+    assert.equal(created.card.kind, '研发')
+
+    // 分类是卡面头部的短标签：超长会被截断、换行会把头部撑成两行，写入前就拒
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: 'x'.repeat(25) }, leader),
+      /kind 最长 24 个字符/,
+    )
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: '研\n发' }, leader),
+      /kind 不能换行/,
+    )
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: 42 }, leader),
+      /kind 必须是字符串/,
+    )
+
+    // 按码点计数：13 个 emoji 是 13 个字符，不是 26 个（`length` 数的是 UTF-16 码元）
+    const emojiKind = '😀'.repeat(13)
+    const withEmoji = await createCard.execute({ title: '任务', kind: emojiKind }, leader)
+    assert.equal(withEmoji.card.kind, emojiKind)
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: '😀'.repeat(25) }, leader),
+      /kind 最长 24 个字符，收到 25 个/,
+    )
+
+    // 单行标签的判据要覆盖所有行分隔符：U+2028 / U+2029 / \v / \f / NEL 落盘后
+    // 在卡面上不一定换行，但都违背「单行短标签」这条前提。
+    for (const separator of ['\u2028', '\u2029', '\v', '\f', '\u0085']) {
+      const codePoint = separator.codePointAt(0).toString(16).toUpperCase()
+      await assert.rejects(
+        () => createCard.execute({ title: '任务', kind: `研${separator}发` }, leader),
+        /kind 不能换行/,
+        `kind 含 U+${codePoint} 应被拒`,
+      )
+    }
+
+    const changed = await updateCard.execute({ id: created.card.id, kind: '文档' }, leader)
+    assert.equal(changed.card.kind, '文档')
+
+    // 空串是清除，不是「把分类设成空字符串」
+    const cleared = await updateCard.execute({ id: created.card.id, kind: '' }, leader)
+    assert.equal('kind' in cleared.card, false)
+    assert.equal((await store.get(created.card.id)).kind, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('worker 不能改卡片分类：那是 leader 对任务流的归类', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardkind-'))
+  try {
+    const store = createCardStore({ home })
+    const card = await store.create({ title: '任务', kind: '研发' })
+    const updateCard = createUpdateCardTool({
+      store,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    })
+    await assert.rejects(
+      () => updateCard.execute({ id: card.id, kind: '文档' }, { agent: { id: 'worker-1' } }),
+      /worker 不能改卡片分类/,
+    )
+    // 先判权限再取值：超长 kind 也要报「不能改分类」，而不是让 worker 以为改短就行
+    await assert.rejects(
+      () => updateCard.execute({ id: card.id, kind: 'x'.repeat(50) }, { agent: { id: 'worker-1' } }),
+      /worker 不能改卡片分类/,
+    )
+    // 被拒时既不落盘，也不递增 revision
+    const after = await store.get(card.id)
+    assert.equal(after.kind, '研发')
+    assert.equal(after.revision, 0)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
   DONE_PAGE_SIZE,
   STALLED_THRESHOLD_MS,
+  cardKind,
   cardSignal,
   fitLinkChips,
   foldDoneCards,
@@ -413,4 +414,14 @@ test('轮询快照不覆盖版本更高的本地回填', () => {
   // 同版本以宿主快照为准：别处（leader）的改动照样能落到看板
   const equal = mergeCardSnapshot([local], [{ id: 'c1', revision: 3, links: [{ label: '别处改的' }] }])
   assert.equal(equal[0].links[0].label, '别处改的')
+})
+
+test('分类判据：非空字符串才显示，脏数据一律按未分类', () => {
+  assert.equal(cardKind(card({ kind: '研发' })), '研发')
+  assert.equal(cardKind(card({ kind: '  文档  ' })), '文档')
+  // cards.json 可手改：null、数字、纯空白都不该在卡面上渲染出一块空标签
+  assert.equal(cardKind(card({ kind: null })), null)
+  assert.equal(cardKind(card({ kind: 42 })), null)
+  assert.equal(cardKind(card({ kind: '   ' })), null)
+  assert.equal(cardKind(card({})), null)
 })

@@ -7,10 +7,11 @@
  * 焦点环走 `--dsw-focus-ring-*`。同构的实现是宿主
  * `client-ui-agent-team` 的成员卡。
  *
- * 数值约定：8px 卡间距、13px 标题、11px 弱化文字、22px 链接行缩进。颜色一律走
- * 宿主 `--dsw-*` 令牌，不写死色值。宿主跨 bundle 共享的是组件（`PLATFORM_MODULES`
- * 里的 `ui-primitives`，见 `markdown.js`），它们的 CSS module 不在这张表里，也没有
- * Tailwind 可用，因此样式只能自注入（沿用 `modal-shell.js` 的做法）。
+ * 数值约定：8px 卡间距、13px 标题、11px 弱化文字与元信息；卡面内容共用左缘，
+ * 只有会话行用发丝线另起一组。颜色一律走宿主 `--dsw-*` 令牌，不写死色值。
+ * 宿主跨 bundle 共享的是组件（`PLATFORM_MODULES` 里的 `ui-primitives`，见
+ * `markdown.js`），它们的 CSS module 不在这张表里，也没有 Tailwind 可用，
+ * 因此样式只能自注入（沿用 `modal-shell.js` 的做法）。
  *
  * @module dsh-leader-agent/client/board-styles
  */
@@ -82,25 +83,38 @@ const STYLE_TEXT = `
   outline-offset: -2px;
 }
 
-.dsh-leader-agent-board-card-title-row {
+/* 头部：左侧只读身份（#编号 / 分类），右侧主信号。两侧都不进 Tab 序，
+   整行宽度留给标题；头部与标题之间只留 4px，保持同组紧凑 */
+.dsh-leader-agent-board-card-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  margin-bottom: 4px;
 }
 
-/* 信号灯槽：固定 14px，让各卡的标题左缘对齐 */
+.dsh-leader-agent-board-card-id {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 信号灯槽：固定 14px，头部右端不随编号/分类宽度漂移 */
 .dsh-leader-agent-board-signal-slot {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 14px;
-  height: 20px;
+  height: 16px;
 }
 
 /* 图形点的弱化沿用 alpha：这里没有「比 tertiary 更浅」的 token 档，而点要的是
    面积上的退让而不是色相的语义。文字类弱化一律换档不叠 alpha（编号/时间用
-   label-caption、折叠开关用 label-secondary），两条界线互不越界 */
+   label-caption、折叠开关用 label-secondary），两条界线互不越界。
+   --dsh-leader-agent-signal-tone 同时供实心与空心使用：空心灯只把填充换成
+   1px 描边，色相不动——停滞是形状变化，不是另一档状态色 */
 .dsh-leader-agent-board-signal {
   display: inline-block;
   box-sizing: border-box;
@@ -108,44 +122,53 @@ const STYLE_TEXT = `
   height: 8px;
   border-radius: 50%;
   corner-shape: round;
-  background: var(--dsw-alias-label-tertiary);
+  --dsh-leader-agent-signal-tone: var(--dsw-alias-label-tertiary);
+  background: var(--dsh-leader-agent-signal-tone);
   opacity: 0.4;
 }
 
 /* 等你输入与未读同色不同动效：都在等你动作，但「有人在等」与「有结果没看」不同 */
 .dsh-leader-agent-board-signal-waiting {
-  background: var(--dsw-static-blue-500);
+  --dsh-leader-agent-signal-tone: var(--dsw-static-blue-500);
   opacity: 1;
   animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
 }
 
 .dsh-leader-agent-board-signal-unread {
-  background: var(--dsw-static-blue-500);
+  --dsh-leader-agent-signal-tone: var(--dsw-static-blue-500);
   opacity: 1;
 }
 
 .dsh-leader-agent-board-signal-running {
-  background: var(--dsw-alias-state-warn-primary);
+  --dsh-leader-agent-signal-tone: var(--dsw-alias-state-warn-primary);
   opacity: 1;
   animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
 }
 
 .dsh-leader-agent-board-signal-attention {
-  background: var(--dsw-alias-state-error-primary);
+  --dsh-leader-agent-signal-tone: var(--dsw-alias-state-error-primary);
   opacity: 1;
 }
 
 .dsh-leader-agent-board-signal-idle {
-  background: var(--dsw-alias-label-tertiary);
+  --dsh-leader-agent-signal-tone: var(--dsw-alias-label-tertiary);
   opacity: 0.55;
 }
 
 /* 未派工与状态未知共用虚线圈：两者都不谎称空闲，形状上与实心档区分 */
 .dsh-leader-agent-board-signal-unknown,
 .dsh-leader-agent-board-signal-none {
+  --dsh-leader-agent-signal-tone: var(--dsw-alias-label-tertiary);
   background: transparent;
   border: 1px dashed var(--dsw-alias-label-tertiary);
   opacity: 0.55;
+}
+
+/* 停滞：实心改空心（1px 状态色描边）。卡面不再写「停了多久」，形状就是全部
+   信息；与 unknown/none 的虚线区分开——停滞是确定的空闲，不是不可知 */
+.dsh-leader-agent-board-signal-hollow {
+  background: transparent;
+  border: 1px solid var(--dsh-leader-agent-signal-tone);
 }
 
 @keyframes dsh-leader-agent-board-pulse {
@@ -162,49 +185,69 @@ const STYLE_TEXT = `
   flex: none;
   font-family: var(--ds-font-family-code);
   font-size: 11px;
-  line-height: 20px;
+  line-height: 16px;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-caption);
 }
 
-.dsh-leader-agent-board-card-title {
-  flex: 1;
+/* 分类：只读元信息用纯文本，不加填充块、圆角或图标——填充块会被读成按钮，
+   而同一张卡里真正可点的链接与会话入口会因此失去示能差。超长截断而不是
+   撑宽头部：编号与信号灯都不该被分类挤走 */
+.dsh-leader-agent-board-card-kind {
   min-width: 0;
+  max-width: 140px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-leader-agent-board-card-kind-separator {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 标题独占一行：窄栏单行截断看不清任务内容，两行覆盖绝大多数标题；左缘与
+   下方链接/会话一致。medium 而非 semibold——信号灯与状态色已承担强调 */
+.dsh-leader-agent-board-card-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   font-size: 13px;
   line-height: 20px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
 
-.dsh-leader-agent-board-card-stalled {
-  flex: none;
-  font-family: var(--ds-font-family-code);
-  font-size: 11px;
-  line-height: 20px;
-  font-variant-numeric: tabular-nums;
-  /* warn 的 label 档比 primary 档在浅色下更可读 */
-  color: var(--dsw-alias-state-warn-label);
-}
-
-/* 链接行与元信息行缩进 22px，对齐标题文字起点 */
+/* 链接行：与标题同左缘（卡面 padding）。默认一行，放不下的由「+N」收起；
+   padding-bottom 1px 给 3px 下划线的下沉留位，否则收起态的 overflow 会裁掉它 */
 .dsh-leader-agent-board-card-links {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
   margin-top: 6px;
-  padding-left: 22px;
+  padding-bottom: 1px;
   overflow: hidden;
   white-space: nowrap;
 }
 
-/* 测量层：全量 chip 与「+N」的不可见副本（visibility: hidden 仍参与布局），
-   只用来量真实宽度，不承载交互。标签必须与真实 chip 同构（a / button）——
+/* 展开态：全部直出并自然换行。不再裁切，焦点环与下划线都完整 */
+.dsh-leader-agent-board-card-links-expanded {
+  flex-wrap: wrap;
+  overflow: visible;
+  row-gap: 4px;
+  white-space: normal;
+}
+
+/* 测量层：全量链接与「+N」的不可见副本（visibility: hidden 仍参与布局），
+   只用来量真实宽度，不承载交互。标签必须与真实链接同构（a / button）——
    UA 默认样式只要有一条没被覆盖，量出的宽度就和渲染不一致 */
 .dsh-leader-agent-board-links-measure {
   position: absolute;
@@ -212,62 +255,55 @@ const STYLE_TEXT = `
   top: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 12px;
   visibility: hidden;
   pointer-events: none;
 }
 
-/* 链接 chip：宿主「可点击产物链接」的示能——link 色 + 500 字重、默认无
-   下划线、hover 与键盘焦点同为点状下划线，外面套一层发丝线圆角壳把它和
-   卡面分开。18px 高属「低于 H20 的微型控件」，圆角取 R4。
-   max-width 是 border-box 下的 123px：内容盒正好 110px，与改前 content-box
-   写法（110 内容 + 12 横向 padding + 1 双边边框 = 总宽 124）等价——换材质不该
-   顺带把长标签截短。测量层与真实 chip 同 class，两边量到的都是这个 border-box
-   宽度，排布逻辑不受影响 */
-.dsh-leader-agent-board-link-chip {
+/* 链接：一排链接如果都取强调色 + 500 字重，会把整张卡染成一片蓝、压过标题。
+   静息态只留二级文字色的纯文本，hover 与键盘焦点才提亮到宿主的 link 色并出
+   点状下划线——静息态是可读文本，交互态才是可点示能。不前置图标：一行七八条
+   时图标会连成点阵，比标签本身更抢眼；类型识别留给详情浮层。
+   下划线偏移取宿主规范的 3px；不再套发丝线圆角壳，卡面里链接的容器是整张卡。
+   max-width 取 110px 内容宽，长标签截断；测量层与真实链接同一个 class */
+.dsh-leader-agent-board-link {
   display: inline-flex;
   flex: none;
   align-items: center;
   box-sizing: border-box;
-  max-width: 123px;
-  padding: 0 6px;
-  border: 0.5px solid var(--dsw-alias-border-l3);
-  border-radius: var(--dsw-radius-xs);
+  max-width: 110px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-size: 11px;
   line-height: 16px;
-  font-weight: 500;
-  color: var(--dsw-alias-link);
-  background: transparent;
+  font-weight: 400;
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   text-decoration: none;
   overflow: hidden;
 }
 
-/* 链路行是 overflow: hidden 的横向裁切带，外扩焦点环只剩左右两段弧，
-   所以焦点环改内嵌；下划线示能与 hover 一致。
-   下划线偏移取 1px 而不是宿主的 3px：chip 的内容盒只有 16px（line-height
-   16 + 上下各 0.5px 发丝线）。偏移到 3px 时点线仍然画得出来，但已经压在底
-   边框上、与发丝线糊成一条；再往上整条落到 padding box 外，被两层 overflow
-   裁掉——两处独立读数分别从 4px 与 5px 起消失，差异来自 0.5px 边框在 Chrome
-   被取整成 1px（chip 实际 18px 高）。1px 留出可读的间距 */
-.dsh-leader-agent-board-link-chip:focus-visible {
+/* 收起态是 overflow: hidden 的横向裁切带，外扩焦点环只剩左右两段弧，
+   所以焦点环改内嵌；下划线示能与 hover 一致 */
+.dsh-leader-agent-board-link:focus-visible {
+  color: var(--dsw-alias-link);
   text-decoration: underline dotted;
-  text-underline-offset: 1px;
+  text-underline-offset: 3px;
   outline: var(--dsw-focus-ring-width, 2px) solid
     var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
   outline-offset: -2px;
 }
 
 @media (hover: hover) {
-  .dsh-leader-agent-board-link-chip:hover {
-    border-color: var(--dsw-alias-border-l4);
-    background: var(--dsw-alias-interactive-bg-hover);
+  .dsh-leader-agent-board-link:hover {
+    color: var(--dsw-alias-link);
     text-decoration: underline dotted;
-    text-underline-offset: 1px;
+    text-underline-offset: 3px;
   }
 }
 
-.dsh-leader-agent-board-link-chip-body {
+.dsh-leader-agent-board-link-body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -275,44 +311,100 @@ const STYLE_TEXT = `
   overflow: hidden;
 }
 
-.dsh-leader-agent-board-link-chip-label {
+.dsh-leader-agent-board-link-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 「+N / 收起」：与链接同一行，但它是展开开关而非跳转目标——等宽、三级标签色，
+   悬停提亮到二级；不加箭头，避免与卡面上真正会改变页面位置的入口混淆 */
 .dsh-leader-agent-board-link-overflow {
   font-family: var(--ds-font-family-code);
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-tertiary);
 }
 
-.dsh-leader-agent-board-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 6px;
-  padding-left: 22px;
+@media (hover: hover) {
+  .dsh-leader-agent-board-link-overflow:hover {
+    color: var(--dsw-alias-label-secondary);
+    text-decoration: none;
+  }
 }
 
-.dsh-leader-agent-board-slot-chip {
+/* 溢出开关不跳转，键盘焦点也不该染成链接蓝（上面的 :focus-visible 规则会命中它） */
+.dsh-leader-agent-board-link-overflow:focus-visible {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: none;
+}
+
+/* 会话行：全部直出、自然换行，用一条发丝线把「谁在做」与「产物在哪」分开。
+   行间 4px 纵向、12px 横向——不形成等宽按钮矩阵，角色数增长时不会变成按钮墙 */
+.dsh-leader-agent-board-card-slots {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+/* 会话入口：状态点 + 角色名 + 方向箭头。hover 与键盘焦点给背景块并显示箭头；
+   箭头取 link 色，表达「会跳走」，而状态色只留给状态点 */
+.dsh-leader-agent-board-slot {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 0;
+  min-width: 0;
+  max-width: 100%;
+  margin-left: -4px;
+  padding: 0 4px;
   border: 0;
+  border-radius: var(--dsw-radius-xs);
   background: transparent;
   font-size: 11px;
-  line-height: 16px;
+  line-height: 20px;
   color: var(--dsw-alias-label-tertiary);
   cursor: pointer;
 }
 
+.dsh-leader-agent-board-slot:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: -2px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-board-slot:focus-visible .dsh-leader-agent-board-slot-arrow {
+  opacity: 1;
+}
+
 @media (hover: hover) {
-  .dsh-leader-agent-board-slot-chip:hover {
+  .dsh-leader-agent-board-slot:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
     color: var(--dsw-alias-label-primary);
   }
+
+  .dsh-leader-agent-board-slot:hover .dsh-leader-agent-board-slot-arrow {
+    opacity: 1;
+  }
+}
+
+.dsh-leader-agent-board-slot-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-leader-agent-board-slot-arrow {
+  flex: none;
+  display: inline-flex;
+  color: var(--dsw-alias-link);
+  opacity: 0;
+  transition: opacity var(--ds-transition-duration) var(--ds-ease-in-out);
 }
 
 .dsh-leader-agent-board-slot-dot {
@@ -616,6 +708,26 @@ const STYLE_TEXT = `
   line-height: 16px;
   font-variant-numeric: tabular-nums;
   color: var(--dsw-alias-label-caption);
+}
+
+/* 分类与卡面头部同一套判据与形状：纯文本、不套容器 */
+.dsh-leader-agent-card-detail-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 240px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-caption);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsh-leader-agent-card-detail-kind-separator {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .dsh-leader-agent-card-detail-status {
