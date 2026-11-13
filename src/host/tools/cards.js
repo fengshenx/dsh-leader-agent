@@ -69,11 +69,16 @@ function normalizeKind(value) {
   if (text === undefined) return undefined
   const trimmed = text.trim()
   if (trimmed === '') return ''
-  if (/[\r\n]/.test(trimmed)) {
+  // U+2028 / U+2029 / \v / \f / NEL 在 white-space: normal 下不一定换行，但都会让
+  // 单行标签的判据与承诺脱节（卡面哪天改成 pre-wrap 就露出来）：一律拒。
+  if (/[\r\n\u2028\u2029\v\f\u0085]/.test(trimmed)) {
     throw new Error('卡片工具: kind 不能换行')
   }
-  if (trimmed.length > KIND_MAX_CHARS) {
-    throw new Error(`卡片工具: kind 最长 ${KIND_MAX_CHARS} 个字符，收到 ${trimmed.length} 个`)
+  // 按码点计数：`length` 数的是 UTF-16 码元，13 个 emoji 会被当成 26 个字符拒掉，
+  // 报错里的数字还与他数出来的对不上。
+  const chars = [...trimmed].length
+  if (chars > KIND_MAX_CHARS) {
+    throw new Error(`卡片工具: kind 最长 ${KIND_MAX_CHARS} 个字符，收到 ${chars} 个`)
   }
   return trimmed
 }
@@ -582,7 +587,6 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         throw new Error('update_card: title 不能为空')
       }
       const spec = optionalString(input.spec, 'spec')
-      const kind = normalizeKind(input.kind)
       const links = input.links === undefined ? undefined : normalizeLinks(input.links)
       const addLinks = input.addLinks === undefined ? undefined : normalizeLinks(input.addLinks, { assignIds: false })
       // 整体替换与增量追加是两种意图；同次传会让「不覆盖别人刚写的链接」
@@ -610,11 +614,14 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
       if (owner !== '' && owner !== scope) {
         throw new Error(`update_card: 卡片 ${input.id.trim()} 属于另一个项目，不能跨项目改卡`)
       }
+      // 权限先于取值：worker 根本不能碰分类，先规范化会让「超长」先报出来，
+      // 让它以为改短一点就能改。
       await assertWorkerCardScope(
         exec.agent?.id,
-        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title, kind },
+        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title, kind: input.kind },
         { isWorkerSession, cardBindingsOf },
       )
+      const kind = normalizeKind(input.kind)
       const card = await store.update({
         id: input.id.trim(),
         ...input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision },

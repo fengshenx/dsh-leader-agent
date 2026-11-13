@@ -130,7 +130,6 @@ async function readCard(page, title) {
     const signal = node.querySelector(selectors.signal)
     return {
       header: id?.textContent ?? null,
-      rowWidth: row?.getBoundingClientRect().width ?? null,
       linkIcons: items.reduce((total, item) => total + item.querySelectorAll('svg').length, 0),
       slots: node.querySelectorAll(selectors.slot).length,
       slotNames: Array.from(node.querySelectorAll(selectors.slot)).map((item) => item.textContent),
@@ -237,9 +236,6 @@ test('卡面按导航目标组织：分类在头部、空槽不占位、停滞�
   // 会话行只列已绑定的角色：种了 dev 与 review，review 没有会话，不占位。
   assert.equal(card1.slots, 1, `会话入口应只有已绑定的 1 个，实际 ${card1.slots}：${JSON.stringify(card1.slotNames)}`)
 
-  // 停滞不再写时长：卡面正文里不出现「停滞」。
-  assert.equal(card1.text.includes('停滞'), false, `卡面不该出现停滞文案：${card1.text}`)
-
   // 链接收起态：放不下时出现「+N」，展开后全部直出，但不是打开详情。
   // 链接保持纯文本：一行多条时图标会连成点阵，比标签本身更抢眼
   assert.equal(card1.linkIcons, 0, `卡面链接不该有前置图标，实际 ${card1.linkIcons} 个`)
@@ -277,6 +273,9 @@ test('卡面按导航目标组织：分类在头部、空槽不占位、停滞�
   const card2 = await readCard(page, '停了很久')
   assert.equal(card2.signalClass?.includes('dsh-leader-agent-board-signal-hollow'), true, `停滞卡应是空心灯，实际 class ${JSON.stringify(card2.signalClass)}`)
   assert.equal(card2.header?.includes('文档'), true, `卡 2 头部应含分类「文档」，实际 ${JSON.stringify(card2.header)}`)
+  // 停滞不再写时长，只由空心灯表达。这条必须查真正 stagnant 的卡 2：卡 1 一秒前
+  // 更新过，无论实现改没改都不会出现「停滞」，查它等于没断言。
+  assert.equal(card2.text.includes('停滞'), false, `停滞卡不该出现「停滞」文案：${card2.text}`)
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', `board-card-kind-navigation-${process.pid}`)
   mkdirSync(artifacts, { recursive: true })
