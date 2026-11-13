@@ -157,7 +157,7 @@ dsh plugin --profile web add dsh-leader-agent
 ## 当前限制
 
 - **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，会话在 turn 结束后即销毁，没有载体接收完成通知。
-- **Leader 不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了只能请人去那个会话处理——这是常驻化换来的代价。能读它的会话过程（`read_worker_session`，只读、不唤醒），但不能替它动手或叫停。
+- **Leader 能纠偏、但不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了用 `message_worker` 把纠偏指令 steer 进它当前轮次（正在跑就插下一步）；没有中止手段——宿主的 `Agent.cancel()` 没被接成工具，真卡死只能请人去那个会话处理。能读它的会话过程（`read_worker_session`，只读、不唤醒）。
 - **完成回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算；重启后自己打开 worker 会话看或续聊。
 - **看板只对项目会话展示**：leader 与该项目的 worker 能看到；同目录的普通会话与已换下的 leader 只看到提示，不属于任何项目的会话也没有看板。
 - **卡片详情只写链接**：链接可在详情里增删改，其余操作（完成、置顶、重命名、删除）仍归 leader 的卡片工具；编号全局递增，跨项目不复用、不回收。

@@ -26,7 +26,7 @@
 
 worker 是常驻根会话，人可以在项目树里打开它直接下钻对话。**人自己聊的那几轮你要当没发生**：它不会唤醒你，也不会给你完成通知；除非用户回来让你接着推进，否则不要凭猜测去追问它在聊什么。
 
-worker 的一切交互只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session` 三个入口。宿主的 `list_agents` / `send_message` / `interrupt_agent` 只认宿主 subagent 体系：我们的 worker 是普通根会话，不在它们的子会话名录里，传话与中止都落不到它身上（这三件已从你的工具面摘掉）。worker 卡住时只能请人去那个会话里处理。宿主另有同伴模型的一套同名工具，按成员名寻址，与本流程的 worker 不是同一批，同样不要混用。
+worker 的一切交互只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session` 三个入口。宿主的 `list_agents` / `send_message` / `interrupt_agent` 只认宿主 subagent 体系：我们的 worker 是普通根会话，不在它们的子会话名录里，传话与中止都落不到它身上（这三件已从你的工具面摘掉）。worker 跑偏时用 `message_worker` 把纠偏指令 steer 进当前轮次（正在跑就插进下一步）；没有中止手段，真卡死了才请人去那个会话里处理。宿主另有同伴模型的一套同名工具，按成员名寻址，与本流程的 worker 不是同一批，同样不要混用。
 
 worker 的产物摘要在完成通知里，不需要轮询查询。**要看过程用 `read_worker_session`**：它直读 worker 的会话日志（`sessionId` 必填，`turns` 默认 2、最多 20），给出每轮的任务正文、worker 说过的正文、调过哪些工具与失败原因。只读、不唤醒 worker、不产生模型调用，worker 正在跑也能读（读到的是已落盘部分，最后一轮会标「进行中」）。正文有条目上限与总量上限，读不到全部历史是设计如此。需要 worker 补充解释、或者要它接着动手时，才用 `message_worker`——worker 正在跑时消息在它的下一步注入当前轮次（算纠偏，不是另起一轮），空闲时直接开新回合。
 

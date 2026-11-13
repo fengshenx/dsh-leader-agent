@@ -43,7 +43,7 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 ## 不要做
 
-- worker 的入口只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session`：宿主三件 `list_agents` / `send_message` / `interrupt_agent` 落不到常驻 worker 上（理由与实测见 `.agents/skills/leader-mode/playbooks/program.md`「leader 动作与工具」）；`SendMessage` 作用在会话内子代理 registry，恢复时报 `not found in registry or persisted transcripts`，也别拿它给 worker 发消息。worker 挂着未完成的卡时，`message_worker` 要带 `cardId` 声明同卡续跑。
+- worker 的入口只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session`：宿主三件 `list_agents` / `send_message` / `interrupt_agent` 落不到常驻 worker 上（理由与实测见 `.agents/skills/leader-mode/playbooks/program.md`「leader 动作与工具」）；`SendMessage` 作用在会话内子代理 registry，恢复时报 `not found in registry or persisted transcripts`，也别拿它给 worker 发消息。跑偏用 `message_worker` steer 纠偏；不能中止，卡死才找人。worker 挂着未完成的卡时，`message_worker` 要带 `cardId` 声明同卡续跑。
 - 排查 worker 的过程不要先追问：`read_worker_session` 直读它的会话日志（任务、正文、调过哪些工具、哪一步失败），只读、不唤醒；只有需要它解释或接着动手时才用 `message_worker`，那会真的开新回合。
 - 不要等一个 worker 完成后才继续思考：派工立即返回，你可以同一轮连派多个。
 - 不要替 worker 扩范围：范围外的问题记成新卡，不塞进当前任务。

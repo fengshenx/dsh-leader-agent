@@ -6,6 +6,8 @@
 
 用户提出两条产品需求：worker 要能**常驻**（不是用完即销毁），而且人要能**下钻到 worker 的会话继续对话**。
 
+> **已被 [subagent 能力的重新校准](2026-11-13-subagent-capabilities-rationale-calibration.md) 取代**：后续宿主用 continuable subagent 补上了可对话、冷恢复与 completion notice 唤醒，「只读 / 无法常驻」只对 one-shot 地址成立，不再是 subagent 的通用结论。选根会话的理由改为形态与归属，见新笔记。
+
 原实现把 worker 建在宿主的 subagent 机制上（`subagents.startActivation`）。实测下钻到 worker 会话时输入框根本不存在，正文显示「此子智能体暂时只读 / 父会话当前不在线，重新打开父会话后即可继续发送消息」。源码里的判据是 `ui-subagent/src/client/index.ts` 的 `selectReadOnlySubagent()`：`address.mode === 'one-shot'` 直接判只读，父会话不可用且会话没在跑也判只读。也就是说 subagent 的输入能力由宿主按 catalog mode 与父会话可用性决定，第三方改不了。
 
 常驻同样做不到：`subagent/src/manager.ts` 的 `watchLocalSettlement()` 循环到 `settlementState()` 返回 `ready` 就 `close()` + `finishDisposal()`，没有 keepAlive 开关。
