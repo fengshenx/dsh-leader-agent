@@ -35,7 +35,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 ### 派工与唤醒
 
-worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走宿主 subagent 机制：生命周期由本 bundle 持有的 `AgentHandle` 决定，人可以直接打开它说话；会话各有一份独立 JSONL，进程重启后由 `agents.resume()` 冷恢复。选根会话的理由是**形态与归属**，不是 subagent 做不到：宿主的 subagent 同样是 durable Session、可冷恢复、浏览器可直接对话，但它是树内子会话——进不了本 bundle 的项目树与看板，工具面受父级 preset 与 `maxDepth` 约束，驻留期由 subagent 运行时的回收策略决定。根会话把这三件事收回来：身份进项目树、工具面在 `agent/created` 上按身份裁、存活到显式销毁。
+worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走宿主 subagent 机制：生命周期由本 bundle 持有的 `AgentHandle` 决定，人可以直接打开它说话；会话各有一份独立 JSONL，进程重启后由 `agents.resume()` 冷恢复。选根会话的理由是**形态与归属**，不是 subagent 做不到：宿主的 subagent 同样是 durable Session、可冷恢复、浏览器可直接对话（continuable 地址；one-shot 仍只读），但它是树内子会话——进不了本 bundle 的项目树与看板，工具面受父级 preset 与 `maxDepth` 约束，驻留期由 subagent 运行时的回收策略决定。根会话把这三件事收回来：身份进项目树、工具面在 `agent/created` 上按身份裁、存活到显式销毁。
 
 建 worker 与冷恢复都要显式把 `agentPresets.mount()` 交给 `setup` 并把 preset id 写进 `meta.agentPreset`，否则只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。挂上的是整个标准组合（persona、`agent-instructions`、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web`…），因此 worker 也能向用户提问。worker 的沙箱模式与审批策略在派工时从 leader 继承，回执写回读到的实际权限（[capability-gaps 第 41 条](capability-gaps.md)、[限制](limitations.md#worker-的控制面)）。
 
