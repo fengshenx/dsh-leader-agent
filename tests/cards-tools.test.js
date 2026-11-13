@@ -1012,3 +1012,60 @@ test('worker 不能建卡：建卡与派工是 leader 的一条动作链', async
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('建卡与改卡支持分类：trim 落盘，空串清除，脏值直接拒收', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardkind-'))
+  try {
+    const store = createCardStore({ home })
+    const createCard = createCreateCardTool({ store })
+    const updateCard = createUpdateCardTool({ store })
+    const leader = { agent: { id: 'leader-1' }, signal: undefined }
+
+    const created = await createCard.execute({ title: '任务', kind: '  研发  ' }, leader)
+    assert.equal(created.card.kind, '研发')
+
+    // 分类是卡面头部的短标签：超长会被截断、换行会把头部撑成两行，写入前就拒
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: 'x'.repeat(25) }, leader),
+      /kind 最长 24 个字符/,
+    )
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: '研\n发' }, leader),
+      /kind 不能换行/,
+    )
+    await assert.rejects(
+      () => createCard.execute({ title: '任务', kind: 42 }, leader),
+      /kind 必须是字符串/,
+    )
+
+    const changed = await updateCard.execute({ id: created.card.id, kind: '文档' }, leader)
+    assert.equal(changed.card.kind, '文档')
+
+    // 空串是清除，不是「把分类设成空字符串」
+    const cleared = await updateCard.execute({ id: created.card.id, kind: '' }, leader)
+    assert.equal('kind' in cleared.card, false)
+    assert.equal((await store.get(created.card.id)).kind, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('worker 不能改卡片分类：那是 leader 对任务流的归类', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardkind-'))
+  try {
+    const store = createCardStore({ home })
+    const card = await store.create({ title: '任务', kind: '研发' })
+    const updateCard = createUpdateCardTool({
+      store,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    })
+    await assert.rejects(
+      () => updateCard.execute({ id: card.id, kind: '文档' }, { agent: { id: 'worker-1' } }),
+      /worker 不能改卡片分类/,
+    )
+    // 被拒时不落盘
+    assert.equal((await store.get(card.id)).kind, '研发')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

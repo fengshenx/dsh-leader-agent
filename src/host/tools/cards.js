@@ -51,6 +51,33 @@ function optionalNumber(value, label) {
   return value
 }
 
+/** 卡片分类标签的最大字符数。 */
+const KIND_MAX_CHARS = 24
+
+/**
+ * 校验卡片分类。
+ *
+ * 分类是卡面头部的只读短标签（如「研发」「方案」），不是自由文本：换行会把
+ * 头部撑成两行，超长在卡面上只能截断。空串是「清除分类」的显式意图，与省略
+ * （不改）区分——改卡需要这条区别。
+ *
+ * @param {unknown} value - 字段值
+ * @returns {string | undefined} 规范化后的分类；省略时为 undefined，清除时为空串
+ */
+function normalizeKind(value) {
+  const text = optionalString(value, 'kind')
+  if (text === undefined) return undefined
+  const trimmed = text.trim()
+  if (trimmed === '') return ''
+  if (/[\r\n]/.test(trimmed)) {
+    throw new Error('卡片工具: kind 不能换行')
+  }
+  if (trimmed.length > KIND_MAX_CHARS) {
+    throw new Error(`卡片工具: kind 最长 ${KIND_MAX_CHARS} 个字符，收到 ${trimmed.length} 个`)
+  }
+  return trimmed
+}
+
 /**
  * 链接条目的 JSON Schema。
  * @returns {object} schema
@@ -117,6 +144,7 @@ function cardSchema() {
       revision: { type: 'number' },
       title: { type: 'string' },
       spec: { type: 'string' },
+      kind: { type: 'string' },
       status: { type: 'string', enum: ['active', 'done', 'archived'] },
       links: { type: 'array', items: linkSchema() },
       slots: slotsSchema(),
@@ -342,13 +370,14 @@ function assertCardCreator(sessionId, isWorkerSession) {
  * @param {string | undefined} input.status - 要写入的状态
  * @param {string | undefined} input.spec - 要写入的规格
  * @param {string | undefined} input.title - 要写入的标题
+ * @param {string | undefined} input.kind - 要写入的分类
  * @param {object} options - 判定依赖
  * @param {((sessionId: string | undefined) => boolean) | undefined} options.isWorkerSession - worker 判定
  * @param {((sessionId: string) => Promise<object[]>) | undefined} options.cardBindingsOf - 会话的卡片绑定
  * @returns {Promise<void>} 范围校验通过
- * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态、改规格、改标题
+ * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态、改规格、改标题、改分类
  */
-async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, title }, { isWorkerSession, cardBindingsOf }) {
+async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, title, kind }, { isWorkerSession, cardBindingsOf }) {
   if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
   if (slots !== undefined) {
     throw new Error('update_card: worker 不能改卡片的槽位绑定——换执行者请在 leader 会话里做')
@@ -361,6 +390,9 @@ async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, t
   }
   if (title !== undefined) {
     throw new Error('update_card: worker 不能改卡片标题——标题与 spec 走同一条注入通道，只在回执里写进展；交付物挂到 links')
+  }
+  if (kind !== undefined) {
+    throw new Error('update_card: worker 不能改卡片分类——分类是 leader 对任务流的归类，交付物挂到 links、进展写进回报')
   }
   if (typeof cardBindingsOf !== 'function') return
   const bindings = await cardBindingsOf(sessionId)
@@ -394,6 +426,10 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
           type: 'string',
           description: '任务规格：任务简报与验收标准。leader 验收判断与 worker 防漂移的锚点。',
         },
+        kind: {
+          type: 'string',
+          description: `分类标签：卡面头部显示在编号后的短标签（如「研发」「方案」「文档」），最长 ${KIND_MAX_CHARS} 个字符、不能换行；省略即未分类。同一项目的卡用同一套分类名，卡面才能扫读。`,
+        },
         links: {
           type: 'array',
           items: linkSchema(),
@@ -423,7 +459,7 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ title: string, spec?: string, links?: object[], slots?: object, checkpoint?: unknown }} */ (args)
+      const input = /** @type {{ title: string, spec?: string, kind?: string, links?: object[], slots?: object, checkpoint?: unknown }} */ (args)
       await assertCardWriter(exec.agent?.id, canWrite)
       assertCardCreator(exec.agent?.id, isWorkerSession)
       if (typeof input.title !== 'string' || input.title.trim() === '') {
@@ -435,6 +471,7 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
         throw new Error('create_card: checkpoint 已移除，任务事实请写进 spec')
       }
       const spec = optionalString(input.spec, 'spec')
+      const kind = normalizeKind(input.kind)
       const links = input.links === undefined ? undefined : normalizeLinks(input.links)
       const slots = input.slots === undefined ? undefined : normalizeSlots(input.slots)
       // 卡片归属项目由宿主按调用方会话判定，模型不传项目参数：模型未必知道自己是
@@ -443,6 +480,8 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
       const card = await store.create({
         title: input.title.trim(),
         ...spec === undefined ? {} : { spec },
+        // 建卡时空串与省略同义：新卡没有分类可清除
+        ...kind === undefined || kind === '' ? {} : { kind },
         ...links === undefined ? {} : { links },
         ...slots === undefined ? {} : { slots },
         ...project === undefined ? {} : { projectId: project.id },
@@ -470,7 +509,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
   return {
     name: 'update_card',
     description:
-      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡；worker 只能改自己挂着的卡，且不能改状态、规格、标题与槽位绑定。',
+      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡；worker 只能改自己挂着的卡，且不能改状态、规格、标题、分类与槽位绑定。',
     parameters: {
       type: 'object',
       properties: {
@@ -481,6 +520,10 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         },
         title: { type: 'string', description: '新标题。' },
         spec: { type: 'string', description: '新规格。' },
+        kind: {
+          type: 'string',
+          description: `新分类标签（最长 ${KIND_MAX_CHARS} 个字符、不能换行）；传空串清除分类。`,
+        },
         status: {
           type: 'string',
           enum: ['active', 'done', 'archived'],
@@ -521,7 +564,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
+      const input = /** @type {{ id: string, expectedRevision?: number, title?: string, spec?: string, kind?: string, status?: string, links?: object[], addLinks?: object[], slots?: object, sortOrder?: number, checkpoint?: unknown }} */ (args)
       await assertCardWriter(exec.agent?.id, canWrite)
       if (typeof input.id !== 'string' || input.id.trim() === '') {
         throw new Error('update_card: id 不能为空')
@@ -539,6 +582,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         throw new Error('update_card: title 不能为空')
       }
       const spec = optionalString(input.spec, 'spec')
+      const kind = normalizeKind(input.kind)
       const links = input.links === undefined ? undefined : normalizeLinks(input.links)
       const addLinks = input.addLinks === undefined ? undefined : normalizeLinks(input.addLinks, { assignIds: false })
       // 整体替换与增量追加是两种意图；同次传会让「不覆盖别人刚写的链接」
@@ -568,7 +612,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
       }
       await assertWorkerCardScope(
         exec.agent?.id,
-        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title },
+        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title, kind },
         { isWorkerSession, cardBindingsOf },
       )
       const card = await store.update({
@@ -576,6 +620,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         ...input.expectedRevision === undefined ? {} : { expectedRevision: input.expectedRevision },
         ...input.title === undefined ? {} : { title: input.title.trim() },
         ...spec === undefined ? {} : { spec },
+        ...kind === undefined ? {} : { kind },
         ...input.status === undefined ? {} : { status: input.status },
         ...links === undefined ? {} : { links },
         ...addLinks === undefined ? {} : { addLinks },

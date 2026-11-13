@@ -93,7 +93,7 @@ test('50% 与 999px 全圆声明都配对 corner-shape: round，不被主题的 
 })
 
 test('可点击产物链接在 hover 与键盘焦点下都出点状下划线', () => {
-  for (const selector of ['.dsh-leader-agent-board-link-chip', '.dsh-leader-agent-card-detail-link']) {
+  for (const selector of ['.dsh-leader-agent-board-link', '.dsh-leader-agent-card-detail-link']) {
     const focus = rules.find((rule) => rule.selector === `${selector}:focus-visible`)
     assert.notEqual(focus, undefined, `${selector} 缺 :focus-visible 规则`)
     assert.equal(focus.declarations['text-decoration'], 'underline dotted', `${selector} 的焦点态没有点状下划线`)
@@ -102,26 +102,29 @@ test('可点击产物链接在 hover 与键盘焦点下都出点状下划线', (
   }
 })
 
-test('chip 的下划线偏移取 1px，真机上整条画得出来', () => {
-  // 这是一个真机读数定下来的字面量，不是几何推导：隔离实例里逐档改 offset 再重建
-  // 产物，1px 点线完整、离底边框有余量；3px 仍然画得出来但已压在底边框上、与发丝
-  // 线糊成一条；再往上整条落到 padding box 外被两层 overflow 裁掉（两处读数分别
-  // 从 4px 与 5px 起）。CSS 声明层看不出基线位置，所以这里只能守字面量——谁要改它
-  // 得先有新的真机读数
-  for (const selector of ['.dsh-leader-agent-board-link-chip:focus-visible', '.dsh-leader-agent-board-link-chip:hover']) {
+test('卡面链接的下划线偏移取宿主规范的 3px，收起态容器预留了下沉空间', () => {
+  // 卡面链接已去掉发丝线壳，行高 16px 与宿主普通链接一致，下划线按宿主规范用 3px
+  // offset。收起态链接行是 overflow: hidden 的裁切带，1px 的 padding-bottom 给
+  // 3px 下划线留出下沉空间——两者是一组，改任何一个都要重新量
+  const offsets = []
+  for (const selector of ['.dsh-leader-agent-board-link:focus-visible', '.dsh-leader-agent-board-link:hover']) {
     const rule = rules.find((item) => item.selector === selector)
     assert.notEqual(rule, undefined, `缺 ${selector} 规则`)
-    assert.equal(rule.declarations['text-underline-offset'], '1px', `${selector} 的下划线偏移不是真机定下来的 1px`)
+    assert.equal(rule.declarations['text-underline-offset'], '3px', `${selector} 的下划线偏移不是宿主规范的 3px`)
+    offsets.push(rule)
   }
+  assert.equal(offsets.length, 2)
+  const links = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-card-links')
+  assert.equal(links?.declarations['padding-bottom'], '1px', '收起态链接行没给下划线留下沉空间')
 })
 
-test('链路行的裁切带里，chip 的焦点环内嵌绘制', () => {
-  const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-link-chip:focus-visible')
-  assert.notEqual(focus, undefined, 'chip 缺 :focus-visible 规则')
+test('链路行的裁切带里，链接的焦点环内嵌绘制', () => {
+  const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-link:focus-visible')
+  assert.notEqual(focus, undefined, '链接缺 :focus-visible 规则')
   const offset = Number.parseFloat(focus.declarations['outline-offset'] ?? '')
-  // 必须严格小于 0：0 的环仍画在边框外侧，会被 .dsh-leader-agent-board-links 的
-  // overflow 裁成左右两段竖条
-  assert.ok(Number.isFinite(offset) && offset < 0, 'chip 的焦点环外扩时会被 .dsh-leader-agent-board-links 的 overflow 裁掉')
+  // 必须严格小于 0：0 的环仍画在边框外侧，会被 .dsh-leader-agent-board-card-links
+  // 的 overflow 裁成左右两段竖条
+  assert.ok(Number.isFinite(offset) && offset < 0, '链接的焦点环外扩时会被 .dsh-leader-agent-board-card-links 的 overflow 裁掉')
 })
 
 test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默回落成空值）', () => {
@@ -221,4 +224,29 @@ test('中性 border 与 elevation 投影不同时出现在一条规则里', () =
     )
     assert.equal(conflicting, false, `${rule.selector} 同时有中性 border 与 elevation 投影`)
   }
+})
+
+test('只读分类是纯文本：没有填充块、圆角或边框', () => {
+  // 填充块会被读成按钮，而同一张卡里真正可点的链接与会话入口会因此失去示能差
+  for (const selector of ['.dsh-leader-agent-board-card-kind', '.dsh-leader-agent-card-detail-kind']) {
+    const rule = rules.find((item) => item.selector === selector)
+    assert.notEqual(rule, undefined, `缺 ${selector} 规则`)
+    for (const property of ['background', 'border', 'border-radius']) {
+      assert.equal(rule.declarations[property], undefined, `${selector} 给只读分类加了 ${property}`)
+    }
+  }
+})
+
+test('卡面链接去掉容器壳，会话行用 0.5px 中性发丝线分组', () => {
+  const link = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-link')
+  assert.notEqual(link, undefined, '缺卡面链接规则')
+  // 链接是文本入口：容器是整张卡，不再套一层发丝线圆角壳
+  assert.equal(link.declarations.border, '0', '卡面链接不该有容器边框')
+  assert.equal(link.declarations['border-radius'], undefined, '卡面链接不该有圆角壳')
+  assert.equal(link.declarations.background, 'transparent', '卡面链接不该有填充块')
+
+  const slots = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-card-slots')
+  assert.notEqual(slots, undefined, '缺会话行规则')
+  assert.equal(slots.declarations['border-top'], '0.5px solid var(--dsw-alias-border-l3)', '会话行的分组线不是宿主发丝线')
+  assert.equal(slots.declarations['flex-wrap'], 'wrap', '会话入口要全部直出并自然换行，不收进「+N」')
 })

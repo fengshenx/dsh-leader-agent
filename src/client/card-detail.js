@@ -21,6 +21,7 @@ import {
   statusLabel,
 } from './card-detail-view.js'
 import { CardLinksEditor } from './card-links-editor.js'
+import { cardKind } from './board-projection.js'
 import { isJumpableLink, linkRowKey } from './link-row.js'
 import { Markdown } from './markdown.js'
 import { productIcon } from './icons.js'
@@ -58,6 +59,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
   }, [editing])
   const sections = detailSections(card)
   const done = card?.status === 'done'
+  const kind = cardKind(card)
   const editable = canEditCardLinks(card)
 
   /**
@@ -109,6 +111,14 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
           { className: 'dsh-leader-agent-card-detail-number' },
           `#${card?.number ?? '?'}`,
         ),
+        kind === null
+          ? null
+          : createElement(
+              'span',
+              { className: 'dsh-leader-agent-card-detail-kind' },
+              createElement('span', { className: 'dsh-leader-agent-card-detail-kind-separator' }, '/'),
+              kind,
+            ),
         createElement(
           'span',
           {
@@ -165,11 +175,11 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
                     sections.links.map((link, index) => {
                       const row = createElement(
                         'span',
-                        { className: 'dsh-leader-agent-board-link-chip-body' },
+                        { className: 'dsh-leader-agent-board-link-body' },
                         productIcon('link-outline', { size: 12 }),
                         createElement(
                           'span',
-                          { className: 'dsh-leader-agent-board-link-chip-label' },
+                          { className: 'dsh-leader-agent-board-link-label' },
                           link.label ?? '',
                         ),
                         link.purpose

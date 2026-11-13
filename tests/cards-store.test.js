@@ -558,3 +558,29 @@ test('卡片事实索引随建卡、改卡、摘绑定同步', async () => {
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('分类落盘：建卡写入，改卡可换可清，清除后字段消失', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '任务', kind: '研发' })
+    assert.equal(card.kind, '研发')
+
+    const changed = await store.update({ id: card.id, kind: '文档' })
+    assert.equal(changed.kind, '文档')
+
+    // 幂等：同一个分类再写一次不是内容更新，不递增版本（否则会作废别人持有的 expectedRevision）
+    const same = await store.update({ id: card.id, kind: '文档' })
+    assert.equal(same.revision, changed.revision)
+
+    // 空串是显式清除：字段从落盘对象里消失，不留一个空字符串冒充分类
+    const cleared = await store.update({ id: card.id, kind: '' })
+    assert.equal('kind' in cleared, false)
+
+    // 不传 kind 的改卡不动分类：清除之后仍然没有
+    const renamed = await store.update({ id: card.id, title: '新标题' })
+    assert.equal('kind' in renamed, false)
+    assert.equal(renamed.title, '新标题')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

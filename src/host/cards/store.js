@@ -154,13 +154,14 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
      * @param {object} input - 建卡输入
      * @param {string} input.title - 任务标题
      * @param {string} [input.spec] - 任务规格
+     * @param {string} [input.kind] - 分类标签；省略表示未分类
      * @param {object[]} [input.links] - 链接条目
      * @param {object} [input.slots] - 槽位绑定
      * @param {string} [input.projectId] - 所属项目 id；宿主按调用方会话判定
      * @param {string} [input.createdBy] - 建卡会话 id
      * @returns {Promise<object>} 新建的卡片
      */
-    async create({ title, spec, links, slots, projectId, createdBy }) {
+    async create({ title, spec, kind, links, slots, projectId, createdBy }) {
       return serialize(async () => {
         const store = await readStore(file, recoverFromCorruption, io)
         const now = clock()
@@ -170,6 +171,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
           revision: 0,
           title,
           ...spec === undefined ? {} : { spec },
+          ...kind === undefined ? {} : { kind },
           status: 'active',
           ...links === undefined ? {} : { links },
           ...slots === undefined ? {} : { slots },
@@ -193,6 +195,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
      * @param {number} [input.expectedRevision] - 期望的内容版本
      * @param {string} [input.title] - 新标题
      * @param {string} [input.spec] - 新规格
+     * @param {string} [input.kind] - 新分类；空串表示清除分类
      * @param {string} [input.status] - 新状态
      * @param {object[]} [input.links] - 新链接条目（整体替换）
      * @param {object[]} [input.addLinks] - 追加的链接条目（按 id 合并，与 `links` 互斥）
@@ -205,6 +208,7 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
       expectedRevision,
       title,
       spec,
+      kind,
       status,
       links,
       addLinks,
@@ -244,6 +248,11 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
         const next = { ...card }
         if (title !== undefined) next.title = title
         if (spec !== undefined) next.spec = spec
+        // 空串是「清除分类」——卡片字段省略即未分类，不留空字符串占位
+        if (kind !== undefined) {
+          if (kind === '') delete next.kind
+          else next.kind = kind
+        }
         if (links !== undefined) next.links = links
         if (addLinks !== undefined) next.links = mergeLinks(card.links, addLinks)
         if (slots !== undefined) next.slots = slots

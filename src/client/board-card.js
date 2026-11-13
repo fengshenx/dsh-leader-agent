@@ -1,9 +1,17 @@
 /**
  * 看板卡片行。
  *
- * 视觉与交互：卡面零操作铬——只做信息与导航，
- * 不放操作按钮；active 卡三层（标题行 / 链接行 / 元信息行），done 卡单行轻量
- * 变体；点卡面开详情，点链接 chip 直跳，点槽位 chip 开会话。
+ * 卡面零操作铬：只做信息与导航，不放操作按钮。active 卡按
+ * 「编号 / 分类 + 信号灯 → 标题 → 链接 → 已挂载会话」组织；done 卡单行轻量
+ * 变体。点卡面开详情，点链接跳目标，点会话打开该会话。
+ *
+ * 信息层级：编号与分类是只读元信息（纯文本、不进 Tab 序），主信号独占右上；
+ * 标题独占一行、与下方内容共用左缘。链接放不下时「+N」**就地展开**，不再借
+ * 开详情——入口位置与导航目标保持一致。会话入口全部直出并自然换行，不收进
+ * 「+N」：状态点与角色名一眼可扫，才是「谁在这张卡上」的完整答案。
+ *
+ * 停滞不显示时长：卡面只由空心灯表达「停了」，时长不进卡面（不与状态争头部）。
+ * 完成时间仍显示在 done 行——那是历史浏览的排序参考。
  *
  * 卡面根是 `role="button"` 且内嵌可聚焦控件，严格说这违反 ARIA 的「button 不含
  * 可聚焦后代」。这是刻意的取舍：整卡热区与嵌套控件并存，子控件保留独立
@@ -14,6 +22,7 @@
 
 import { createElement, memo, useLayoutEffect, useRef, useState } from 'react'
 import {
+  cardKind,
   cardSignal,
   fitLinkChips,
   formatDuration,
@@ -24,13 +33,10 @@ import { isJumpableLink, linkRowKey, planLinkRow } from './link-row.js'
 import { slotDisplayName } from './locales.js'
 import { productIcon } from './icons.js'
 
-/** 链接行左侧缩进，对齐标题文字起点（信号灯槽 14px + 间距 8px）。 */
-const LINKS_ROW_INDENT = 22
-
 /**
  * 键盘触发详情。
  *
- * 只在事件来自卡面根本身时触发：chip 是嵌套控件，它们的 Enter/Space 归自己。
+ * 只在事件来自卡面根本身时触发：链接与会话是嵌套控件，它们的 Enter/Space 归自己。
  *
  * @param {object} event - 键盘事件
  * @param {object} card - 卡片
@@ -46,25 +52,26 @@ function openDetailOnKey(event, card, onOpenDetail) {
 }
 
 /**
- * 链接 chip 的内容：链接图标 + 标签。
+ * 链接内容：跳转图标 + 标签。
  *
  * @param {object} link - 链接
  * @returns {object} React 元素
  */
-function linkChipContent(link) {
+function linkContent(link) {
   return createElement(
     'span',
-    { className: 'dsh-leader-agent-board-link-chip-body' },
-    productIcon('link-outline', { size: 10 }),
-    createElement('span', { className: 'dsh-leader-agent-board-link-chip-label' }, link.label ?? ''),
+    { className: 'dsh-leader-agent-board-link-body' },
+    productIcon('link-outline', { size: 11 }),
+    createElement('span', { className: 'dsh-leader-agent-board-link-label' }, link.label ?? ''),
   )
 }
 
 /**
- * 链接行：可见 chip 按实测宽度算，放不下的收进「+N」。
+ * 链接行：可见链接按实测宽度算，放不下的收进「+N」。
  *
- * 测量层是全量 chip 的不可见副本（`visibility: hidden` 仍参与布局），宽度变化
- * 后重排——收缩后仍能量到被收起的 chip。
+ * 测量层是全量链接的不可见副本（`visibility: hidden` 仍参与布局），宽度变化
+ * 后重排——收缩后仍能量到被收起的条目。展开态不再测量：全部直出并换行，
+ * 行宽不再影响可见集合。
  *
  * @param {object} props - 组件属性
  * @param {object[]} props.links - 链接列表
@@ -75,23 +82,25 @@ function BoardLinks({ links, onOpenDetail }) {
   const row = useRef(null)
   const measure = useRef(null)
   const [visibleCount, setVisibleCount] = useState(links.length)
+  const [expanded, setExpanded] = useState(false)
 
   useLayoutEffect(() => {
     const rowElement = row.current
     const measureElement = measure.current
     if (rowElement === null || measureElement === null) return undefined
     const fit = () => {
+      if (expanded) return
       const widths = Array.from(measureElement.children)
         .map((element) => element.getBoundingClientRect().width)
       // 测量层最后一个固定是「+N」，取的是被收起链接数的上界（links.length）：
       // 实际收起几个要等排布结果出来才知道，只能按最坏情况留位——宁可少露一个
-      // chip，也不能让「+N」被挤出可视区。结构被改坏时 fitLinkChips 把非有限值当
+      // 条目，也不能让「+N」被挤出可视区。结构被改坏时 fitLinkChips 把非有限值当
       // 未测量，全量展示
       const overflowWidth = widths.pop() ?? 0
       // 间距取 CSS 的真值：JS 里再写一份常量，改样式时就会算错
       const gap = Number.parseFloat(getComputedStyle(rowElement).columnGap)
       setVisibleCount(fitLinkChips({
-        availableWidth: rowElement.getBoundingClientRect().width - LINKS_ROW_INDENT,
+        availableWidth: rowElement.getBoundingClientRect().width,
         chipWidths: widths,
         overflowWidth,
         gap: Number.isFinite(gap) ? gap : 0,
@@ -102,13 +111,22 @@ function BoardLinks({ links, onOpenDetail }) {
     const observer = new ResizeObserver(fit)
     observer.observe(rowElement)
     return () => observer.disconnect()
-  }, [links])
+  }, [links, expanded])
 
-  const plan = planLinkRow(links, visibleCount)
+  const plan = planLinkRow(links, expanded ? links.length : visibleCount)
+  const indexed = links.map((link, index) => ({ link, index }))
+  const shown = expanded ? indexed : indexed.slice(0, plan.visible.length)
+  const overflow = expanded ? null : plan.overflow
+  const remaining = links.slice(plan.visible.length)
 
   return createElement(
     'div',
-    { ref: row, className: 'dsh-leader-agent-board-card-links' },
+    {
+      ref: row,
+      className: expanded
+        ? 'dsh-leader-agent-board-card-links dsh-leader-agent-board-card-links-expanded'
+        : 'dsh-leader-agent-board-card-links',
+    },
     createElement(
       'div',
       { ref: measure, 'aria-hidden': 'true', className: 'dsh-leader-agent-board-links-measure' },
@@ -117,51 +135,51 @@ function BoardLinks({ links, onOpenDetail }) {
             key: linkRowKey(link, index),
             href: link.url,
             tabIndex: -1,
-            className: 'dsh-leader-agent-board-link-chip',
-          }, linkChipContent(link))
+            className: 'dsh-leader-agent-board-link',
+          }, linkContent(link))
         : createElement('button', {
             key: linkRowKey(link, index),
             type: 'button',
             tabIndex: -1,
-            className: 'dsh-leader-agent-board-link-chip',
-          }, linkChipContent(link)))),
+            className: 'dsh-leader-agent-board-link',
+          }, linkContent(link)))),
       createElement(
         'button',
-        { type: 'button', tabIndex: -1, className: 'dsh-leader-agent-board-link-chip dsh-leader-agent-board-link-overflow' },
+        { type: 'button', tabIndex: -1, className: 'dsh-leader-agent-board-link dsh-leader-agent-board-link-overflow' },
         plan.measureOverflow,
       ),
     ),
-    links.map((link, index) => ({ link, index })).slice(0, plan.visible.length)
-      .map(({ link, index }) => (isJumpableLink(link)
-        ? createElement('a', {
-            key: linkRowKey(link, index),
-            href: link.url,
-            target: '_blank',
-            rel: 'noreferrer',
-            title: link.purpose || link.url,
-            className: 'dsh-leader-agent-board-link-chip',
-            onClick: (event) => { event.stopPropagation() },
-          }, linkChipContent(link))
-        : createElement('button', {
-            key: linkRowKey(link, index),
-            type: 'button',
-            title: link.purpose || link.label,
-            className: 'dsh-leader-agent-board-link-chip',
-            onClick: (event) => {
-              event.stopPropagation()
-              onOpenDetail(event.currentTarget)
-            },
-          }, linkChipContent(link)))),
-    plan.overflow !== null
-      ? createElement('button', {
+    shown.map(({ link, index }) => (isJumpableLink(link)
+      ? createElement('a', {
+          key: linkRowKey(link, index),
+          href: link.url,
+          target: '_blank',
+          rel: 'noreferrer',
+          title: link.purpose || link.url,
+          className: 'dsh-leader-agent-board-link',
+          onClick: (event) => { event.stopPropagation() },
+        }, linkContent(link))
+      : createElement('button', {
+          key: linkRowKey(link, index),
           type: 'button',
-          title: links.map((link) => link.label).join(' · '),
-          className: 'dsh-leader-agent-board-link-chip dsh-leader-agent-board-link-overflow',
+          title: link.purpose || link.label,
+          className: 'dsh-leader-agent-board-link',
           onClick: (event) => {
             event.stopPropagation()
             onOpenDetail(event.currentTarget)
           },
-        }, plan.overflow)
+        }, linkContent(link)))),
+    overflow !== null || expanded
+      ? createElement('button', {
+          type: 'button',
+          'aria-expanded': expanded,
+          title: expanded ? undefined : remaining.map((link) => link.label).join(' · '),
+          className: 'dsh-leader-agent-board-link dsh-leader-agent-board-link-overflow',
+          onClick: (event) => {
+            event.stopPropagation()
+            setExpanded((value) => !value)
+          },
+        }, expanded ? '收起' : overflow)
       : null,
   )
 }
@@ -184,47 +202,41 @@ const STATE_LABELS = {
 }
 
 /**
- * 槽位 chip：状态点 + 槽位显示名，点击打开该槽位绑定的会话。
+ * 会话入口：状态点 + 角色名，方向箭头只在 hover 与键盘焦点时出现。
  *
  * 显示名优先取项目 `SLOTS.md` 的 `label:`，其次内置槽位的 locale 翻译，最后
  * 是槽位名本身。槽位键仍是机器标识，不随显示名变化。
  *
- * 未派工的槽位（没有绑定会话）不是按钮——没有会话可打开。
- *
  * @param {object} props - 组件属性
- * @param {object} props.slot - 槽位视图
+ * @param {object} props.slot - 槽位视图（已绑定会话）
  * @param {(sessionId: string) => void} props.onOpenSession - 打开会话
  * @param {Record<string, string> | undefined} props.labels - 项目下发的槽位显示名
  * @param {(key: string) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
 function BoardSlot({ slot, onOpenSession, labels, t }) {
-  const dot = createElement('span', {
-    className: `dsh-leader-agent-board-slot-dot dsh-leader-agent-board-slot-dot-${slot.state}`,
-  })
   const stateLabel = STATE_LABELS[slot.state] ?? slot.state
   const name = slotDisplayName(slot.name, labels, t)
-  if (slot.sessionId === '') {
-    return createElement(
-      'span',
-      { className: 'dsh-leader-agent-board-slot-chip', title: `${name}：${stateLabel}` },
-      dot,
-      name,
-    )
-  }
   return createElement(
     'button',
     {
       type: 'button',
-      className: 'dsh-leader-agent-board-slot-chip',
+      className: 'dsh-leader-agent-board-slot',
       title: `${name}：${stateLabel}`,
       onClick: (event) => {
         event.stopPropagation()
         onOpenSession(slot.sessionId)
       },
     },
-    dot,
-    name,
+    createElement('span', {
+      className: `dsh-leader-agent-board-slot-dot dsh-leader-agent-board-slot-dot-${slot.state}`,
+    }),
+    createElement('span', { className: 'dsh-leader-agent-board-slot-name' }, name),
+    createElement(
+      'span',
+      { className: 'dsh-leader-agent-board-slot-arrow', 'aria-hidden': 'true' },
+      productIcon('chevron-right-outline', { size: 12 }),
+    ),
   )
 }
 
@@ -269,8 +281,13 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLab
   }
 
   const signal = cardSignal(card, states)
-  const slots = slotViewsForCard(card, states)
+  // 没有会话的角色不占位：未派工由卡面信号灯表达，卡面只列「谁在这张卡上」
+  const slots = slotViewsForCard(card, states).filter((slot) => slot.sessionId !== '')
   const stalled = isCardStalled(card, states, now)
+  // attention 是混合态，红实心压过停滞：失败比停着更该先看。其余档位停滞
+  // 一律降成空心灯——卡面不再用文字写「停了多久」
+  const hollow = stalled && signal !== 'attention'
+  const kind = cardKind(card)
 
   return createElement(
     'div',
@@ -283,32 +300,35 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLab
     },
     createElement(
       'div',
-      { className: 'dsh-leader-agent-board-card-title-row' },
+      { className: 'dsh-leader-agent-board-card-head' },
+      createElement(
+        'span',
+        { className: 'dsh-leader-agent-board-card-id' },
+        createElement('span', { className: 'dsh-leader-agent-board-card-number' }, `#${card.number ?? '?'}`),
+        kind === null
+          ? null
+          : createElement('span', { className: 'dsh-leader-agent-board-card-kind-separator' }, '/'),
+        kind === null
+          ? null
+          : createElement('span', { className: 'dsh-leader-agent-board-card-kind', title: kind }, kind),
+      ),
       createElement(
         'span',
         { className: 'dsh-leader-agent-board-signal-slot' },
         createElement('span', {
-          className: `dsh-leader-agent-board-signal dsh-leader-agent-board-signal-${signal}`,
+          className: `dsh-leader-agent-board-signal dsh-leader-agent-board-signal-${signal}${hollow ? ' dsh-leader-agent-board-signal-hollow' : ''}`,
           title: STATE_LABELS[signal] ?? signal,
         }),
       ),
-      createElement('span', { className: 'dsh-leader-agent-board-card-number' }, `#${card.number ?? '?'}`),
-      createElement('span', { className: 'dsh-leader-agent-board-card-title', title: card.title }, card.title ?? ''),
-      stalled
-        ? createElement(
-            'span',
-            { className: 'dsh-leader-agent-board-card-stalled' },
-            `停滞 ${formatDuration(card.updatedAt ?? 0, now)}`,
-          )
-        : null,
     ),
+    createElement('span', { className: 'dsh-leader-agent-board-card-title', title: card.title }, card.title ?? ''),
     links.length > 0
       ? createElement(BoardLinks, { links, onOpenDetail: (anchor) => onOpenDetail(card, anchor) })
       : null,
     slots.length > 0
       ? createElement(
           'div',
-          { className: 'dsh-leader-agent-board-card-meta' },
+          { className: 'dsh-leader-agent-board-card-slots' },
           slots.map((slot) => createElement(BoardSlot, {
             key: slot.name,
             slot,

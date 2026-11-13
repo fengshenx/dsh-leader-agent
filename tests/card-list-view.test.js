@@ -176,3 +176,16 @@ test('列表视图：单卡查询忽略 status 与分页', () => {
   assert.match(rendered, /cardId: card-1/)
   assert.match(rendered, /\[done\]/)
 })
+
+test('列表视图：分类显式成行，未分类写「无」', () => {
+  // 省略这一行会让模型把「没有分类」读成「工具不给分类」，而补分类正是它的下一步动作
+  const cards = [card({ kind: '研发' }), card({ id: 'card-2', number: 2 })]
+  const rendered = renderCardList(cards, query({ status: 'all' }))
+  assert.match(rendered, /kind: 研发/)
+  assert.match(rendered, /kind: 无/)
+})
+
+test('列表视图：单卡查询同样给出分类', () => {
+  const cards = [card({ kind: '文档' })]
+  assert.match(renderCardList(cards, query({ cardId: 'card-1' })), /kind: 文档/)
+})
