@@ -250,3 +250,25 @@ test('卡面链接去掉容器壳，会话行用 0.5px 中性发丝线分组', (
   assert.equal(slots.declarations['border-top'], '0.5px solid var(--dsw-alias-border-l3)', '会话行的分组线不是宿主发丝线')
   assert.equal(slots.declarations['flex-wrap'], 'wrap', '会话入口要全部直出并自然换行，不收进「+N」')
 })
+
+test('卡面链接静息态不抢强调色，hover 与键盘焦点才提亮', () => {
+  // 一排链接都取强调色 + 500 字重会把整张卡染成一片蓝、压过标题：静息态是可读
+  // 文本，只有交互态才是可点示能
+  const link = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-link')
+  assert.equal(link?.declarations.color, 'var(--dsw-alias-label-secondary)', '链接静息态不该用强调色')
+  assert.equal(link?.declarations['font-weight'], '400', '链接静息态不该用加粗字重')
+
+  for (const selector of ['.dsh-leader-agent-board-link:hover', '.dsh-leader-agent-board-link:focus-visible']) {
+    const rule = rules.find((item) => item.selector === selector)
+    assert.equal(rule?.declarations.color, 'var(--dsw-alias-link)', `${selector} 没有提亮到链接色`)
+  }
+
+  // 「+N」是展开开关不是跳转目标：hover 与焦点都保持二级文字色，不染链接蓝
+  for (const selector of [
+    '.dsh-leader-agent-board-link-overflow:hover',
+    '.dsh-leader-agent-board-link-overflow:focus-visible',
+  ]) {
+    const rule = rules.find((item) => item.selector === selector)
+    assert.equal(rule?.declarations.color, 'var(--dsw-alias-label-secondary)', `${selector} 不该染成链接色`)
+  }
+})

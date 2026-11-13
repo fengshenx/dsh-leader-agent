@@ -260,9 +260,11 @@ const STYLE_TEXT = `
   pointer-events: none;
 }
 
-/* 链接：宿主「可点击产物链接」的示能——link 色 + 500 字重、默认无下划线、
-   hover 与键盘焦点同为 3px offset 点状下划线。不再套发丝线圆角壳：卡面里
-   链接是文本入口，容器是整张卡；两种形状语言混在一起会抢标题。
+/* 链接：一排链接如果都取强调色 + 500 字重，会把整张卡染成一片蓝、压过标题。
+   静息态只留二级文字色的纯文本，hover 与键盘焦点才提亮到宿主的 link 色并出
+   点状下划线——静息态是可读文本，交互态才是可点示能。不前置图标：一行七八条
+   时图标会连成点阵，比标签本身更抢眼；类型识别留给详情浮层。
+   下划线偏移取宿主规范的 3px；不再套发丝线圆角壳，卡面里链接的容器是整张卡。
    max-width 取 110px 内容宽，长标签截断；测量层与真实链接同一个 class */
 .dsh-leader-agent-board-link {
   display: inline-flex;
@@ -275,8 +277,8 @@ const STYLE_TEXT = `
   background: transparent;
   font-size: 11px;
   line-height: 16px;
-  font-weight: 500;
-  color: var(--dsw-alias-link);
+  font-weight: 400;
+  color: var(--dsw-alias-label-secondary);
   cursor: pointer;
   text-decoration: none;
   overflow: hidden;
@@ -285,6 +287,7 @@ const STYLE_TEXT = `
 /* 收起态是 overflow: hidden 的横向裁切带，外扩焦点环只剩左右两段弧，
    所以焦点环改内嵌；下划线示能与 hover 一致 */
 .dsh-leader-agent-board-link:focus-visible {
+  color: var(--dsw-alias-link);
   text-decoration: underline dotted;
   text-underline-offset: 3px;
   outline: var(--dsw-focus-ring-width, 2px) solid
@@ -294,6 +297,7 @@ const STYLE_TEXT = `
 
 @media (hover: hover) {
   .dsh-leader-agent-board-link:hover {
+    color: var(--dsw-alias-link);
     text-decoration: underline dotted;
     text-underline-offset: 3px;
   }
@@ -327,6 +331,12 @@ const STYLE_TEXT = `
     color: var(--dsw-alias-label-secondary);
     text-decoration: none;
   }
+}
+
+/* 溢出开关不跳转，键盘焦点也不该染成链接蓝（上面的 :focus-visible 规则会命中它） */
+.dsh-leader-agent-board-link-overflow:focus-visible {
+  color: var(--dsw-alias-label-secondary);
+  text-decoration: none;
 }
 
 /* 会话行：全部直出、自然换行，用一条发丝线把「谁在做」与「产物在哪」分开。

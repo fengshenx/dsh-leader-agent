@@ -52,7 +52,10 @@ function openDetailOnKey(event, card, onOpenDetail) {
 }
 
 /**
- * 链接内容：跳转图标 + 标签。
+ * 链接内容：只留标签文本。
+ *
+ * 卡面一行可能排到七八条链接，每条都前置一个链图标会连成一片点阵，比文字本身
+ * 更抢眼——链接的类型识别留给详情浮层，卡面只表达「这里有哪些产物」。
  *
  * @param {object} link - 链接
  * @returns {object} React 元素
@@ -61,7 +64,6 @@ function linkContent(link) {
   return createElement(
     'span',
     { className: 'dsh-leader-agent-board-link-body' },
-    productIcon('link-outline', { size: 11 }),
     createElement('span', { className: 'dsh-leader-agent-board-link-label' }, link.label ?? ''),
   )
 }
