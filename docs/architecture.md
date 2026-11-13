@@ -133,16 +133,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 ## 目录职责
 
-| 目录 | 职责 |
-|---|---|
-| `src/host/` | 工具注册与角色裁剪、派工与结算、worker 会话生命周期与权限继承、卡片与项目存储、项目通道、提示词注入 |
-| `src/host/tools/` | 六个工具的实现：`spawn_worker` / `message_worker` / `read_worker_session` / `create_card` / `update_card` / `list_cards` |
-| `src/client/` | 左栏项目区块与项目树、右栏看板与卡片详情、agent 消息气泡、浮层与提示条 |
-| `src/shared/` | 两端共用的纯函数与线上类型（frontmatter 解析、卡片链接判定、项目通道方法名） |
-| `.agents/skills/` | 协议层 `leader-mode` 与项目初始化方法 `init-leader-agent` |
-| `build/`、`scripts/` | 客户端构建（原子替换）与开发实例、worktree、门禁脚本 |
-
-单个文件的职责写在文件头注释里——那是权威来源，不在文档里再抄一份。改某块前按 [AGENTS.md 的按任务查阅](../AGENTS.md#按任务查阅)找归属文档。
+目录划分见 [AGENTS.md 的目录与职责](../AGENTS.md#目录与职责)。单个文件的职责写在文件头注释里——那是权威来源，不在文档里再抄一份。改某块前按 [AGENTS.md 的按任务查阅](../AGENTS.md#按任务查阅)找归属文档。
 
 ## 编排动作与工具
 
@@ -154,8 +145,6 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 读 worker 回报 | 完成通知 | 本 bundle 的唤醒器 |
 | 回看 worker 的会话回合（不唤醒） | `read_worker_session` | 本 bundle（读宿主的 `sessionQuery.readSession`） |
 | 建卡 / 改卡 / 查卡 | `create_card` / `update_card` / `list_cards` | 本 bundle |
-
-这套接口是为「leader 派活、worker 干活并自动回报」设计的：会话由 `agents.create` 建，生命周期归本 bundle 管，不经 dsh 的 subagent 机制。
 
 ## 宿主契约与架构约束
 
@@ -169,7 +158,3 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 不能新增 session event 类型（[第 8 条](capability-gaps.md)） | 卡片、通知、项目状态各自独立落盘（`cards/`、`notification-store.js`、`projects/`），会话侧只做 projection |
 | client 产物不能用 `node:`、不引 React / jsdom（[第 23 条](capability-gaps.md)） | `src/client/` 只用宿主模块表与 `React.createElement`，产物由 `build/client.mjs`（薄入口）与 `build/client-bundle.mjs`（配置）打 |
 | 浏览器侧 → 宿主侧只有 Typert 远程通道 | `src/host/projects/remote.js`：`connection.rpc.handle` 对仓外插件不可用，`/api` 被官方 gateway 占用。代价与版本耦合面见[限制](limitations.md#客户端与宿主耦合) |
-
-## 协作与文档机制
-
-本仓的长期记忆分三层，各管一件事：常驻规则在 `AGENTS.md`（每个任务都适用的铁律与按任务查阅入口），决策记忆在 `.agents/notes/{lifecycle}/{class}/`（非平凡改动的永久决策与边界，取值见[目录 README](../.agents/notes/README.md)），长期文档在 `docs/`（架构、限制、宿主能力边界、开发与取证）。分层规则、编辑纪律与文档预算见 [AGENTS.md 的编辑本文件与文档分层](../AGENTS.md#编辑本文件与文档分层)。

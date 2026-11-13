@@ -15,12 +15,12 @@
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/implemented/feature/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
 - **leader 任务气泡没有身份头**。它按用户消息的形态渲染（右侧、无头像与名字，正文与 assistant 内容同套 Markdown（`MarkdownText` compact），单换行按 Markdown 合并、不复原日志式换行；需要断行用空行或 Markdown 语法），所以不显示 leader 是谁，也不能从气泡跳到 leader 会话；`source.parentSessionId` 仍是来源凭证，没有它的历史消息不认领，退回官方上下文行（不是右侧气泡）。
 - **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样挂进输入框上方的「消息队列」条（实测 busy 时直接投会显示「2 queued messages」，与人的消息混在一起）。代价是 leader 正忙时回报要多等这一轮（边界见 [笔记](../.agents/notes/implemented/architecture/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
-- **worker 头像在深色主题下轮廓弱**（既定取舍，不是待修项）。气泡底是前景色混出的 4% 一层，36% 的蓝紫色相落上去只有 1.35:1，块的外轮廓看不出边界；头像本身仍可辨。头像池只有 63 个 seed，worker 多时会有撞图（3 个约 4.7%，5 个约 15%），名字就在头像旁边，不影响身份识别。
+- **worker 头像在深色主题下轮廓弱**（既定取舍）：头像本身仍可辨，但块的外轮廓看不出边界。头像池只有 63 个 seed，worker 多时会撞图（3 个约 4.7%、5 个约 15%），名字在头像旁，不影响身份识别。
 - **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`scripts/desktop-plan.mjs` 取值 trim（`home-paths.js` 照抄宿主：判空 trim、取值不 trim），因为它算出的绝对路径要经 `--env DSH_HOME=` 交给应用。代价：`DSH_HOME=' /x '` 在桌面侧得 `/x`、CLI 侧得 `<cwd>/ /x `。
 
 ## worker 的控制面
 
-- **leader 能纠偏、不能中止，也没有模型侧的名录工具**。纠偏走 `message_worker` 的 `steer`（next-step 边界）：worker 正在跑时消息插进当前轮次的下一个 step，模型下一步就带着它，续派、改名与换卡同一条路径。中止是缺口——宿主的 `Agent.cancel(cause)` 能停掉当前活动，本 bundle 持有 worker 的 `AgentHandle` 却没把它接成工具，所以只能引导 worker 自己收尾，停不了一轮死循环。宿主的 `list_agents` / `send_message` / `interrupt_agent` 对 worker 无效：它们是 subagent 体系的工具、worker 是根会话（`interrupt_agent` 还会返回假的成功回执）；要看项目里有哪些 worker，看项目树（那一层在前端，模型看不到）。
+- **leader 能纠偏、不能中止，也没有模型侧的名录工具**。纠偏走 `message_worker` 的 `steer`：worker 正在跑时消息插进当前轮次的下一个 step，续派、改名与换卡同一条路径。中止是缺口——宿主的 `Agent.cancel(cause)` 能停掉当前活动，本 bundle 持有 `AgentHandle` 却没接成工具，只能引导 worker 自己收尾，停不了一轮死循环。宿主的 `list_agents` / `send_message` / `interrupt_agent` 对 worker 无效（它们是 subagent 体系的工具、worker 是根会话；`interrupt_agent` 还返回假成功回执）；要看项目里有哪些 worker，看项目树（那一层在前端，模型看不到）。
 - **worker 的权限是派工那一刻的快照**。leader 在派工之后切换 preset 不影响已派出的 worker；后台 worker 的 `ask` 没人应答，一律落到 `unavailable`，所以需要审批的调用会被直接拒绝（继承 `ask` 给后台 worker 仍是死路，只有打开这个会话才可能应答）。
 - **`read_worker_session` 是只读视图，不是会话导出**。它读宿主的 `sessionQuery.readSession()`（live 会话读内存快照）并折叠成「一回合一段」：leader 投递的任务、人下钻说的话、worker 说过的正文、调过哪些工具、失败原因、终态。三类 `user/message` 按 `source.kind` 分开——宿主注入的上下文（换目录、plan 模式等）只记条数、不渲染正文，免得冒充任务或挤掉它的预算。正文有条目上限（单条 2000 字符、失败原因 200）与总量上限（12000 字符，按最新优先保留），超出部分丢弃并标注条数与成因（窗口外 / 体积溢出）；截断按码点边界退让，不会切出孤立代理。`turns` 默认 2、最多 20。工具参数与成功结果不返回——那是给排障解释「哪一步失败」，不是完整转录（要完整日志用宿主的会话导出）。权限按项目 leader + 本体系登记归属判，与 `message_worker` 同档；退役 leader 在调用时被判掉。读取路径不调用任何写方法（夹具对 `send` / `append` 等写了硬断言）。
 - **读 worker 会话与 worker 是否在跑无关**：会话日志已落盘的部分随时可读，最后一轮缺 `turn/end` 时标「进行中」并按当前已追加的事件展示——不要把半截输出当结论。worker 还没投过第一条消息时没有日志，工具会说明这一点而不是返回空视图。
