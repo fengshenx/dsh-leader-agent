@@ -321,10 +321,16 @@ test('项目行首改用宿主应用格子字形，不再引用目录字形', ()
   // 渲染：项目行首固定走宿主的应用格子图标，展开与否不再换字形（状态交给悬停箭头与子行）。
   assert.match(source, /productIcon\('apps-add-outline', \{ size: 16 \}\)/)
   assert.doesNotMatch(source, /productIcon\(expanded \? 'folder-open' : 'folder-close'/)
-  // 分区标题仍是宿主的打开文件夹：那是分区的图标，不是单个项目的入口。
-  assert.match(source, /productIcon\('folder-open-outline', \{ size: 16 \}\)/)
-  // 字形表里删掉只被项目行首使用的两个目录字形，行首用的字形在表里。
+  // 分区标题不再有前导图标：标签必须是 header 的第一个内容，才能与宿主「工作区」
+  // 标题同一起点；收起箭头挪到标签之后、悬停才出现。
+  assert.doesNotMatch(source, /productIcon\('folder-open-outline', \{ size: 16 \}\)/)
+  assert.match(
+    source,
+    /className: 'dsh-leader-agent-project-header-label' \}, '项目'\),\s*\n\s*createElement\(\s*\n\s*'span',\s*\n\s*\{ className: 'dsh-leader-agent-project-lead' \},/,
+  )
+  // 字形表里删掉只被分区标题使用的文件夹字形，行首用的字形在表里。
   assert.match(icons, /'apps-add-outline':/)
+  assert.doesNotMatch(icons, /'folder-open-outline':/)
   assert.doesNotMatch(icons, /'folder-close':/)
   assert.doesNotMatch(icons, /'folder-open':/)
 })

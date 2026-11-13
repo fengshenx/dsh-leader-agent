@@ -4,8 +4,9 @@
  * 结构是**项目树**：项目行下面挂着该项目目录里的会话。点项目行展开或收起子会话
  * 列表；leader 会话的入口在行的「更多」菜单里（项目名不再承担两个动作）。
  *
- * 排版对齐宿主的工作区浏览：小节标题用同一套行高与三级标签色，项目行用工作区
- * 行的高度、内边距、圆角与 hover 反馈；行首槽位与官方工作区行同款——平时是宿主应用格子图标
+ * 排版对齐宿主的工作区浏览：小节标题的第一行文字与宿主「工作区」标题同一起点，
+ * 项目行用工作区行的高度、内边距、圆角与 hover 反馈（都取宿主 0.2.2 的几何）；
+ * 行首槽位与官方工作区行同款——平时是宿主应用格子图标
  * `apps-add-outline`（替代宿主的目录图标，免得「项目」与「工作区」在侧边栏里同形），悬停整行时换成
  * 展开箭头，展开时箭头旋转朝下。图标是自带的内联路径
  * （宿主 web 端运行时没有 sprite，见 `icons.js`）。
@@ -29,13 +30,18 @@ const STYLE_TEXT = `
   flex-direction: column;
   padding-right: var(--dsh-session-list-edge-inset, 0px);
 }
+/* 小节标题照宿主 0.2.2 的 sectionHeader：左内边距取 --dsh-sidebar-row-padding
+   （0.2.1 没有这个变量，退回那版的 4px），上外边距 2px、下 4px。
+   标签必须是这一行的第一个内容——宿主的「工作区」标题从内边距处起排，前面多一个
+   图标槽就会把「项目」推右十几像素（0.2.2 实测 32 vs 19）；收起箭头放在标签之后，
+   悬停才出现。 */
 .dsh-leader-agent-project-header {
   display: flex;
   align-items: center;
   gap: 4px;
   height: 36px;
-  padding-left: 4px;
-  margin-bottom: 4px;
+  padding-left: var(--dsh-sidebar-row-padding, 4px);
+  margin: 2px 0 4px;
   box-sizing: border-box;
   color: var(--dsw-alias-label-tertiary);
 }
@@ -80,19 +86,28 @@ const STYLE_TEXT = `
   }
 }
 /* 项目行之间留 2px 间距，照宿主工作区树的「groupSection 直接子元素相邻」规则。
-   行高 34px、背景铺满整行，行间不留缝时上下两行的 hover 底色会贴着拼成一整块。 */
+   行高 32px（0.2.2 的 projectRow/sessionRow）、背景铺满整行，行间不留缝时上下
+   两行的 hover 底色会贴着拼成一整块。 */
 .dsh-leader-agent-project-list > * + * {
   margin-top: 2px;
 }
 .dsh-leader-agent-project-block {
   position: relative;
 }
+/* 几何逐项照 0.2.2 的官方工作区行（Rows.module.css 的 projectRow）：行高 32、
+   透明边框吃掉 paint-inset、padding-inline-start 只留 row_padding 与它的差。
+   旧写法是 padding: 0 8px，0.2.2 上内容比宿主行靠左 4px、hover 底色也多铺 3px，
+   与「工作区」行及本区块自己的会话行都对不齐。0.2.1 没有这几个变量，退回
+   8px / 无边框，正是那版硬编码的几何。 */
 .dsh-leader-agent-project-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 34px;
+  height: 32px;
   padding: 0 8px;
+  padding-inline-start: calc(var(--dsh-sidebar-row-padding, 8px) - var(--dsh-sidebar-paint-inset, 0px));
+  border-inline: var(--dsh-sidebar-paint-inset, 0px) solid transparent;
+  background-clip: padding-box;
   box-sizing: border-box;
   border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-primary);
@@ -156,7 +171,7 @@ const STYLE_TEXT = `
 }
 /* 行首槽位：默认应用格子图标（项目行就是 leader 会话的入口），悬停整行时换成展开箭头
    （与官方工作区行同款）。里面的图标与加载圈都是 SVG：不把这层撑成 flex 的话，
-   SVG 按行盒基线排，圈会比行中心高 1.5px（34px 行实测）。类名沿用 -folder 后缀：
+   SVG 按行盒基线排，圈会比行中心高 1.5px（行盒实测）。类名沿用 -folder 后缀：
    槽位位置与宿主工作区行的目录图标同源，改字形不改槽位。 */
 .dsh-leader-agent-project-lead-folder {
   display: inline-flex;
@@ -198,9 +213,6 @@ const STYLE_TEXT = `
   }
   .dsh-leader-agent-project-header:hover .dsh-leader-agent-project-lead-arrow {
     display: inline-flex;
-  }
-  .dsh-leader-agent-project-header:hover .dsh-leader-agent-project-lead-folder {
-    display: none;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -339,9 +351,9 @@ const STYLE_TEXT = `
 }
 /* 会话行逐项照官方工作区会话行（宿主 Rows.module.css 的 sessionRow 与
    sessionRow 下的 title）：行高 32、行内不设 gap（标题自带左右外边距）、文字用
-   一级标签色。左右内边距照官方两代写法：0.2.2 起行用透明边框吃掉 paint-inset、
-   padding 只留 row_padding 与它的差，hover 背景才会比内容窄一圈；rc.2 这两个变量
-   都不存在，落到 8 / 0，与那版硬编码的 8px 一致。 */
+   一级标签色。内边距照官方两代写法：0.2.2 起行用透明边框吃掉 paint-inset、
+   padding-inline-start 只留 row_padding 与它的差（右侧仍是 8），hover 背景才会比
+   内容窄一圈；0.2.1 这两个变量都不存在，落到 8 / 0，与那版硬编码的 8px 一致。 */
 .dsh-leader-agent-session-row {
   display: flex;
   align-items: center;
@@ -349,7 +361,8 @@ const STYLE_TEXT = `
   height: 32px;
   border-inline: var(--dsh-sidebar-paint-inset, 0px) solid transparent;
   background-clip: padding-box;
-  padding: 0 calc(var(--dsh-sidebar-row-padding, 8px) - var(--dsh-sidebar-paint-inset, 0px));
+  padding: 0 8px;
+  padding-inline-start: calc(var(--dsh-sidebar-row-padding, 8px) - var(--dsh-sidebar-paint-inset, 0px));
   box-sizing: border-box;
   border-radius: var(--dsw-radius-md);
   color: var(--dsw-alias-label-primary);
@@ -548,14 +561,10 @@ export function ProjectSection(props) {
           title: listExpanded ? '收起项目列表' : '展开项目列表',
           onClick: onToggleList,
         },
+        createElement('span', { className: 'dsh-leader-agent-project-header-label' }, '项目'),
         createElement(
           'span',
           { className: 'dsh-leader-agent-project-lead' },
-          createElement(
-            'span',
-            { className: 'dsh-leader-agent-project-lead-folder' },
-            productIcon('folder-open-outline', { size: 16 }),
-          ),
           createElement(
             'span',
             {
@@ -565,7 +574,6 @@ export function ProjectSection(props) {
             productIcon('triangle-right-fill', { size: 14 }),
           ),
         ),
-        createElement('span', { className: 'dsh-leader-agent-project-header-label' }, '项目'),
       ),
       createElement(
         'div',
