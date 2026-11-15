@@ -30,8 +30,10 @@ const STYLE_TEXT = `
   flex-direction: column;
   padding-right: var(--dsh-session-list-edge-inset, 0px);
 }
-/* 小节标题照宿主 0.2.2 的 sectionHeader：左内边距取 --dsh-sidebar-row-padding
-   （0.2.1 没有这个变量，退回那版的 4px），上外边距 2px、下 4px。
+/* 小节标题的左内边距与高度照宿主 0.2.2 的 sectionHeader：--dsh-sidebar-row-padding
+   （0.2.1 没有这个变量，退回那版的 4px）与 36px。上下外边距是本区块自己的取值——
+   宿主那份是 margin-top 无、margin-bottom 取 --workspace-toolbar-gap = 0px，
+   这里的 2/4 留的是与下方列表的间距。
    标签必须是这一行的第一个内容——宿主的「工作区」标题从内边距处起排，前面多一个
    图标槽就会把「项目」推右十几像素（0.2.2 实测 32 vs 19）；收起箭头放在标签之后，
    悬停才出现。 */

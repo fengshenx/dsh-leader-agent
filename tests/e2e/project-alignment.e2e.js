@@ -168,7 +168,9 @@ test('项目区块的行高、内边距与左边缘跟宿主工作区树一致',
   const reading = JSON.stringify(geometry)
   assert.ok(geometry.ourRow !== null, `项目行应有可读的盒模型；读数 ${reading}`)
   assert.ok(geometry.hostRow !== null, `宿主工作区行应有可读的盒模型；读数 ${reading}`)
-  // 行高：0.2.1 是 34、0.2.2 起是 32；本区块必须跟宿主同一版，而不是写死其中一版。
+  // 行高：本区块写死 0.2.2 的 32px——宿主没暴露行高的 CSS 变量可继承（只有
+  // row-padding 与 paint-inset）。0.2.1 的宿主行是 34px，本场景在那里会因这 2px
+  // 真实差异失败；那是正确报警，属已知下限版本差异，不为它加版本条件。
   assert.ok(
     Math.abs(geometry.ourRow.height - geometry.hostRow.height) <= 1,
     `项目行行高应与宿主工作区行一致；读数 ${reading}`,
