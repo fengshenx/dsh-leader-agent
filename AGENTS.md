@@ -103,11 +103,14 @@ npm run release:check             # 发版门禁：check + build:client + verify
 ## 提交与 PR
 
 - 非平凡改动同 PR 携带 `.agents/notes/{lifecycle}/{class}/` 笔记：只记永久决策与边界，不写流水账。
-  双轴取值、类目口径与归档规则见[目录内 README](.agents/notes/README.md)。正文按
-  `## 背景` / `## 决策` / `## 边界` / `## 验证` 分节（同现有笔记）：决策拆得开时用 `###`，
-  验证写用例与双向验证读数。结构由 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`
-  机械校验（路径双轴、文件名、唯一 H1、首节与必需节、节名不重复、笔记间链接可达），判定逻辑在
-  `scripts/agent-note-format.mjs`，读盘遍历在 `scripts/agent-note-audit.mjs`。
+  双轴取值、类目口径、头部/Status、归档判据见[目录内 README](.agents/notes/README.md)，动笔前的取代检查与写作清单见
+  [目录内 AGENTS.md](.agents/notes/AGENTS.md)。正文按宿主骨架：第 1 行 `# Agent Note: <标题>`、第 3 行
+  `Status:`（proposed / implemented / rejected — 理由；archived 写 implemented），首节 `## Problem`，
+  `implemented` 用 `## Decision` / `## Consequences`，`proposed` 用 `## Proposal` / `## Acceptance criteria` /
+  `## Risks`，`rejected` 用 `## Proposal`；每个 lifecycle 都要 `## Alternatives considered`，`## Testing` 可选。
+  结构由 `npm run check` 里的 `scripts/verify-agent-note-format.mjs` 机械校验（路径双轴、文件名、真实日期、
+  头部与 Status、首节与必需节、implemented 禁提案期节名、备选节、legacy marker、唯一 H1、节名不重复、
+  笔记间链接可达），判定逻辑在 `scripts/agent-note-format.mjs`，读盘遍历在 `scripts/agent-note-audit.mjs`。
 - 先 `npm run check` 再 `git add`。
 - PR 附证据：单测数与新增用例、双向验证结果、真机读数；截图等临时证据不入库。
 - 行为变更同步 README 与相关 `docs/`。

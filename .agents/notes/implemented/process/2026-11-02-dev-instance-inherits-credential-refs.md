@@ -1,67 +1,40 @@
-# 开发实例从源 HOME 继承凭据 refs
+# Agent Note: 开发实例从源 HOME 继承凭据 refs
 
-**范围**：`scripts/dev-plan.mjs`、`scripts/dev.mjs`、`scripts/atomic-write.mjs`、`tests/dev-plan.test.js`、`tests/atomic-write.test.js`、`README.md`、`docs/architecture.md`
+Status: implemented
 
-## 背景
+## Problem
 
-每建一个新 worktree，第一次 `npm run dev` 都要在界面上重填一次 API key。
+每建一个新 worktree，第一次 `npm run dev` 都要在界面上重填 API key：开发实例的数据根落在工作树内，而凭据存在 `<harness home>/.credentials.yaml`，新数据根只有宿主写的 `client-connection/browser-session` 授权。把 key 放进启动环境虽然能用，却会让 agent 的 bash 工具子进程继承它——dsh 自己刻意不这么做。
 
-原因是隔离设计本身：开发实例的数据根落在工作树内的 `.dev/home`，而 `dsh-credentials-local` 把密钥存在 `<harness home>/.credentials.yaml` 里，于是新数据根的凭据文件只有 dsh 自己写的 `client-connection/browser-session` 授权，没有 `refs.DEEPSEEK_API_KEY`。日常实例那份在 `~/.dsh/.credentials.yaml`，不会被读到。
+## Decision
 
-宿主的凭据解析顺序（`@deepseek-ai/dsh-credentials-local` README）是：存储文件 → 启动环境 → 项目 `.env` → `$DSH_HOME/.env`，`apiKeyEnv` 默认 `DEEPSEEK_API_KEY`。所以 `DEEPSEEK_API_KEY=… npm run dev` 现在就能用——`scripts/dev.mjs` 把 `process.env` 原样传给子进程。但这条路把密钥物化进进程环境，agent 的 bash 工具子进程会继承它；dsh 自己刻意不这么做（存储文件「绝不物化进环境」）。
+**启动前把源 HOME 凭据文件的 `refs` 条目并进开发实例那一份**，文本级复制，键已存在则跳过。
 
-## 决策
+- **只搬 `refs`，不搬 `records`**：`records` 是账号授权（带刷新令牌），复制到两个实例等于同一份凭证被两处各自刷新、互相踢掉登录；`refs` 只是按环境变量名存的密钥。
+- **识别 `refs` 节形态并替换，绝不追加第二个顶层 `refs:`**：块式按该节第一个条目的缩进识别、任意合法缩进都接受，行内映射展开成块式，写回时替换既有节；认不出（重复顶层 `refs`、节内非条目行、缩进回退、不成对的行内映射）就抛错，不猜拼接位置。
+- **目标里已有的条目不动**：用户在这个实例里保存过的值优先，否则源 key 一换就会悄悄盖掉它；要重新跟随源，删掉目标文件里那一条即可。
+- **原子替换 + 与宿主同一把写者锁**：临时文件以 `wx` 独占创建、创建即带 600 再 rename；写者锁是同目录的 `<文件名>.lock`、内容为持有者 PID，删除前按 PID 探活并复核记录，正在运行的实例不会被读-改-写覆盖。
+- **非 version 1 的目标文档不动**：目标没有 `version` 且非空是 pre-release 扁平布局，宿主会先迁移它；此时追加 `refs:` 会让文档既不是扁平也没有 version，凭据插件激活失败。判据放在所有写入路径之前。
 
-**启动前把源 HOME 凭据文件的 `refs` 条目并进开发实例那一份**，用文本级复制，键已存在则跳过。
+## Alternatives considered
 
-### 只搬 `refs`，不搬 `records`
+- **把 key 放进启动环境**：agent 的 bash 子进程会继承它，dsh 自己刻意不这么做；改为并入凭据文件的 `refs`。
+- **连 `records` 一起复制**：同一份账号授权被两个实例各自刷新，会互相踢掉登录；只搬 `refs`。
+- **在文件末尾追加第二个 `refs:`**：YAML 非法；替换既有节，认不出形态就抛错。
+- **用目标里已有的条目覆盖**：用户在这个实例保存过的值优先；键已存在则跳过。
+- **不加写者锁**：正在运行的实例会与读-改-写交错；用同目录 PID 锁并探活。
 
-`records` 里是账号授权（`deepseek-account-platform/default`），带刷新令牌。复制到两个实例等于同一份凭证被两处各自刷新，互相踢掉登录；共享 `path` 也一样。`refs` 只是按环境变量名存的密钥，复制无副作用。实现只读 `refs` 节内的行，`records` 永远不会进入搬运集合。
+## Consequences
 
-### 识别 `refs` 节形态并替换，绝不追加第二个 `refs:`
+- 源 HOME 没有凭据文件时静默跳过：新机器还没配 key 是正常场景。
+- 合并失败阻断启动（形态认不出、重复 `refs:`、锁超时、写入失败都 `exit 1`）：静默继续会让人以为 key 已带过来。
+- 不改凭据文件其余内容：`records`、注释、排版原样保留（行内映射会被展开成块式），末尾没有换行时补一个。
+- 不提供关闭开关：需要「这个实例不带密钥」时删掉 `refs` 条目即可。
+- 只认块式与行内映射，flow 里嵌套映射与锚点会被拒绝合并，但不会写坏文件。
+- 同 UID 可读：agent 的工具进程仍能读到这份文件，这是 dsh 凭据存储本身的限制。
 
-宿主的写入器产出块式（缩进两格），但删掉最后一个引用后 `Document.toString()` 落成 `refs: {}`；用户也可能手改成任意合法缩进。所以：
+收益：新 worktree 第一次 `npm run dev` 就带上了源 HOME 的密钥引用，又不会把账号授权复制成两份。
 
-- 块式节按「该节第一个条目的缩进」识别条目，任意合法缩进都接受，续行更深、整体搬到目标的缩进；
-- 行内映射（`refs: {}` / `refs: { A: b }`）展开成块式，原有条目原样保留；
-- 写回时**替换**既有节（块式插在最后一个条目之后，行内替换该行），不追加第二个顶层 `refs:`；
-- 认不出（重复顶层 `refs`、节内非条目行、缩进回退、不成对的行内映射）就抛错，**不猜拼接位置**。
+## Testing
 
-只认这两种形态的代价是：不在这个子集里的合法 YAML（flow 里嵌套映射、锚点）会拒绝合并，但绝不会写坏文件。整块原样搬，多行值与引号不重新转义——密值经一次 YAML 往返就可能变形。
-
-### 目标里已有的条目不动
-
-用户在这个实例里通过界面保存过就写进了同一份文件；那份值优先，否则源 key 一换就会悄悄盖掉实例里改过的配置。要重新跟随源，删掉目标文件里那一条即可。
-
-### 原子替换 + 与宿主同一把写者锁
-
-`dsh-credentials-local` 启动时拒绝加载其他用户可读的凭据文件，且它的写走 `withFileLock` + `writeFileAtomic`。本仓不能 import 宿主的内部包（`@deepseek-ai/dsh-atomic-write`），所以在 `scripts/atomic-write.mjs` 照同一协议实现需要的那部分：
-
-- 临时文件以 `wx` 独占创建、创建即带 600，再 `rename` 覆盖：替换后的权限是 600，没有「先落盘 644 再 chmod」的可读窗口，也没有半截文件；
-- 写者锁是同目录的 `<文件名>.lock`、内容为持有者 PID，与宿主的锁路径和协议一致，所以正在运行的实例不会被 `npm run dev` 的读-改-写覆盖；
-- 删除前按 PID 探活（`ESRCH`）并复核同一份记录（内容 + mtime），持锁者在这期间释放、别人重新拿到锁就不删；残窗口只剩两次读取之间，PID 复用与宿主一样不处理。宿主用 claim 文件把接管也串行化，这里没照搬：本脚本只在自己的启动前短暂持锁，并发方只有同机另一个 `npm run dev` 与宿主写入器，复核后的窗口代价远小于多一个 claim 协议。
-
-### 非 version 1 的目标文档不动
-
-目标没有 `version` 且非空时，它是 pre-release 扁平布局：宿主 `loadInitial` 会先把它迁移成 version 1 + `refs:`。此时追加 `refs:` 会让文档既不是扁平的、也没有 version，凭据插件激活失败。所以这类文档与声明其他 version 的文档都只打印原因、不写入。
-
-判据放在所有写入路径之前，不看文档有没有 `refs` 节：`version: 2` 且已有 `refs:`、或无 `version` 却带 `refs:` 的文档同样不写。后者宿主也解析不了（无 `version` 就是 flat layout 错误），写进去只会让人误以为合并成功。
-
-## 边界
-
-- **源 HOME 没有凭据文件时静默跳过**：新机器还没配过 key 是正常场景，开发实例照常在界面上填。
-- **合并失败阻断启动**：形态认不出、重复 `refs:`、锁超时、写入失败都打印原因并 `exit 1`。静默继续会让人以为 key 已带过来，实际一进界面就缺凭据；这些形态宿主自己也会拒绝或需要人修，早失败早定位。
-- **不改凭据文件其余内容**：`records`、注释、排版原样保留；行内映射会被展开成块式（宿主读的是同一语义）。目标文件末尾没有换行时补一个。
-- **不提供关闭开关**：需要「这个实例不带密钥」时删掉 `.dev/home/.credentials.yaml` 里的 `refs` 条目即可；多加一个环境变量只是把同一件事换个地方做。
-- **同 UID 可读**：agent 的工具进程仍能读到这份文件，这是 dsh 凭据存储本身的限制，不是本改动引入的。
-
-## 验证
-
-- `npm run check`：全绿，674 例；`dev-plan.test.js` 54 例（本卡片新增 18 例）、`atomic-write.test.js` 8 例。
-- 双向验证：把 `scripts/dev-plan.mjs` 回退到 88b6657 的 refs 实现 → 12 例红（`refs: {}`、4 空格、行内映射两向、扁平布局、version 2、重复 refs、认不出的条目、多行值重缩进、引号键、CRLF）；还原后 54 例全绿。
-- 双向验证（本轮）：撤掉 version 守卫 → `version: 2` 带 `refs:` 与无 `version` 带 `refs:` 两例红（52 pass / 2 fail），还原后 54 绿；把死锁接管改成不探活直接删 → 「活锁不被接管」红（7 pass / 1 fail），还原后 8 绿。
-- 并发探针：两个进程对同一份 `refs: {}` 目标各写一个键、故意放大读-改-写窗口——共用写者锁时 5/5 轮都保留两个键，去掉锁对照 3/3 轮丢一个键；两次运行都无 `.tmp` / `.lock` 残留。
-- 解析器探针（宿主同款 `yaml@2.9.0`，`parseDocument(text, { uniqueKeys: true, prettyErrors: true })`）：旧逻辑产出的追加形态报 `DUPLICATE_KEY@4`，4 空格混排报 `BAD_INDENT@4`；新实现四种真实形态（`refs: {}`、4 空格、空节、行内非空）全部无错，且 `^refs:` 只有一处。
-- 端到端（假源 HOME + `DEV_DSH` 指向替身，不启动真实实例）：目标 `refs: {}` 合并成块式、`records` 原样、权限 600、无 `.lock` 与 `.tmp` 残留；二次运行无变更、幂等；扁平布局目标不被改动并打印原因。
-- gitignore 实测：`git check-ignore -v .dev/home/.credentials.yaml` 命中 `.gitignore:12:.dev/`，worktree 共享同一份 `.gitignore`。
-- 真机（首版验证仍成立）：删掉 `.dev/home/.credentials.yaml` 的 `refs` 后 `DEV_NO_OPEN=1 npm run dev`，横幅打印键名、实例正常监听、模型选择器显示 DeepSeek-V4.1-Flash；运行后文件与备份逐行一致、权限 600。
+`tests/dev-plan.test.js`、`tests/atomic-write.test.js`；双向读数：撤掉 version 守卫 → 「`version: 2` 带 `refs:`」与「无 `version` 带 `refs:`」两例红，死锁接管改成不探活直接删 → 「活锁不被接管」红，还原后全绿。
