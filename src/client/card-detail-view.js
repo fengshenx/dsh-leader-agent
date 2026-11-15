@@ -48,3 +48,29 @@ export function detailSections(card) {
 export function canEditCardLinks(card) {
   return card?.status !== 'archived'
 }
+
+/**
+ * 详情里能否删除这张卡。
+ *
+ * 删除是硬删，归档卡也能删——用户要清掉一张不该存在的卡时，状态不该反过来
+ * 阻止删除。只防没有 id 的脏数据：删一个空 id 既定位不到卡，也只会换回一条
+ * 必然失败的远程错误。
+ *
+ * @param {object} card - 卡片
+ * @returns {boolean} 能否删除
+ */
+export function canDeleteCard(card) {
+  return typeof card?.id === 'string' && card.id !== ''
+}
+
+/**
+ * 删除确认框的说明文字。
+ *
+ * @param {object} card - 卡片
+ * @returns {string} 说明文字
+ */
+export function describeCardRemoval(card) {
+  const number = card?.number ?? '?'
+  const title = card?.title ?? ''
+  return `将删除卡片 #${number}「${title}」。删除后不可恢复，编号不会再分配，卡片上的槽位绑定会一并解除。`
+}

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   DETAIL_SPEC_EMPTY,
+  canDeleteCard,
   canEditCardLinks,
+  describeCardRemoval,
   detailSections,
   statusLabel,
 } from '../src/client/card-detail-view.js'
@@ -43,4 +45,20 @@ test('归档卡不给链接编辑入口，已完成卡仍可改', () => {
   assert.equal(canEditCardLinks({ status: 'active' }), true)
   // 状态缺失时按可编辑处理：写通道会给出真正的拒绝原因，界面不抢先猜。
   assert.equal(canEditCardLinks({}), true)
+})
+
+test('详情删除：有 id 才能删，归档卡也能删', () => {
+  assert.equal(canDeleteCard({ id: 'c1', status: 'archived' }), true)
+  assert.equal(canDeleteCard({ id: 'c1' }), true)
+  assert.equal(canDeleteCard({ id: '' }), false)
+  assert.equal(canDeleteCard({ id: 1 }), false)
+  assert.equal(canDeleteCard({}), false)
+})
+
+test('删除确认说清编号、标题、不可恢复与槽位解除', () => {
+  assert.equal(
+    describeCardRemoval({ number: 7, title: '补测试' }),
+    '将删除卡片 #7「补测试」。删除后不可恢复，编号不会再分配，卡片上的槽位绑定会一并解除。',
+  )
+  assert.match(describeCardRemoval({}), /#\?/)
 })

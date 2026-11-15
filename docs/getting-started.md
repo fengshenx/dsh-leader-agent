@@ -99,7 +99,7 @@ slots:
 2. **派工并绑卡**：Leader 调 `spawn_worker({ name: 'dev-safari-login', cardId, slot: 'dev' })`。立即返回会话 id，此时 worker **还没开工**，但卡片的 `dev` 槽位已经绑到它。
 3. **投第一条消息才开工**：Leader 调 `message_worker({ sessionId, message: '<自包含简报>' })`。worker 在自己的 worktree 里跑，卡面 `dev` chip 亮起信号灯。
 4. **完成自动回报**：那一轮结束，Leader 收到一条 worker 发言气泡（产物摘要或失败原因），不需要轮询，worker 也不用调工具交作业。
-5. **下钻**：点卡面打开详情；点 `dev` chip 直接进 worker 会话，像普通会话一样看过程、接着说。
+5. **下钻**：点卡面打开详情，链接可改、页脚可删卡；点 `dev` chip 直接进 worker 会话，像普通会话一样看过程、接着说。
 6. **收尾**：验收后 Leader 调 `update_card({ id, status: 'done' })`，槽位自动释放，worker 能接下一张卡。
 
 规则提示：

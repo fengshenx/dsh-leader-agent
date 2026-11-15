@@ -43,4 +43,5 @@ export const PROJECT_REMOTE_METHODS = Object.freeze({
   projectSlots: Object.freeze({ projectId: 'string' }),
   detachSession: Object.freeze({ sessionId: 'string' }),
   updateCardLinks: Object.freeze({ id: 'string', links: 'links' }),
+  deleteCard: Object.freeze({ id: 'string' }),
 })

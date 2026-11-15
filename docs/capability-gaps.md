@@ -322,11 +322,11 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 36. 卡片没有写方法——本仓在项目通道上自建
 
-**目标形态**：卡片详情浮层带编辑能力（改标题、状态、链接、槽位、排序）。
+**目标形态**：卡片详情浮层带编辑能力（改标题、状态、链接、槽位、排序、删卡）。
 
-**dsh 实测**：宿主官方未暴露通用远程方法注册面（`connection.rpc.handle` 对仓外插件不可用）。但浏览器侧 → 宿主侧的写通道**本仓已经有了**：自建的 Typert SRC 命名空间 `projects`（见第 26 条）在 P3 实测通过，7 个写方法（create / deleteProject / rename / reorder / replaceLeader / detachSession / updateCardLinks）都跑通了。缺的不是通道，是**卡片自己的写方法**——而卡片的写入语义（revision 乐观并发、归档终态）住在 host 侧的卡片存储里，改卡要走那套规则。
+**dsh 实测**：宿主官方未暴露通用远程方法注册面（`connection.rpc.handle` 对仓外插件不可用）。但浏览器侧 → 宿主侧的写通道**本仓已经有了**：自建的 Typert SRC 命名空间 `projects`（见第 26 条）在 P3 实测通过，8 个写方法（create / deleteProject / rename / reorder / replaceLeader / detachSession / updateCardLinks / deleteCard）都跑通了。缺的不是通道，是**卡片自己的写方法**——而卡片的写入语义（revision 乐观并发、归档终态）住在 host 侧的卡片存储里，改卡要走那套规则。
 
-**影响**：链接编辑已补（`updateCardLinks`，整体替换 `links`，宿主侧转调 `cards.update`）；其余写操作——完成、置顶、重命名、删除、改槽位——仍未做，卡面也不放操作按钮。补齐是本仓自己的活：同一命名空间里加方法、宿主侧转调卡片存储的既有领域规则。不是宿主拦路。
+**影响**：链接编辑已补（`updateCardLinks`，整体替换 `links`，宿主侧转调 `cards.update`）；删卡也已补（`deleteCard`，硬删、幂等，宿主侧转调 `cards.remove`）。其余写操作——完成、置顶、重命名、改槽位——仍未做，卡面不放操作按钮，删除入口在详情页脚。补齐是本仓自己的活：同一命名空间里加方法、宿主侧转调卡片存储的既有领域规则。不是宿主拦路。
 
 ### 37. 工具面只能按身份**同步**判定，而判定发生在建会话内部——身份必须先于会话存在
 

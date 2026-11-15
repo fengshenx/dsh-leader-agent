@@ -318,6 +318,21 @@ export function mergeCardUpdate(cards, updated) {
 }
 
 /**
+ * 从看板列表里摘掉一张卡。
+ *
+ * 删除成功后立刻本地摘除，不等下一轮轮询：2 秒的间隔里卡面还在，用户会以为
+ * 删除没生效。按 id 比较，保留其余卡片的引用。
+ *
+ * @param {readonly object[]} cards - 当前列表
+ * @param {string} id - 要摘掉的卡片 id
+ * @returns {object[]} 摘除后的列表
+ */
+export function removeCardFromList(cards, id) {
+  if (!Array.isArray(cards)) return []
+  return cards.filter((card) => card?.id !== id)
+}
+
+/**
  * 把一次改卡的结果合进详情浮层。
  *
  * 浮层里的卡片是打开瞬间的快照；保存返回时浮层可能已经关掉、又点开了另一张

@@ -12,6 +12,7 @@ import {
   mergeCardSnapshot,
   mergeCardUpdate,
   mergeDetailCard,
+  removeCardFromList,
   mergeSessionState,
   nextDoneWatermark,
   slotBindingsOf,
@@ -424,4 +425,15 @@ test('分类判据：非空字符串才显示，脏数据一律按未分类', ()
   assert.equal(cardKind(card({ kind: 42 })), null)
   assert.equal(cardKind(card({ kind: '   ' })), null)
   assert.equal(cardKind(card({})), null)
+})
+
+test('删除后从看板列表摘掉同 id 的卡，其余保持原引用', () => {
+  const first = { id: 'c1', title: '一' }
+  const second = { id: 'c2', title: '二' }
+  const next = removeCardFromList([first, second], 'c1')
+  assert.deepEqual(next, [second])
+  assert.equal(next[0], second)
+  // 非数组也不把列表打坏；删除请求不会把空 id 传到这里。
+  assert.deepEqual(removeCardFromList(undefined, 'c1'), [])
+  assert.deepEqual(removeCardFromList([first], 'missing'), [first])
 })
