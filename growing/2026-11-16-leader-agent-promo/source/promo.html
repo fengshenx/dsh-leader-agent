@@ -84,6 +84,26 @@
   #hud-track{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(120,146,222,.12);overflow:hidden}
   #hud-bar{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--cyan));box-shadow:0 0 16px rgba(96,210,255,.55)}
   body.capture #hud,body.capture #loader,body.capture #replay{display:none!important}
+  body.capture *{transition:none!important;animation-play-state:paused!important}
+  /* S0 封面：纯文字，不放截图 */
+  #s0 .cover-inner{position:absolute;inset:0;transform-origin:50% 44%;will-change:transform}
+  .cover-badge{position:absolute;left:72px;top:118px;display:inline-flex;align-items:center;gap:12px;padding:14px 20px;border-radius:999px;border:1px solid rgba(109,140,255,.35);background:rgba(12,20,42,.7);font:500 25px/1 var(--mono);letter-spacing:.08em;color:rgba(211,224,249,.82);opacity:0}
+  .cover-badge i{width:9px;height:9px;border-radius:50%;background:var(--amber);box-shadow:0 0 16px rgba(255,184,77,.8)}
+  .cover-kicker{position:absolute;left:72px;top:222px;font:500 24px/1 var(--mono);letter-spacing:.1em;color:rgba(166,187,225,.52);opacity:0}
+  .cover-watermark{position:absolute;right:-26px;top:690px;font:800 560px/1 var(--sans);letter-spacing:-.1em;color:rgba(109,140,255,.045);pointer-events:none;user-select:none}
+  .cover-title{position:absolute;left:66px;right:50px;top:312px;margin:0;font-size:142px;line-height:.96;font-weight:820;letter-spacing:-.065em}
+  .cover-title .ln{display:block;overflow:hidden;padding-bottom:.07em}
+  .cover-title .ln > span{display:block;transform:translateY(112%);opacity:0;will-change:transform,opacity}
+  .cover-title em{font-style:normal;color:var(--blue2)}
+  .cover-title .cover-exp{color:rgba(242,247,255,.94)}
+  .cover-sub{position:absolute;left:72px;right:72px;top:1000px;margin:0;font-size:44px;line-height:1.52;font-weight:500;letter-spacing:-.025em;color:rgba(197,211,242,.68);opacity:0}
+  .cover-sub b{color:#f6f9ff;font-weight:700}
+  .cover-foot{position:absolute;left:72px;right:72px;bottom:92px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;opacity:0}
+  .cover-brand{font-size:35px;line-height:1;font-weight:800;letter-spacing:-.06em;color:#f5f8ff}
+  .cover-brand span{color:var(--blue2)}
+  .cover-brand small{display:block;margin-top:13px;font:500 21px/1 var(--mono);letter-spacing:.12em;color:rgba(166,187,225,.4)}
+  .cover-side{text-align:right;font:500 24px/1.5 var(--mono);letter-spacing:.04em;color:rgba(186,204,238,.48)}
+  .cover-side b{display:block;color:rgba(240,246,255,.86);font:600 29px/1.3 var(--sans);letter-spacing:-.01em}
   /* S1 */
   #s1 .hero{top:238px;font-size:150px}
   #s1 .sub{top:574px}
@@ -162,7 +182,7 @@
   .loop.stuck .loop-node{border-color:rgba(255,113,104,.2)}
   /* S3 */
   #s3 .hero{top:214px;font-size:122px}
-  #s3 .sub{top:624px}
+  #s3 .sub{top:620px;font-size:36px}
   .leader-hub{position:absolute;left:0;right:0;top:748px;display:flex;flex-direction:column;align-items:center;gap:14px}
   .leader-core{
     width:176px;height:176px;border-radius:50%;border:1px solid rgba(137,162,225,.45);
@@ -170,7 +190,7 @@
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;
     box-shadow:0 0 0 1px rgba(109,140,255,.1),0 0 80px rgba(72,108,235,.35);
   }
-  .leader-core span{font:500 16px/1 var(--mono);letter-spacing:.16em;color:rgba(177,198,236,.6)}
+  .leader-core span{font:500 13px/1 var(--mono);letter-spacing:.12em;color:rgba(177,198,236,.6)}
   .leader-core b{font:800 64px/1 var(--sans);letter-spacing:-.06em;color:#eaf2ff}
   .leader-label{font:500 24px/1 var(--mono);letter-spacing:.12em;color:rgba(158,181,224,.52)}
   #s3-lines{position:absolute;inset:0;width:1080px;height:1920px;pointer-events:none;z-index:1}
@@ -189,6 +209,9 @@
   .s4-phase{position:absolute;inset:0;opacity:0;transform:translateY(28px);transition:opacity .45s ease,transform .45s ease;pointer-events:none;will-change:opacity,transform}
   .s4-phase.on{opacity:1;transform:none;pointer-events:auto}
   #s4 .hero{top:226px;font-size:118px}
+  #s4a .hero{top:196px;font-size:104px}
+  #s4a .s4-sub{top:500px}
+  #s4a .app-window{top:640px}
   .s4-sub{position:absolute;left:72px;right:72px;top:500px;font-size:40px;line-height:1.5;color:var(--dim);letter-spacing:-.02em}
   .receipt-board{position:absolute;left:40px;top:1320px;width:1000px;border-radius:22px;border:1px solid rgba(101,226,168,.16);background:linear-gradient(145deg,rgba(10,32,29,.52),rgba(6,15,18,.4));padding:18px 24px 20px;opacity:0;transform:translateY(16px);box-shadow:0 22px 60px rgba(0,0,0,.22)}
   .receipt-top{display:flex;align-items:center;justify-content:space-between;gap:16px}
@@ -243,7 +266,7 @@
   .report-card{position:absolute;left:40px;top:690px;width:1000px;height:580px;border-radius:26px;overflow:hidden;background:#fff;color:#101828;box-shadow:0 36px 100px rgba(0,0,0,.5);opacity:0;transform:translateY(26px);display:flex;flex-direction:column}
   .rc-head{height:76px;display:flex;align-items:center;gap:14px;padding:0 28px;background:#0c1222;color:#f2f6ff;border-bottom:1px solid rgba(255,255,255,.06)}
   .rc-head span{font-size:31px;font-weight:650;letter-spacing:-.02em}
-  .rc-head b{margin-left:auto;font:500 20px/1 var(--mono);letter-spacing:.12em;color:rgba(125,227,255,.65)}
+  .rc-head b{margin-left:auto;font:500 16px/1 var(--mono);letter-spacing:.08em;color:rgba(125,227,255,.65)}
   .rc-body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:10px 30px 12px}
   .rc-line{display:flex;align-items:baseline;gap:10px;font-size:36px;line-height:1.4;letter-spacing:-.02em;color:#344054;padding:9px 0;border-bottom:1px solid rgba(16,24,40,.07);opacity:0;transform:translateY(12px)}
   .rc-line b{font-weight:800;color:#101828;font-variant-numeric:tabular-nums}
@@ -278,7 +301,9 @@
   .end-brand span{color:var(--blue2)}
   .end-tagline{position:absolute;left:0;right:0;top:740px;text-align:center;font-size:56px;line-height:1.35;font-weight:600;letter-spacing:-.03em;color:rgba(236,243,255,.9);opacity:0;transform:translateY(16px)}
   .end-tagline b{font-weight:750;color:#fff}
-  .end-install{position:absolute;left:50%;top:1060px;width:980px;margin-left:-490px;height:120px;border-radius:18px;border:1px solid rgba(131,157,229,.2);background:rgba(10,17,34,.72);display:flex;align-items:center;gap:14px;padding:0 26px;font:400 28px/1 var(--mono);letter-spacing:-.01em;color:rgba(206,221,250,.8);opacity:0;transform:translateY(16px);box-shadow:0 24px 60px rgba(0,0,0,.28)}
+  .end-platform{position:absolute;left:0;right:0;top:1000px;text-align:center;font:500 34px/1 var(--mono);letter-spacing:.1em;color:rgba(183,202,238,.58);opacity:0;transform:translateY(14px)}
+  .end-platform b{color:var(--cyan);font-weight:600}
+  .end-install{position:absolute;left:50%;top:1110px;width:980px;margin-left:-490px;height:120px;border-radius:18px;border:1px solid rgba(131,157,229,.2);background:rgba(10,17,34,.72);display:flex;align-items:center;gap:14px;padding:0 26px;font:400 28px/1 var(--mono);letter-spacing:-.01em;color:rgba(206,221,250,.8);opacity:0;transform:translateY(16px);box-shadow:0 24px 60px rgba(0,0,0,.28)}
   .end-install .prompt{color:rgba(125,227,255,.65);font-size:28px}
   .end-install .install-tag{margin-left:auto;flex:none;font:500 18px/1 var(--mono);letter-spacing:.1em;color:rgba(125,227,255,.55);border:1px solid rgba(125,227,255,.2);border-radius:999px;padding:9px 12px}
   .end-foot{position:absolute;left:0;right:0;top:1688px;text-align:center;font:500 32px/1 var(--mono);letter-spacing:.1em;color:rgba(175,195,235,.44);opacity:0}
@@ -323,6 +348,25 @@
     <div class="hud-right"><span id="hud-chapter">01 / 06 · 现场</span><button id="btn-play" aria-label="暂停">Ⅱ</button></div>
     <div id="hud-track"><i id="hud-bar"></i></div>
   </header>
+
+  <!-- 00 · 封面 -->
+  <section class="scene cover-scene" id="s0">
+    <div class="cover-inner">
+      <div class="cover-badge" id="s0-badge"><i></i>我的 AI 工作流</div>
+      <div class="cover-kicker" id="s0-kicker">一个人 · 20 个并行需求</div>
+      <div class="cover-watermark" aria-hidden="true">20</div>
+      <h1 class="cover-title" id="s0-hero">
+        <span class="ln"><span>我同时开发</span></span>
+        <span class="ln"><span><em>20</em> 个需求</span></span>
+        <span class="ln"><span class="cover-exp">的经验</span></span>
+      </h1>
+      <p class="cover-sub" id="s0-sub">不靠加班，靠把追问<br>交给 <b>Leader Agent</b>。</p>
+      <div class="cover-foot" id="s0-foot">
+        <div class="cover-brand">dsh-leader-<span>agent</span><small>DEEPSEEK HARNESS</small></div>
+        <div class="cover-side"><b>一个人</b>20 个并行任务</div>
+      </div>
+    </div>
+  </section>
 
   <!-- 01 -->
   <section class="scene" id="s1">
@@ -403,10 +447,10 @@
         <span class="ln"><span>从循环里</span></span>
         <span class="ln"><span class="amber">拿走。</span></span>
       </h1>
-      <p class="sub" id="s3-sub">一个 Leader，接管 20 个任务的等待和追问。</p>
+      <p class="sub" id="s3-sub">Leader Agent 接管 20 个任务的追问。</p>
       <svg id="s3-lines" viewBox="0 0 1080 1920" aria-hidden="true"></svg>
       <div class="leader-hub" id="s3-hub">
-        <div class="leader-core"><span>LEADER</span><b>1</b></div>
+        <div class="leader-core"><span>LEADER AGENT</span><b>1</b></div>
         <div class="leader-label">dsh-leader-agent</div>
       </div>
       <div class="task-grid" id="s3-grid"></div>
@@ -420,8 +464,9 @@
       <div class="s4-phase" id="s4a">
         <div class="kicker" id="s4a-kicker"><span>04</span><i>/</i><span>实际运行</span></div>
         <h1 class="hero" id="s4a-hero">
-          <span class="ln"><span>把任务</span></span>
-          <span class="ln"><span>丢给 Leader。</span></span>
+          <span class="ln"><span>把任务，</span></span>
+          <span class="ln"><span>丢给</span></span>
+          <span class="ln"><span class="amber">Leader Agent。</span></span>
         </h1>
         <p class="s4-sub" id="s4a-sub">不用自己拆，不用自己派。</p>
         <div class="app-window">
@@ -466,7 +511,7 @@
         <div class="chat-bubble" id="s4c-bubble">现在有进展吗？向我汇报进度</div>
         <div class="chat-tail" id="s4c-tail">你</div>
         <div class="report-card" id="s4c-report">
-          <div class="rc-head"><span>进度汇报 · 20:47</span><b>LEADER</b></div>
+          <div class="rc-head"><span>进度汇报 · 20:47</span><b>LEADER AGENT</b></div>
           <div class="rc-metrics">
             <div class="rc-metric"><b>12</b><span>进行中</span></div>
             <div class="rc-metric"><b>6</b><span>待验收</span></div>
@@ -504,7 +549,7 @@
         <div class="stat" data-stat="1"><div class="num"><span data-count="20">0</span><em>+</em></div><div><div class="label">并行任务</div><div class="desc">ALL RUNNING IN PARALLEL</div></div></div>
         <div class="stat" data-stat="2"><div class="num">1<em>句</em></div><div><div class="label">拿到全局进度</div><div class="desc">ASK ONCE, KNOW EVERYTHING</div></div></div>
       </div>
-      <div class="s5-foot" id="s5-foot">你只负责决定，<b>Leader 负责推进。</b></div>
+      <div class="s5-foot" id="s5-foot">你只负责决定，<b>Leader Agent 负责推进。</b></div>
     </div>
   </section>
 
@@ -514,6 +559,7 @@
     <div class="end-core"><b>1</b></div>
     <div class="end-brand">dsh-leader-<span>agent</span></div>
     <div class="end-tagline">一个人，管 <b>20 个并行任务</b>。</div>
+    <div class="end-platform">在 <b>DeepSeek Harness</b> 里安装</div>
     <div class="end-install"><span class="prompt">$</span><span>dsh plugin --profile web add dsh-leader-agent</span><span class="install-tag">INSTALL</span></div>
     <div class="end-foot">把注意力，留给<b>要什么</b>。</div>
   </section>
@@ -535,6 +581,9 @@
   const easeOut = (t) => 1 - Math.pow(1 - t, 3);
   const fmt = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0');
 
+  const s0 = {
+    badge: $('#s0-badge'), kicker: $('#s0-kicker'), hero: $('#s0-hero'), sub: $('#s0-sub'), foot: $('#s0-foot'),
+  };
   const s1 = {
     kicker: $('#s1-kicker'), hero: $('#s1-hero'), sub: $('#s1-sub'), you: $('#s1-you'),
     stack: $('#s1-stack'), cards: $$('#s1 .task-card'), notes: [$('#s1-note1'), $('#s1-note2'), $('#s1-note3')],
@@ -563,10 +612,10 @@
   };
   const s6 = {
     orbit: $('.end-orbit'), core: $('.end-core'), brand: $('.end-brand'), tagline: $('.end-tagline'),
-    install: $('.end-install'), foot: $('.end-foot'),
+    install: $('.end-install'), platform: $('.end-platform'), foot: $('.end-foot'),
   };
 
-  // S3：20 张并行任务卡 + 从 Leader 发出的辐条
+  // S3：20 张并行任务卡 + 从 Leader Agent 发出的辐条
   const CODES = ['LCP', 'PAY', 'SRCH', 'RBAC', 'MAIL', 'SDK', 'iOS', 'PERF', 'GRAY', 'P99', 'SQL', 'API', 'QA', 'CI', 'SEC', 'FEED', 'ONB', 'DARK', 'DOC', 'GO'];
   CODES.forEach((code, i) => {
     const el = document.createElement('div');
@@ -612,6 +661,14 @@
     chip.innerHTML = '<span>#' + String(i + 1).padStart(2, '0') + '</span><i></i>';
     receiptGrid.appendChild(chip);
   }
+  function updateS0(t) {
+    // 抖音取首帧当封面：S0 第一帧就要是完整的封面，不能从黑屏/空标题开始。
+    [s0.badge, s0.kicker, s0.sub, s0.foot].forEach((el) => { el.style.opacity = '1'; el.style.transform = 'none'; });
+    $$('.ln > span', s0.hero).forEach((el) => { el.style.opacity = '1'; el.style.transform = 'none'; });
+    const p = clamp(t / 9.506);
+    $('.cover-inner').style.transform = 'scale(' + (1.015 - p * .015).toFixed(4) + ')';
+  }
+
   function updateS1(t) {
     fade(s1.kicker, prog(t, .18, .62));
     revealLines(s1.hero, t, .34, .14);
@@ -668,7 +725,7 @@
   }
 
   let lastStep = -1;
-  const S4_MARKS = { b: 6.918, c: 15.708 };
+  const S4_MARKS = { b: 7.734, c: 19.452 };
   function updateS4(t) {
     const inA = t < S4_MARKS.b, inB = t >= S4_MARKS.b && t < S4_MARKS.c, inC = t >= S4_MARKS.c;
     phase(s4.a, inA, -18); phase(s4.b, inB); phase(s4.c, inC);
@@ -705,7 +762,7 @@
       fade(s4.aPill, prog(t, 5.3, 5.7), 14);
     }
 
-    // B：看板卡片（对齐 s4b 旁白，8.79s）
+    // B：看板卡片（对齐 s4b 旁白，11.718s）
     if (inB) {
       const u = t - S4_MARKS.b;
       fade(s4.bKicker, prog(u, .05, .35));
@@ -722,7 +779,7 @@
       });
     }
 
-    // C：汇报（对齐 s4c 旁白，6.852s）
+    // C：汇报（对齐 s4c 旁白，7.044s）
     if (inC) {
       const u = t - S4_MARKS.c;
       fade(s4.cKicker, prog(u, .05, .35));
@@ -765,37 +822,46 @@
     const tp = easeOut(prog(t, .35, .95));
     s6.tagline.style.opacity = tp;
     s6.tagline.style.transform = 'translateY(' + ((1 - tp) * 16) + 'px)';
-    const ip = easeOut(prog(t, .7, 1.3));
+    const pp = easeOut(prog(t, .62, 1.05));
+    s6.platform.style.opacity = pp;
+    s6.platform.style.transform = 'translateY(' + ((1 - pp) * 14) + 'px)';
+    const ip = easeOut(prog(t, .85, 1.45));
     s6.install.style.opacity = ip;
     s6.install.style.transform = 'translateY(' + ((1 - ip) * 16) + 'px)';
-    s6.foot.style.opacity = prog(t, 1.4, 1.8);
+    s6.foot.style.opacity = prog(t, 1.55, 1.95);
     const rp = easeOut(prog(t, 0, 1.8));
     s6.orbit.style.transform = 'rotate(' + (rp * 20) + 'deg) scale(' + (.86 + rp * .14) + ')';
     s6.core.style.transform = 'scale(' + (.82 + rp * .18) + ')';
   }
 
   const SCENES = [
-    { id: 's1', label: '现场', start: 0, end: 8.958, update: updateS1 },
-    { id: 's2', label: '循环', start: 8.958, end: 18.796, update: updateS2 },
-    { id: 's3', label: '编排', start: 18.796, end: 27.246, update: updateS3 },
-    { id: 's4', label: '实战', start: 27.246, end: 49.806, update: updateS4 },
-    { id: 's5', label: '结果', start: 49.806, end: 59.096, update: updateS5 },
-    { id: 's6', label: '尾声', start: 59.096, end: 66.914, update: updateS6 },
+    { id: 's0', label: '封面', start: 0, end: 9.506, update: updateS0 },
+    { id: 's1', label: '现场', start: 9.506, end: 18.272, update: updateS1 },
+    { id: 's2', label: '循环', start: 18.272, end: 28.11, update: updateS2 },
+    { id: 's3', label: '编排', start: 28.11, end: 37.4, update: updateS3 },
+    { id: 's4', label: '实战', start: 37.4, end: 63.896, update: updateS4 },
+    { id: 's5', label: '结果', start: 63.896, end: 73.57, update: updateS5 },
+    { id: 's6', label: '尾声', start: 73.57, end: 85.688, update: updateS6 },
   ];
   SCENES.forEach((sc) => { sc.el = document.getElementById(sc.id); });
-  const DURATION = 66.914;
+  const HUD_SCENES = SCENES.filter((sc) => sc.id !== 's0');
+  const DURATION = 85.688;
   let now = 0, playing = true, last = 0, raf = null;
 
   function sceneOpacity(sc, t) {
-    const a = smooth(prog(t, sc.start, sc.start + .45));
+    const a = sc.id === 's0' ? 1 : smooth(prog(t, sc.start, sc.start + .45));
     // 末屏不淡出：成片停在品牌上，避免最后一帧变黑
     const b = sc.id === 's6' ? 1 : 1 - smooth(prog(t, sc.end - .45, sc.end));
     return a * b;
   }
   function updateHud(t) {
-    const idx = Math.max(0, SCENES.findIndex((sc, i) => t >= sc.start && (i === SCENES.length - 1 ? t <= DURATION : t < SCENES[i + 1].start)));
-    const sc = SCENES[idx] || SCENES[0];
-    $('#hud-chapter').textContent = String(idx + 1).padStart(2, '0') + ' / 06 · ' + sc.label;
+    const cover = t < SCENES[0].end;
+    const hud = $('#hud');
+    hud.style.opacity = cover ? '0' : '1';
+    hud.style.pointerEvents = cover ? 'none' : '';
+    const idx = Math.max(0, HUD_SCENES.findIndex((sc, i) => t >= sc.start && (i === HUD_SCENES.length - 1 ? t <= DURATION : t < HUD_SCENES[i + 1].start)));
+    const sc = HUD_SCENES[idx] || HUD_SCENES[0];
+    $('#hud-chapter').textContent = String(idx + 1).padStart(2, '0') + ' / ' + String(HUD_SCENES.length).padStart(2, '0') + ' · ' + sc.label;
     $('#hud-bar').style.width = (t / DURATION * 100).toFixed(3) + '%';
   }
   function render(t) {
