@@ -13,7 +13,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
 | 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、agent 消息气泡（leader 任务 / worker 回报）、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
-| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议与 `init-leader-agent` 初始化方法 |
+| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议、`init-leader-agent` 初始化方法与宣传片流水线 |
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
@@ -118,6 +118,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | `.agents/skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
 | `.agents/skills/init-leader-agent/` | 项目初始化方法（`AGENTS.md` + `LEADER.md` + `SLOTS.md`） | 模型调用 `skill` 工具时 |
+| `.agents/skills/promo-video/` | 宣传片入口：分镜、旁白时间轴、录制与封面编排 | 模型调用 `skill` 工具时 |
+| `.agents/skills/doubao-tts/`、`.agents/skills/promo-stills/` | 旁白合成、测长与封面/静帧渲染 | 模型调用 `skill` 工具时 |
 | `LEADER.md` | 该项目的 leader 会话 | 每轮请求求值，读文件内容变化才追加 |
 | `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，读文件内容变化才追加 |
 | 卡片事实 | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，卡片内容变化才追加 |

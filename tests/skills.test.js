@@ -14,7 +14,9 @@ test('发现 bundle 内全部 skill', async () => {
   const provider = createSkillProvider({ skillsRoot, providerName: 'dsh-leader-agent' })
   const candidates = await provider.list()
   const names = candidates.map(candidate => candidate.name).sort()
-  assert.deepEqual(names, ['e2e-scenarios', 'init-leader-agent', 'leader-mode'])
+  assert.deepEqual(names, [
+    'doubao-tts', 'e2e-scenarios', 'init-leader-agent', 'leader-mode', 'promo-stills', 'promo-video',
+  ])
 })
 
 test('候选带可加载的正文与目录资源基址', async () => {

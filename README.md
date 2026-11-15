@@ -184,6 +184,7 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 | [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, screenshots) and manual evidence rules; assertion discipline and failure diagnosis live in `.agents/skills/e2e-scenarios/` |
 | [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
+| [.agents/skills/promo-video/](.agents/skills/promo-video/) | Promo pipeline: storyboard, TTS timeline, capture/record, cover production |
 
 ## Credits
 
