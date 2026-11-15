@@ -103,9 +103,8 @@ npm run release:check             # 发版门禁：check + build:client + verify
 ## 提交与 PR
 
 - 非平凡改动同 PR 携带 `.agents/notes/{lifecycle}/{class}/` 笔记：只记永久决策与边界，不写流水账。
-  双轴取值、类目口径与归档规则见[目录内 README](.agents/notes/README.md)，取代检查与写作约束见[目录内 AGENTS.md](.agents/notes/AGENTS.md)。正文按
-  `## 背景` / `## 决策` / `## 边界` / `## 验证` 分节（同现有笔记）：决策拆得开时用 `###`，
-  验证写用例与双向验证读数。结构由 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`
+  双轴取值、类目口径与归档判据见[目录内 README](.agents/notes/README.md)，动笔前的取代检查与写作清单见
+  [目录内 AGENTS.md](.agents/notes/AGENTS.md)。结构由 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`
   机械校验（路径双轴、文件名、唯一 H1、首节与必需节、节名不重复、笔记间链接可达），判定逻辑在
   `scripts/agent-note-format.mjs`，读盘遍历在 `scripts/agent-note-audit.mjs`。
 - 先 `npm run check` 再 `git add`。

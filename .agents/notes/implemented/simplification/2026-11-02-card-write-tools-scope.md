@@ -24,4 +24,4 @@
 
 ## 验证
 
-`tests/tool-gate.test.js`、`tests/cards-tools.test.js`、`tests/coordinator-wiring.test.js`、`tests/worker-sessions.test.js`；双向读数：删掉两处 `assertCardWriter` 调用 → 建卡与改卡被拒的用例红，还原后全绿。
+`tests/tool-gate.test.js`、`tests/cards-tools.test.js`、`tests/leader-wiring.test.js`、`tests/worker-sessions.test.js`；双向读数：删掉两处 `assertCardWriter` 调用 → 建卡与改卡被拒的用例红，还原后全绿。

@@ -36,4 +36,4 @@
 
 ## 验证
 
-`tests/project-panel.test.js` 与 `tests/coordinator-session-watch.test.js`。双向：去掉退役或归档分支 → 对应用例红；去掉 `stopReady()` → 退订用例红（dispose 后再就绪多打一次 RPC）。三条名单用例可各自单跑，不依赖前一例留下的订阅与单例。
+`tests/project-panel.test.js` 与 `tests/leader-session-watch.test.js`。双向：去掉退役或归档分支 → 对应用例红；去掉 `stopReady()` → 退订用例红（dispose 后再就绪多打一次 RPC）。三条名单用例可各自单跑，不依赖前一例留下的订阅与单例。
