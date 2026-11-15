@@ -1,0 +1,49 @@
+{
+  "campaign": "2026-11-16-leader-agent-promo",
+  "bucket": "dsh-agent-leader",
+  "region": "oss-cn-beijing",
+  "prefix": "growing/2026-11-16-leader-agent-promo/",
+  "baseUrl": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/",
+  "assets": [
+    {
+      "kind": "video",
+      "key": "video/promo-1080x1920.mp4",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920.mp4",
+      "bytes": 7212778,
+      "sha256": "0a2ee5eaa22bf3bf92190fb27f6e698f0fff317f784f8feca5285c0b20f1b2d8",
+      "contentType": "video/mp4"
+    },
+    {
+      "kind": "audio",
+      "key": "audio/narration-zh.mp3",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-zh.mp3",
+      "bytes": 1607661,
+      "sha256": "0ad492b217001326afd12cf8e9799e00d699a5569bf8e61b7700fab311f41069",
+      "contentType": "audio/mpeg"
+    },
+    {
+      "kind": "html",
+      "key": "html/promo-standalone.html",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/html/promo-standalone.html",
+      "bytes": 747505,
+      "sha256": "76358c6363e7d157ff542ccbfc1c7bdc064a0e1e885fde47df72bcbddd57ae41",
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "kind": "cover",
+      "key": "covers/cover-9x16.png",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-9x16.png",
+      "bytes": 823413,
+      "sha256": "8e228f21c1e5e589c0b9d6e8cb4d519cf264b148148843b5ff39d6880bde11e9",
+      "contentType": "image/png"
+    },
+    {
+      "kind": "cover",
+      "key": "covers/cover-3x4.png",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-3x4.png",
+      "bytes": 659551,
+      "sha256": "17e54f92910363aa968e0d6d21b0903ca8d1eef762a8ea89be435021fcd5383e",
+      "contentType": "image/png"
+    }
+  ]
+}

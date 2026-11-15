@@ -182,6 +182,7 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 | [docs/development.md](docs/development.md) | Dev environment, instances, build contract, test policy |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, screenshots) and manual evidence rules; assertion discipline and failure diagnosis live in `.agents/skills/e2e-scenarios/` |
+| [growing/](growing/) | Growth archive: case studies, copy, source files; media lives in OSS |
 | [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
 | [.agents/skills/promo-video/](.agents/skills/promo-video/) | Promo pipeline for the repo dev env (needs Playwright + ffmpeg): storyboard, TTS timeline, capture/record, cover production; narration in `doubao-tts/`, covers in `promo-stills/` |
