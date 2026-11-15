@@ -1,8 +1,8 @@
 # dsh-leader-agent 架构
 
-本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答「系统由什么组成、接缝在哪里、改一块会牵动谁」；安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
+本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答组成、接缝与牵动面；安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
 
-阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)，再看自己要改的那一块；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
+阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
 ## 分层
 
@@ -13,7 +13,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
 | 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、agent 消息气泡（leader 任务 / worker 回报）、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
-| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议、`init-leader-agent` 初始化方法与宣传片流水线 |
+| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议、`init-leader-agent` 初始化方法与宣传片流水线（[入口](../README.md#docs)） |
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
@@ -118,8 +118,6 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | `.agents/skills/leader-mode/` | 模型可发现并加载的协议层 | 模型调用 `skill` 工具时 |
 | `.agents/skills/init-leader-agent/` | 项目初始化方法（`AGENTS.md` + `LEADER.md` + `SLOTS.md`） | 模型调用 `skill` 工具时 |
-| `.agents/skills/promo-video/` | 宣传片入口：分镜、旁白时间轴、录制与封面编排 | 模型调用 `skill` 工具时 |
-| `.agents/skills/doubao-tts/`、`.agents/skills/promo-stills/` | 旁白合成、测长与封面/静帧渲染 | 模型调用 `skill` 工具时 |
 | `LEADER.md` | 该项目的 leader 会话 | 每轮请求求值，读文件内容变化才追加 |
 | `SLOTS.md` | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，读文件内容变化才追加 |
 | 卡片事实 | 卡片 `slots` 字段绑定的会话 | 每轮请求求值，卡片内容变化才追加 |
@@ -132,11 +130,11 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 `SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
-协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-agent/.agents/skills/`）。这个路径同时是 dsh 的项目级 skill 目录：任何项目在自己的 `.agents/skills/` 放同名副本即可覆盖，项目副本优先——dsh 的 skill 发现按来源层级取优，项目级 rank 200 低于 bundle 的 600。
+协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-agent/.agents/skills/`）。它同时是 dsh 的项目级 skill 目录：项目放同名副本即可覆盖，项目副本优先（项目级 rank 200，bundle 600）。
 
 ## 目录职责
 
-目录划分见 [AGENTS.md 的目录与职责](../AGENTS.md#目录与职责)。单个文件的职责写在文件头注释里——那是权威来源，不在文档里再抄一份。改某块前按 [AGENTS.md 的按任务查阅](../AGENTS.md#按任务查阅)找归属文档。
+目录划分见 [AGENTS.md 的目录与职责](../AGENTS.md#目录与职责)。单文件职责看文件头注释（权威来源，不抄一份）；改某块前按 [AGENTS.md 的按任务查阅](../AGENTS.md#按任务查阅)找归属文档。
 
 ## 编排动作与工具
 
