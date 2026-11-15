@@ -77,7 +77,7 @@ HTML 的 Content-Type 错了会变成下载而不是打开；上传后必须用 
 2. 写 `script.md`、`storyboard.md`；TTS 后生成 `timeline.json`，保持 `speech/lead/tail/duration`。
 3. 可编辑源 HTML 和小素材放 `source/`；如果 `source/` 超过 5 MB，素材改远程 URL。
 4. 视频/音频/standalone/大封面按上面的 key 规则上传，生成 `media.json`。
-5. 生成 `preview.jpg`（≤200 KB）供 README 预览；不要用视频第一帧代替封面。
+5. 生成 `preview.jpg`（≤200 KB）供 README 预览；9:16 封面可用视频 S0 首帧（第一帧就是完整封面），3:4 单独排版，不要拿中间帧当封面。
 6. 更新 [`README.md`](README.md) 索引。
 7. 运行：
 
@@ -89,4 +89,10 @@ npm run check
 
 ## 与制作方法的关系
 
-本目录只负责**归档与索引**，不复制制作方法正文。分镜、旁白、时间轴和这次踩到的坑写在案例的 `README.md` / `storyboard.md` / `script.md` 里；制作流水线若后续有独立 skill，再从 skill 链接回来。
+本目录只负责**归档与索引**，不复制制作方法正文。具体方法看：
+
+- [promo-video](../../.agents/skills/promo-video/SKILL.md)：分镜、时间轴、录制与合成。
+- [doubao-tts](../../.agents/skills/doubao-tts/SKILL.md)：旁白合成、测长、补静音与响度。
+- [promo-stills](../../.agents/skills/promo-stills/SKILL.md)：封面与标题图。
+
+案例里的 `README.md` / `storyboard.md` / `script.md` 只记录这次的取舍和结果。

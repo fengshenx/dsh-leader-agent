@@ -1,10 +1,55 @@
 {
   "campaign": "2026-11-16-leader-agent-promo",
+  "version": 2,
+  "fps": 60,
+  "durationSeconds": 85.688,
   "bucket": "dsh-agent-leader",
   "region": "oss-cn-beijing",
   "prefix": "growing/2026-11-16-leader-agent-promo/",
   "baseUrl": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/",
   "assets": [
+    {
+      "kind": "video",
+      "key": "video/promo-1080x1920-v2.mp4",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920-v2.mp4",
+      "bytes": 13713253,
+      "sha256": "ed95e2da54ee454b5e1165a1ff7ca53f24a5f47a6156e278bc5c332d553e55ee",
+      "contentType": "video/mp4"
+    },
+    {
+      "kind": "audio",
+      "key": "audio/narration-zh-v2.mp3",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-zh-v2.mp3",
+      "bytes": 1715085,
+      "sha256": "ec2c2c729a086612a50ff524f56f207e668cef3d39931340be46b7cc0dcb21be",
+      "contentType": "audio/mpeg"
+    },
+    {
+      "kind": "html",
+      "key": "html/promo-standalone-v2.html",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/html/promo-standalone-v2.html",
+      "bytes": 752394,
+      "sha256": "7b300b73bc83b901db0267b2a3537780a870d95fbab8e507f8ca6f70c352ca40",
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "kind": "cover",
+      "key": "covers/cover-9x16-v2.png",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-9x16-v2.png",
+      "bytes": 2013152,
+      "sha256": "9868a7611abdde43a4b54dce6f50a0b9e405760bc8707259776aff14d16f3455",
+      "contentType": "image/png"
+    },
+    {
+      "kind": "cover",
+      "key": "covers/cover-3x4-v2.png",
+      "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-3x4-v2.png",
+      "bytes": 715091,
+      "sha256": "cf015b4ba34c468ad91314b731678e8d3c2442ba12f1aa2864e1606c287e03e3",
+      "contentType": "image/png"
+    }
+  ],
+  "previous": [
     {
       "kind": "video",
       "key": "video/promo-1080x1920.mp4",
