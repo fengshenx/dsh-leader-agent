@@ -14,3 +14,15 @@ lib/
 # 开发实例的数据根（npm run dev 建的会话、项目、卡片与派生 profile），
 # 以及 e2e 的截图（.dev/e2e-artifacts/，给人看的临时证据，不入库）
 .dev/
+
+# 增长媒体不落 Git：视频/音频/standalone 与全尺寸封面走 OSS，见 growing/AGENTS.md
+growing/**/*.mp4
+growing/**/*.mov
+growing/**/*.webm
+growing/**/*.m4v
+growing/**/*.mp3
+growing/**/*.wav
+growing/**/*.m4a
+growing/**/*.zip
+growing/**/*standalone*.html
+growing/**/dist/

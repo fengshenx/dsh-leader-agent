@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { checkBudgets, countDocUnits, findUnregisteredDocs, formatBudgetRow } from '../scripts/doc-budget.mjs'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
+const SCRIPTS = join(root, 'scripts')
 
 /**
  * 列出某个目录下一层的 Markdown 文件。
@@ -16,6 +19,49 @@ function markdownIn(dir) {
   return readdirSync(join(root, dir), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
     .map((entry) => (dir === '.' ? entry.name : `${dir}/${entry.name}`))
+}
+
+/**
+ * 递归列出某个目录树下的 Markdown 文件。
+ * @param {string} dir - 仓内相对目录
+ * @returns {string[]} 仓内相对路径
+ */
+function markdownTree(dir) {
+  return readdirSync(join(root, dir), { withFileTypes: true }).flatMap((entry) => {
+    const rel = `${dir}/${entry.name}`
+    if (entry.isDirectory()) return markdownTree(rel)
+    return entry.isFile() && entry.name.endsWith('.md') ? [rel] : []
+  })
+}
+
+/**
+ * 在临时目录里搭一个最小仓，跑真实门禁脚本。
+ *
+ * 门禁的枚举范围写在脚本里、由脚本自己读盘，所以在仓里断言「已登记」不能证明
+ * 新目录会被要求登记；这里复制脚本 + 夹具文档跑一遍，验证漏登记确实退出 1。
+ *
+ * @param {Record<string, string>} files - 仓内相对路径到文件内容的映射
+ * @returns {{ status: number, stdout: string, stderr: string }} 子进程结果
+ */
+function runBudgetGate(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'doc-budgets-'))
+  try {
+    mkdirSync(join(dir, 'scripts'))
+    for (const name of ['verify-doc-budgets.mjs', 'doc-budget.mjs']) {
+      copyFileSync(join(SCRIPTS, name), join(dir, 'scripts', name))
+    }
+    for (const [path, content] of Object.entries(files)) {
+      mkdirSync(join(dir, path, '..'), { recursive: true })
+      writeFileSync(join(dir, path), content)
+    }
+    const result = spawnSync(process.execPath, [join(dir, 'scripts/verify-doc-budgets.mjs')], {
+      encoding: 'utf8',
+      timeout: 30_000,
+    })
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr }
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 }
 
 test('计数口径：CJK 逐字算 1，非 CJK 按空白分词', () => {
@@ -152,8 +198,28 @@ test('真实清单：当前读数都不超限，余量也不超过 12%', () => {
   )
 })
 
-test('真实清单：根目录与 docs/ 下的 Markdown 全部登记', () => {
+test('真实清单：根目录、docs/ 与 growing/ 下的 Markdown 全部登记', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
-  const discovered = [...markdownIn('.'), ...markdownIn('docs')]
+  const discovered = [...markdownIn('.'), ...markdownIn('docs'), ...markdownTree('growing')]
+  assert.ok(discovered.includes('growing/2026-11-16-leader-agent-promo/README.md'), 'growing 的案例文档要递归枚举到')
   assert.deepEqual(findUnregisteredDocs(Object.keys(manifest), discovered), [])
+})
+
+test('门禁：growing/ 子目录里漏登记的文档让 check 变红', () => {
+  const manifest = JSON.stringify({ 'growing/AGENTS.md': 2 })
+  const registered = runBudgetGate({
+    'scripts/doc-budgets.json': manifest,
+    'growing/AGENTS.md': '规则\n',
+    'growing/2026-01-01-case/README.md': '案例\n',
+  })
+  assert.equal(registered.status, 1, registered.stderr)
+  assert.match(registered.stderr, /UNREG|没有登记/)
+  assert.match(registered.stderr, /growing\/2026-01-01-case\/README\.md/)
+
+  const complete = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'growing/AGENTS.md': 2, 'growing/2026-01-01-case/README.md': 2 }),
+    'growing/AGENTS.md': '规则\n',
+    'growing/2026-01-01-case/README.md': '案例\n',
+  })
+  assert.equal(complete.status, 0, complete.stderr)
 })
