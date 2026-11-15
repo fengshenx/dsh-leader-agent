@@ -2,7 +2,7 @@
 
 增长相关内容的沉淀目录：每次宣传片、封面、文案、旁白和复盘都记在这里。
 
-**Git 只存文本、源文件和索引；视频、音频、standalone HTML、全尺寸封面放阿里云 OSS。**
+**Git 只存文本、源文件和索引；视频、音频、standalone HTML、全尺寸封面放阿里云 OSS。** 规则、bucket、公开边界与上传方法只有一处归属：[`AGENTS.md`](AGENTS.md)。
 
 ## 索引
 
@@ -32,20 +32,8 @@ growing/
       narration.srt
 ```
 
-## 媒体位置
-
-- Bucket：`dsh-agent-leader`（`oss-cn-beijing`，公共读）
-- 前缀：`growing/<YYYY-MM-DD-slug>/`
-- 只允许本项目的增长素材；不要放密钥、用户数据或无关备份。
-- key 不可覆盖；重做用 `-v2` 等新 key，并在 `media.json` 追加记录。
-
 ## 新案例
 
-1. 建 `growing/<YYYY-MM-DD-slug>/`，先写 `README.md` 的一句话命题、受众和预期结果。
-2. 写 `script.md` / `storyboard.md`，跑 TTS 后生成 `timeline.json`。
-3. 源 HTML 与小素材放 `source/`；视频/音频/standalone/大图用 [`scripts/upload-media.sh`](scripts/upload-media.sh) 上传 OSS。
-4. 生成 `media.json`，记录 URL、字节数、sha256、Content-Type。
-5. 更新本索引和案例 README。
-6. 不上 LFS、不建 Release；媒体只走 OSS。
+建目录 → 写 `README.md` / `script.md` / `storyboard.md` / `timeline.json` → 源文件放 `source/` → 按 [`AGENTS.md`](AGENTS.md#新增案例) 上传并生成 `media.json` → 更新本索引。
 
-详细约束见 [`AGENTS.md`](AGENTS.md)。
+不上 LFS、不建 Release；媒体只走 OSS。

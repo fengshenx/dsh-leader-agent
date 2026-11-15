@@ -17,19 +17,47 @@ import { checkBudgets, countDocUnits, findUnregisteredDocs, formatBudgetRow } fr
 const root = fileURLToPath(new URL('../', import.meta.url))
 const manifestPath = resolve(root, 'scripts/doc-budgets.json')
 
-/** 长期文档的枚举范围：根目录与 docs/，不递归子目录。 */
+/** 长期文档的枚举范围：根目录与 docs/ 只看一层。 */
 const STANDING_DOC_DIRS = [root, join(root, 'docs')]
+
+/**
+ * 需要递归枚举的文档树：growing/ 的案例文档在 `<date-slug>/` 子目录里。
+ * 不枚举就会留下一条旁路——在这些目录里写长文档可以绕过整套预算。
+ */
+const STANDING_DOC_TREES = [join(root, 'growing')]
+
+/**
+ * 列出目录下一层的 Markdown 文件。
+ * @param {string} dir - 绝对目录
+ * @returns {string[]} 仓内相对路径
+ */
+function markdownAt(dir) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
+    .map((entry) => relative(root, join(dir, entry.name)))
+}
+
+/**
+ * 递归列出目录树下的 Markdown 文件。
+ * @param {string} dir - 绝对目录
+ * @returns {string[]} 仓内相对路径
+ */
+function markdownTree(dir) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const abs = join(dir, entry.name)
+    if (entry.isDirectory()) return markdownTree(abs)
+    return entry.isFile() && entry.name.endsWith('.md') ? [relative(root, abs)] : []
+  })
+}
 
 /**
  * 列出枚举范围内的 Markdown 文件。
  * @returns {string[]} 仓内相对路径
  */
 function standingDocs() {
-  return STANDING_DOC_DIRS.flatMap((dir) =>
-    readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isFile() && entry.name.endsWith('.md'))
-      .map((entry) => relative(root, join(dir, entry.name))),
-  )
+  return [...STANDING_DOC_DIRS.flatMap(markdownAt), ...STANDING_DOC_TREES.flatMap(markdownTree)]
 }
 
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))

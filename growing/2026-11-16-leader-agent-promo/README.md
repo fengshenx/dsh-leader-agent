@@ -20,9 +20,9 @@
 | 音频时间轴 | [`timeline.json`](timeline.json) |
 | 媒体清单 | [`media.json`](media.json) |
 
-> 视频、音频、standalone 与全尺寸封面都在 OSS；Git 只保留源文件、文本、索引和 31 KB 预览图。
+> 视频、音频、standalone 与全尺寸封面都在 OSS；Git 只保留源文件、文本、索引和 53 KB 预览图。
 >
-> OSS 标准域名对 HTML 会强制下载（`Content-Disposition: attachment`），这是 OSS 的安全策略；下载后用浏览器打开即可。要在线直接预览，需要给 bucket 绑定自定义域名。
+> OSS 标准域名对 HTML 与封面 PNG 强制下载（video/audio 不会），原因与范围见 [`../AGENTS.md`](../AGENTS.md)。
 
 ## 这次改了什么
 
@@ -53,7 +53,6 @@
 
 ## 媒体
 
-- Bucket：`dsh-agent-leader`（`oss-cn-beijing`，公共读，专用 bucket）
-- 前缀：`growing/2026-11-16-leader-agent-promo/`
-- v2 使用 `-v2` key；v1 保留在 OSS，不覆盖。重做继续用新 key，并追加到 `media.json`。
-- 上传/校验方法见 [`../AGENTS.md`](../AGENTS.md) 与 [`../scripts/upload-media.sh`](../scripts/upload-media.sh)。
+完整清单（URL / bytes / sha256 / contentType，按版本分组）见 [`media.json`](media.json)：v2 是 60fps 85.688s，v1 是 30fps 66.914s，两版都在 OSS、不覆盖。
+
+Bucket、key 规则、公开边界与上传方法只有一处归属：[`../AGENTS.md`](../AGENTS.md)。

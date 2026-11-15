@@ -4,6 +4,10 @@
 # 只做三件事：拒绝已存在的 key、带正确 Content-Type 上传、打印 bytes/sha256。
 # 凭据来自本机已配置的 `aliyun` CLI；本脚本不读、不写任何 AccessKey。
 #
+# 串行使用：`stat` 与 `cp` 之间不是原子操作。两个进程会双双 stat 到 404 然后各自上传，
+# `--force` 下后写覆盖先写，绕开「key 不可覆盖」的规则。正常单次调用可靠，默认不加锁；
+# 禁止并发上传同一 key（见 growing/AGENTS.md 的硬规则）。
+#
 # 用法：
 #   ./growing/scripts/upload-media.sh <本地文件> <case>/<kind>/<文件名> <Content-Type>
 #
