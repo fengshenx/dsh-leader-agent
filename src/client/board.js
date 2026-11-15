@@ -27,6 +27,7 @@ import {
   mergeDetailCard,
   mergeSessionState,
   nextDoneWatermark,
+  reconcileBoardOverlays,
   removeCardFromList,
   slotBindingsOf,
   sortActiveCards,
@@ -551,6 +552,11 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   // 取卡条件与下面的展示分支读同一个判定，避免两处守卫各写一套。
   const view = boardViewState(project, sessionId, worker)
 
+  // 详情与确认框只对列表里还在的卡有效。轮询把列表清空（另一窗口删掉最后一张卡）
+  // 时会走下面的空态提前 return：那里不渲染浮层，但状态留着会在下一张卡到达时把
+  // 旧确认框弹回来。对账放在所有提前 return 之前，这条路径也覆盖到。
+  const overlays = reconcileBoardOverlays(cards, detail, pendingDelete)
+
   // 只有还没解析出项目时，项目错误才占满面板；已有摘要就让复核失败静默重试。
   if (projectError !== null && project === undefined) {
     return createElement(
@@ -639,9 +645,9 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }
 
   const deleteDialog = createElement(ConfirmDialog, {
-    open: pendingDelete !== null,
+    open: overlays.pendingDelete !== null,
     title: '删除卡片',
-    description: pendingDelete === null ? '' : describeCardRemoval(pendingDelete),
+    description: overlays.pendingDelete === null ? '' : describeCardRemoval(overlays.pendingDelete),
     confirmLabel: '删除',
     cancelLabel: '取消',
     danger: true,
@@ -738,15 +744,15 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           )
         : null,
     ),
-    detail === null || pendingDelete !== null
+    overlays.detail === null || overlays.pendingDelete !== null
       ? null
       : createElement(CardDetail, {
-          card: detail.card,
+          card: overlays.detail.card,
           onClose: () => { setDetail(null) },
           callRemote,
           onUpdated: cardUpdated,
           onDelete: requestDelete,
-          restoreFocus: detail.anchor,
+          restoreFocus: overlays.detail.anchor,
         }),
     deleteDialog,
   )

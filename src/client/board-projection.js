@@ -349,6 +349,29 @@ export function mergeDetailCard(current, updated) {
 }
 
 /**
+ * 把详情与删除确认对账到当前列表：浮层指向的卡已经不在列表里（另一个窗口删掉了），
+ * 两者都不能再留着。
+ *
+ * 空列表的提前 return 不会渲染浮层，但状态留着会在下一张卡到达时把旧确认框重新
+ * 弹出来、取消后还会重开已删卡的详情。对账放在渲染前，任何提前 return 都绕不过它。
+ * 保留时返回原引用，调用方不用额外比较。
+ *
+ * @param {readonly object[]} cards - 当前卡片列表
+ * @param {{ card: object, anchor?: unknown } | null} detail - 详情状态
+ * @param {object | null} pendingDelete - 待删卡
+ * @returns {{ detail: object | null, pendingDelete: object | null }} 对账后的浮层状态
+ */
+export function reconcileBoardOverlays(cards, detail, pendingDelete) {
+  const ids = new Set(Array.isArray(cards) ? cards.map((card) => card?.id) : [])
+  return {
+    detail: detail !== null && detail !== undefined && ids.has(detail.card?.id) ? detail : null,
+    pendingDelete: pendingDelete !== null && pendingDelete !== undefined && ids.has(pendingDelete.id)
+      ? pendingDelete
+      : null,
+  }
+}
+
+/**
  * 把一轮轮询结果合进看板列表。
  *
  * 本地刚回填过的卡片版本更高（保存链接后立刻回填，而在途的取数请求是保存之前
