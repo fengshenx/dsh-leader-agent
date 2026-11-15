@@ -45,7 +45,7 @@
       "reason": "项目服务里失败与并发分支，逐步补"
     },
     "src/host/tools/cards.js": {
-      "lines": 96,
+      "lines": 97,
       "reason": "参数校验与失败回执分支，逐步补"
     },
     "src/host/tools/spawn-worker.js": {

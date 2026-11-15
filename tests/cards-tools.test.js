@@ -5,10 +5,12 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { createCardStore } from '../src/host/cards/store.js'
 import { createBundleTools } from '../src/host/index.js'
+import { SPEC_PAGE_CHARS } from '../src/host/cards/card-list-view.js'
 import {
   createCreateCardTool,
   createUpdateCardTool,
   createListCardsTool,
+  createReadCardTool,
 } from '../src/host/tools/cards.js'
 
 /**
@@ -16,9 +18,12 @@ import {
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [resolveProject] -
  *   解析调用方会话所属项目；不传则卡片没有归属
  * @param {(sessionId: string | undefined) => boolean} [canWrite] - 写卡身份判定；不传则放行
- * @returns {Promise<{ home: string, tools: Record<string, object> }>} 工具集与 home 目录
+ * @param {object} [options] - worker 判定与卡片绑定
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话的卡片绑定
+ * @returns {Promise<{ home: string, store: object, tools: Record<string, object> }>} 工具集、存储与 home 目录
  */
-async function createTools(resolveProject, canWrite) {
+async function createTools(resolveProject, canWrite, { isWorkerSession, cardBindingsOf } = {}) {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
   // 可控时钟：卡片排序按更新时间戳，两次写入落在同一毫秒会退回插入序，
   // 断言「最近更新的排前面」就成了碰运气的 flaky 用例。
@@ -26,10 +31,12 @@ async function createTools(resolveProject, canWrite) {
   const store = createCardStore({ home, clock: () => Date.now() + (tick += 1) })
   return {
     home,
+    store,
     tools: {
       create_card: createCreateCardTool({ store, resolveProject, canWrite }),
-      update_card: createUpdateCardTool({ store, resolveProject, canWrite }),
+      update_card: createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf }),
       list_cards: createListCardsTool({ store, resolveProject }),
+      read_card: createReadCardTool({ store, resolveProject, isWorkerSession, cardBindingsOf }),
     },
   }
 }
@@ -518,7 +525,7 @@ function collectSchemaViolations(node, path, violations) {
 test('卡片工具的 schema 只用宿主执行子集里的关键字', async () => {
   const { home, tools } = await createTools()
   try {
-    for (const tool of [tools.create_card, tools.update_card, tools.list_cards]) {
+    for (const tool of [tools.create_card, tools.update_card, tools.list_cards, tools.read_card]) {
       const violations = []
       collectSchemaViolations(tool.parameters, `${tool.name}.parameters`, violations)
       collectSchemaViolations(tool.output.schema, `${tool.name}.output`, violations)
@@ -1092,6 +1099,348 @@ test('worker 不能改卡片分类：那是 leader 对任务流的归类', async
     const after = await store.get(card.id)
     assert.equal(after.kind, '研发')
     assert.equal(after.revision, 0)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+/** worker 的假执行上下文。 */
+const workerExec = { agent: { id: 'worker-1' }, signal: undefined }
+
+/**
+ * 建一张卡。
+ * @param {Record<string, object>} tools - 工具集
+ * @param {object} [input] - 建卡入参
+ * @returns {Promise<object>} 卡片
+ */
+async function seedCard(tools, input = {}) {
+  const result = await tools.create_card.execute({ title: '实现读卡', spec: '验收：能读', ...input }, exec)
+  return result.card
+}
+
+test('读卡工具传 cardId 返回单卡事实与一整页规格', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await seedCard(tools)
+    const result = await tools.read_card.execute({ cardId: created.id }, exec)
+    assert.equal(result.card.id, created.id)
+    assert.equal(result.card.title, '实现读卡')
+    // card.spec 是本页片段，specPage 说明窗口；短规格一次读完。
+    assert.deepEqual(result.specPage, { text: '验收：能读', offset: 0, chars: 5, total: 5, hasMore: false })
+    assert.equal(result.card.spec, '验收：能读')
+    const rendered = tools.read_card.output.render({}, result)
+    assert.match(rendered[0].text, /spec:/)
+    assert.match(rendered[0].text, /验收：能读/)
+    // 读操作不投影：看板的数据源是宿主项目通道，读不产生新事实。
+    assert.equal(tools.read_card.output.presentationMeta, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具传 number 读到同一张卡', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await seedCard(tools)
+    const result = await tools.read_card.execute({ number: created.number }, exec)
+    assert.equal(result.card.id, created.id)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具的 cardId 与 number 只能传一个，非法号码与不存在的卡都报错', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await seedCard(tools)
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: created.id, number: created.number }, exec),
+      /只能传一个/,
+    )
+    await assert.rejects(
+      () => tools.read_card.execute({ number: 1.5 }, exec),
+      /number 必须是正整数/,
+    )
+    await assert.rejects(
+      () => tools.read_card.execute({ number: 99 }, exec),
+      /没有 #99 这张卡/,
+    )
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: 'nope' }, exec),
+      /卡片不存在/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具不能跨项目读卡', async () => {
+  let projectId = 'project-a'
+  const { home, tools } = await createTools(async () => ({ id: projectId }))
+  try {
+    const created = await seedCard(tools)
+    // 同一个 model 在另一个项目的语境里拿着 cardId 来读：归属对不上就拒绝。
+    projectId = 'project-b'
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: created.id }, exec),
+      /属于另一个项目/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具不传卡片时读唯一绑定的卡', async () => {
+  const { home, store, tools } = await createTools(undefined, undefined, {
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+  })
+  try {
+    const created = await seedCard(tools, { slots: { dev: { sessionId: 'worker-1' } } })
+    // 压缩或注入失效后 worker 可能没有 cardId，这条默认分支是它找回任务的路。
+    const result = await tools.read_card.execute({}, workerExec)
+    assert.equal(result.card.id, created.id)
+    const rendered = tools.read_card.output.render({}, result)
+    assert.match(rendered[0].text, /slots: dev=worker-1/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具同一张卡挂多个槽位时仍算唯一绑定', async () => {
+  const { home, store, tools } = await createTools(undefined, undefined, {
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+  })
+  try {
+    const created = await seedCard(tools, {
+      slots: { dev: { sessionId: 'worker-1' }, review: { sessionId: 'worker-1' } },
+    })
+    // 两个槽位指向同一张卡：绑定有两条，卡只有一张，不算「同时挂多张」。
+    assert.equal((await store.bindingsOf('worker-1')).length, 2)
+    const result = await tools.read_card.execute({}, workerExec)
+    assert.equal(result.card.id, created.id)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具没有绑定时报错并指出下一步', async () => {
+  const { home, store, tools } = await createTools(undefined, undefined, {
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+  })
+  try {
+    await assert.rejects(
+      () => tools.read_card.execute({}, workerExec),
+      /没有绑定任何卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具同时挂多张卡时列出候选而不是替调用方猜', async () => {
+  const { home, store, tools } = await createTools(undefined, undefined, {
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+  })
+  try {
+    const dev = await seedCard(tools, { title: '开发', slots: { dev: { sessionId: 'worker-1' } } })
+    const review = await seedCard(tools, { title: '评审', slots: { review: { sessionId: 'worker-1' } } })
+    await assert.rejects(
+      () => tools.read_card.execute({}, workerExec),
+      (error) => {
+        assert.match(error.message, /同时挂着 2 张卡/)
+        // 候选里要带上 cardId，模型才能直接补参重试。
+        assert.ok(error.message.includes(dev.id))
+        assert.ok(error.message.includes(review.id))
+        return true
+      },
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具的绑定指向不存在的卡时报错，不静默返回空', async () => {
+  const { home, tools } = await createTools(undefined, undefined, {
+    isWorkerSession: () => true,
+    cardBindingsOf: async () => [{ cardId: 'ghost', number: 9, slot: 'dev', title: '幽灵', status: 'active' }],
+  })
+  try {
+    await assert.rejects(
+      () => tools.read_card.execute({}, workerExec),
+      /指向的卡已不存在/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具缺绑定索引或会话 id 时要求显式传卡片', async () => {
+  const { home, store, tools } = await createTools()
+  try {
+    // 文档门禁路径不传 cardBindingsOf；执行到这里说明调用方漏了装配。
+    await assert.rejects(
+      () => tools.read_card.execute({}, exec),
+      /缺少会话的卡片绑定索引/,
+    )
+    const read = createReadCardTool({
+      store,
+      cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+    })
+    await assert.rejects(
+      () => read.execute({}, { agent: {} }),
+      /会话 id 不可用/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具只给 worker：其他角色调用被拒', async () => {
+  const { home, tools } = await createTools(undefined, undefined, {
+    isWorkerSession: () => false,
+  })
+  try {
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: 'whatever' }, exec),
+      /只有 worker 能读卡/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('worker 能读本项目里不属于自己的卡', async () => {
+  let projectId = 'project-a'
+  const { home, store, tools } = await createTools(async () => ({ id: projectId }), undefined, {
+    isWorkerSession: (sessionId) => sessionId === 'worker-1',
+    cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+  })
+  try {
+    const mine = await seedCard(tools, { title: '我的卡', slots: { dev: { sessionId: 'worker-1' } } })
+    const other = await seedCard(tools, { title: '别人的卡' })
+    // 两张卡都归属 project-a：正向路径是「同一项目里读别人的卡」，不是无归属放行。
+    assert.equal(mine.projectId, 'project-a')
+    assert.equal(other.projectId, 'project-a')
+    // 读放开、写收窄：看得到依赖卡，但 update_card 仍只能改自己绑定的那张。
+    const result = await tools.read_card.execute({ cardId: other.id }, workerExec)
+    assert.equal(result.card.id, other.id)
+    await assert.rejects(
+      () => tools.update_card.execute({ id: other.id, addLinks: [{ label: 'MR' }] }, workerExec),
+      /只能改自己挂着的卡/,
+    )
+    // 切到另一个项目：同一张卡立刻不可读，证明放行来自项目归属相同。
+    projectId = 'project-b'
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: other.id }, workerExec),
+      /属于另一个项目/,
+    )
+    assert.equal((await store.get(mine.id)).title, '我的卡')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡工具按页给规格，specOffset 能续读到全文', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const spec = '甲'.repeat(SPEC_PAGE_CHARS * 2 + 500)
+    const created = await seedCard(tools, { spec })
+    const first = await tools.read_card.execute({ cardId: created.id }, exec)
+    assert.deepEqual(
+      { offset: first.specPage.offset, chars: first.specPage.chars, total: first.specPage.total, hasMore: first.specPage.hasMore, nextOffset: first.specPage.nextOffset },
+      { offset: 0, chars: SPEC_PAGE_CHARS, total: SPEC_PAGE_CHARS * 2 + 500, hasMore: true, nextOffset: SPEC_PAGE_CHARS },
+    )
+    const second = await tools.read_card.execute({ cardId: created.id, specOffset: first.specPage.nextOffset }, exec)
+    const third = await tools.read_card.execute({ cardId: created.id, specOffset: second.specPage.nextOffset }, exec)
+    assert.equal(third.specPage.hasMore, false)
+    // 读完的页不再带 nextOffset：输出要过宿主的无损 JSON 校验，undefined 键会被判非法。
+    assert.equal(Object.hasOwn(third.specPage, 'nextOffset'), false)
+    assert.equal([first.card.spec, second.card.spec, third.card.spec].join(''), spec)
+    const rendered = tools.read_card.output.render({}, second)
+    assert.match(rendered[0].text, /用 specOffset=4000 继续读/)
+    const done = tools.read_card.output.render({}, third)
+    assert.match(done[0].text, /spec 已读完/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('规格分页按码点切，不切坏 emoji，越界直接报错', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const spec = '😀'.repeat(SPEC_PAGE_CHARS + 500)
+    const created = await seedCard(tools, { spec })
+    const first = await tools.read_card.execute({ cardId: created.id }, exec)
+    const second = await tools.read_card.execute({ cardId: created.id, specOffset: first.specPage.nextOffset }, exec)
+    // 按码点：每页的 chars 与 [...text].length 一致，代理对不会被切开。
+    assert.equal([...first.card.spec].length, SPEC_PAGE_CHARS)
+    assert.equal([...second.card.spec].length, 500)
+    assert.equal(first.card.spec + second.card.spec, spec)
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: created.id, specOffset: SPEC_PAGE_CHARS + 500 }, exec),
+      /specOffset 超出范围/,
+    )
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: created.id, specOffset: -1 }, exec),
+      /specOffset 必须是非负整数/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('没有规格的卡返回空页，非零 offset 越界', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await seedCard(tools, { spec: undefined })
+    const result = await tools.read_card.execute({ cardId: created.id }, exec)
+    assert.deepEqual(result.specPage, { text: '', offset: 0, chars: 0, total: 0, hasMore: false })
+    assert.match(tools.read_card.output.render({}, result)[0].text, /spec: 无/)
+    await assert.rejects(
+      () => tools.read_card.execute({ cardId: created.id, specOffset: 1 }, exec),
+      /offset 只能是 0/,
+    )
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('读卡视图渲染链接与归档终态', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await seedCard(tools, {
+      links: [{ label: 'MR', url: 'https://example.com/mr/1', purpose: '实现' }],
+    })
+    await tools.update_card.execute({ id: created.id, status: 'archived' }, exec)
+    const result = await tools.read_card.execute({ cardId: created.id }, exec)
+    const text = tools.read_card.output.render({}, result)[0].text
+    assert.match(text, /已归档/)
+    assert.match(text, /links:/)
+    assert.match(text, /https:\/\/example\.com\/mr\/1/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('worker 不能改卡片排序：排序是 leader 对看板的组织动作', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardsort-'))
+  try {
+    const store = createCardStore({ home })
+    const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'worker-1' } } })
+    const updateCard = createUpdateCardTool({
+      store,
+      isWorkerSession: (sessionId) => sessionId === 'worker-1',
+      cardBindingsOf: (sessionId) => store.bindingsOf(sessionId),
+    })
+    await assert.rejects(
+      () => updateCard.execute({ id: card.id, sortOrder: 1 }, { agent: { id: 'worker-1' } }),
+      /worker 不能改卡片排序/,
+    )
+    assert.equal((await store.get(card.id)).sortOrder, undefined)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

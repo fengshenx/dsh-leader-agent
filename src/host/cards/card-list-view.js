@@ -27,6 +27,8 @@ export const LIST_MAX_CHARS = 6_000
 export const LINK_LABEL_MAX_CHARS = 32
 /** 列表里最多列几个链接标签。 */
 export const MAX_LISTED_LINKS = 5
+/** 读卡工具一次给出的规格页大小（按字符/码点计）。 */
+export const SPEC_PAGE_CHARS = 2_000
 
 /**
  * 超长字段截断并标注原长。
@@ -232,6 +234,85 @@ function renderCardDetail(card) {
   const slots = renderSlots(card)
   if (slots !== undefined) lines.push(slots)
   return lines
+}
+
+/**
+ * 切一页规格。
+ *
+ * 规格可能很长（任务简报 + 验收标准），一次全给会灌满 worker 的上下文；读卡工具
+ * 按页取。偏移按**码点**计而不是 UTF-16 码元：emoji 之类的代理对被切开会出现半个
+ * 字符，`nextOffset` 也会与模型自己数出来的位置对不上。
+ *
+ * 越界直接抛错：静默给空片段会让模型以为规格已经读到末尾。
+ *
+ * @param {string | undefined} spec - 规格全文
+ * @param {number} offset - 起始码点位置
+ * @returns {{ text: string, offset: number, chars: number, total: number, hasMore: boolean, nextOffset?: number }} 本页
+ */
+export function sliceSpec(spec, offset = 0) {
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new Error(`read_card: specOffset 必须是非负整数，收到 ${String(offset)}`)
+  }
+  const chars = [...(typeof spec === 'string' ? spec : '')]
+  const total = chars.length
+  if (total === 0) {
+    if (offset !== 0) {
+      throw new Error('read_card: specOffset 超出范围（这张卡没有规格，offset 只能是 0）')
+    }
+    return { text: '', offset: 0, chars: 0, total: 0, hasMore: false }
+  }
+  if (offset >= total) {
+    throw new Error(`read_card: specOffset 超出范围（规格共 ${total} 字符，可传 0–${total - 1}）`)
+  }
+  const end = Math.min(offset + SPEC_PAGE_CHARS, total)
+  const hasMore = end < total
+  return {
+    text: chars.slice(offset, end).join(''),
+    offset,
+    chars: end - offset,
+    total,
+    hasMore,
+    ...hasMore ? { nextOffset: end } : {},
+  }
+}
+
+/**
+ * 读卡视图：单卡事实 + 一页规格。
+ *
+ * 与 `list_cards` 的单卡查询（规格全文、不截断）分开：那条路径属于 leader，读的是
+ * 它自己维护的规格；worker 可能一次读好几张卡，按页给才不会把上下文灌满。
+ *
+ * @param {object} card - 卡片
+ * @param {{ offset: number, chars: number, total: number, hasMore: boolean, nextOffset?: number }} specPage - 规格窗口
+ * @returns {string} 给模型看的文本
+ */
+export function renderCardDetailText(card, specPage) {
+  const lines = [cardHeading(card)]
+  lines.push(renderKind(card))
+  if (card.status === 'archived') {
+    lines.push('  这张卡已归档，归档是终态：没有新活可接，也不要再改它。')
+  }
+  if (specPage.total === 0) {
+    lines.push('  spec: 无')
+  } else {
+    lines.push('  spec:', ...specPage.text.split('\n').map((line) => `    ${line}`))
+    if (specPage.hasMore) {
+      lines.push(`  spec 已读第 ${specPage.offset + 1}–${specPage.offset + specPage.chars} 个字符（共 ${specPage.total}），用 specOffset=${specPage.nextOffset} 继续读`)
+    } else if (specPage.offset > 0) {
+      lines.push(`  spec 已读完（共 ${specPage.total} 字符）`)
+    }
+  }
+  if (Array.isArray(card.links) && card.links.length > 0) {
+    lines.push('  links:')
+    for (const link of card.links) {
+      const purpose = link?.purpose ? `（${link.purpose}）` : ''
+      const url = link?.url ? `: ${link.url}` : ''
+      lines.push(`  - ${link?.label ?? ''}${url}${purpose}`)
+    }
+  }
+  const slots = renderSlots(card)
+  if (slots !== undefined) lines.push(slots)
+  return lines.join('\n')
 }
 
 /**

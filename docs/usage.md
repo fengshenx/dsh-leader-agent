@@ -30,7 +30,9 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 
 ## 卡片
 
-调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。`list_cards` 与 `create_card` 只给 leader；`update_card` leader 与 worker 都有（worker 用它把产物链接挂到自己的卡），普通会话一件也没有——它不在项目编排里，建出来的卡没有槽位、没有 leader 认领。worker 不建卡（建卡与派工是 leader 的动作链），`update_card` 也只作用于自己挂着的卡，且不能改状态、规格、标题、分类与槽位绑定：完成由 leader 验收后判定（`done` / `archived` 会释放执行者），换执行者同样由它做；规格与标题都是验收锚点（走同一条注入通道），worker 的进展与产物写进回报和 `links`。
+调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。`list_cards` 与 `create_card` 只给 leader；`update_card` leader 与 worker 都有（worker 用它把产物链接挂到自己的卡），普通会话一件也没有——它不在项目编排里，建出来的卡没有槽位、没有 leader 认领。worker 不建卡（建卡与派工是 leader 的动作链），`update_card` 也只作用于自己挂着的卡，且不能改状态、规格、标题、分类、排序与槽位绑定：完成由 leader 验收后判定（`done` / `archived` 会释放执行者），换执行者同样由它做；规格与标题都是验收锚点（走同一条注入通道），worker 的进展与产物写进回报和 `links`。
+
+`read_card` 只给 worker：读本项目的任意卡（读放开、写收窄），不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩、注入失效或冷恢复后手里没有 cardId 时，这是找回任务的入口；没绑卡或同时挂多张都会报错，多张时列出候选。规格按 2000 码点分页，用返回的 `specPage.nextOffset` 作为 `specOffset` 续读到全文；改卡前确认 `revision` 也用它，它读的是落盘真源而不是注入快照。leader 读单卡用 `list_cards` 的 `cardId`，不必有两个入口。
 
 两张卡都可选传 `kind`：卡面头部的分类短标签（如「研发」「方案」，最长 24 字符、不能换行），`update_card` 传空串清除。同一项目的卡用同一套分类名，卡面才能扫读；`list_cards` 的每张卡都会显式列出分类（没有时写「无」）。
 

@@ -12,9 +12,10 @@
  *   （会话由 `agents.create` 建，会话头没有 `origin` 标记，只能按登记判）；
  * - **普通会话**：其余会话。
  *
- * leader 拿到全部工具；普通会话与 worker 都没有 worker 编排与全库查询，普通会话再
- * 少掉卡片写入——它不在项目编排里，没有卡可写。worker 的完成回报不占工具面：由
- * `dispatch.js` 订阅会话事件自动结算。
+ * leader 拿到除宿主 subagent 三件与 worker 专属读卡外的全部工具；普通会话与
+ * worker 都没有 worker 编排与全库查询，普通会话再少掉卡片写入——它不在项目编排
+ * 里，没有卡可写。worker 的完成回报不占工具面：由 `dispatch.js` 订阅会话事件自动
+ * 结算。
  */
 
 /** 只有 leader 能用的工具：worker 编排、会话回看与全库卡片查询。 */
@@ -29,18 +30,30 @@ export const LEADER_ONLY_TOOLS = Object.freeze([
  * 卡片写入工具：只有 leader 与 worker 能写卡。
  *
  * 卡片是项目里的任务事实，而普通会话不承担任何项目编排——它建出来的卡没有槽位、
- * 没有 leader 认领，只会污染看板；它也不该改别人的卡。读同样不给：`list_cards`
- * 已经在 `LEADER_ONLY_TOOLS` 里。
+ * 没有 leader 认领，只会污染看板；它也不该改别人的卡。读同样不给：leader 的单卡
+ * 读走 `list_cards`，worker 走 `read_card`，两条通道都不属于普通会话。
  */
 export const CARD_WRITE_TOOLS = Object.freeze([
   'create_card',
   'update_card',
 ])
 
-/** 普通会话要禁掉的：派工、全库查卡，加上卡片写入。 */
+/**
+ * 只给 worker 的读卡工具。
+ *
+ * leader 不需要它：`list_cards` 传 `cardId` 就是单卡读，再给一个等价入口只会让模型
+ * 在两件工具之间犹豫，文档还得解释差异。普通会话也不给——读卡按项目归属判定，而它
+ * 不承担项目编排。
+ */
+export const WORKER_ONLY_TOOLS = Object.freeze([
+  'read_card',
+])
+
+/** 普通会话要禁掉的：派工、全库查卡、卡片写入，加上 worker 专属的读卡。 */
 export const PLAIN_SESSION_DENY_TOOLS = Object.freeze([
   ...LEADER_ONLY_TOOLS,
   ...CARD_WRITE_TOOLS,
+  ...WORKER_ONLY_TOOLS,
 ])
 
 /**
@@ -86,6 +99,18 @@ export const HOST_SUBAGENT_TOOLS = Object.freeze([
 export const LEADER_UNUSABLE_TOOLS = HOST_SUBAGENT_TOOLS
 
 /**
+ * leader 实际要禁掉的：宿主 subagent 三件，加上只给 worker 的读卡。
+ *
+ * 两者理由不同，所以分成两段再拼起来：前者是「宿主工具对 leader 无效」，后者是
+ * 「这件工具只属于 worker」。`LEADER_UNUSABLE_TOOLS` 保持为 `HOST_SUBAGENT_TOOLS`
+ * 的别名，不要往里塞业务工具。
+ */
+export const LEADER_DENY_TOOLS = Object.freeze([
+  ...LEADER_UNUSABLE_TOOLS,
+  ...WORKER_ONLY_TOOLS,
+])
+
+/**
  * 算出某个会话要禁掉的工具名。
  *
  * @param {object} options - 选项
@@ -97,7 +122,7 @@ export const LEADER_UNUSABLE_TOOLS = HOST_SUBAGENT_TOOLS
 export function deniedToolsFor({ agent, isLeaderSession, isWorkerSession }) {
   const worker = typeof isWorkerSession === 'function' && isWorkerSession(agent?.id) === true
   if (worker) return [...WORKER_DENY_TOOLS]
-  if (isLeaderSession(agent?.id)) return [...LEADER_UNUSABLE_TOOLS]
+  if (isLeaderSession(agent?.id)) return [...LEADER_DENY_TOOLS]
   return [...PLAIN_SESSION_DENY_TOOLS]
 }
 
