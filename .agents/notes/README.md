@@ -2,6 +2,8 @@
 
 非平凡改动的决策记忆：记**为什么这样定**、放弃了什么、怎么验证。代码与 `docs/` 讲事实，这里讲取舍。
 
+写新笔记前先做[取代检查](AGENTS.md)：已有主人就改那一篇，不新增重复记录。
+
 ## 路径即状态
 
 `.agents/notes/{lifecycle}/{class}/yyyy-mm-dd-english-slug.md`，文件名日期是**首次提出**那天。
@@ -15,8 +17,9 @@
 | `rejected` | 提案被否决，冻结原样。正文要 `## 提案` 与 `## 否决理由`。 |
 | `archived` | 曾落地、现已整篇不再指导当前行为。只作历史，不再修改。 |
 
-部分被取代的笔记留在 `implemented`，在被推翻的那一节前加一行
-`> **已被 [标题](../<class>/<文件名>.md) 取代**：…`，写明取代者与仍然成立的部分。
+部分被取代的笔记留在 `implemented`，按 [AGENTS.md](AGENTS.md) 的取代检查加指针。
+
+整篇被取代且仍有历史价值的 implemented 笔记移入 `archived/{class}/`（冻结，不回改正文）；只描述小范围 UI 调整或纯机械改动的直接删；被否决的提案移入 `rejected/` 并写明理由。删除或归档都在同一个 PR 里修好笔记间链接。
 
 ## 类目
 
@@ -36,4 +39,4 @@
 `npm run check` 里的 `scripts/verify-agent-note-format.mjs`（判定在 `scripts/agent-note-format.mjs`，
 读盘遍历在 `scripts/agent-note-audit.mjs`）
 校验：路径双轴与闭集、文件名、唯一 H1 在首行、首节 `## 背景`、按 lifecycle 的必需节、节名不重复、
-行首不出现 `**状态**` 行、笔记间相对链接可达。根层的 `README.md` 与 `AGENTS.md` 是目录说明，不参与判定。
+行首不出现 `Status:` / `**状态**` 行、笔记间相对链接可达。根层的 `README.md` 与 `AGENTS.md` 是目录说明，不参与判定。

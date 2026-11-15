@@ -84,8 +84,8 @@ export function checkNote(relPath, text) {
   }
 
   const lines = proseLines(text)
-  if (lines.some(line => line.startsWith('**状态**'))) {
-    violations.push('不要写 `**状态**` 行：路径即状态，双写必然与目录漂移')
+  if (lines.some(line => /^(?:\*\*状态\*\*|Status:)/.test(line))) {
+    violations.push('不要写 `Status:` / `**状态**` 行：路径即状态，双写必然与目录漂移')
   }
   const titles = lines.filter(line => /^# \S/.test(line))
   if (titles.length === 0) {

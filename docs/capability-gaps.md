@@ -442,7 +442,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ---
 
-### 45. 「未分组」组头与会话行同处一个 `groupSection`，行被渲染层全部排除时 DOM 判据会连组头一起藏
+### 45. 「未分组」组头与会话行同处一个 `groupSection`：DOM 判据会随宿主排版漂移
 
 **目标形态**：渲染层判断「未分组里还剩不剩可见会话」，据此决定要不要藏掉那个组头。
 
@@ -451,9 +451,9 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - 组头 `div[data-row-key="workspace:"]` 与会话行是同一个 `div.<hash>_groupSection` 的**兄弟节点**，顺序是组头 → 会话行 →（可选）展开按钮；1 条会话与 6 条（折叠水位 5）两种状态都是 1 个 `groupSection`，组头的 `parentElement` 里就能查到会话行。
 - 子工作区嵌套时段内行渲染在父 section 内一个 `div[role="group"]` 里，仍然不是独立的 `groupSection`。
 
-**影响**：既然同 section，「组头所在 section 里有没有可见会话行」这个 DOM 判据**并不恒假**——组里还有用户自己的会话时判得准。组内的行**全被插件自己的排除集隐藏**（`dsh-leader-agent-excluded-session`）时，判据看到一排带隐藏类的行、得出「组里没内容」，会连组头一起藏——这是宿主结构下的必然结果，不是判据的缺陷：`markUngroupedHeader` 只按渲染结果判，不复刻宿主的数据层可见性规则（取舍见 `docs/limitations.md` 的「未分组」组头那条），代价就落在这个形态上，方向仍是宁可留一个空组头也不误伤用户自己的会话。项目目录失效后仍排除它的会话正好落进这里，用户看到「未分组整组消失，卸载插件就回来」——所以修复只能落在排除集上（客户端不再按目录可用性排除），不在 DOM 结构上。
+**影响**：DOM 判据只在「组里还有用户自己的会话」时判得准；组内的行全被插件排除时，判据会连组头一起藏。更根本的问题是它把正确性押在宿主排版上——宿主换一版渲染或层数，判据就可能恒假，表现正是「未分组整组消失，卸载插件就回来」（#105）。修复因此不能停在排除集上。
 
-**本仓不再改这个判据**：`089b5a6`（#101）已给 `markUngroupedHeader` 加「组内还有可见的『展开其余 N 个会话』就不藏」的兜底，把上面那个形态压到只剩「行全被排除且没有展开按钮」；另一种偏差是快照滞后（组里有会话但行还没画出来，判据看到空 section）——未复现，属理论边界。回归用例是 `tests/e2e/project-directory-gone.e2e.js`（删掉 `directoryUsable` 过滤必红）。
+**现行判据**：`shouldHideUngroupedHeader` 只看会话快照与排除集（`src/client/workspace-exclusion.js`）——组里剩下的会话全在排除集里才藏；快照未到、组里一条会话都没有、或还有空会话时都不藏。DOM 上只留「还有可见的『展开其余 N 个会话』就不藏」一条保护。取舍见 [限制](limitations.md#项目树与工作区)，决策见[笔记](../.agents/notes/implemented/bug-fix/2026-11-04-ungrouped-header-snapshot-visibility.md)。
 
 ---
 

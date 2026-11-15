@@ -149,7 +149,10 @@ test('四反引号围栏里的三反引号块仍是内容', () => {
 test('不写状态行', () => {
   const text = '# 甲\n\n**状态**：implemented\n\n## 背景\n\n## 决策\n'
   assert.match(violationsOf({ text }).join('\n'), /路径即状态/)
+  const hostStyle = '# 甲\n\nStatus: implemented\n\n## 背景\n\n## 决策\n'
+  assert.match(violationsOf({ text: hostStyle }).join('\n'), /路径即状态/)
   assert.deepEqual(violationsOf({ text: '# 甲\n\n## 背景\n\n正文里提到 `**状态**` 行不算。\n\n## 决策\n' }), [])
+  assert.deepEqual(violationsOf({ text: '# 甲\n\n## 背景\n\n正文里提到 Status: 行也不算。\n\n## 决策\n' }), [])
 })
 
 test('笔记间链接必须可达', () => {
