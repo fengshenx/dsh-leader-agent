@@ -28,6 +28,7 @@ dsh 原生的 subagent 工具是阻塞式：父 agent 调工具 → 子 agent �
 
 ## Alternatives considered
 
+- **第一版用 `ctx.subagents.startActivation({ delivery: 'caller' })`**：工具立即返回子会话 id，`activation.result` 是终态 promise，是当时唯一可用的非阻塞入口；但 subagent 结算即销毁、界面上只读，worker 既不能常驻也不能由人下钻，2026-10-29 改为 `ctx.agents.create()` 建根会话，见 [worker 常驻化](2026-10-29-worker-as-root-session.md)。
 - **继续用阻塞式 subagent 工具**：父 turn 卡在调用处，与「派完继续思考」相反；后来改用根会话，见 [worker 常驻化](2026-10-29-worker-as-root-session.md)。
 - **自建 HTTP / 轮询唤醒**：宿主没有等价的完成唤醒入口，`followup` 是当时唯一能开新 turn 的 API；落盘队列补崩溃窗口。
 - **把 `sessionController` 声明为必需 inject**：它只在 web-app bundle 上，声明必需会让 headless 等 profile 整个插件挂起。

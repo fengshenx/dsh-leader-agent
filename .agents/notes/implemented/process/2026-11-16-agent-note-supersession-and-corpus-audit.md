@@ -37,4 +37,6 @@ Status: implemented
 
 ## Testing
 
-`npm run check` 全绿：94 篇格式合规、1125 用例通过、15 篇 standing docs 在预算内；笔记总量 3,729 行。`Status:` 与 `## Alternatives considered` 的强制检查见 [host-agent-note-format-alignment](2026-11-16-host-agent-note-format-alignment.md)，9 条新检查逐条撤掉→用例红→还原→绿。删除文件后链接门禁当场报出全部断链，逐处改指现主人后归零；删除前 grep 确认相关机制已不在代码里。注入面实测：本会话读写 `.agents/notes/` 时，宿主的 additional instructions 里出现了这份 `AGENTS.md`（`dsh 0.2.2-rc.2`）。压缩是人工重写，没有机械门禁能判「决策是否还在」。
+`npm run check` 全绿：93 篇格式合规、1121 用例通过、15 篇 standing docs 在预算内；笔记总量 2,641 行。撤掉 `Status:` 分支即用例变红、还原后全绿。删除文件后链接门禁当场报出全部断链，逐处改指现主人后归零；删除前 grep 确认相关机制已不在代码里。注入面实测：本会话读写 `.agents/notes/` 时，宿主的 additional instructions 里出现了这份 `AGENTS.md`（`dsh 0.2.2-rc.2`）。压缩是人工重写，没有机械门禁能判「决策是否还在」。
+
+> 迁移后的当前读数与 9 条新检查见 [宿主 Agent Note 格式对齐](2026-11-16-host-agent-note-format-alignment.md)。
