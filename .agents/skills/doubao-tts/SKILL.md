@@ -48,7 +48,43 @@ node .agents/skills/doubao-tts/scripts/tts.mjs \
   --out /tmp/vo.mp3
 ```
 
-脚本只负责合成；**测长、补静音、拼接、响度**在下面手动做，或交给 [`promo-video`](../promo-video/SKILL.md) 的时间轴流程。
+脚本只负责一次合成；**测长、补静音、拼接、响度**由下面的命令完成。视频场景边界与录制见 [`promo-video`](../promo-video/SKILL.md)。
+
+## 测长、补静音与拼接
+
+每段生成后立刻测长，把读数写进 `timeline.json`：
+
+```sh
+ffprobe -v error -show_entries format=duration \
+  -of default=nw=1:nk=1 .dev/promo/audio/s1.mp3
+```
+
+每段前补 `lead`、后补到目标 `duration`，用 WAV 中间态避免 MP3 编码延迟累积：
+
+```sh
+# 例：lead=0.35s，目标 8.958s
+ffmpeg -y -i .dev/promo/audio/s1.mp3 \
+  -af "adelay=350:all=1,apad" -t 8.958 \
+  -ar 48000 -ac 1 -c:a pcm_s16le .dev/promo/audio/s1.wav
+
+# concat.txt 里写绝对路径，避免 ffmpeg 相对 concat 文件目录解析
+ffmpeg -y -f concat -safe 0 -i concat.txt \
+  -c:a pcm_s16le .dev/promo/audio/narration.wav
+
+# 整条做一次响度标准化，再编码
+ffmpeg -y -i .dev/promo/audio/narration.wav \
+  -af "loudnorm=I=-16:TP=-1.5:LRA=11" \
+  -ar 48000 -c:a libmp3lame -b:a 192k .dev/promo/audio/narration.mp3
+```
+
+检查：
+
+```sh
+ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 narration.mp3
+ffmpeg -hide_banner -nostats -i narration.mp3 -af volumedetect -f null -
+```
+
+期望：总长等于 `timeline.duration`；平均约 −17 dB、峰值低于 0 dB；段间静音约 0.8–1.5 秒，不要出现 3 秒以上的死区。
 
 ## 分段纪律
 
@@ -61,15 +97,30 @@ node .agents/skills/doubao-tts/scripts/tts.mjs \
 
 ## 时间轴接口
 
-TTS 产出三类信息，后续动画只依赖它们：
+`timeline.json` 是音频与时间轴之间的唯一契约，字段定义只在这里维护：
+
+```json
+{
+  "segments": [
+    { "key": "s1", "text": "同时跑五个任务，是什么感觉？", "speech": 7.608, "lead": 0.35, "tail": 1.0, "duration": 8.958 }
+  ],
+  "starts": { "s1": 0 },
+  "duration": 66.914
+}
+```
 
 | 字段 | 含义 |
 |---|---|
-| `speech` | 该段纯语音时长（`ffprobe`） |
-| `lead` | 场景开始到语音开始的静音 |
-| `duration` | `lead + speech + tail`，也就是该场景占用的总时长 |
+| `segments[].key` | 场景/节拍标识（`s1`…），与分镜表一致 |
+| `segments[].text` | 该段旁白的字幕原文；SRT 用它 |
+| `segments[].speech` | 纯语音时长（`ffprobe`） |
+| `segments[].lead` | 场景开始到语音开始的静音 |
+| `segments[].tail` | 语音结束到场景结束的静音 |
+| `segments[].duration` | `lead + speech + tail`，该场景占用的总时长 |
+| `starts` | 每个场景的全局起点；`s1` 为 0，其余是前面所有 `duration` 的累加 |
+| `duration` | 全片总长，等于最后一个 `starts[key] + duration` |
 
-场景起点 = 前面所有 `duration` 累加；不要把总时长写死成 60/72 秒。字幕起点 = 场景起点 + `lead`，字幕终点 = 起点 + `speech`。
+场景起点 = 前面所有 `duration` 累加；不要把总时长写死成 60/72 秒。字幕起点 = `starts[key] + lead`，字幕终点 = 起点 + `speech`。SRT 生成命令见 [`promo-video`](../promo-video/references/timeline-and-render.md) 的“字幕 SRT”。
 
 ## 参数
 
@@ -77,14 +128,16 @@ TTS 产出三类信息，后续动画只依赖它们：
 |---|---|---|
 | `--text` | — | 待合成文本；与 `--text-file` 二选一 |
 | `--text-file` | — | UTF-8 文本文件 |
-| `--out` | — | 输出音频路径，按扩展名写 mp3/wav/pcm |
+| `--out` | — | 输出音频路径；编码由 `--format` 决定，扩展名不参与推断 |
 | `--speaker` | zh_male_jieshuoxiaoming_uranus_bigtts | 2.0 音色 ID |
 | `--rate` | `0` | 语速 `-50..100`，负值更慢 |
 | `--loudness` | `0` | 音量 `-50..100` |
 | `--format` | `mp3` | `mp3` / `wav` / `pcm` / ogg_opus |
 | `--sample-rate` | `24000` | 采样率 |
 | `--resource-id` | `seed-tts-2.0` | 模型版本 |
-| `--endpoint` | 官方 V3 地址 | 仅测试/代理时覆盖 |
+| `--endpoint` | 官方 V3 地址 | 仅本地 mock/可信代理时覆盖；Key 会发到该地址 |
+
+`--endpoint` 指向非默认地址时，脚本会在 stderr 打印警告。不要把 Key 发到不可信地址；未知参数与位置参数都会直接报错并列出可用参数。
 
 ## 排错
 
@@ -98,8 +151,8 @@ TTS 产出三类信息，后续动画只依赖它们：
 ## 产物
 
 - 每段一个音频文件，命名带节拍号（`vo-01.mp3`）。
-- 一份 `timeline.json`，记录 `speech/lead/tail/duration` 与场景起点。
+- 一份 `timeline.json`，字段定义见上面“时间轴接口”。
 - 一条拼好的旁白音轨，供视频 mux。
-- 一份 SRT，时间来自“场景起点 + lead”，不要手写时间码。
+- 一份 SRT：由 `promo-video` 的“字幕 SRT”步骤从 `timeline.json` 生成，时间来自 `starts + lead`，不要手写时间码。
 
 **不要把 API Key、控制台截图、带 token 的请求头写进仓库或技能文件。**

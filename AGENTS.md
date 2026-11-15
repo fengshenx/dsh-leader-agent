@@ -38,7 +38,7 @@ index.js            包入口：导出 name / inject / apply（实现都在 src/
 src/host/           宿主侧：工具、派工器、存储、项目服务、worker 会话生命周期
 src/client/         浏览器侧：项目树、看板、会话行（React.createElement，无 JSX）
 src/shared/         两端共用的纯函数与消息来源约定
-.agents/skills/     协议层 skill（leader-mode 派工协议、init-leader-agent 初始化方法、e2e-scenarios 场景写法）
+.agents/skills/     协议层 skill（leader-mode 派工协议、init-leader-agent 初始化方法、e2e-scenarios 场景写法、宣传片流水线）
 tests/              node:test 单测（纯函数与假件，不引 jsdom）
 tests/e2e/          浏览器 e2e：实例夹具、mock provider、场景（`npm run e2e` 单独跑）
 build/              esbuild 客户端构建：client.mjs 入口 + client-bundle.mjs（配置与原子写）
@@ -53,7 +53,7 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review
 ## 常用命令
 
 ```bash
-npm run check                     # Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查（index/src/scripts/build）+ 覆盖率门禁（含全部单测）
+npm run check                     # Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查（index/src/scripts/build/.agents/skills）+ 覆盖率门禁（含全部单测）
 npm run test                      # 只跑单测
 npm run test:coverage             # 只跑单测 + per-file 行覆盖门禁
 npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）

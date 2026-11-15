@@ -184,7 +184,7 @@ npm run e2e                       # 浏览器 e2e
 | [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、截图）与人工取证规范；断言纪律与失败诊断见 `.agents/skills/e2e-scenarios/` |
 | [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
 | [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
-| [.agents/skills/promo-video/](.agents/skills/promo-video/) | 宣传片流水线：分镜、旁白时间轴、录制与封面制作 |
+| [.agents/skills/promo-video/](.agents/skills/promo-video/) | 宣传片流水线（需本仓开发环境：Playwright + ffmpeg）：分镜、旁白时间轴、录制与封面制作 |
 
 ## 致谢
 

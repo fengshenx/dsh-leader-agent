@@ -1,6 +1,6 @@
 /**
- * 语法检查门禁：`index.js` 与 `src` / `scripts` / `build` 下的 `.js` / `.mjs` 逐个过
- * `node --check`。
+ * 语法检查门禁：`index.js` 与 `src` / `scripts` / `build` / `.agents/skills` 下的
+ * `.js` / `.mjs` 逐个过 `node --check`。
  *
  * 原先是 `package.json` 里的一段 POSIX shell 循环（`for f in … $(find …)`），Windows 的
  * cmd 下直接报 `f was unexpected at this time`，本地跑不了 `npm run check`。
@@ -12,7 +12,7 @@ import { join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = fileURLToPath(new URL('../', import.meta.url))
-const ENTRIES = ['index.js', 'src', 'scripts', 'build']
+const ENTRIES = ['index.js', 'src', 'scripts', 'build', '.agents/skills']
 const EXTENSIONS = ['.js', '.mjs']
 
 /**

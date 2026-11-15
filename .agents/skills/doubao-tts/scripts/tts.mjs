@@ -43,9 +43,13 @@ const HELP = `豆包 TTS 2.0
   --format <name>       mp3 / wav / pcm / ogg_opus，默认 mp3
   --sample-rate <n>     采样率，默认 ${DEFAULT_SAMPLE_RATE}
   --resource-id <id>    模型版本，默认 ${DEFAULT_RESOURCE_ID}
-  --endpoint <url>      仅测试/代理时覆盖
+  --endpoint <url>      仅本地 mock/可信代理时覆盖；Key 会发到该地址
   --uid <id>            请求里的 user.uid，默认 dsh-leader-agent
   --help                显示本帮助
+
+安全:
+  --endpoint 覆盖会把 X-Api-Key 发到指定地址。只对本地 mock 或可信代理使用；
+  指向其他地址时脚本会在 stderr 打印警告。
 
 示例:
   source ~/.zshrc
@@ -54,8 +58,18 @@ const HELP = `豆包 TTS 2.0
     --out /tmp/vo-01.mp3 --rate -5
 `
 
+const VALUE_OPTIONS = [
+  'text', 'text-file', 'out', 'speaker', 'rate', 'loudness',
+  'format', 'sample-rate', 'resource-id', 'endpoint', 'uid',
+]
+const FLAG_OPTIONS = ['help']
+const OPTION_SUMMARY = VALUE_OPTIONS.map((name) => `--${name}`).concat('--help').join(' ')
+
 /**
- * 读取命令行参数。
+ * 读取命令行参数；只接受白名单里的选项。
+ *
+ * 拼错的选项（`--speeker`）如果静默进表，会按默认音色合成却不报错；所以未知键直接失败。
+ * 位置参数同样拒绝，且不回显原值——误把密钥当参数传进来时，错误信息不能把它带出去。
  *
  * @param {string[]} argv - 不含 node 与脚本路径的参数
  * @returns {Record<string, string | boolean>} 参数表
@@ -65,12 +79,21 @@ function parseArgs(argv) {
   const values = {}
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
-    if (arg === '--help' || arg === '-h') {
+    if (arg === '-h') {
       values.help = true
       continue
     }
-    if (!arg.startsWith('--')) throw new Error(`未知参数：${arg}`)
+    if (!arg.startsWith('--')) {
+      throw new Error(`第 ${i + 1} 个参数不是 -- 选项；位置参数不支持（可用参数：${OPTION_SUMMARY}）`)
+    }
     const key = arg.slice(2)
+    if (FLAG_OPTIONS.includes(key)) {
+      values[key] = true
+      continue
+    }
+    if (!VALUE_OPTIONS.includes(key)) {
+      throw new Error(`未知参数：${arg}；可用参数：${OPTION_SUMMARY}`)
+    }
     const next = argv[i + 1]
     if (next === undefined || next.startsWith('--')) throw new Error(`参数 --${key} 缺少值`)
     values[key] = next
@@ -91,7 +114,7 @@ function parseArgs(argv) {
 function intInRange(value, name, min, max) {
   const number = Number(value)
   if (!Number.isInteger(number) || number < min || number > max) {
-    throw new Error(`--${name} 必须是 ${min}..${max} 的整数，收到 ${String(value)}`)
+    throw new Error(`--${name} 必须是 ${min}..${max} 的整数`)
   }
   return number
 }
@@ -127,6 +150,30 @@ function collectAudio(raw) {
   return chunks
 }
 
+/**
+ * 校验 endpoint；非默认地址时在 stderr 警告，因为 Key 会随请求头发出去。
+ *
+ * @param {string} endpoint - 命令行传入或默认地址
+ * @returns {URL} 解析后的 URL
+ */
+function parseEndpoint(endpoint) {
+  let url
+  try {
+    url = new URL(endpoint)
+  } catch {
+    throw new Error('--endpoint 不是合法 URL')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('--endpoint 只支持 http(s) URL')
+  }
+  if (url.href !== DEFAULT_ENDPOINT) {
+    process.stderr.write(
+      `警告：--endpoint 指向 ${url.origin}，API Key 会发送到该地址；只用于本地 mock 或可信代理。\n`,
+    )
+  }
+  return url
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2))
   if (args.help === true) {
@@ -152,7 +199,9 @@ async function main() {
   if (text.trim() === '') throw new Error('文本为空；传 --text 或 --text-file')
 
   const format = typeof args.format === 'string' ? args.format : 'mp3'
-  if (!VALID_FORMATS.has(format)) throw new Error(`--format 不支持：${format}`)
+  if (!VALID_FORMATS.has(format)) {
+    throw new Error(`--format 不支持，可用：${[...VALID_FORMATS].join(' / ')}`)
+  }
   const sampleRate = args['sample-rate'] === undefined
     ? DEFAULT_SAMPLE_RATE
     : intInRange(args['sample-rate'], 'sample-rate', 8000, 48000)
@@ -162,6 +211,7 @@ async function main() {
   const resourceId = typeof args['resource-id'] === 'string' ? args['resource-id'] : DEFAULT_RESOURCE_ID
   const endpoint = typeof args.endpoint === 'string' ? args.endpoint : DEFAULT_ENDPOINT
   const uid = typeof args.uid === 'string' ? args.uid : 'dsh-leader-agent'
+  const endpointUrl = parseEndpoint(endpoint)
 
   const payload = {
     user: { uid },
@@ -177,7 +227,7 @@ async function main() {
     },
   }
 
-  const response = await fetch(endpoint, {
+  const response = await fetch(endpointUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
