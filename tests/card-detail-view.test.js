@@ -47,7 +47,8 @@ test('归档卡不给链接编辑入口，已完成卡仍可改', () => {
   assert.equal(canEditCardLinks({}), true)
 })
 
-test('详情删除：有 id 才能删，归档卡也能删', () => {
+test('详情删除：有 id 才能删，不按状态拦', () => {
+  // 归档卡到不了详情（看板只渲染 active / done），判据不看状态，只认非空 id。
   assert.equal(canDeleteCard({ id: 'c1', status: 'archived' }), true)
   assert.equal(canDeleteCard({ id: 'c1' }), true)
   assert.equal(canDeleteCard({ id: '' }), false)
