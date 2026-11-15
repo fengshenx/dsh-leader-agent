@@ -93,6 +93,10 @@ function fakeCards() {
       calls.push(['update', input])
       return { id: input.id, number: 1, title: '任务', revision: 2, links: input.links }
     },
+    async remove(input) {
+      calls.push(['remove', input])
+      return input.id === 'missing' ? undefined : { id: input.id, number: 1, title: '任务' }
+    },
   }
 }
 
@@ -314,6 +318,21 @@ test('改链接把非规范 http(s) 地址归一化后落盘', async () => {
     'https://example.test/mr/2',
     'https://example.test/mr/3',
   ])
+})
+
+test('删卡：正常删除返回 removed，卡片已不在时按幂等 notFound 收尾', async () => {
+  const { ctx } = fakeCtx()
+  const cards = fakeCards()
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
+
+  assert.deepEqual(await remote.deleteCard('c1'), { removed: true })
+  assert.deepEqual(cards.calls.at(-1), ['remove', { id: 'c1' }])
+  assert.deepEqual(await remote.deleteCard('missing'), {
+    removed: false,
+    notFound: true,
+    reason: '卡片不存在。',
+  })
+  await assert.rejects(() => remote.deleteCard(''), /id 不能为空/)
 })
 
 test('改链接拒绝空 id 与非 http(s) 的 URL，不碰卡片库', async () => {

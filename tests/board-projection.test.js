@@ -12,8 +12,10 @@ import {
   mergeCardSnapshot,
   mergeCardUpdate,
   mergeDetailCard,
+  removeCardFromList,
   mergeSessionState,
   nextDoneWatermark,
+  reconcileBoardOverlays,
   slotBindingsOf,
   slotViewsForCard,
   sortActiveCards,
@@ -424,4 +426,44 @@ test('分类判据：非空字符串才显示，脏数据一律按未分类', ()
   assert.equal(cardKind(card({ kind: 42 })), null)
   assert.equal(cardKind(card({ kind: '   ' })), null)
   assert.equal(cardKind(card({})), null)
+})
+
+test('删除后从看板列表摘掉同 id 的卡，其余保持原引用', () => {
+  const first = { id: 'c1', title: '一' }
+  const second = { id: 'c2', title: '二' }
+  const next = removeCardFromList([first, second], 'c1')
+  assert.deepEqual(next, [second])
+  assert.equal(next[0], second)
+  // 非数组也不把列表打坏；删除请求不会把空 id 传到这里。
+  assert.deepEqual(removeCardFromList(undefined, 'c1'), [])
+  assert.deepEqual(removeCardFromList([first], 'missing'), [first])
+})
+
+test('详情与删除确认只跟着列表里还在的卡', () => {
+  const first = { id: 'c1', title: '一' }
+  const second = { id: 'c2', title: '二' }
+  const detail = { card: first, anchor: { left: 1 } }
+
+  // 卡还在：返回原引用，调用方不需要重建状态。
+  const kept = reconcileBoardOverlays([first, second], detail, first)
+  assert.equal(kept.detail, detail)
+  assert.equal(kept.pendingDelete, first)
+
+  // 轮询把列表清空（另一窗口删掉最后一张卡）：两个浮层一起收掉。空列表的提前
+  // return 不渲染它们，状态留着会在下一张卡到达时把旧确认框重新弹出来。
+  const emptied = reconcileBoardOverlays([], detail, first)
+  assert.equal(emptied.detail, null)
+  assert.equal(emptied.pendingDelete, null)
+
+  // 列表里还有别的卡，但浮层指向的那张已经没了：只收掉指向它的那个。
+  const missing = reconcileBoardOverlays([second], detail, first)
+  assert.equal(missing.detail, null)
+  assert.equal(missing.pendingDelete, null)
+  const present = reconcileBoardOverlays([first], detail, second)
+  assert.equal(present.detail, detail)
+  assert.equal(present.pendingDelete, null)
+
+  // 没有浮层时不去造新对象。
+  assert.deepEqual(reconcileBoardOverlays([first], null, null), { detail: null, pendingDelete: null })
+  assert.deepEqual(reconcileBoardOverlays(undefined, null, null), { detail: null, pendingDelete: null })
 })

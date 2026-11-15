@@ -28,7 +28,7 @@
 ## 亮点
 
 1. **通过一个 Leader，帮你推进开发和 Review** — 你只跟 Leader 说目标，它拆卡、派工、盯住每个 worker 的完成、验证产物、组织审查。注意力回到「要什么」上，不用逐个陪跑——目标规模是一次并行开发 10 个 feature。
-2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板。卡面上是执行者槽位与实时信号灯，卡片说明按 Markdown 渲染，链接可在浮层里直接编辑；点卡面看详情（目标、范围、验收、链接，其余只读），点槽位直接下钻进那个 Agent 的会话接着聊。worker 的回报按 Markdown 渲染成左侧 agent 气泡；leader 派过去的任务渲染成右侧用户气泡，正文与 assistant 内容同套 Markdown；单换行按 Markdown 合并，需要断行用空行或 Markdown 语法。
+2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板。卡面上是执行者槽位与实时信号灯，卡片说明按 Markdown 渲染，链接可在浮层里直接编辑，详情页脚可删除卡片；点卡面看详情（目标、范围、验收、链接，其余只读），点槽位直接下钻进那个 Agent 的会话接着聊。worker 的回报按 Markdown 渲染成左侧 agent 气泡；leader 派过去的任务渲染成右侧用户气泡，正文与 assistant 内容同套 Markdown；单换行按 Markdown 合并，需要断行用空行或 Markdown 语法。
 3. **Agent 自由编排** — 拆成两份文件：`LEADER.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（开发 / 审核……）。两者在每次模型请求前求值、正文变化才追加，改文件即改行为，不用重建会话。
 4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个 leader 会话，项目树列出它派出的 worker；项目行可拖拽排序，删除项目只删记录、保留文件夹与会话（dsh 工作区不受影响）。项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
@@ -115,7 +115,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 2. **加载协议**：leader 会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
 3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从 leader 继承（leader 是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。要看它这一轮怎么做的（调了哪些工具、哪步失败），用 `read_worker_session` 回看，不必唤醒它。
 4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。`list_cards` 与 `create_card` 只给 leader，普通会话一件也没有；`update_card` leader 与 worker 都有。worker 只能改自己挂着的卡，且只能挂 `links` 这类派生字段：`title` / `spec` / `status` / `slots` 都归 leader（前两者是验收锚点与注入内容，后两者决定谁在执行、卡是否算完成）。
-5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。leader 建卡后自动打开；点卡面看详情（链接可编辑，其余只读），点槽位 chip 打开执行者会话。
+5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。leader 建卡后自动打开；点卡面看详情（链接可编辑、可删卡，其余只读），点槽位 chip 打开执行者会话。
 
 ## 编排：把规则写进文件
 
@@ -147,7 +147,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 - **Leader 能纠偏、但不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了用 `message_worker` 把纠偏指令 steer 进它当前轮次（正在跑就插下一步）；没有中止手段——宿主的 `Agent.cancel()` 没被接成工具，真卡死只能请人去那个会话处理。能读它的会话过程（`read_worker_session`，只读、不唤醒）。
 - **完成回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算；重启后自己打开 worker 会话看或续聊。
 - **看板只对项目会话展示**：leader 与该项目的 worker 能看到；同目录的普通会话与已换下的 leader 只看到提示，不属于任何项目的会话也没有看板。
-- **卡片详情只写链接**：链接可在详情里增删改，其余操作（完成、置顶、重命名、删除）仍归 leader 的卡片工具；编号全局递增，跨项目不复用、不回收。
+- **卡片详情的人工写操作只有链接与删除**：链接可在详情里增删改；删除在详情页脚，二次确认后硬删、不可撤销，编号不复用，槽位绑定一并解除；完成、置顶、重命名仍归 leader 的卡片工具。模型没有删除卡片的工具，删除只能由人点出来。
 - **项目注册表只经左栏区块操作**：模型没有项目工具；目录选择器不可用时无法建项目，需换 web profile。
 - **项目树与官方工作区树并存**：项目不注册也不占用 dsh 工作区，项目会话落进官方树的「未分组」，在那里被渲染层排除（官方计数与搜索仍包含它们）；组里只剩被排除的行时「未分组」组头一起藏起来。
 - **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状，leader 会话形态依赖宿主的会话视图服务——宿主升级时要同步本仓。

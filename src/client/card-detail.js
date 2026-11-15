@@ -1,9 +1,10 @@
 /**
  * 卡片详情浮层（点卡面打开）。
  *
- * 卡面是窄栏，只放得下标题、链接与槽位；spec 全文进详情。写权限只有**链接**：
- * 看板经项目通道的 `updateCardLinks` 整体替换链接条目；完成、置顶、重命名、
- * 删除仍归 leader 的卡片工具，界面不越权写。
+ * 卡面是窄栏，只放得下标题、链接与槽位；spec 全文进详情。人工写操作只有
+ * **链接**与**删除**：链接经项目通道的 `updateCardLinks` 整体替换；删除经
+ * `deleteCard` 硬删，二次确认后生效。完成、置顶、重命名仍归 leader 的卡片
+ * 工具，界面不越权写。
  *
  * 浮层外壳（遮罩、Escape、焦点循环、关闭回焦）由 `modal-shell.js` 提供；这里用
  * `headless` 模式自带头部——标题就是卡片标题本身，「卡片详情」这种无信息标题
@@ -16,6 +17,7 @@ import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useStat
 import { ModalShell } from './modal-shell.js'
 import {
   DETAIL_SPEC_EMPTY,
+  canDeleteCard,
   canEditCardLinks,
   detailSections,
   statusLabel,
@@ -35,10 +37,11 @@ import { ensureBoardStyles } from './board-styles.js'
  * @param {() => void} props.onClose - 关闭
  * @param {(method: string, args: unknown[]) => Promise<unknown>} props.callRemote - 项目通道调用
  * @param {(card: object) => void} [props.onUpdated] - 链接保存成功后的新卡片
+ * @param {() => void} [props.onDelete] - 请求删除当前卡片（由看板弹二次确认）
  * @param {HTMLElement | null} [props.restoreFocus] - 关闭后焦点落点
  * @returns {object} React 元素
  */
-export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus = null }) {
+export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, restoreFocus = null }) {
   const [editing, setEditing] = useState(false)
   const editButton = useRef(null)
   const wasEditing = useRef(false)
@@ -61,6 +64,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
   const done = card?.status === 'done'
   const kind = cardKind(card)
   const editable = canEditCardLinks(card)
+  const deletable = canDeleteCard(card)
 
   /**
    * 保存链接。
@@ -212,6 +216,22 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, restoreFocus 
             )
           : null,
       ),
+      deletable && !editing && typeof onDelete === 'function'
+        ? createElement(
+            'div',
+            { className: 'dsh-leader-agent-card-detail-footer' },
+            createElement(
+              'button',
+              {
+                type: 'button',
+                className: 'dsh-leader-agent-card-detail-delete',
+                onClick: onDelete,
+              },
+              productIcon('trash-outline', { size: 14 }),
+              '删除卡片',
+            ),
+          )
+        : null,
     ),
   })
 }

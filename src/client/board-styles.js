@@ -752,6 +752,40 @@ const STYLE_TEXT = `
   padding: 0 24px 24px;
 }
 
+/* 删除是详情里唯一不可撤销的动作，单独放页脚、与正文隔开 */
+.dsh-leader-agent-card-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 24px 20px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.dsh-leader-agent-card-detail-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dsw-radius-sm);
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .dsh-leader-agent-card-detail-delete:hover {
+    background: var(--dsw-alias-interactive-bg-hover);
+  }
+}
+
+.dsh-leader-agent-card-detail-delete:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid
+    var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  outline-offset: 1px;
+}
+
 .dsh-leader-agent-card-detail-section {
   margin-top: 16px;
 }

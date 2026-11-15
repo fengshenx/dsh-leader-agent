@@ -243,6 +243,30 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     }
 
     /**
+     * 删除一张卡片。
+     *
+     * 看板详情浮层的删除入口走这里：人工确认后直接转调卡片存储的 `remove`，
+     * 与会话工具无关。删除是硬删、不可撤销，编号不回收；卡片上的槽位绑定在
+     * 存储层重建索引时一并解除。
+     *
+     * 卡片已经不在了时报 `notFound`，按幂等成功收尾——详情浮层拿的是打开
+     * 瞬间的快照，别人先删掉是正常并发，不该把「已经不存在」报成删除失败。
+     * 与 `updateCardLinks` 一样不做项目归属校验：`direct` 调用拿不到调用方
+     * 会话，这是单机单用户威胁模型下的既有取舍。
+     *
+     * @param {string} id - 卡片 id
+     * @returns {Promise<{removed: boolean, notFound?: boolean, reason?: string}>} 删除结果
+     */
+    async deleteCard(id) {
+      if (typeof id !== 'string' || id === '') throw new Error('deleteCard: id 不能为空')
+      const removed = await this.cards.remove({ id })
+      if (removed === undefined) {
+        return { removed: false, notFound: true, reason: '卡片不存在。' }
+      }
+      return { removed: true }
+    }
+
+    /**
      * 项目的槽位显示名字典。
      *
      * 看板渲染槽位 chip 时用：槽位键是机器标识，显示名由项目 `SLOTS.md` 的

@@ -27,6 +27,8 @@ import {
   mergeDetailCard,
   mergeSessionState,
   nextDoneWatermark,
+  reconcileBoardOverlays,
+  removeCardFromList,
   slotBindingsOf,
   sortActiveCards,
   sortDoneCards,
@@ -43,6 +45,8 @@ import {
 import { SlotRetention, retainTargetOf } from './slot-retain.js'
 import { BoardCard } from './board-card.js'
 import { CardDetail } from './card-detail.js'
+import { describeCardRemoval } from './card-detail-view.js'
+import { ConfirmDialog } from './confirm-dialog.js'
 import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 
@@ -358,6 +362,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   const [slotLabels, setSlotLabels] = useState(() => ({}))
   const [loaded, setLoaded] = useState(false)
   const [detail, setDetail] = useState(null)
+  // 删除确认框独立于详情：确认框打开时详情先卸载，避免两层 modal 同时监听
+  // Escape、抢焦点陷阱。取消后详情按原 anchor 重新打开。
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  // 删除前已发出的轮询可能带着旧快照晚到；记住本地删掉的 id，别让它在下一轮
+  // 请求返回时又冒出来。卡片 id 不复用，这个集合在会话生命周期内不需要清。
+  const deletedCardIds = useRef(new Set())
   const [doneOpen, setDoneOpen] = useState(false)
   // 已完成区的页码：组件本地状态，收起再展开不回退（宿主会话列表同样不持久化）。
   const [doneWatermark, setDoneWatermark] = useState(0)
@@ -366,6 +378,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   useEffect(() => {
     ensureBoardStyles()
   }, [])
+
+  useEffect(() => {
+    // 看板换了项目（或项目被删掉）时放弃未完成的删除确认：确认框里的卡属于
+    // 上一个看板，不能跟着新看板漂移。项目摘要每 30 秒复核一次，但 id 没变时
+    // 这个 effect 不会重跑，不会误关用户正开着的确认框。
+    setPendingDelete(null)
+    setDeleteError('')
+  }, [project?.id])
 
   useEffect(() => {
     const timer = setInterval(() => { setNow(Date.now()) }, 60_000)
@@ -384,6 +404,10 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     setLoaded(false)
     setWorker(undefined)
     setSlotLabels({})
+    // 会话换了就放弃上一条删除确认：确认框属于旧会话的看板，不能跟着新看板漂移。
+    setPendingDelete(null)
+    setDeleteError('')
+    deletedCardIds.current.clear()
     const load = () => {
       resolveBoardAccess(callRemote, sessionId)
         .then((access) => {
@@ -437,8 +461,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
         .then((next) => {
           if (cancelled) return
           // 保存链接后本地回填的卡版本更高：在这一刻之前发出的取数请求，响应
-          // 晚到时不能把刚保存的内容打回旧值。
-          setCards((current) => mergeCardSnapshot(current, next))
+          // 晚到时不能把刚保存的内容打回旧值。已删除的卡同理，不能从旧快照里
+          // 复活。
+          setCards((current) => {
+            const merged = mergeCardSnapshot(current, next)
+            return deletedCardIds.current.size === 0
+              ? merged
+              : merged.filter((card) => !deletedCardIds.current.has(card.id))
+          })
           setLoaded(true)
           // 成功就清掉上一次的错误：项目通道比面板晚就绪、或一次 RPC 抖动，
           // 都不该把面板判死在错误页上——2 秒轮询本来就是干这个的。
@@ -489,8 +519,43 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     setDetail((current) => mergeDetailCard(current, updated))
   }, [])
 
+  const requestDelete = useCallback(() => {
+    setDeleteError('')
+    setPendingDelete(detail?.card ?? null)
+  }, [detail])
+
+  const cancelDelete = useCallback(() => {
+    // 请求已经发出时不再撤掉确认框：关闭它不会取消宿主侧的删除，
+    // 只会让用户以为没删。等请求返回后按结果显示。
+    if (deleteBusy) return
+    setDeleteError('')
+    setPendingDelete(null)
+  }, [deleteBusy])
+
+  const confirmDelete = useCallback(async () => {
+    if (deleteBusy || pendingDelete === null) return
+    setDeleteBusy(true)
+    setDeleteError('')
+    try {
+      await callRemote('deleteCard', [pendingDelete.id])
+      deletedCardIds.current.add(pendingDelete.id)
+      setCards((current) => removeCardFromList(current, pendingDelete.id))
+      setDetail((current) => (current?.card?.id === pendingDelete.id ? null : current))
+      setPendingDelete(null)
+    } catch (error) {
+      setDeleteError(`删除失败：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }, [callRemote, deleteBusy, pendingDelete])
+
   // 取卡条件与下面的展示分支读同一个判定，避免两处守卫各写一套。
   const view = boardViewState(project, sessionId, worker)
+
+  // 详情与确认框只对列表里还在的卡有效。轮询把列表清空（另一窗口删掉最后一张卡）
+  // 时会走下面的空态提前 return：那里不渲染浮层，但状态留着会在下一张卡到达时把
+  // 旧确认框弹回来。对账放在所有提前 return 之前，这条路径也覆盖到。
+  const overlays = reconcileBoardOverlays(cards, detail, pendingDelete)
 
   // 只有还没解析出项目时，项目错误才占满面板；已有摘要就让复核失败静默重试。
   if (projectError !== null && project === undefined) {
@@ -579,6 +644,19 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     )
   }
 
+  const deleteDialog = createElement(ConfirmDialog, {
+    open: overlays.pendingDelete !== null,
+    title: '删除卡片',
+    description: overlays.pendingDelete === null ? '' : describeCardRemoval(overlays.pendingDelete),
+    confirmLabel: '删除',
+    cancelLabel: '取消',
+    danger: true,
+    busy: deleteBusy,
+    error: deleteError,
+    onConfirm: () => { void confirmDelete() },
+    onCancel: cancelDelete,
+  })
+
   return createElement(
     'div',
     { className: 'dsh-leader-agent-board' },
@@ -666,14 +744,16 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           )
         : null,
     ),
-    detail === null
+    overlays.detail === null || overlays.pendingDelete !== null
       ? null
       : createElement(CardDetail, {
-          card: detail.card,
+          card: overlays.detail.card,
           onClose: () => { setDetail(null) },
           callRemote,
           onUpdated: cardUpdated,
-          restoreFocus: detail.anchor,
+          onDelete: requestDelete,
+          restoreFocus: overlays.detail.anchor,
         }),
+    deleteDialog,
   )
 }

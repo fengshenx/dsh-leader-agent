@@ -318,6 +318,21 @@ export function mergeCardUpdate(cards, updated) {
 }
 
 /**
+ * 从看板列表里摘掉一张卡。
+ *
+ * 删除成功后立刻本地摘除，不等下一轮轮询：2 秒的间隔里卡面还在，用户会以为
+ * 删除没生效。按 id 比较，保留其余卡片的引用。
+ *
+ * @param {readonly object[]} cards - 当前列表
+ * @param {string} id - 要摘掉的卡片 id
+ * @returns {object[]} 摘除后的列表
+ */
+export function removeCardFromList(cards, id) {
+  if (!Array.isArray(cards)) return []
+  return cards.filter((card) => card?.id !== id)
+}
+
+/**
  * 把一次改卡的结果合进详情浮层。
  *
  * 浮层里的卡片是打开瞬间的快照；保存返回时浮层可能已经关掉、又点开了另一张
@@ -331,6 +346,29 @@ export function mergeDetailCard(current, updated) {
   if (current === null || current === undefined) return null
   if (updated === null || typeof updated !== 'object') return current
   return current.card?.id === updated.id ? { ...current, card: updated } : current
+}
+
+/**
+ * 把详情与删除确认对账到当前列表：浮层指向的卡已经不在列表里（另一个窗口删掉了），
+ * 两者都不能再留着。
+ *
+ * 空列表的提前 return 不会渲染浮层，但状态留着会在下一张卡到达时把旧确认框重新
+ * 弹出来、取消后还会重开已删卡的详情。对账放在渲染前，任何提前 return 都绕不过它。
+ * 保留时返回原引用，调用方不用额外比较。
+ *
+ * @param {readonly object[]} cards - 当前卡片列表
+ * @param {{ card: object, anchor?: unknown } | null} detail - 详情状态
+ * @param {object | null} pendingDelete - 待删卡
+ * @returns {{ detail: object | null, pendingDelete: object | null }} 对账后的浮层状态
+ */
+export function reconcileBoardOverlays(cards, detail, pendingDelete) {
+  const ids = new Set(Array.isArray(cards) ? cards.map((card) => card?.id) : [])
+  return {
+    detail: detail !== null && detail !== undefined && ids.has(detail.card?.id) ? detail : null,
+    pendingDelete: pendingDelete !== null && pendingDelete !== undefined && ids.has(pendingDelete.id)
+      ? pendingDelete
+      : null,
+  }
 }
 
 /**

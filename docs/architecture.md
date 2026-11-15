@@ -76,7 +76,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 ## 卡片与看板
 
-卡片落盘在 `$DSH_HOME/dsh-leader-agent/cards.json`：编号全局递增、不复用，`revision` 做乐观并发，归档是终态，**项目归属由宿主判定**（`create_card` 时按调用方会话反查项目写 `projectId`，模型不传项目参数）。`list_cards` 默认只列本项目，`scope=all` 才跨项目；有归属的卡只能被本项目会话改。
+卡片落盘在 `$DSH_HOME/dsh-leader-agent/cards.json`：编号全局递增、不复用，`revision` 做乐观并发，归档是终态，**项目归属由宿主判定**（`create_card` 时按调用方会话反查项目写 `projectId`，模型不传项目参数）。`list_cards` 默认只列本项目，`scope=all` 才跨项目；有归属的卡只能被本项目会话改。看板详情的人工写通道是项目远程服务的 `updateCardLinks` 与 `deleteCard`：删卡直接转调 `cards.remove`，硬删并重建槽位/卡片事实索引，不经过模型工具。
 
 看板是**项目的看板**：一个项目一个看板，跨会话聚合，leader 与 worker 建的卡在同一处。数据源是宿主的卡片库（经项目远程通道读取），不是会话事件流——事件流是会话维度的，一个项目的卡散在多个会话里，重放既慢又会漏。卡片仍随 `tool/result` 事件的 `meta` 投影进 session log（历史完整），但那是历史，不是看板的数据源。
 

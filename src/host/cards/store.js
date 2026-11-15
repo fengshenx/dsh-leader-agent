@@ -287,6 +287,32 @@ export function createCardStore({ home, logger = () => {}, io = defaultIo, clock
     },
 
     /**
+     * 从卡片库删除一张卡。
+     *
+     * 删除是破坏性操作，没有 tombstone 可恢复；编号原样保留在 `counter` 里，
+     * 不分配给下一张卡。索引同步重建，避免已删卡继续给会话注入角色与卡片事实。
+     *
+     * 卡片不存在时返回 `undefined`：调用方（看板的人工删除）按幂等成功收尾，
+     * 不把「别人已经删了」报成失败。
+     *
+     * @param {object} input - 删除输入
+     * @param {string} input.id - 卡片 id
+     * @returns {Promise<object | undefined>} 被删卡片；不存在时 undefined
+     */
+    async remove({ id }) {
+      return serialize(async () => {
+        const store = await readStore(file, recoverFromCorruption, io)
+        const index = store.cards.findIndex((item) => item.id === id)
+        if (index === -1) return undefined
+        const [card] = store.cards.splice(index, 1)
+        // counter 原样保留：删掉的编号不能被下一张卡复用（`@#n` 引用不能换人）。
+        await writeStore(store)
+        rebuildIndexes(store.cards, slotIndex, cardIndex)
+        return card
+      })
+    },
+
+    /**
      * 把某个槽位绑到一个会话上（派工时用，会话 id 事先已知）。
      *
      * 与 `update` 的槽位替换不同，这里只动一个槽位，并且在槽位已被**别的**

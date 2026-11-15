@@ -74,6 +74,56 @@ test('归档是终态，归档后不可再改', async () => {
   }
 })
 
+test('删卡从卡片库移除并返回被删卡片，编号不复用', async () => {
+  const { store, home } = await createStore()
+  try {
+    await store.create({ title: '一' })
+    const second = await store.create({ title: '二' })
+    const removed = await store.remove({ id: second.id })
+    assert.deepEqual(removed, second)
+    assert.equal(await store.get(second.id), undefined)
+    assert.deepEqual((await store.list()).map((card) => card.title), ['一'])
+
+    // 编号是用户引用卡片的标识：删掉的 #2 不能分给下一张卡。
+    const third = await store.create({ title: '三' })
+    assert.equal(third.number, 3)
+    assert.deepEqual((await store.list()).map((card) => card.number), [1, 3])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('删卡同步摘掉卡片上的槽位绑定索引', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({
+      title: '带槽位',
+      slots: { dev: { sessionId: 'worker-1' } },
+    })
+    assert.equal(store.slotIndex.has('worker-1'), true)
+    await store.remove({ id: card.id })
+    assert.equal(store.slotIndex.has('worker-1'), false)
+    assert.deepEqual(await store.bindingsOf('worker-1'), [])
+    assert.equal(store.cardIndex.has(card.id), false)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('删不存在的卡片返回 undefined，不落盘', async () => {
+  const { store, home } = await createStore()
+  try {
+    const card = await store.create({ title: '还在' })
+    const before = await readFile(join(home, 'dsh-leader-agent', 'cards.json'), 'utf8')
+    assert.equal(await store.remove({ id: 'missing' }), undefined)
+    assert.equal(await store.get(card.id) !== undefined, true)
+    const after = await readFile(join(home, 'dsh-leader-agent', 'cards.json'), 'utf8')
+    assert.equal(after, before)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('列表按编号升序，可按状态过滤', async () => {
   const { store, home } = await createStore()
   try {
