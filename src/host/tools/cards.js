@@ -13,8 +13,11 @@ import { normalizeHttpUrl } from '../../shared/card-links.js'
 import {
   LIST_DEFAULT_LIMIT,
   LIST_MAX_LIMIT,
+  SPEC_PAGE_CHARS,
   parseListQuery,
+  renderCardDetailText,
   renderCardList,
+  sliceSpec,
 } from '../cards/card-list-view.js'
 import { isValidSlotName } from '../slots/slot-templates.js'
 
@@ -376,13 +379,14 @@ function assertCardCreator(sessionId, isWorkerSession) {
  * @param {string | undefined} input.spec - 要写入的规格
  * @param {string | undefined} input.title - 要写入的标题
  * @param {string | undefined} input.kind - 要写入的分类
+ * @param {number | undefined} input.sortOrder - 要写入的手动排序序号
  * @param {object} options - 判定依赖
  * @param {((sessionId: string | undefined) => boolean) | undefined} options.isWorkerSession - worker 判定
  * @param {((sessionId: string) => Promise<object[]>) | undefined} options.cardBindingsOf - 会话的卡片绑定
  * @returns {Promise<void>} 范围校验通过
- * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态、改规格、改标题、改分类
+ * @throws {Error} 目标卡不在 worker 的绑定里，或试图改槽位绑定、改状态、改规格、改标题、改分类、改排序
  */
-async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, title, kind }, { isWorkerSession, cardBindingsOf }) {
+async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, title, kind, sortOrder }, { isWorkerSession, cardBindingsOf }) {
   if (typeof isWorkerSession !== 'function' || isWorkerSession(sessionId) !== true) return
   if (slots !== undefined) {
     throw new Error('update_card: worker 不能改卡片的槽位绑定——换执行者请在 leader 会话里做')
@@ -398,6 +402,9 @@ async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, t
   }
   if (kind !== undefined) {
     throw new Error('update_card: worker 不能改卡片分类——分类是 leader 对任务流的归类，交付物挂到 links、进展写进回报')
+  }
+  if (sortOrder !== undefined) {
+    throw new Error('update_card: worker 不能改卡片排序——排序是 leader 对看板的组织动作，交付物挂到 links、进展写进回报')
   }
   if (typeof cardBindingsOf !== 'function') return
   const bindings = await cardBindingsOf(sessionId)
@@ -514,7 +521,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
   return {
     name: 'update_card',
     description:
-      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡；worker 只能改自己挂着的卡，且不能改状态、规格、标题、分类与槽位绑定。',
+      '更新一张任务看板卡片。带 expectedRevision 时做乐观并发校验，版本不符即报错，需重新读卡再改。链接用 addLinks 增量追加（不会覆盖别人刚写的条目），整份替换才用 links。归档是终态，不能再改。卡片按项目归属，只能改本项目的卡；worker 只能改自己挂着的卡，且不能改状态、规格、标题、分类、排序与槽位绑定。',
     parameters: {
       type: 'object',
       properties: {
@@ -618,7 +625,7 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
       // 让它以为改短一点就能改。
       await assertWorkerCardScope(
         exec.agent?.id,
-        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title, kind: input.kind },
+        { cardId: input.id.trim(), slots, status: input.status, spec, title: input.title, kind: input.kind, sortOrder },
         { isWorkerSession, cardBindingsOf },
       )
       const kind = normalizeKind(input.kind)
@@ -660,6 +667,200 @@ async function assertCrossProjectRead(sessionId, resolveProject) {
   const retired = project?.retiredLeaderSessionIds
   if (!Array.isArray(retired) || !retired.includes(sessionId)) return
   throw new Error('list_cards: 换下的 leader 不再有跨项目查询权限——scope 用默认的 project 读本项目的卡；要读单卡完整规格请交给当前 leader')
+}
+
+/**
+ * 读卡的身份闸：只有 worker 能读。
+ *
+ * 工具面已经把 `read_card` 从 leader 与普通会话里摘掉（`gate.js` 的
+ * `WORKER_ONLY_TOOLS`）。这里再判一次是兜底：本工具有个「不传卡片」的默认分支，
+ * 它按调用方的会话绑定反查，而只有 worker 有绑定；身份变化（换 leader、冷恢复）
+ * 不该让读卡落到别的角色手里。leader 读卡用 `list_cards`（传 cardId）。
+ *
+ * @param {string | undefined} sessionId - 调用方会话 id
+ * @param {((sessionId: string | undefined) => boolean) | undefined} isWorkerSession - worker 判定
+ * @returns {void}
+ * @throws {Error} 调用方不是 worker
+ */
+function assertCardReader(sessionId, isWorkerSession) {
+  if (typeof isWorkerSession !== 'function') return
+  if (isWorkerSession(sessionId) === true) return
+  throw new Error('read_card: 只有 worker 能读卡——leader 用 list_cards（传 cardId）读单卡，普通会话不在项目编排里')
+}
+
+/**
+ * 解析本次要读的卡。
+ *
+ * 三种入口：显式 cardId、显式 number、两者都不传（读调用方唯一绑定的卡）。第三条
+ * 是 worker 找回自己任务的兜底路径：压缩、注入失效、或会话冷恢复后它手里可能没有
+ * cardId。「唯一」是硬条件——多张卡时报错并列出候选，不替调用方猜，猜错会让它对着
+ * 另一张卡的规格干活。
+ *
+ * @param {object} options - 选项
+ * @param {string | undefined} options.sessionId - 调用方会话 id
+ * @param {{ cardId?: unknown, number?: unknown }} options.input - 工具入参
+ * @param {{ get: (id: string) => Promise<object | undefined>, list: (filter?: object) => Promise<object[]> }} options.store - 卡片存储
+ * @param {((sessionId: string) => Promise<object[]>) | undefined} options.cardBindingsOf - 会话的卡片绑定
+ * @returns {Promise<object>} 目标卡
+ * @throws {Error} 参数冲突、卡片不存在、没有绑定、绑定多张、绑定指向的卡已不存在
+ */
+async function resolveReadTargetCard({ sessionId, input, store, cardBindingsOf }) {
+  if (input.cardId !== undefined && input.number !== undefined) {
+    throw new Error('read_card: cardId 与 number 只能传一个')
+  }
+  if (input.cardId !== undefined) {
+    if (typeof input.cardId !== 'string' || input.cardId.trim() === '') {
+      throw new Error('read_card: cardId 必须是非空字符串')
+    }
+    const card = await store.get(input.cardId.trim())
+    if (card === undefined) {
+      throw new Error(`read_card: 卡片不存在：cardId=${input.cardId.trim()}`)
+    }
+    return card
+  }
+  if (input.number !== undefined) {
+    if (typeof input.number !== 'number' || !Number.isInteger(input.number) || input.number < 1) {
+      throw new Error(`read_card: number 必须是正整数，收到 ${describeValue(input.number)}`)
+    }
+    const card = (await store.list()).find((item) => item.number === input.number)
+    if (card === undefined) {
+      throw new Error(`read_card: 没有 #${input.number} 这张卡；编号从 1 起且不复用，请确认 leader 给的编号`)
+    }
+    return card
+  }
+  if (typeof cardBindingsOf !== 'function') {
+    throw new Error('read_card: 缺少会话的卡片绑定索引，读不到默认卡；请传 cardId 或 number')
+  }
+  if (typeof sessionId !== 'string' || sessionId === '') {
+    throw new Error('read_card: 会话 id 不可用，读不到默认卡；请传 cardId 或 number')
+  }
+  const bindings = await cardBindingsOf(sessionId)
+  if (bindings.length === 0) {
+    throw new Error('read_card: 你没有绑定任何卡——任务可能已被 leader 关闭或改派；先回报现状、等指示。要读别的卡请传 cardId 或 number')
+  }
+  // 同一张卡可以同时挂多个槽位（如 dev + review），唯一性按卡片算、不按绑定条数算。
+  const cards = [...new Map(bindings.map((binding) => [binding.cardId, binding])).values()]
+  if (cards.length > 1) {
+    const candidates = cards
+      .map((binding) => `#${binding.number}（cardId: ${binding.cardId}，槽位 ${binding.slot}）`)
+      .join('、')
+    throw new Error(`read_card: 你同时挂着 ${cards.length} 张卡，无法确定读哪张——请传 cardId 或 number。候选：${candidates}`)
+  }
+  const binding = cards[0]
+  const card = await store.get(binding.cardId)
+  if (card === undefined) {
+    throw new Error(`read_card: 绑定 #${binding.number}（cardId: ${binding.cardId}）指向的卡已不存在，请回报 leader`)
+  }
+  return card
+}
+
+/**
+ * 读卡的项目范围闸：只能读本项目的卡。
+ *
+ * 与 `update_card` 同判据：调用方自己的范围就是它所在的项目（不在任何项目里就是
+ * 空串）。无归属的存量卡放行——没有归属可冲突，拦下来只会让存量卡永远读不到。
+ *
+ * @param {object} options - 选项
+ * @param {string | undefined} options.sessionId - 调用方会话 id
+ * @param {object} options.card - 目标卡
+ * @param {((sessionId: string | undefined) => Promise<object | undefined>) | undefined} options.resolveProject - 项目解析
+ * @returns {Promise<void>} 范围校验通过
+ * @throws {Error} 目标卡属于另一个项目
+ */
+async function assertReadScope({ sessionId, card, resolveProject }) {
+  const project = await resolveProject?.(sessionId)
+  const owner = typeof card?.projectId === 'string' ? card.projectId : ''
+  const scope = typeof project?.id === 'string' ? project.id : ''
+  if (owner !== '' && owner !== scope) {
+    throw new Error(`read_card: 卡片 #${card.number} 属于另一个项目，不能跨项目读卡`)
+  }
+}
+
+/**
+ * 创建 `read_card` 工具定义。
+ *
+ * 只给 worker：leader 的单卡读走 `list_cards`（全文、不截断），普通会话不在项目
+ * 编排里。与注入通道的关系是**冗余**而不是替代——`dsh-leader-agent:task-card`
+ * 上下文每轮求值，是本工具有效时的主通道；本工具直读落盘的卡片库，兜住注入失效、
+ * 快照被压缩、以及「改卡前确认 revision」这几类需要当下真源的场景。
+ *
+ * 规格按 `SPEC_PAGE_CHARS` 分页：worker 可能连着读好几张卡，一次给全文会把上下文
+ * 灌满。分页只影响事实的呈现方式，不影响 `revision` 等其余字段。
+ *
+ * 不做 `presentationMeta`：看板的数据源是宿主的项目通道，工具投影只进会话历史；
+ * 读操作不产生新事实，投影只会往日志里塞一份重复快照。而且返回的 `card.spec`
+ * 只是当前一页，`scope: 'card'` 的投影会把看板上的完整规格覆盖成片段。
+ *
+ * @param {object} options - 工具选项
+ * @param {{ get: (id: string) => Promise<object | undefined>, list: (filter?: object) => Promise<object[]> }} options.store - 卡片存储
+ * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
+ *   解析调用方会话所属项目；跨项目读卡会被拒绝
+ * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
+ *   省略时放行，仅供文档取名字与单测构造
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡；
+ *   不传卡片时用它反查「我的卡」
+ * @returns {object} dsh 工具定义
+ */
+export function createReadCardTool({ store, resolveProject, isWorkerSession, cardBindingsOf }) {
+  return {
+    name: 'read_card',
+    description:
+      `读一张任务卡的当前事实：标题、状态、规格、链接、槽位与 revision。不传 cardId 与 number 时读这个 worker 被分配的卡——只有唯一绑定时直接返回，没绑卡或同时挂着多张都会报错并给出下一步。规格按 ${SPEC_PAGE_CHARS} 码点分页，长规格用返回的 specPage.nextOffset 作为 specOffset 续读直到读全；改卡前确认 revision 也用它，它读的是落盘真源，不是注入快照。`,
+    parameters: {
+      type: 'object',
+      properties: {
+        cardId: {
+          type: 'string',
+          description: '卡片 id（任务卡上下文里有）。与 number 二选一；两个都省略时读你被分配的那张卡。',
+        },
+        number: {
+          type: 'number',
+          description: '卡片编号（如 leader 消息里的 #12）。与 cardId 二选一。',
+        },
+        specOffset: {
+          type: 'number',
+          description: '规格起始字符位置，默认 0；上一页还有更多时按返回的 nextOffset 继续读。',
+        },
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: {
+          card: cardSchema(),
+          specPage: {
+            type: 'object',
+            properties: {
+              offset: { type: 'number' },
+              chars: { type: 'number' },
+              total: { type: 'number' },
+              hasMore: { type: 'boolean' },
+              nextOffset: { type: 'number' },
+            },
+            required: ['offset', 'chars', 'total', 'hasMore'],
+          },
+        },
+        required: ['card', 'specPage'],
+      },
+      render(args, value) {
+        const result = /** @type {{ card: object, specPage: object }} */ (value)
+        return [{ type: 'text', text: renderCardDetailText(result.card, result.specPage) }]
+      },
+    },
+    async execute(args, exec) {
+      const input = /** @type {{ cardId?: unknown, number?: unknown, specOffset?: unknown }} */ (args ?? {})
+      const sessionId = exec.agent?.id
+      assertCardReader(sessionId, isWorkerSession)
+      const card = await resolveReadTargetCard({ sessionId, input, store, cardBindingsOf })
+      await assertReadScope({ sessionId, card, resolveProject })
+      const specPage = sliceSpec(card.spec, input.specOffset === undefined ? 0 : input.specOffset)
+      return {
+        // `spec` 是本页片段，不是全文：`specPage` 说明窗口位置，调用方按它续读。
+        card: { ...card, spec: specPage.text },
+        specPage,
+      }
+    },
+  }
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   createProjectService,
   sessionExistsWithCtx,
 } from '../src/host/projects/service.js'
-import { LEADER_UNUSABLE_TOOLS, deniedToolsFor } from '../src/host/tools/gate.js'
+import { LEADER_DENY_TOOLS, deniedToolsFor } from '../src/host/tools/gate.js'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 
 after(cleanupTempDirs)
@@ -220,7 +220,7 @@ test('旧字段名的注册表仍能恢复 leader 身份与工具面', async () 
     isLeaderSession: (id) => service.isLeaderSession(id),
     isWorkerSession: () => false,
   })
-  assert.deepEqual(denied, [...LEADER_UNUSABLE_TOOLS])
+  assert.deepEqual(denied, [...LEADER_DENY_TOOLS])
   assert.equal(denied.includes('spawn_worker'), false)
 })
 

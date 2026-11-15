@@ -19,7 +19,7 @@ import { createSkillProvider } from './skills.js'
 import { createSpawnWorkerTool } from './tools/spawn-worker.js'
 import { createMessageWorkerTool } from './tools/message-worker.js'
 import { createReadWorkerTool } from './tools/read-worker.js'
-import { createCreateCardTool, createUpdateCardTool, createListCardsTool } from './tools/cards.js'
+import { createCreateCardTool, createUpdateCardTool, createListCardsTool, createReadCardTool } from './tools/cards.js'
 import { createNotificationStore } from './notification-store.js'
 import { resolveDshHome } from './home-paths.js'
 import { createWorkerRegistry } from './worker-registry.js'
@@ -72,7 +72,8 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  *   写卡身份判定；传了 `cards` 就必须传它
  * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
  *   与 `cardBindingsOf` 一起限定 worker 的写卡范围
- * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡
+ * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡；
+ *   与 `isWorkerSession` 一起限定 worker 的写卡范围，`read_card` 用它反查默认要读的卡
  * @returns {object[]} 工具定义
  */
 export function createBundleTools({
@@ -111,6 +112,12 @@ export function createBundleTools({
       cardBindingsOf,
     }),
     createListCardsTool({ store: cards, resolveProject }),
+    createReadCardTool({
+      store: cards,
+      resolveProject,
+      isWorkerSession,
+      cardBindingsOf,
+    }),
   ]
 }
 

@@ -2,10 +2,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   CARD_WRITE_TOOLS,
+  LEADER_DENY_TOOLS,
   LEADER_ONLY_TOOLS,
   LEADER_UNUSABLE_TOOLS,
   PLAIN_SESSION_DENY_TOOLS,
   WORKER_DENY_TOOLS,
+  WORKER_ONLY_TOOLS,
   applyToolGate,
   canWriteCardsFor,
   deniedToolsFor,
@@ -26,7 +28,7 @@ import {
 function makeAgent(id, registered = [
   'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
   'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
-  'create_card', 'update_card',
+  'create_card', 'update_card', 'read_card',
 ]) {
   const restrictions = []
   const names = new Set(registered)
@@ -58,8 +60,10 @@ test('leader 拿不到收作业的工具，也拿不到对 worker 无效的三�
     isWorkerSession: () => false,
   })
   // 三件宿主 subagent 工具对根会话 worker 全部无效，其中一个还返回假成功回执，
-  // 从工具面直接摘掉比只在文档里叮嘱可靠。
-  assert.deepEqual(denied, [...LEADER_UNUSABLE_TOOLS])
+  // 从工具面直接摘掉比只在文档里叮嘱可靠。worker 专属的 read_card 也一并摘掉：
+  // leader 的单卡读走 list_cards（传 cardId），不必有两个等价入口。
+  assert.deepEqual(denied, [...LEADER_DENY_TOOLS])
+  assert.ok(denied.includes('read_card'))
 })
 
 test('worker 看不到派工、全库查询与建卡，但保留改卡', () => {
@@ -83,6 +87,29 @@ test('普通会话没有派工、全库查询与卡片写入', () => {
   // 卡片是项目里的任务事实：普通会话建的卡没有槽位、没有 leader 认领，只会污染看板。
   assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
   assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
+})
+
+test('read_card 只给 worker：leader 与普通会话都摘掉，worker 保留', () => {
+  const leaderDenied = deniedToolsFor({
+    agent: makeAgent('leader-1'),
+    isLeaderSession: (id) => id === 'leader-1',
+    isWorkerSession: () => false,
+  })
+  const plainDenied = deniedToolsFor({
+    agent: makeAgent('plain-1'),
+    isLeaderSession: () => false,
+    isWorkerSession: () => false,
+  })
+  const workerDenied = deniedToolsFor({
+    agent: makeAgent('worker-1'),
+    isLeaderSession: () => false,
+    isWorkerSession: (id) => id === 'worker-1',
+  })
+  // 字面量断言：名单推导的断言会跟着名单一起变，钉不住「只给 worker」这条承诺。
+  assert.ok(leaderDenied.includes('read_card'))
+  assert.ok(plainDenied.includes('read_card'))
+  assert.ok(!workerDenied.includes('read_card'))
+  assert.deepEqual([...WORKER_ONLY_TOOLS], ['read_card'])
 })
 
 test('read_worker_session 只给 leader：worker 与普通会话的工具面都摘掉它', () => {
@@ -124,7 +151,7 @@ test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限
     isLeaderSession: (id) => id === 'c',
     isWorkerSession: () => false,
   })
-  assert.deepEqual(leader.restrictions, [{ deny: [...LEADER_UNUSABLE_TOOLS] }])
+  assert.deepEqual(leader.restrictions, [{ deny: [...LEADER_DENY_TOOLS] }])
 
   const worker = makeAgent('w')
   const workerDenied = applyToolGate({
@@ -157,8 +184,8 @@ test('三件宿主工具改由 preset 子树注册时仍然被 deny', () => {
     isWorkerSession: () => false,
   })
 
-  assert.deepEqual(denied, [...LEADER_UNUSABLE_TOOLS])
-  assert.deepEqual(leader.restrictions, [{ deny: [...LEADER_UNUSABLE_TOOLS] }])
+  assert.deepEqual(denied, [...LEADER_DENY_TOOLS])
+  assert.deepEqual(leader.restrictions, [{ deny: [...LEADER_DENY_TOOLS] }])
 })
 
 test('restrict 抛的不是「未知工具名」时照常抛出，不吞装配错误', () => {
@@ -207,6 +234,9 @@ test('三组名单互不重叠，改名时不会悄悄互相覆盖', () => {
   // 卡片写入与「只有 leader 能用」是两条独立的规则：worker 保留前者、没有后者。
   const cardOverlap = CARD_WRITE_TOOLS.filter((name) => LEADER_ONLY_TOOLS.includes(name))
   assert.deepEqual(cardOverlap, [])
+  // worker 专属读卡与「只有 leader 能用」互斥：同一件工具落在两边时，
+  // deny 的分支顺序就会决定谁真的看得见它。
+  assert.deepEqual(WORKER_ONLY_TOOLS.filter((name) => LEADER_ONLY_TOOLS.includes(name)), [])
 })
 
 test('写卡身份判定：worker 直接放行，不等项目索引', async () => {
