@@ -1,10 +1,12 @@
-# leader 会话的一次性引导卡
+# Agent Note: leader 会话的一次性引导卡
 
-## 背景
+Status: implemented
+
+## Problem
 
 「加项目」会当场建一个 leader 会话，界面上一句话都没有：用户不知道要先写 `LEADER.md` 与 `SLOTS.md`，也不知道项目行就是 leader 的入口。会话空态是刻意留白的——第三方会话视图目标只把会话顶进 active 形态、不产出内容，缺的是只在最需要的那一次说清下一步的提示。
 
-## 决策
+## Decision
 
 - **判据用宿主会话快照的 `blank`**，不用消息计数或时间窗：`conversation.input.dock` 的 owner 直接带当前会话快照，`blank` 是宿主自己的「这个会话还没有对话」口径，rc.2 已有；宿主在首个 prompt 被接受时翻假，本地发送即生效，跨进程重启后同一空会话仍判为 blank。
 - **关闭状态按 leader 会话 id 存 localStorage**（`dsh-leader-agent.guide.dismissed.<sessionId>`）：仓外插件不能新增 session event 类型，一次性提示也不该写进会话记录；项目 id 要在浏览器侧再拉一次才能拿到，会话 id 本地已有。换 leader 会话引导会再出现一次——那正是该重新提醒的时候。
@@ -15,7 +17,15 @@
 - **独立 dock 条目 `dsh-leader-agent-guide`**：与 leader 视图入口共用 `conversation.input.dock`，不满足条件时返回 null、不占空间；官方空会话形态与第三方视图目标的行为都不改。
 - **文档入口整条去掉**：只保留一个开场动作，不做复制路径、也不做外链；`docs/limitations.md` 里描述已删行为的限制一并删除——留着只会误导。
 
-## 边界
+## Alternatives considered
+
+- **用消息计数或时间窗判空**：宿主快照的 `blank` 就是「还没有对话」的权威口径，本地发送即翻假；不用自造判据。
+- **把关闭状态写进 session event 或项目存储**：仓外插件不能新增事件类型，一次性提示也不该进会话记录；按会话 id 存 localStorage。
+- **把界面文案塞进 `locale/*.json`**：那里是包元信息（市场卡片标题/描述）；界面字符串走 `ctx.locale.register`。
+- **做成静态提示 + 复制路径 / 外链**：用户要的是「让它自己介绍」，复制路径还得自己粘；唯一动作改成替用户发一句开场消息。
+- **把长约束写进用户消息**：几百字以用户口吻出现像自言自语；触发语进消息，约束进运行时上下文。
+
+## Consequences
 
 - 只对 leader 会话生效；worker 会话与普通会话没有变化。
 - 卡片渲染本身不写转录、不产生模型调用、不发消息；唯一会发消息的是用户点「了解怎么用」，走与回车相同的提交路径。
@@ -23,6 +33,8 @@
 - 引导条上没有外链、没有剪贴板动作；输入机能力判定只有一处（`canSendIntro`），渲染守卫与发送路径都调它。
 - 换 leader 后引导会再出现一次，没有做成「项目级只提示一次」。
 
-## 验证
+收益：新项目第一次打开就有一条能点的引导，点一下 leader 就开始讲用法并问是否初始化。
+
+## Testing
 
 `tests/guide-card-logic.test.js` 与 `tests/e2e/guide-card.e2e.js`。双向：把 `dismiss` 的 `setItem` 改成空操作 → e2e「重载后不该再出现」当场红；把 `sendIntroPrompt` 改成空实现 → 用户气泡断言超时红。还原后全绿。

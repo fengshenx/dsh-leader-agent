@@ -1,10 +1,12 @@
-# worker 继承协调者的权限
+# Agent Note: worker 继承协调者的权限
 
-## 背景
+Status: implemented
+
+## Problem
 
 worker 是本 bundle 用 `agents.create` 建的独立新会话，而宿主的 `permissionPresets` 在 `session/created` 上给每个新会话按**用户默认 preset** pin 权限，于是协调者切到更宽的档位时 worker 仍停在默认值，后台 worker 又没人应答审批，一律落到 `unavailable`。
 
-## 决策
+## Decision
 
 - **继承协调者的两个 knob**：建 worker 之后、首轮之前，把协调者的有效沙箱模式（`sandboxPolicy.resolve`）与审批策略（`approval.overrideOf(session) ?? approval.config.policy`）追加到 worker 会话，并带 `source: 'delegation'`——那是宿主给派生子会话的既有标记，表示不是用户在这条会话里的选择。写的都是已知 session event，不新增事件类型。
 - **普通 preset 不写 `permission/preset`**：名字由 `derive()` 从 knob 值反推，knobs 一致时 UI 自然显示同一档；写一个与 knobs 不匹配的名字会让客户端显示错的档。
@@ -15,7 +17,15 @@ worker 是本 bundle 用 `agents.create` 建的独立新会话，而宿主的 `p
 - **放在 `spawn` 里、`present` 之前**：权限要在首轮请求组装之前生效，继承紧跟 `agents.create` 之后；`dispatch` 只负责把协调者的活会话（`parent.session`）交下去。
 - **降级只记日志、不阻塞派工**：两个权限服务都不在时返回 `undefined` 且不告警；只露出一半、读协调者有效值失败或写事件失败时记日志，该 knob 保持默认、另一个照常继承。会话已经建好，为一次权限读取失败打掉派工，代价比权限偏差更大；偏差不再只落日志——`skipped` 一路透到回执。
 
-## 边界
+## Alternatives considered
+
+- **让 worker 停在部署默认 preset**：协调者切宽档时 worker 仍窄，后台没人应答审批；继承协调者的沙箱与审批 knob。
+- **只写裸 knobs、不写 `permission/preset`**：`auto` 的身份不在 knob 值里，会落成 `custom` 并关掉审查门；auto 必须写 preset 名。
+- **普通 preset 也写名字**：名字由 `derive()` 从 knobs 反推，写错会让客户端显示错的档；普通档只写 knobs。
+- **读不到 `current()` 时仍写裸 knobs**：无法排除协调者正处于 auto，可能落成「无沙箱、无审查门」；整体放弃继承，停在部署默认。
+- **协调者是 `ask` 时无条件钉 `never`**：worker 会话可被人下钻对话，应答可能性应保留；保留 `ask`。
+
+## Consequences
 
 - **只继承一次**（派工那一刻）：协调者之后切换 preset 不影响已派出的 worker，权限在宿主里本来就是逐会话的。
 - **冷恢复不重算**：`sandbox/mode` 与 `approval/policy` 都在会话日志里，`agents.resume` 会把 fold 恢复回来，`pinInitialPermission()` 对已有 knobs 只补缺失项。继承成 `auto` 的 worker 冷恢复要求 auto 集成在场。
@@ -24,6 +34,8 @@ worker 是本 bundle 用 `agents.create` 建的独立新会话，而宿主的 `p
 - **不改宿主默认值**：继承只写在自己的会话上，用户默认 preset 仍决定其他新会话；也不扩大到工具面（工具面按角色裁剪）。
 - **`inheritPermission()` 不在 `spawn` 的 `try` 里**：内部读写都就地 catch，唯一可能逃出的是 logger 自身抛错；那种情况下派工失败（Fail Loud 方向正确），活表里留一个已建会话的句柄，只影响这一次派工。
 
-## 验证
+收益：worker 按协调者当前的有效权限开工，auto 不会退化成无审查门，回执报的是实际生效值。
+
+## Testing
 
 `tests/permission-inherit.test.js`、`tests/worker-sessions.test.js` 与 `tests/dispatch.test.js`。双向：撤掉 `auto` 分支 → 3 例红；把回读会话从 worker 换成协调者（回执报目标值）→ 6 例红。还原后全绿。

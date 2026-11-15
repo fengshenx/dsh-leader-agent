@@ -1,10 +1,12 @@
-# 卡片说明与 worker 回报改用宿主 Markdown 渲染
+# Agent Note: 卡片说明与 worker 回报改用宿主 Markdown 渲染
 
-## 背景
+Status: implemented
+
+## Problem
 
 卡片详情的「说明」段与 worker 回报气泡的正文都是人手写的 Markdown：标题、列表、行内代码、代码块、表格在产物摘要里随处可见。两处此前按纯文本渲染，语法字符原样显示，读的人得自己解析结构。宿主 web 端的聊天消息本身就是 Markdown，渲染器是基线模块 `ui-primitives` 的 `MarkdownText`。
 
-## 决策
+## Decision
 
 - **复用基线模块的 `MarkdownText`，不自写解析器**：第一版自写的轻量解析器（约 900 行）整份删除，不保留双路径——自写版要复刻 GFM、代码高亮、URL 白名单与流式解析，排版也必然与聊天消息不一致。封装只剩一层：原文为空返回 `null`（避免渲染空容器），其余交给组件；宿主自带 URL 协议白名单与 HTML 转义，不需要再写安全过滤。
 - **构建期把 `ui-primitives` 留在产物外**：它与 `react` 同属基线模块，运行时由宿主冻结模块表提供同一实例；manifest 的 `dsh.client.external` 仍为空——基线模块本来就能解析，重复声明反而违规。这张表不是跨版本承诺：条目被移出基线，产物里的外部 `require` 解析失败，插件客户端半边在模块求值阶段整个起不来；复核按 `engines.dsh` 下限的 tag 对照，不看本机最新版。
@@ -15,7 +17,15 @@
 - **气泡材质跟宿主消息气泡**：底色用宿主给气泡的专属令牌 `--dsw-specific-bubble`，不自己按前景色混百分比——后者在深浅主题下强度不一致、看上去偏灰；宿主的用户气泡没有描边，这里一并去掉边框；圆角与内边距沿用宿主口径（气泡随后扩为 leader 任务气泡，见[同名笔记](2026-11-06-leader-task-bubble.md)）。
 - **旧消息回退与失败原因保持纯文本**：`workerReportFormat` 按三件事选渲染方式——终态失败、`report` 是否存在、`report` 有没有块级结构。失败原因是原样透出的错误文本、可能多行；没有 `report` 的旧消息回退逐行协议字段；有 `report` 的多行正文只在出现块级标记时才走 Markdown——早期多块用单个 `\n` 连接，交给 Markdown 会被软换行折成一段。行内语法不参与判定，判据只是行首的块级语法。生产者侧同步：`blocksToText` 加可选分隔符，新回报的 `report` 多块用 `\n\n` 连接后随通知落盘。
 
-## 边界
+## Alternatives considered
+
+- **保留自写的轻量 Markdown 解析器**：要复刻 GFM、代码高亮、URL 白名单与流式解析，排版也必然与聊天消息不一致；整份删除。
+- **保留「自写 + 宿主组件」双路径**：两套渲染会各改各的；只留宿主基线 `MarkdownText`。
+- **用 `variant="body"`**：两处都是窄容器，`body` 会把气泡撑成文档页；固定 `compact`。
+- **每帧新建 `labels`**：宿主按对象身份判断是否重建流式缓存，缓存会一直失效；用模块级常量。
+- **继续用 `-webkit-line-clamp`**：正文变成块级后不生效；改 `max-height` 裁剪。
+
+## Consequences
 
 - **风险方向是宿主把条目移出基线**：基线模块是宿主公开的共享契约，本仓因此不写 `dsh.client.external`；一旦被移出，插件客户端半边起不来。代价是宿主改 `MarkdownText` 的签名或 compact 排版时本仓要同步。
 - **远端图片会渲染**：宿主渲染器对 http(s) 图片按默认行为出 `<img>`，与聊天消息一致；不传 `pathImages`，本地路径图片不出图。要禁止外部资源得在传入前处理图片语法，渲染器没有开关。
@@ -23,6 +33,8 @@
 - **排版随宿主主题**：字号、行高、间距来自宿主令牌与 compact 样式。
 - **颜色覆盖依赖宿主的属性钩子与 token**：宿主改属性名或 token 名时覆盖会静默失效（正文又变暗），要同步。
 
-## 验证
+收益：卡片说明与 worker 回报按宿主同一套 Markdown 渲染，语法、链接安全与主题颜色不再各写一份。
+
+## Testing
 
 `tests/markdown.test.js`、`tests/worker-report.test.js`、`tests/dispatch.test.js` 钉住基线接线、compact、折叠实现与三种渲染回退；双向：把 `workerReportFormat` 改成恒返回 `'markdown'`，旧消息回退用例变红。

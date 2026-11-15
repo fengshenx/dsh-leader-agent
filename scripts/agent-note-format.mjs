@@ -1,26 +1,50 @@
 /**
- * Agent Note 的结构判定：路径双轴（lifecycle × class）、文件名、唯一 H1、
- * 首节必须是背景、按 lifecycle 要求的必需节、节名不重复、笔记间链接可达。
+ * Agent Note 的结构判定：路径双轴（lifecycle × class）、文件名、头部块与 Status、
+ * 首节 `## Problem`、按 lifecycle 的必需节、implemented 禁提案期节名、
+ * `## Alternatives considered`、legacy marker、唯一 H1、节名不重复、笔记间链接可达。
  * 正文写什么不在这层判——那要人读。
+ *
+ * 格式来源：宿主 `scripts/verify-agent-note-format.ts` 与 `.agents/notes/README.md`。
  */
 
 const NAME = /^(\d{4})-(\d{2})-(\d{2})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$/
 
-const FIRST_SECTION = '背景'
+/** 第 1 行必须是 `# Agent Note: ` 加非空标题。 */
+const TITLE = /^# Agent Note: \S/
 
-/** 状态轴。`archived` 只作历史记录，不再指导当前行为。 */
+const PROBLEM = '## Problem'
+const ALTERNATIVES = '## Alternatives considered'
+
+/** 状态轴。`archived` 只作历史记录，沿用 implemented 的 Status 与骨架。 */
 export const LIFECYCLES = ['proposed', 'implemented', 'rejected', 'archived']
 
 /** 类型轴。归属口径见 AGENTS.md 的「提交与 PR」一节。 */
 export const CLASSES = ['feature', 'bug-fix', 'simplification', 'architecture', 'process', 'testing']
 
-/** 进 archived 的都是一度 implemented 的文件，归档只移动路径、不改正文。 */
-const REQUIRED_SECTIONS = {
-  proposed: ['提案', '验收标准'],
-  implemented: ['决策'],
-  rejected: ['提案', '否决理由'],
-  archived: ['决策'],
+/** 路径与 `Status:` 双写，由门禁交叉校验。 */
+const STATUS = {
+  proposed: /^Status: proposed$/,
+  implemented: /^Status: implemented$/,
+  rejected: /^Status: rejected — .+$/,
+  archived: /^Status: implemented$/,
 }
+
+/** 按 lifecycle 的必需节，`## ` 开头、精确匹配。 */
+const REQUIRED_SECTIONS = {
+  proposed: ['## Proposal', '## Acceptance criteria', '## Risks'],
+  implemented: ['## Decision', '## Consequences'],
+  rejected: ['## Proposal'],
+  archived: ['## Decision', '## Consequences'],
+}
+
+/** implemented / archived 里的提案期节名。 */
+const BANNED_IMPLEMENTED = /^## (?:Proposal\b|Plan\b|Migration plan\b|Acceptance criteria\b)/i
+
+/** 宿主已退役的占位 marker。 */
+const LEGACY_MARKERS = [
+  'XXX: legacy ADR/RFC body format',
+  'XXX: legacy ADR/Agent Note body format',
+]
 
 /** 围栏里的 `#` 是示例，不是文档结构。缩进三格以内都算围栏——列表项里也常写。 */
 const FENCE = /^ {0,3}(`{3,}|~{3,})/
@@ -84,31 +108,59 @@ export function checkNote(relPath, text) {
   }
 
   const lines = proseLines(text)
-  if (lines.some(line => /^(?:\*\*状态\*\*|Status:)/.test(line))) {
-    violations.push('不要写 `Status:` / `**状态**` 行：路径即状态，双写必然与目录漂移')
+  const raw = text.split('\n')
+
+  if (!TITLE.test(raw[0] ?? '')) {
+    violations.push('第 1 行必须是 `# Agent Note: <标题>`，标题不能为空')
   }
+  if (raw[1] !== '') violations.push('第 2 行必须是空行')
+  const status = STATUS[lifecycle]
+  if (status !== undefined && !status.test(raw[2] ?? '')) {
+    violations.push(`第 3 行必须匹配 ${lifecycle} 的 Status 形态（${status}）`)
+  }
+  if (raw[3] !== '') violations.push('第 4 行必须是空行')
+
+  const statusLines = lines.filter(line => line.startsWith('Status:'))
+  if (statusLines.length !== 1 || statusLines[0] !== raw[2]) {
+    violations.push('`Status:` 行必须只出现在第 3 行，且全文件只有这一条')
+  }
+
   const titles = lines.filter(line => /^# \S/.test(line))
   if (titles.length === 0) {
-    violations.push('缺少 H1 标题（第一行应为 `# 标题`）')
+    violations.push('缺少 H1 标题（第 1 行应为 `# Agent Note: <标题>`）')
   } else {
     const firstContent = lines.find(line => line.trim() !== '')
     if (titles[0] !== firstContent) violations.push('H1 必须是文件第一行，前面不能有正文')
     if (titles.length > 1) violations.push(`H1 只能有一个，现在有 ${titles.length} 个`)
   }
 
-  const sections = lines.filter(line => line.startsWith('## ')).map(line => line.trimEnd().slice(3).trim())
-  if (sections.length === 0) {
-    violations.push(`正文没有分节（首节应为 \`## ${FIRST_SECTION}\`）`)
-    return violations
+  const h2s = lines.filter(line => line.startsWith('## ')).map(line => line.trimEnd())
+  if (h2s.length === 0) {
+    violations.push(`正文没有分节（首节应为 \`${PROBLEM}\`）`)
+  } else if (h2s[0] !== PROBLEM) {
+    violations.push(`第一节必须是 \`${PROBLEM}\`（现在是 \`${h2s[0]}\`）`)
   }
-  if (sections[0] !== FIRST_SECTION) {
-    violations.push(`第一节必须是 \`## ${FIRST_SECTION}\`（现在是 \`## ${sections[0]}\`）`)
+
+  for (const required of REQUIRED_SECTIONS[lifecycle] ?? REQUIRED_SECTIONS.implemented) {
+    if (!h2s.includes(required)) violations.push(`缺少 \`${required}\` 节（${lifecycle ?? 'implemented'} 要求）`)
   }
-  for (const section of REQUIRED_SECTIONS[lifecycle] ?? REQUIRED_SECTIONS.implemented) {
-    if (!sections.includes(section)) violations.push(`缺少 \`## ${section}\` 节（${lifecycle ?? 'implemented'} 要求）`)
+  if (lifecycle === 'implemented' || lifecycle === 'archived') {
+    for (const h2 of h2s.filter(heading => BANNED_IMPLEMENTED.test(heading))) {
+      violations.push(`\`${h2}\` 是提案期节名；implemented / archived 用现在时，把内容折进 Decision / Consequences / Testing`)
+    }
   }
-  for (const section of new Set(sections)) {
-    const count = sections.filter(candidate => candidate === section).length
+  if (!h2s.includes(ALTERNATIVES)) {
+    violations.push(`缺少 \`${ALTERNATIVES}\` 节（每个 lifecycle 都要求；不能用注释代替）`)
+  }
+  for (const marker of LEGACY_MARKERS) {
+    if (lines.some(line => line.includes(marker))) {
+      violations.push(`出现已退役的 legacy marker：\`${marker}\``)
+    }
+  }
+
+  const sectionNames = h2s.map(line => line.slice(3).trim())
+  for (const section of new Set(sectionNames)) {
+    const count = sectionNames.filter(candidate => candidate === section).length
     if (count > 1) violations.push(`\`## ${section}\` 出现了 ${count} 次`)
   }
 

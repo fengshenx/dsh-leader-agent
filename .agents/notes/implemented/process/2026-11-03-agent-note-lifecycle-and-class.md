@@ -1,10 +1,14 @@
-# Agent Note 双轴：lifecycle × class
+# Agent Note: Agent Note 双轴：lifecycle × class
 
-## 背景
+Status: implemented
+
+> **2026-11-16 起部分被 [宿主 Agent Note 格式对齐](2026-11-16-host-agent-note-format-alignment.md) 取代**：`Status:` 与路径双写、强制 `## Alternatives considered` 已改为与宿主一致。路径双轴、class 闭集、archived 口径与链接门禁仍有效。
+
+## Problem
 
 `.agents/notes/` 此前是扁平的：大量 `.md` 直接堆在目录下，路径不含状态与类型。门禁只判文件名日期形状、唯一 H1、首节 `## 背景` 与有 `## 决策`。结果分不出「这篇还需不需要读」（已出现被整篇或部分作废的记录，只能打开正文才认得出），也分不出改动性质（修 bug 还是改架构只能靠标题猜）。
 
-## 决策
+## Decision
 
 - **路径编码双轴，两个轴都是闭集**：`.agents/notes/{lifecycle}/{class}/文件名`，门禁校验路径恰好三段、取值都在闭集内。类目口径写在 README，判别线是「改运行时行为 → feature / bug-fix / simplification / architecture；改围绕代码的工具与流程 → process / testing；删代码删行为 → simplification；某平台上不工作 → bug-fix」。
 - **不写 `Status:` / `**状态**` 行**：路径是状态的唯一来源，单语种仓库没有双语对照需求，双写只会多一处必须同步、又能被门禁拦下的不一致来源；门禁同时匹配行首 `Status:`（宿主式写法）与 `**状态**`，只判行首，正文行内提及不误伤。
@@ -15,7 +19,15 @@
 - **接线要有护栏**：判定、读盘与报错分在 `agent-note-format.mjs` 与 `agent-note-audit.mjs`，脚本入口只剩调用与退出码；语料用例造临时语料跑这两层，撤掉判定调用或退出码逻辑就红。
 - **不引入强制的 `## 备选方案` 节**：存量都要补写，而这些备选必须来自真实回忆，集体补写必然产生编造；`## 边界` 已承载「放弃了什么」。
 
-## 边界
+## Alternatives considered
+
+- **继续扁平目录**：分不出还需不需要读、也分不出改动性质；路径双轴，两个轴都闭集。
+- **写 `Status:` / `**状态**` 行**：当时认为路径是状态唯一来源、双写会多一处不一致；**2026-11-16 已推翻**，宿主格式要求 `Status:` 与路径双写并由门禁交叉校验，见 [host-agent-note-format-alignment](2026-11-16-host-agent-note-format-alignment.md)。
+- **强制 `## 备选方案` 节**：当时认为存量集体补写必然编造、`## 边界` 已承载「放弃了什么」；**2026-11-16 已推翻**，每个 lifecycle 都要求 `## Alternatives considered`，确实没有记录的按统一补记标记标注，见同一篇。
+- **照搬宿主的归档 hash manifest**：本仓规模负担不起；归档只移动路径、不引入冻结清单。
+- **笔记间链接不进门禁**：迁移一次就会留下断链；`checkLinks` 只判可达，路径解析留给调用方。
+
+## Consequences
 
 - `rejected/` / `archived/` 在门禁里合法但还没有真实文件跑过，归档判据仍只是口径；`proposed/` 已有 1 篇。
 - archived 没有机械冻结：改归档笔记的历史事实不会红，靠文档口径约束。
@@ -24,6 +36,8 @@
 - 类目边界有主观余地：`feature` 与 `bug-fix` 在「用户报问题、修法带新交互」时重合，以 README 判别线为准。
 - 迁移让 `docs/` 里的笔记链接变长，抬了两个文档天花板（按既定比例留余量，未为凑数新增内容）。
 
-## 验证
+收益：笔记按 lifecycle 与 class 归位，过期记录与改动性质一眼可见，链接断链在门禁里红。
+
+## Testing
 
 `tests/agent-note-format.test.js` 覆盖纯判定、读盘与会两层；双向验证：撤掉 `checkLinks` 接线、回退围栏配对、清空违规集合，各自对应用例变红，还原后全绿。

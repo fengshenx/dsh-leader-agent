@@ -1,10 +1,12 @@
-# 桌面版挂载：npm run desktop 直接改 desktop profile
+# Agent Note: 桌面版挂载：npm run desktop 直接改 desktop profile
 
-## 背景
+Status: implemented
+
+## Problem
 
 用户问本插件能否在桌面版里用、能否用一条 `npm run` 起。实测边界是：桌面版是 Electron 壳 + 完整 Web 应用，profile 固定为 `$DSH_HOME/profiles/desktop`，与 CLI 的 `profiles/web` 各自一套包、激活状态与 lockfile；`dsh --profile desktop` 被宿主直接拒绝；应用自带的插件管理支持本地绝对路径，但开发期靠在对话框里每次手填路径不可行；`npm run dev` / `npm start` 都只起 `dsh web`。
 
-## 决策
+## Decision
 
 - **脚本直接改 manifest 与链接，不跑 pnpm**：往 desktop profile 写 `link:<当前目录>`、把包名追加进 `bundles`、在 `node_modules` 建符号链接（Windows 用 junction，不需要管理员）。桌面应用的包操作用自己的 pnpm 与 Electron Node 环境，复刻那套容易随宿主版本失效；宿主启动只按 `bundles` 解析包、不校验 `link:` 与磁盘是否一致。代价是 lockfile 与 manifest 短暂不一致，下次在应用里做安装/卸载由 pnpm 补齐。
 - **`DSH_HOME` 按宿主语义归一化**：先展开 `~` / `~\` 再 `resolve`；**相对路径直接拒绝**——应用由 `open` 经 LaunchServices 启动、cwd 不是这个 shell，应用拿相对值会算成另一个数据根。
@@ -19,13 +21,24 @@
 - **`--remove` 是包级摘除，只摘能判定归属当前工作树的那份**：依赖说明符不是当前目录、或只在 `bundles` 里出现而无依赖条目时拒绝；`node_modules` 是实体目录而 manifest 有记录时整单拒绝（目录与声明要么一起解决要么都不动）；不依赖应用存在，探活只在挂载分支做；链接拆除复用既有的 `detachNodeModulesLink`（Windows junction 用 `rmdir`，与 `worktree:prune` 同一约定）。
 - **文档归属**：README 安装章节给使用者操作（一条命令 + 撤销 + 限制），机制在 `docs/development.md` 一句与本文，`AGENTS.md` 命令表一行；桌面版安装入口必须留在 README Quick Start 这一层。
 
-## 边界
+## Alternatives considered
+
+- **在 desktop profile 里跑 pnpm**：桌面应用用自己的 pnpm 与 Electron Node，复刻容易随宿主版本失效；直接写 manifest + 符号链接。
+- **接受相对 `DSH_HOME`**：应用由 LaunchServices 启动、cwd 不是这个 shell，相对值会算成另一个数据根；展开后必须是绝对路径。
+- **依赖「默认数据根碰巧一致」**：启动时固定带 `--env DSH_HOME=<绝对路径>`，不赌默认值。
+- **覆盖别人的安装**：可能是插件管理装的版本或另一个工作树；依赖说明符不是当前目录就拒绝。
+- **先写 manifest 再建链接**：构建失败会留下「已挂载但没有客户端产物」；先构建、再链接、最后写 manifest。
+- **探不到运行态就自动启动**：`open --env` 对已运行实例无效，会报「已启动」而应用仍读旧环境；fail closed。
+
+## Consequences
 
 - 同一时刻只能挂一个工作树版本；换版本先 `--remove`。worktree 里运行改用派生数据根，见 [worktree 派生数据根](2026-11-03-desktop-worktree-derived-home.md)，Windows 探活与启动见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)。
 - macOS 的进程名在 `p_comm` 里截断到 16 字符，长应用名可能漏判；不用 `pgrep -f`（匹配整条命令行，编辑器开着同名路径会误判），宁可漏判时靠人退出应用。
 - 不支持用 `DSH_HOME` 起隔离的桌面实例：Electron 的 userData（更新、账号、窗口状态）与 profile 数据根不是一回事；隔离验证继续走 web 形态开发实例。
 - 桌面版与 CLI 的包和激活状态分开，但会话、项目、卡片数据在同一 `$DSH_HOME` 下共享。
 
-## 验证
+收益：一条 `npm run desktop` 把当前工作树挂进桌面版，构建、归属与运行态检查都在写之前，摘除也能干净还原。
+
+## Testing
 
 `tests/desktop-plan.test.js` 覆盖路径解析、归属守卫、锁与启动顺序；双向验证逐条撤销（链接规划、归属校验、写入顺序、进程名来源、锁）各自变红。临时数据根端到端与 macOS 实机各跑通正常、运行中拒绝、`--remove` 三条路径。

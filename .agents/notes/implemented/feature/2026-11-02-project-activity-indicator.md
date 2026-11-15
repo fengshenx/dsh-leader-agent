@@ -1,10 +1,12 @@
-# 项目行收起时的运行中指示
+# Agent Note: 项目行收起时的运行中指示
 
-## 背景
+Status: implemented
+
+## Problem
 
 项目行收起时看不出这个目录里有没有会话在跑：会话行的 spinner 只在展开后出现，收起等于失明。展开时反过来不需要会话级的重复指示——每条会话行自己带 spinner，目录行再画一个就是把同一件事画两遍。leader 在项目树下不单独出行，它跑起来时行首是唯一提示，所以口径是**并集**：本组任一会话在跑，或 leader 自己在跑，行首就亮。
 
-## 决策
+## Decision
 
 - **判定收敛成一个纯函数 `showsProjectActivity({ expanded, rows, leaderRunning })`**：`leaderRunning === true` 直接返回 `true`（任何展开状态都只能靠行首）；其它会话只在收起时算（`expanded === true` 直接返回 `false`，否则同一件事画两遍）。
 - **入参 `rows` 就是 `ProjectRow` 要渲染的那批会话行**，不为目录行另判一遍身份与归属：「目录行有加载圈」与「至少一条会话行有 spinner」因此严格同源。已归档会话在挑行时就被滤掉（会话索引按磁盘目录扫，归档后记录仍在索引里）；快照里还没有的会话没有行可渲染，不会被当成在跑；当前 leader 不在会话行里，由 `isLeaderRunning()` 单独提供；退役 leader 留在会话行里，跟着行走。
@@ -14,7 +16,14 @@
 
 > **这一段已被 [2026-11-03 加载圈改用宿主 StateDot](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md) 取代**：现在渲染的是宿主基线模块的 `StateDot`（`state: 'ongoing'`，14px），不再有自绘类、`currentColor` 与 0.8s 关键帧；运行中槽位只有灰圈、目录图标不渲染，该槽位没有激活色回执，组内激活态在整条项目行上完全消失。**判定与边界的其余决策仍然生效**——`showsProjectActivity` 的两来源并集、归档口径、`expanded` / `leaderRunning` 边界都还在 `src/client/project-panel-logic.js` 里跑。
 
-## 边界
+## Alternatives considered
+
+- **展开态也画目录级加载圈**：每条会话行已经有 spinner，再画一遍是重复；展开态行首只代表 leader。
+- **目录行自己判身份与归属**：会与会话行挑行逻辑分叉；入参直接用 `ProjectRow` 要渲染的那批行。
+- **保留 `data-running` / `lead-spinner` 第二套观测量**：合成后只留行首槽位一个入口，避免两套读数漂移。
+- **只按 `expanded` 判**：leader 在两种展开状态都只能靠行首，`leaderRunning === true` 必须先返回。
+
+## Consequences
 
 - 只覆盖「运行中」，不覆盖「等你输入」：宿主当前没有发布待处理交互的数据源（`docs/capability-gaps.md` 第 35 条）。
 - 展开态行首只代表 leader：worker 在跑时不亮，由它自己的会话行带 spinner。两态下行首语义不同（收起是「本组有活动」、展开是「leader 在跑」），这是信息展开时的正常过渡。
@@ -24,6 +33,8 @@
 - 项目区块标题行不显示任何项目级状态：它是整个列表的折叠开关，不代表某个目录。
 - **原生目录选择器初始灰态是宿主 modal 激活时机问题**，bundle 侧修不了（`docs/capability-gaps.md` 第 42 条）。
 
-## 验证
+收益：项目收起时也能看出目录里有没有会话在跑，展开时又不重复画第二遍。
+
+## Testing
 
 `tests/project-panel.test.js` 钉住合成判定的矩阵（收起/展开 × 会话行/leader × 在跑/空闲）、归档口径与接线；双向：删掉 `leaderRunning === true` 的早返回或 `expanded === true` 的早返回，对应用例变红。

@@ -1,10 +1,12 @@
-# 发布到 npm 的基建与包内容门禁
+# Agent Note: 发布到 npm 的基建与包内容门禁
 
-## 背景
+Status: implemented
+
+## Problem
 
 装法是 `dsh plugin --profile web add dsh-leader-agent`，而发布前只有半套：`files` 白名单、`prepublishOnly`、LICENSE 与 README，缺发布链路本身与「发出去的包缺文件」的机械门禁——`tests/skills.test.js` 守的是 `files` 与 skill 目录对齐，不是 tarball。
 
-## 决策
+## Decision
 
 > **发布链路的现行操作归 [docs/release.md](../../../../docs/release.md)**：tag 触发、provenance、幂等与 SHA pin 的步骤在那里维护；本节保留当时的选型理由与取舍。
 
@@ -18,7 +20,15 @@
 - **发布只在 CI 的 tag 上跑，且必须带 provenance**：tag 要指向 `origin/main` 上的提交、版本与 `package.json` 一致；操作细节归 [docs/release.md](../../../../docs/release.md)。
 - **`engines.node` 跟宿主一致**（`>=24.9.0`）：本包跑在宿主进程里，本身没用 24.9 专属 API，这是跟随宿主的取舍。
 
-## 边界
+## Alternatives considered
+
+- **自己复刻 npm-packlist**：`files` 前缀、dot 目录、被 gitignore 的 `lib/` 都是 npm 内部语义，复刻会随版本漂移；直接打真实的包比对。
+- **只验 tarball 清单**：清单全绿仍可能装机加载失败；再在干净目录 install 并逐文件 import。
+- **用黑名单挡开发目录**：新增目录会悄悄带上；`files` 白名单之外再按前缀放行 `.agents/skills/`。
+- **把 check / build / pack 拆成三条命令**：顺序容易倒；`release:check` 是唯一入口。
+- **把 `minidenticons` 留作运行时依赖**：发布包没有 node_modules；构建期内联并在 banner 带 MIT 文本。
+
+## Consequences
 
 - `NPM_TOKEN` 路线已废弃，见 [2026-11-03-npm-oidc-publishing.md](2026-11-03-npm-oidc-publishing.md)；provenance 只在 CI 生成且要求仓库公开。
 - 只从无参 `npm publish` 发布：带路径参数不跑生命周期脚本，`release:check` 整段被跳过。
@@ -29,6 +39,8 @@
 - `verify:pack` 依赖本机 npm（经 `scripts/spawn-command.mjs`，Windows 上 npm 是 shim），但不需要网络：装的是本地 tarball。
 - 发布说明按文档分层落位：流程在 [development 的发布与打包](../../../../docs/development.md#发布与打包)，限制在 [limitations 的发布](../../../../docs/limitations.md#发布)。
 
-## 验证
+收益：发出去的 tarball 既清单完整又能真的被宿主加载，开发目录与客户端坏产物都挡在发布前。
+
+## Testing
 
 `tests/pack-manifest.test.js` 与 `tests/client-build.test.js`；双向读数：`files` 收窄成 `["src/host/**"]` → 清单全绿而 `verify:pack` 报 `src/shared` 漏包，`.agents/skills/**` 改成 `.agents/**` 并造 `.agents/prompts/hidden.md` → 撤销允许面时该文件被放行，还原成允许面后全拦。

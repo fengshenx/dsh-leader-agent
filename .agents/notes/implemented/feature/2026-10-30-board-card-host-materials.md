@@ -1,10 +1,12 @@
-# 看板卡面改用宿主卡片材质
+# Agent Note: 看板卡面改用宿主卡片材质
 
-## 背景
+Status: implemented
+
+## Problem
 
 上一版卡面是「无边框无阴影、静态零装饰、hover 只出背景」：卡与卡之间只有一条窄缝、卡面与右栏背景同色，读完一段不知道它到哪结束。用户第二次指认「Card 的样式设计还是丑」，要求复用 dsh 自己的 design token。宿主已有成文的卡片材质与层级规则（圆角 token、发丝描边、elevation、中性 border 与投影不得配对），不需要自己发明数值。
 
-## 决策
+## Decision
 
 > **部分已被 [卡面按导航目标组织轻量入口](2026-11-13-board-card-kind-and-navigation.md) 取代**：链接去壳、静息态降权，chip 的 18px 高 / R4 / 123px 宽 / 1px 下划线偏移随之失效；卡面材质、圆角分档、token 与焦点环规则仍有效。
 
@@ -20,12 +22,21 @@
 - **全圆与胶囊（百分比与超大圆角）配对 `corner-shape: round`**：宿主给所有圆角面套 superellipse，不退出会被压成方角。
 - **所有 `:hover` 规则包进 `@media (hover: hover)`**：触屏上 `:hover` 会被点按粘住，这是宿主样式规范的硬要求。
 
-## 边界
+## Alternatives considered
+
+- **自己发明圆角/elevation 数值**：宿主已有成文材质与配对规则；照抄 token，不另造一套。
+- **用真 `border` 画发丝线**：宿主规则是 `border: 0` + `box-shadow`；重绑 `--dsw-elevation-stroke-color` 换档。
+- **文字用 `opacity` 叠语义色**：alpha 与语义色叠加不属于任何 token；文字换档，只有图形点保留 alpha。
+- **给 done 卡也加材质**：主次应靠卡面/透明行的对比；done 保持透明行。
+
+## Consequences
 
 - **只保证结构对齐宿主，不保证像素一致**：宿主调圆角、elevation 或色阶时本仓自动跟随；但行列结构、缩进与字号仍是本仓自己的数值。
 - **下划线与焦点环的可见性靠真机读数判定**：`overflow: hidden` 会把下划线整条裁掉、把外扩焦点环切成两段竖条，这两个失效模式在 CSS 声明上完全看不出来。1x 屏的发丝线是混合值、更淡——宿主对自己的发丝线是同一取舍。
 - **卡面根仍是 `role="button"` 且内嵌可聚焦控件**：ARIA 冲突与上一版一致，本次不动。
 
-## 验证
+收益：卡面材质、圆角与焦点环跟宿主同一套 token 与规则，深浅主题下都不会出现自造颜色。
+
+## Testing
 
 `tests/board-styles.test.js` 把宿主硬规则固化成结构断言（`corner-shape` 配对、点状下划线、下划线偏移取宿主规范、焦点环内嵌、token 白名单、变体顺序、hover 媒体查询、发丝边框）；双向：把下划线偏移改回旧值，该用例变红。

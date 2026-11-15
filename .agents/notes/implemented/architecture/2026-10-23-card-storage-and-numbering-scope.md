@@ -1,10 +1,12 @@
-# 卡片存储与编号作用域
+# Agent Note: 卡片存储与编号作用域
 
-## 背景
+Status: implemented
+
+## Problem
 
 卡片是协调者维护的任务事实（编号递增不复用、`revision` 乐观并发、`archived` 终态、检查点记已确认的结论与下一步），看板与模型必须读写同一份数据；dsh 现成的 team 任务板与 storage domain 都覆盖不了 slot→session 绑定、links、checkpoint 与编号不复用。
 
-## 决策
+## Decision
 
 **自建落盘，不用 storage domain**：`defineDomain` 要求 zod schema 且存储域是 dsh 内部 peer 依赖，宿主按 peer 版本严格校验，带内部依赖的 bundle 会周期性失效。落盘与通知队列同构：原子写 + 全部读-改-写走同一条 promise 链串行化。
 
@@ -20,7 +22,13 @@
 
 **卡片归属项目由宿主写卡时判定**：按调用方会话反查项目（协调者走注册表指针，其它会话按 cwd 的 realpath 与项目目录相同），写进 `projectId` / `createdBy`；模型不传项目参数——它未必知道自己在哪个项目的语境里。存量卡片没有 `projectId` 也不迁移（记录里没有创建会话 id，无法可靠反推）。
 
-## 边界
+## Alternatives considered
+
+- **用 dsh storage domain**：`defineDomain` 要求 zod schema，且 dsh 内部 peer 依赖会随宿主版本严格校验，带内部依赖的 bundle 会周期性失效；自建落盘 + 原子写/串行链换来零版本耦合。
+- **用 agent-team 的任务板**：它覆盖不了 slot→session 绑定、links、checkpoint 与编号不复用。
+- **编号按项目递增**：会要求迁移存量卡片的编号作用域，且跨项目 `@#n` 引用会歧义；当前全局唯一、允许空洞。
+
+## Consequences
 
 - **编号作用域的迁移代价**：将来若要求按项目编号，需迁移存量卡片的编号作用域；当前按项目过滤有空洞但全局唯一。
 - **存量卡片归属无法反推**，不迁移（见[看板按项目组织](../feature/2026-10-27-project-bound-board.md)）。
@@ -28,6 +36,8 @@
 - **不落盘信号灯**：停滞/待注意等状态由看板按会话活性实时投影。
 - **无删除 API**：归档是终态，删除交用户决定。
 
-## 验证
+收益：卡片库成为看板与模型共用、可崩溃恢复的任务事实源，编号全局唯一、槽位绑定有单一真源。
+
+## Testing
 
 `tests/cards-store.test.js`、`tests/cards-tools.test.js` 与 `tests/slot-index.test.js` 钉住编号、revision、终态、宿主补写与槽位索引。槽位索引用例用可控文件系统把第一次读卡住，排出「重建读到旧快照、其间落盘完成」的确定顺序，去掉写链排队即失败。

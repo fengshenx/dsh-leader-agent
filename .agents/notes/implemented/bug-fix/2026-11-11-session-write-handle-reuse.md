@@ -1,10 +1,12 @@
-# message_worker 先复用宿主活 agent，再谈冷恢复
+# Agent Note: message_worker 先复用宿主活 agent，再谈冷恢复
 
-## 背景
+Status: implemented
+
+## Problem
 
 `message_worker` 对某些旧 worker 稳定报宿主的英文错误 `session "…" is already owned by an active write handle`。宿主的写句柄绑在 agent 生命周期上，不随 `turn/end` 释放：GUI 打开过的会话、以及宿主启动时恢复过的会话，在进程里是活 agent 并持有写句柄。本模块的 `send()` 只查自己的 `live` 表，未命中就冷恢复，撞上活 agent 的句柄被判重。
 
-## 决策
+## Decision
 
 **查找顺序改成三层：`live` → 宿主活 agent → 冷恢复。** `live` 命中行为不变；宿主里有活 agent 就直接投给它，回执也按 `live`；都没有才走原有的冷恢复。第二层是修复核心。
 
@@ -12,13 +14,22 @@
 
 **写句柄被占时翻译成人话，按错误类型判定。** 冷恢复仍可能撞上另一个进程持锁；`SessionAlreadyOwnedError` 只按 `name` 判定、不匹配文案（下限版本的宿主只设 `name`，文案会随版本调整），翻成「会话正被另一个会话窗口占用，先关窗口再试」，原始错误放进 `cause` 保留类型、`sessionId` 与原文。文案相同但类型不对的错误原样抛出，不误伤。
 
-## 边界
+## Alternatives considered
+
+- **只查 `live`，未命中就冷恢复**：GUI 打开过或启动时恢复过的会话在宿主里是活 agent，冷恢复会撞写句柄。
+- **把复用的宿主 agent 写进 `live`**：等于替宿主接管 dispose 所有权；插件卸载/归档不能收掉用户打开着的会话。
+- **按错误文案匹配 `SessionAlreadyOwnedError`**：文案会随版本调整；按 `name` 判定。
+- **给 teardown 窗口加重查防护**：只能缩小窗口、不能消除，还把一次投递变成两次判断；窗口窄，接受。
+
+## Consequences
 
 - **只解决同进程**：跨进程持锁仍不能冷恢复，只能给出提示；限制记在 [已知限制](../../../../docs/limitations.md)。
 - **teardown 窗口内有一个窄竞争，不加防护**：宿主销毁会话时最后才从注册表摘除，这段窗口里 `get()` 仍能命中；用户关标签/归档与 leader 投递同时发生时，复用路径会拿到正在 dispose 的 agent 并投递，后果可能是抛错或消息静默丢失。宿主没有暴露「正在 dispose」的可观测判据，事后重查也只能缩小窗口、不能消除，还把一次投递变成两次判断；窗口窄且未实测，出现时按「重发」处理。
 - **复用的会话不进 `live`**：插件卸载后它仍在宿主里活着，这是有意的所有权边界。
 - 回执格式不变（`live` / `resumed` → `merged` / `sent`）；复用路径归 `live` → `merged`，因为空闲活 agent 收到 next-step 投递会立刻开一轮。宿主活 agent 若正在跑人自己发起的一轮，投递仍走 next-step 边界，结算规则不变。
 
-## 验证
+收益：对已打开或已恢复的 worker 投递不再撞写句柄，跨进程占用也能给出可照做的提示。
+
+## Testing
 
 `tests/worker-sessions.test.js`：撤掉复用分支时「`live` 未命中但宿主有活 agent 就直接投递」变红，撤掉错误翻译时「撞写句柄给出人话错误」变红；还原后全绿。

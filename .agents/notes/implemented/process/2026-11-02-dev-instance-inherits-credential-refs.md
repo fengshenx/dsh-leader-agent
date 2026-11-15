@@ -1,10 +1,12 @@
-# 开发实例从源 HOME 继承凭据 refs
+# Agent Note: 开发实例从源 HOME 继承凭据 refs
 
-## 背景
+Status: implemented
+
+## Problem
 
 每建一个新 worktree，第一次 `npm run dev` 都要在界面上重填 API key：开发实例的数据根落在工作树内，而凭据存在 `<harness home>/.credentials.yaml`，新数据根只有宿主写的 `client-connection/browser-session` 授权。把 key 放进启动环境虽然能用，却会让 agent 的 bash 工具子进程继承它——dsh 自己刻意不这么做。
 
-## 决策
+## Decision
 
 **启动前把源 HOME 凭据文件的 `refs` 条目并进开发实例那一份**，文本级复制，键已存在则跳过。
 
@@ -14,7 +16,15 @@
 - **原子替换 + 与宿主同一把写者锁**：临时文件以 `wx` 独占创建、创建即带 600 再 rename；写者锁是同目录的 `<文件名>.lock`、内容为持有者 PID，删除前按 PID 探活并复核记录，正在运行的实例不会被读-改-写覆盖。
 - **非 version 1 的目标文档不动**：目标没有 `version` 且非空是 pre-release 扁平布局，宿主会先迁移它；此时追加 `refs:` 会让文档既不是扁平也没有 version，凭据插件激活失败。判据放在所有写入路径之前。
 
-## 边界
+## Alternatives considered
+
+- **把 key 放进启动环境**：agent 的 bash 子进程会继承它，dsh 自己刻意不这么做；改为并入凭据文件的 `refs`。
+- **连 `records` 一起复制**：同一份账号授权被两个实例各自刷新，会互相踢掉登录；只搬 `refs`。
+- **在文件末尾追加第二个 `refs:`**：YAML 非法；替换既有节，认不出形态就抛错。
+- **用目标里已有的条目覆盖**：用户在这个实例保存过的值优先；键已存在则跳过。
+- **不加写者锁**：正在运行的实例会与读-改-写交错；用同目录 PID 锁并探活。
+
+## Consequences
 
 - 源 HOME 没有凭据文件时静默跳过：新机器还没配 key 是正常场景。
 - 合并失败阻断启动（形态认不出、重复 `refs:`、锁超时、写入失败都 `exit 1`）：静默继续会让人以为 key 已带过来。
@@ -23,6 +33,8 @@
 - 只认块式与行内映射，flow 里嵌套映射与锚点会被拒绝合并，但不会写坏文件。
 - 同 UID 可读：agent 的工具进程仍能读到这份文件，这是 dsh 凭据存储本身的限制。
 
-## 验证
+收益：新 worktree 第一次 `npm run dev` 就带上了源 HOME 的密钥引用，又不会把账号授权复制成两份。
+
+## Testing
 
 `tests/dev-plan.test.js`、`tests/atomic-write.test.js`；双向读数：撤掉 version 守卫 → 「`version: 2` 带 `refs:`」与「无 `version` 带 `refs:`」两例红，死锁接管改成不探活直接删 → 「活锁不被接管」红，还原后全绿。

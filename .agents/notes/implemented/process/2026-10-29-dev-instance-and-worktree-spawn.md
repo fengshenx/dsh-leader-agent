@@ -1,10 +1,12 @@
-# 开发实例与 worktree 封装
+# Agent Note: 开发实例与 worktree 封装
 
-## 背景
+Status: implemented
+
+## Problem
 
 旧的 `dev` 脚本把插件 `add` 进用户的 `~/.dsh/profiles/web`，又用默认 `DSH_HOME` 起实例：几个 worktree 先后跑会互相覆盖 profile，开发数据与日常数据混在一起，调试产生的脏数据会留在用户的项目里。
 
-## 决策
+## Decision
 
 - **数据根落在工作树内**：`.dev/home`（gitignore），删掉即重置，worktree 删掉时一起消失。
 - **profile 从源 HOME 派生，不重新安装**：照抄源 profile 的依赖与 `dsh.profile.bundles`（复现日常组合，否则「本地跑得起来、装进 profile 就坏」测不出来），只把本插件的依赖换成 `link:<工作树>`、bundles 缺它就补上；`node_modules` 逐条符号链接到源 profile，只有插件本体指工作树——依赖仍由源里那一份承担。
@@ -17,13 +19,23 @@
 - **`npm run check` 的语法检查扩到 `scripts/` 与 `build/`**：新增的 `.mjs` 不能落在门禁外。
 - **AGENTS.md 存在是为了让宿主约束在下一个会话里可见**：「宿主 API 按 `engines.dsh` 下限挑」这条规则是靠一次落在 `agent/created` 上的 `TypeError` 换来的，必须写在新会话一定会读的地方。
 
-## 边界
+## Alternatives considered
+
+- **把插件 add 进日常 `~/.dsh/profiles/web`、用默认数据根**：几个 worktree 会互相覆盖 profile，开发脏数据也会落进日常项目；数据根与 profile 都收进工作树。
+- **按 worktree 名算固定端口**：撞车只能重试或报错；交给系统分配，没有失败路径。
+- **每个 worktree 重装一份依赖**：写共享依赖、拖慢启动；node_modules 逐条链到源 profile。
+- **「已合并」只认一种判据**：merge commit 与 squash 各成立一半；`merge-base --is-ancestor` 与 PR `MERGED` 任一成立即可删。
+- **prune 默认直接删**：误删未合并分支的代价不可逆；默认 dry-run，`--apply` 才删。
+
+## Consequences
 
 - 源 profile 是前置条件（存在、装过本插件、bundles 里有 `@deepseek-ai/dsh-web-app`），否则脚本报错退出并给出命令。
 - 依赖共享意味着写共享：在 worktree 里 `npm install` 会落到主 checkout，依赖变更回主 checkout 做；并行实例读同一份依赖，只读假设靠「没人往源 profile 装包」维持。
 - Windows 未实测（符号链接用 `junction`，文件型条目未覆盖）。
 - 客户端改动由常驻 watch 重建，见[客户端改动实时生效](2026-11-02-client-hmr-esbuild-watch.md)。
 
-## 验证
+收益：每个 worktree 有隔离的数据根、端口与客户端 watch，删 worktree 即清干净，不碰日常 profile。
+
+## Testing
 
 `tests/dev-plan.test.js`、`tests/worktree-common.test.js`、`tests/worktree-prune.integration.test.js`；双向读数：把插件链接改指源 profile → 「node_modules 逐条链到源、只有插件本体指工作树」红，把 `assertSeparateHome` 改成恒假 → 四条边界（同路径、`..` 绕路、符号链接、不存在路径）全红，还原后全绿。

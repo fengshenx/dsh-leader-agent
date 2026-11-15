@@ -1,10 +1,12 @@
-# 卡片详情支持编辑链接
+# Agent Note: 卡片详情支持编辑链接
 
-## 背景
+Status: implemented
+
+## Problem
 
 看板卡片详情的说明与链接两段都是只读。链接本该归 leader 的 `update_card`，但漏挂、写错、事后补链接都是常态；而看板正是用户看见问题的位置，却只能回会话里让模型改卡。
 
-## 决策
+## Decision
 
 - **写通道只开一条 `updateCardLinks(id, links)`**，挂在既有的项目远程命名空间上，宿主侧转调 `cards.update({ id, links })`，整体替换。不做「加一条 / 删一条」的细粒度方法：列表只有几条，整体替换让并发语义简单（后写者赢），也避免界面与服务各维护一套序号。
 - **不传 `expectedRevision`**：浮层里的卡片是打开瞬间的快照，用快照版本号会稳定触发冲突；用户在这里表达的意图就是「这些链接现在是这样」。代价是覆盖同一时刻 leader 的 `links` 变更，这一取舍记在 `docs/architecture.md`。
@@ -17,7 +19,15 @@
 - **编辑态的焦点**：进入编辑态落到首个 label（没有链接时落到「+ 添加链接」），取消或保存后回到「编辑链接」；保存期间 `disabled` 会让焦点 blur，失败时把焦点还给提交前的元素。聚焦规则复用 `modal-focus` 的 `pickInitialFocus`。
 - **渲染层也认 http(s)**：`isJumpableLink` 要求 http(s)，其余渲染成文字（点它开详情）。写入路径都拦非法 scheme，但存量卡是校验上线前写进去的——那里的 `javascript:` 一旦拼进 `href` 就是注入面，渲染层必须自己守住；相对路径与本地文件链接因此不再可点。
 
-## 边界
+## Alternatives considered
+
+- **链接继续只读、只让 leader 用 `update_card` 改**：用户在看板看到问题却只能回会话里让模型改；开一条整体替换的写通道。
+- **做「加一条 / 删一条」细粒度方法**：列表只有几条，细粒度要维护序号与并发语义；整体替换后写者赢。
+- **传 `expectedRevision`**：浮层是打开瞬间的快照，版本号稳定触发冲突；这里表达的是「现在就是这些链接」。
+- **只接受规范 URL、不归一化**：`http:example.com` 等在 WHATWG 里本来合法，拒绝会把能用的地址判死；归一化后落盘。
+- **各写入路径各自校验 URL**：浏览器、宿主写通道与卡片工具会分叉；共享 `normalizeHttpUrl` / `isHttpUrl`。
+
+## Consequences
 
 - **只有 links 可写**：完成、置顶、重命名、删除、改槽位仍归 leader 的卡片工具，卡面也不放操作按钮。
 - **存量非 http(s) 链接**：渲染层已把它们降级成不可点击的文字；这类卡打开详情保存时会被拦，要改成 http(s) 或删掉那一行的 url。
@@ -28,6 +38,8 @@
 - **归档卡是终态**：不给入口，卡片库本身也拒改。
 - **编辑态的 GUI 未实测**：浮层渲染、增删行、保存回填、错误展示与 IME 回车只有单测与代码阅读证据，留待有可见浏览器面板时补取证。
 
-## 验证
+收益：看板详情能直接编辑链接，URL 口径在界面、写通道与工具三处一致，非法 scheme 不会进 `href`。
+
+## Testing
 
 `tests/card-links.test.js`、`tests/cards-tools.test.js`、`tests/projects-remote.test.js`、`tests/board-projection.test.js` 钉住归一口径与保存回填；双向：把 `normalizeHttpUrl` 改成只 trim、或去掉 `mergeDetailCard` 的 id 判定，对应用例变红。

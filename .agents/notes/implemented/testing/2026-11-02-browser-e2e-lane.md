@@ -1,10 +1,12 @@
-# 浏览器 e2e 车道
+# Agent Note: 浏览器 e2e 车道
 
-## 背景
+Status: implemented
+
+## Problem
 
 浏览器侧证据长期只有一份「取证规范」：没有可执行落点，每次「证明界面真的这样」都靠临场点一遍，结论不可复现、也进不了回归。宿主的 `apps/web/tests/` 是成熟车道，但它的 `scaffold.ts` 在进程内 import 宿主 cordis 树与 replay 包，与本仓「不 import 宿主内部包」冲突。
 
-## 决策
+## Decision
 
 - **黑盒实例**：`mkdtemp` 建数据根，复用 `scripts/dev-instance.mjs` 派生 profile（与 `npm run dev` 同一份组合），spawn `dsh web --port 0 --no-open`，从 `dsh web: <url>` 就绪行取带 token 的地址。端口用 `--port 0` 而不是扫空闲端口，token 只从就绪行读——两者都只能来自本次运行。
 - **mock 按 prompt 标记驱动**：自建零依赖 `node:http` 实现 Messages SSE，按用户消息里的 `MOCK-*` 标记查脚本，脚本按请求顺序消耗，没有标记时沿用上一次命中的标记（两轮场景靠这条），仍没有就 400，不猜。
@@ -14,7 +16,15 @@
 - **截图走同一套夹具**：`e2e.screenshot(label)` 存到 `.dev/e2e-artifacts/<场景名>-<pid>/`，`stop()` 前自动存 `final.png`，路径打到 stdout 供人直接打开。截图只是证据，回归仍靠断言，不写「截图里有某个字」。
 - **e2e 不进 `npm run check`**：check 只跑纯函数与假件；可判定部分（标记解析、脚本游标、SSE 事件序列、就绪行解析、显式端点检测）抽成纯函数进 check，需要真浏览器的留 `tests/e2e/*.e2e.js`。
 
-## 边界
+## Alternatives considered
+
+- **整搬宿主 `apps/web/tests/` 的 scaffold**：它在进程内 import 宿主 cordis 树与 replay 包，违反「不 import 宿主内部包」；只搬机制、黑盒 spawn。
+- **先扫空闲端口再绑定**：会与并发进程抢；`--port 0` 由系统分配。
+- **用 `@playwright/test`**：多一层框架与配置；`node:test` + `playwright` core 够用。
+- **把 e2e 塞进 `npm run check`**：check 只跑纯函数与假件；需要真浏览器的留 `tests/e2e`。
+- **共用一份数据根**：测试会互相污染；每次 `mkdtemp` 派生。
+
+## Consequences
 
 - 不覆盖原生控件、浮层像素与动画观感、WebKit/Firefox；继续人工取证并在 PR 里标注「未 GUI 实测」。
 - 不做 aria golden 与 snapshot refresh：断言锚是 DOM class、计算样式与落盘文件。
@@ -25,6 +35,8 @@
 - mock 游标是全局单值，一轮只支持一个会话在请求模型；协调者 + worker 并行前要先按 session id 分游标。
 - 需要 Node 22.15+（`node:zlib` 的 zstd），旧版本是 import 期就崩。
 
-## 验证
+收益：浏览器侧的行为第一次有了可复现、可回归的车道，而不是每次临场点一遍。
+
+## Testing
 
 `tests/spawn-command-usage.test.js`、`tests/e2e-logic.test.js`、`tests/e2e-mock-script.test.js` 钉住门禁与纯函数；双向读数：把场景里的标题断言改错 → 用例超时变红，把 mock 游标改成不吃标记 → 等回复超时变红，还原后全绿。

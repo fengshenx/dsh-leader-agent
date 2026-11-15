@@ -1,10 +1,12 @@
-# agent-team 并存时的护栏
+# Agent Note: agent-team 并存时的护栏
 
-## 背景
+Status: implemented
+
+## Problem
 
 宿主另一套编排设施 `agent-team-profile` 加载后注册 `agentTeams` 服务与团队工具。冲突不是工具名撞车，而是**会话形态撞车**：团队工具把「无 parent、无 subagent descriptor 的普通 root」判成隐式 Lead，而本 bundle 的 worker 正是普通根会话——于是 worker 能自己拉 teammate、绕开协调者与卡片归属；协调者则同时看到两套派工工具。
 
-## 决策
+## Decision
 
 ### 检测用服务存在性，时机放在第一次会话创建
 
@@ -24,7 +26,13 @@
 
 worker 与 teammate 在运行时并不互斥，混用才是问题；拒绝并存会让「想同时用两套编排」的部署直接起不来，而正确行为（不要拿 team 工具派本流程的活）是可以讲清楚的。
 
-## 边界
+## Alternatives considered
+
+- **检测到 agent-team 就拒绝并存（方案 B）**：worker 与 teammate 在运行时并不互斥，混用才是问题；拒绝会让想同时用两套编排的部署直接起不来。
+- **只告警、不注入运行时禁令**：worker 会被当成隐式 Lead，能自己拉 teammate、绕开协调者与卡片归属；告警挡不住实际调用。
+- **在客户端隐藏 agent-team 入口**：宿主 UI 没有对应扩展点，超出本 bundle 的契约面。
+
+## Consequences
 
 - **工具面挡不住团队工具**：它们注册在 Agent scope，`restrict({ deny })` 只收全局名；要结构性隔离只能从 profile 移除 agent-team-profile。
 - **teammate 不在本 bundle 的项目归属里**：它们是 Lead 的 continuable subagent，不进 worker 登记表、不出现在看板名单，本插件不接管。
@@ -32,6 +40,8 @@ worker 与 teammate 在运行时并不互斥，混用才是问题；拒绝并存
 - **工具名名单随宿主版本漂移**：本 bundle 零宿主依赖、不读宿主包，宿主改名时名单与禁令正文要一起改；单测只保证名单与两份禁令、各角色推荐入口自洽。
 - **没有跑过「启用 agent-team 的实例」**：日常 profile 未装该包，验证是单测加宿主源码读音。
 
-## 验证
+收益：agent-team 并存时，协调者与 worker 都被明确告知不要混用团队工具，误用面被压到最小。
+
+## Testing
 
 `tests/team-guard.test.js` 钉住启用判定、身份分派、两份禁令与 order 段。双向读数：短路 `if (!enabled) return ''`，未启用用例变红；把 worker 禁令换成协调者版，角色错配用例变红。

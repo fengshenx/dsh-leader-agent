@@ -1,10 +1,12 @@
-# 协调者回看 worker 会话：read_worker_session
+# Agent Note: 协调者回看 worker 会话：read_worker_session
 
-## 背景
+Status: implemented
+
+## Problem
 
 协调者此前只能拿到 worker 每轮结束的一条完成通知，要看过程只能 `message_worker` 追问——那会真的唤醒 worker 开新回合，消耗模型调用换取一段它自己的复述。`capability-gaps` 第 16 条曾认为读子会话无法零依赖复刻，但宿主 `sessionQuery.readSession(sessionId)` 在 rc.2 就是公开服务方法、实现内没有身份校验，官方实验工具加的唯一判据是「调用方与目标同 cwd」，而本仓 worker 的目录取自项目、与协调者必然同 cwd。
 
-## 决策
+## Decision
 
 - **新增协调者专用工具 `read_worker_session`**，直读会话日志折叠成回合视图：复用现有的身份与归属判据，再走 `sessionQuery.readSession()`，本仓不重复解析 JSONL。
 - **身份与归属比官方更严**：调用方必须是当前项目协调者（与 `message_worker` 同档，退役协调者在调用时被判掉）；目标必须在本 bundle 的派工登记里（登记表 + 本进程 `owners` 兜底）且归属就是该协调者，不看别的会话。缺 `sessionQuery` 或没有 `readSession` 时报清缺口、不静默返回空；读失败（还没投过第一条消息、日志损坏）转述原因——「还没跑过回合」是预期状态。
@@ -16,7 +18,16 @@
 - **工具面**：加入 `COORDINATOR_ONLY_TOOLS`，worker 与普通会话都禁掉——读自己的会话没有意义，读别人的属于越界。这条承诺由字面量断言守着，不比名单常量（比对名单的用例会跟着名单一起缩）；执行时另有 `assertCoordinator` 兜越权，但它管不到「工具面根本没发下去」。
 - **完成通知与回看视图不合并**：通知是每轮的推力（不读也有），回看是按需的拉取；合并会让每轮自动消耗更多上下文。
 
-## 边界
+## Alternatives considered
+
+- **只靠 `message_worker` 追问**：会真的唤醒 worker 开新回合，用一个模型调用换一段自述；改为只读会话日志。
+- **装官方实验工具 `tool-session-query`**：要求官方工具在场与额外身份口径；本仓按协调者/登记表判据自建只读工具。
+- **直接返回完整会话日志**：长会话会撑爆上下文；折叠成回合视图并加三层上限。
+- **把工具参数与成功结果也返回**：排障通常只需要名字与失败原因，参数会挤掉正文预算；只留失败原因。
+- **把宿主注入的上下文当用户消息**：协调者会看到「用户」说自己没说过的话，甚至把任务正文挤掉；按 `source.kind` 分类，注入只记条数。
+- **把完成通知与回看视图合并**：通知是每轮推力，回看是按需拉取；合并会让每轮自动多耗上下文。
+
+## Consequences
 
 - **不是会话导出**：正文有总量上限、工具参数不返回；要完整日志用宿主的会话导出，要任意会话的读取口装官方实验工具 `tool-session-query`。
 - **12000 是正文切片的上限**：截断标注与头部行不计入，硬截断的实际输出略超。
@@ -27,6 +38,8 @@
 - **日志形状不符按契约错误报**：返回的 `events` 不是数组时直接报错，不静默当空日志——空会话是 `events: []`，缺字段说明后端契约变了，静默降级会让协调者误以为 worker 什么都没做。
 - **没有真机取证**：工具行为全部落在纯函数与夹具层（真实 dispatcher + 假 `sessionQuery`），真机需要能按标记驱动工具调用的 mock provider。
 
-## 验证
+收益：协调者能按需回看 worker 的回合过程，不用为了看一眼就唤醒 worker 再花一次模型调用。
+
+## Testing
 
 `tests/worker-transcript.test.js`、`tests/read-worker-tool.test.js` 与 `tests/tool-gate.test.js`。双向：`clip()` 改回按码元切 → 三层截断用例红；`user/message` 不看 `source.kind` → 4 例红；读路径插入 `workerSessions.send()` → 只读护栏红。还原后全绿。

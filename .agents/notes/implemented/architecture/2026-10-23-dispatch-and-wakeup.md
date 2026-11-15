@@ -1,10 +1,12 @@
-# 派工与唤醒机制
+# Agent Note: 派工与唤醒机制
 
-## 背景
+Status: implemented
+
+## Problem
 
 dsh 原生的 subagent 工具是阻塞式：父 agent 调工具 → 子 agent 跑完 → 工具返回，父 turn 卡在调用处，与「派完活继续思考、worker 结束后协调者被自动唤醒」的协调者模型相反；宿主没有等价的「完成唤醒」机制，这个缺口必须自建。
 
-## 决策
+## Decision
 
 **派工原走 `ctx.subagents.startActivation({ delivery: 'caller' })`**，不自己造子会话：它让结果由调用方处理，工具立即返回子会话 id，`activation.result` 是终态 promise，是当时唯一可用的非阻塞入口。
 
@@ -24,12 +26,21 @@ dsh 原生的 subagent 工具是阻塞式：父 agent 调工具 → 子 agent �
 
 **`agents` 注册表在插件根作用域不可见**（agent-scoped 服务），因此唤醒与补投只能依赖「派工时持有的 agent 活对象」加 `agent/created` / `agent/disposed` 事件，无法反查任意会话。
 
-## 边界
+## Alternatives considered
+
+- **继续用阻塞式 subagent 工具**：父 turn 卡在调用处，与「派完继续思考」相反；后来改用根会话，见 [worker 常驻化](2026-10-29-worker-as-root-session.md)。
+- **自建 HTTP / 轮询唤醒**：宿主没有等价的完成唤醒入口，`followup` 是当时唯一能开新 turn 的 API；落盘队列补崩溃窗口。
+- **把 `sessionController` 声明为必需 inject**：它只在 web-app bundle 上，声明必需会让 headless 等 profile 整个插件挂起。
+- **新增 session event 类型送通知**：宿主要求仓外事件带 `ignorable` 且不进读路径，不能作为读侧真源。
+
+## Consequences
 
 - **后台编排只适用于长驻组合**（web / desktop / sdk）。headless 是一次性 CLI，父会话在 turn 结束后即销毁，没有载体接收通知——这是宿主语义，不是本 bundle 的缺陷。
 - **不新增 session event 类型**：dsh 要求仓外事件带 `ignorable` 标记且不进读路径，完成通知因此走自有落盘队列。
 - **bundle 零 dsh 内部依赖**：`engines.dsh` 的严格版本校验意味着任何依赖内部包的 bundle 都会周期性失效（`agent-team` 是活例）。
 
-## 验证
+收益：派工不阻塞 leader，worker 结束后 leader 能被自动唤醒，通知跨崩溃不丢。
+
+## Testing
 
 `tests/dispatch.test.js` 与 `tests/notification-store.test.js` 钉住护栏、补投与并发写队列。双向读数：撤掉落盘队列的串行链，并发完成用例读到临时文件争抢或通知互相覆盖而变红。

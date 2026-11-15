@@ -1,10 +1,12 @@
-# 派工两段化与卡片上下文
+# Agent Note: 派工两段化与卡片上下文
 
-## 背景
+Status: implemented
+
+## Problem
 
 `spawn_worker` 建完会话立即投递任务，而槽位绑定要等协调者拿到 `childId` 再写卡，worker 首轮请求组装时索引里还没有它；卡片事实又没有任何注入路径（worker 被禁 `list_cards`，也没有按绑定渲染的 provider），协调者只能把 spec 抄进任务消息；`update_card` 的 `links` 是整体替换，worker 想挂 PR 就得先读整卡，而它读不到。
 
-## 决策
+## Decision
 
 - **派工两段化**：`spawn_worker({ name, cardId?, slot?, force? })` 建会话、登记、可选绑卡后立即返回，不产生模型调用；任务正文由 `message_worker` 的第一条消息投递。绑定与任务都落定之后才开工，重启与复用走同一条投递路径。
 - **绑卡在返回前完成**：会话 id 是预生成的，绑定写入成功才返回 `childId`，随后首条消息组装时 `slotIndex` 与 `cardIndex` 都已就绪。
@@ -21,7 +23,15 @@
 - **关闭卡片自动释放执行者**：状态变 `done`/`archived` 时 store 把 `slots` 一并清空，绑定、槽位索引、卡片事实一起失效；`update_card` 拒绝「关闭卡片 + 同次绑定槽位」而非静默忽略；只在 `slots` 非空时才写空对象（否则 `isSameContent` 判变化、无谓 bump `expectedRevision`）；重新打开不恢复绑定——那是新的指派。
 - **跨项目注入堵在写入侧**：`card-context` 按**会话 id** 取绑定，绑定写不进去就不会注入那张卡；存量绑错的数据不自动迁移。
 
-## 边界
+## Alternatives considered
+
+- **一段式派工：建会话后立刻投任务**：worker 首轮请求组装时槽位与卡片索引还没就绪；改为建会话、绑卡、返回，再由 `message_worker` 投第一条。
+- **把 spec 抄进任务消息**：会冻结成派工那一刻的快照，改卡不生效；走运行时上下文每轮求值。
+- **放开 `list_cards` 让 worker 自己读卡**：扩大读取面与工具语义，还得处理并发链接替换；用卡片上下文注入 + `addLinks` 增量合并。
+- **绑定失败后靠事后清理**：改名会 materialize 会话文件，宿主没有删除能力，回滚会留下孤儿；把呈现推后到绑定成功之后。
+- **允许一个会话同时挂多张 `active` 卡**：产物无从归属，角色注入只按一张卡算；直接拒绝。
+
+## Consequences
 
 - **空会话窗口**：建了 worker 却没投递时，它是一条空闲会话，占项目树一行与名册名额。协议要求同一轮投递，本方案不做超时回收。
 - **绑定失败不留盘靠「不 materialize」**：宿主没有删除会话文件的能力，所以回滚不能删 jsonl；把改名这个 materialize 步骤推后，失败时磁盘上还没有文件。将来建会话本身若开始落事件，这条保证会失效。
@@ -31,6 +41,8 @@
 - **关闭卡片会抽走在跑 worker 的上下文**：协调者在 worker 仍在跑时标 `done`，worker 下一轮就不再带卡片事实与角色槽位。这是「关闭即收工」的预期代价，协议层要求关闭前确认该轮已交活；store 看不到会话运行状态，关闭释放不区分谁在跑。
 - **`spawn_worker` 不兼容旧参数**：仍传 `initialMessage` 会明确报错，不静默忽略；工具名与文档门禁比对集合不变。
 
-## 验证
+收益：派工在绑定与任务都落定后才开工，worker 首轮就带着卡片事实与角色，失败回滚也不留孤儿。
+
+## Testing
 
 `tests/card-context.test.js`、`tests/cards-store.test.js`、`tests/cards-tools.test.js`、`tests/dispatch.test.js` 与 `tests/worker-sessions.test.js`。双向：去掉 `assertCardAssignable` → 跨项目绑卡用例红；把派工的 `deferPresentation` 改回 `false` → 「绑定失败回滚时不做呈现」红；去掉 `addLinks` 的 `assignIds: false` → 重复追加用例红。还原后全绿。

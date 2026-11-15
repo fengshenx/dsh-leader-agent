@@ -1,10 +1,12 @@
-# worker 的显示名与工具参数面
+# Agent Note: worker 的显示名与工具参数面
 
-## 背景
+Status: implemented
+
+## Problem
 
 用户指出派工与续聊的参数太少，点名要 `name` 与 `rename`。原参数是 `spawn_worker(task, label?)` 与 `message_worker(childId, message)`：`label` 可选，缺了就截任务正文前 40 字充数，用户看到的是一句话的开头。
 
-## 决策
+## Decision
 
 - **参数面按 worker 工具的通行形状收敛**：`spawn_worker(name, cardId?, slot?, force?)`、`message_worker(sessionId, message, rename?)`。派工只建会话并立即返回，首条消息由 `message_worker` 投递（[派工两段化](2026-11-02-spawn-then-message-and-card-context.md)），`initialMessage` 随之删除。
 - **`name` 必填**，不是可选的 `label`：名字是 worker 的身份，也是它在侧栏里的可读性来源；缺了就只能拿任务正文当名字。
@@ -16,11 +18,20 @@
 - **内部字段 `label` 一律改 `name`**：登记表、通知记录、消息来源包装与客户端视图数据同一个名字；旧的宿主字段 `startActivation({ label })` 已随 worker 常驻化删除。
 - **旧数据只做读取退回，不做迁移**：旧记录只有 `label`，读时 `name ?? label`。不保留兼容垫片的原则针对写入路径与格式迁移；已落盘的运行时记录读旧字段，省下的是用户的历史通知。
 
-## 边界
+## Alternatives considered
+
+- **保留可选 `label`、缺了截任务正文**：用户看到的是一句话开头；`name` 改必填并钉成会话标题。
+- **保留 `childId` 与独立改名工具**：`childId` 是宿主 subagent 内部叫法，改名几乎总伴随投递；用 `sessionId` + `rename`。
+- **不做卡门禁 / 不设 worker 上限**：一个会话可能同时服务多张卡，常驻 worker 也会无界累积；卡门禁 + 默认 50 + `force`。
+- **为旧 `label` 写兼容垫片**：只读旧记录用 `name ?? label`，写入路径不保留旧格式。
+
+## Consequences
 
 - **会话标题改名没有真机取证**：`sessionTitle.rename` 要求 live session，mock 实例里 worker 立刻跑完并销毁，抓不到改名瞬间；单测只覆盖「调用被发起且参数正确」，UI 里是否立即刷新未实测。
 - **`rename` 对运行中 worker 的时序未实测**：现在先改名再投递（改名失败只记日志），宿主侧标题事件与消息事件的先后顺序没有取证。
 
-## 验证
+收益：派工参数与 worker 身份一致：名字必填、改名随投递、卡门禁与上限挡住串卡与无界增长。
+
+## Testing
 
 `tests/dispatch.test.js`、`tests/worker-sessions.test.js`、`tests/worker-registry.test.js`、`tests/message-worker-tool.test.js` 钉住标题钉名、改名落盘与参数校验；双向：去掉派工后的改名调用或登记表的赋值，对应用例变红。

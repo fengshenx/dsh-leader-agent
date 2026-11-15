@@ -1,10 +1,12 @@
-# win32 上删 worktree 前先拆 node_modules 链接
+# Agent Note: win32 上删 worktree 前先拆 node_modules 链接
 
-## 背景
+Status: implemented
+
+## Problem
 
 Windows 上 git 的递归删除会跟随 junction：`worktree:prune` 直接 `git worktree remove --force` 时，主 checkout 共享的依赖被清空，只剩空目录。建 worktree 本身正常，不能因此停用链接共享。
 
-## 决策
+## Decision
 
 ### 拆除顺序由共享函数固定
 
@@ -22,13 +24,22 @@ dev 实例建在 `.dev` 里的链接同样会被跟穿，所以 remove 前把 `.
 
 建链接失败给带「链接路径 → 目标」的可读错误再走同一条回滚。Windows 检出上跑门禁时，路径比较前把反斜杠归一成 `/`，按行匹配源码前先归一 CRLF。
 
-## 边界
+## Alternatives considered
+
+- **继续直接 `git worktree remove --force`**：Windows 会跟穿 junction，把主 checkout 共享的依赖清空；必须先拆链接。
+- **Windows 上停用 node_modules 链接共享**：建 worktree 本身正常、共享是省事的前提，不能因删除风险停用；改为拆链接再删。
+- **只拆 `node_modules`、不管 `.dev`**：`.dev` 里的链接同样会被跟穿；remove 前整体挪走。
+- **不加 prune 锁**：两个 prune 同时处理同一 worktree 时会互相恢复/删除，仍可能跟穿共享依赖。
+
+## Consequences
 
 - 只处理 worktree 根的 `node_modules` 与 `.dev` 整棵目录；其他位置的链接不在范围。拆链接只动链接本身，目标不碰，真实目录保留；不改变依赖共享方式，两平台统一走同一条顺序。
 - 只实测了 junction：Windows 目录符号链接与 POSIX 实机未跑，`unlink` 分支由单测覆盖；跨卷/UNC 的重命名未实测。
 - prune 锁是仓库级 advisory，只约束本脚本；`.dev` 与 stash 同时存在时安全拒绝，stash 删除失败只警告。
 - 回归用例必须落在脚本调用点：只测 helper 时，把 prune 换回直接 `git worktree remove` 仍然全绿。
 
-## 验证
+收益：Windows 上 prune 只删 worktree，不再连带清空主 checkout 的共享依赖；失败时也能恢复链接与 `.dev`。
+
+## Testing
 
 `tests/worktree-common.test.js` 与 `tests/worktree-prune.integration.test.js`：把 prune 调用点换回直接 `git worktree remove` 时集成用例变红，把 TTL 判定放回 PID 之前时「活 PID + 旧 startedAt 的锁不被回收」变红；还原后全绿。

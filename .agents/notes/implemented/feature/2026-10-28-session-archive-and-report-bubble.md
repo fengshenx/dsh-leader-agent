@@ -1,10 +1,12 @@
-# 会话归档与回报气泡
+# Agent Note: 会话归档与回报气泡
 
-## 背景
+Status: implemented
+
+## Problem
 
 三条交互修正：项目下的会话行字号与工作区一致；悬停会话行能归档，归档后从项目树消失并摘卡；worker 回报气泡默认收敛到两行、底色再淡一点。字号原来比官方工作区行小一号。
 
-## 决策
+## Decision
 
 - **会话行字号对齐官方，只改字号不动行高**：用户说的是字体，行高变化会牵动行内元素的对齐。
 - **归档复用宿主的 `workspaces.archiveSession`**：归档是宿主既有能力；复用后左栏订阅同一个 `archivedSessionIds` 快照，别处归档的会话在这里也一起消失，不需要本地记账。会话记录本身不动，只从活跃列表里摘。
@@ -17,12 +19,21 @@
 - **只在折叠态量高度**：展开后 `scrollHeight === clientHeight`，一量就会把按钮收掉，用户再也点不回折叠；宽度变化（窗口缩放、字体档位）要重算，所以接 `ResizeObserver`。
 - **背景再淡一档，边界改由发丝边框交代**：原先那层在深色主题下是一块显眼的灰。
 
-## 边界
+## Alternatives considered
+
+- **本地记账归档**：别处归档的会话不会同步消失；复用宿主 `archiveSession` 与 `archivedSessionIds`。
+- **分两次 RPC 摘卡与摘登记**：会留下「卡摘了、登记还在」的半截状态；宿主侧一次 `detachSession`。
+- **任何归档失败都弹确认**：只有「会话在跑」可操作，其它失败只会引到同样失败的确认框；直接报错。
+- **用 JS 截断回报文本**：原文丢失、不能复制/展开；用 `line-clamp`，量到溢出才给「展示更多」。
+
+## Consequences
 
 - **触屏上没有归档入口**：显示挂在 `@media (hover: hover)`，与官方会话行一致；headless 里无从验证「不出现」，只能从 CSS 规则读出来。
 - **气泡折叠没有单测**：折几行依赖布局，本仓不引 jsdom，`useLayoutEffect` + `ResizeObserver` 只能靠浏览器取证；可单测的文本拼装部分在 `tests/` 里。
 - **归档确认框的「停止」分支只验了 worker 一种会话**：leader 会话的「运行中归档」没有实测。
 
-## 验证
+收益：项目会话行与官方字号一致，归档一次完成摘会话/摘卡/摘登记，回报气泡默认收敛又不丢原文。
+
+## Testing
 
 `tests/projects-remote.test.js`、`tests/project-panel.test.js` 钉住摘会话与归档失败判据；双向：去掉归档过滤或 `WorkspaceArchiveError` 判据，对应用例变红；真机读数：归档后会话行消失、卡片槽位解绑、登记表删除。

@@ -1,10 +1,12 @@
-# 客户端半边的发现与构建约束
+# Agent Note: 客户端半边的发现与构建约束
 
-## 背景
+Status: implemented
+
+## Problem
 
 dsh bundle 有 host 与 client 两半：宿主按 `package.json` 的 `dsh.client` 发现 client 半边，把产物随 boot manifest 下发浏览器。本 bundle 要在右栏挂一个「看板」Tab，第一次真正接触 client 半边，踩到的约束都不是文档写明的。
 
-## 决策
+## Decision
 
 **插件行名必须是纯包名**：宿主靠 Loader 行名定位包 manifest 才能判断「这个包有 client 半边」，含 `/` 的子路径不接受；行名写成 `dsh-leader-agent/src/host` 时宿主根本不下发 client bundle。包入口相应改为再导出 host 实现，不再自己声明一份 `name`。
 
@@ -26,7 +28,13 @@ dsh bundle 有 host 与 client 两半：宿主按 `package.json` 的 `dsh.client
 
 **并行开发的 worktree 建在仓内 `.worktrees/`**（复数，单数容易被当成单任务目录）：主 checkout 保持干净，改动全部落 worktree；该目录已进 `.gitignore`，否则 worktree 里的文件会被当成仓内未跟踪文件。
 
-## 边界
+## Alternatives considered
+
+- **把 React 打进产物或写进 `dsh.client.external`**：宿主 web 端已有一份 React，第二份实例会让 hooks 失效；基线模块重复声明也判违规。
+- **引 JSX 或复用宿主内部构建链**：产物是单文件 closure-factory，宿主内部包对仓外插件不可 import；多一层转换没有收益。
+- **依赖宿主内部 UI 包**：版本漂移会让产物在模块求值阶段起不来；只复用它冻结模块表里的基线模块。
+
+## Consequences
 
 - **看板读宿主卡片库**：卡片按项目聚合，别的会话建的卡也会出现在项目看板上；`presentationMeta` 仍是会话历史里的卡片投影通道，其形状变化只影响会话历史。
 - **注册必须放进 `ctx.effect`**：注册表把 effect 挂到调用方 fiber 上，在别的插件 `apply` 里直接注册会让浏览器启动静默卡住。
@@ -34,6 +42,8 @@ dsh bundle 有 host 与 client 两半：宿主按 `package.json` 的 `dsh.client
 - **worktree 不要再往里套 worktree**：新任务一律从主 checkout 建。
 - **profile 的 link 指向 worktree 目录**：worktree 删掉后 profile 就断了，要改回主 checkout 的路径。
 
-## 验证
+收益：客户端半边可以脱离宿主源码独立构建、发布，并与宿主共用同一份 React 实例。
+
+## Testing
 
 `tests/client-build.test.js` 钉住产物形态与 external 拆分。双向读数：删掉 manifest 的 `dsh.client.external` 后产物仍只有基线 require、插件照常下发；把构建期与 manifest 的清单合回一份，产物里出现 React 实现即失败。

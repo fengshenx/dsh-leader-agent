@@ -1,17 +1,26 @@
-# 插件市场上架路径
+# Agent Note: 插件市场上架路径
 
-## 背景
+Status: implemented
+
+## Problem
 
 本包已发布 npm，但生态里没有任何目录收录它，搜索与市场面板都找不到。调研结论：dsh 本体不内置任何索引源（Discover 标签页要用户手动添加索引 URL），生态里被广泛安装的市场本身不是目录，只读 awesome-dsh-plugin 的策展条目；站点、市场面板与 Discover 索引都从那一份条目出发。
 
-## 决策
+## Decision
 
 - **只投 awesome-dsh-plugin，不自建索引源**：自建索引源不需要审核，但要求用户先知道你、再手填 URL，只对已有受众有用；目录是唯一能被人**搜到**的入口，而它有唯一上游，绕开它做第二套索引只会多一份会漂移的清单。
 - **category 取 `workflow`**：同层条目（领队派发给子会话、父智能体派单验收、任务表调度）都归这里，本包核心也是目标拆解 → 派工 → 收取回报 → 验收，看板是这件事的载体而不是独立的 UI 卖点；维护者会直接改分类、不因此打回，按实际行为选最接近的即可。
 - **描述只写可核对的行为**：评审把描述当作对代码的声明逐条核对，夸大是主要打回原因。每句都要对应实现：常驻 worker 会话（走 `ctx.agents.create`，不是宿主 subagent）、按角色的工具面裁剪、右侧栏按项目看板、`LEADER.md` / `SLOTS.md` 每次请求前求值、`read_worker_session` 只读回放。不写「每个 worker 一个 worktree」——那是使用约定，不是 bundle 的硬性行为。
 - **不声明 `peerDependencies`**：投稿建议面向依赖宿主包的插件；本包不 import 宿主内部包、不 peer 依赖 dsh 包（[本仓铁律](../../../../AGENTS.md)），照着抄反而会把宿主包拉进依赖图并引入重复实例。这是不适用，不是遗漏。
 
-## 边界
+## Alternatives considered
+
+- **自建索引源**：不需要审核，但用户得先知道你、再手填 URL；目录是唯一能被人搜到的入口。
+- **把 category 选成 UI / 其他**：同层条目都是派工、验收、任务调度，本包核心也是这条链；取 `workflow`。
+- **描述写「每个 worker 一个 worktree」这类使用约定**：评审按代码逐条核对，夸大是主要打回原因；只写可核对行为。
+- **照投稿建议声明 `peerDependencies`**：本包不 import 宿主内部包、不 peer 依赖 dsh；照抄会把宿主包拉进依赖图。
+
+## Consequences
 
 - 仓库必须有 `dsh-plugin` topic：gate 与人工评审都按 topic 发现插件，`package.json` 的 `keywords` 不替代它。
 - `dsh.bundle` 是硬门槛：只声明 `dsh.client` 无法 `dsh plugin add`，是本类投稿被打回最多的原因。
@@ -19,6 +28,8 @@
 - 收录不等于安全审查：目录 README 明写不做审计，收录也不构成对宿主兼容性的背书。
 - 市场不提供下发：安装来源限定在目录条目内，条目变更要等它自己的目录缓存刷新。
 
-## 验证
+收益：插件能被市场搜索到，条目描述每一句都能在代码里对上，不因夸大被打回。
+
+## Testing
 
 投稿是单个 YAML 文件（`<owner>__<repo>.yml`，仓库名与 `url` 一致），目录 README 由脚本生成、不手改；跑上游 `check-submission.mjs` 通过（校验 `dsh.bundle`、仓库年龄、未归档、非 DSH 本体），本仓 `npm run check` 全绿。
