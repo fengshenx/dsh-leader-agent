@@ -323,6 +323,36 @@ export function resolveTabView({ projects, groups, rows, currentSessionId, store
 }
 
 /**
+ * 方向键 / Home / End 在标签之间的落点。
+ *
+ * `role="tablist"` 的键盘约定：左右方向键在当前标签之间移动（到头循环），
+ * Home / End 跳到首尾。其它键返回 `undefined`，由调用方决定是否处理。
+ *
+ * @param {Array<{ id: string }>} tabs - 当前标签
+ * @param {string | undefined} activeId - 当前选中的标签 id
+ * @param {string} key - 键盘事件的 key
+ * @returns {string | undefined} 要聚焦并切换到的标签 id
+ */
+export function tabIdForKey(tabs, activeId, key) {
+  if (!Array.isArray(tabs) || tabs.length === 0) return undefined
+  const found = tabs.findIndex((tab) => tab?.id === activeId)
+  // 当前会话不在标签里（刚点开的 worker 标签还没记上）时从第一个算起。
+  const index = found === -1 ? 0 : found
+  switch (key) {
+    case 'ArrowRight':
+      return tabs[(index + 1) % tabs.length]?.id
+    case 'ArrowLeft':
+      return tabs[(index - 1 + tabs.length) % tabs.length]?.id
+    case 'Home':
+      return tabs[0]?.id
+    case 'End':
+      return tabs[tabs.length - 1]?.id
+    default:
+      return undefined
+  }
+}
+
+/**
  * 关掉某个标签后要切到哪个会话。
  *
  * 只有关的是当前标签才需要导航：切到项目标签（leader），关一个后台标签

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   LEADER_AGENT_PACKAGE, WEB_APP_BUNDLE, assertLeaderAgentBundle, assertSeparateHome, assertWebBundle,
-  corruptProfilePackageMessage, credentialRefBlocks, deriveProfilePackage, devPortFor, devWebBundleHint, mergeCredentialRefs,
+  corruptProfilePackageMessage, credentialRefBlocks, deriveProfilePackage, devPortArg, devPortFor, devWebBundleHint, mergeCredentialRefs,
   planNodeModules, resolveDevPaths, startWebBundleHint,
 } from '../scripts/dev-plan.mjs'
 
@@ -36,6 +36,24 @@ test('开发端口按工作树路径稳定且落在 30000–39999', () => {
   assert.equal(first, devPortFor('/work/repo/.worktrees/feature-a/../feature-a'))
   assert.ok(first >= 30000 && first < 40000)
   assert.notEqual(first, devPortFor('/work/repo/.worktrees/feature-b'))
+})
+
+test('没设 DEV_PORT 时用派生端口', () => {
+  assert.equal(devPortArg({ worktree: WORKTREE, env: {} }), String(devPortFor(WORKTREE)))
+  assert.equal(devPortArg({ worktree: WORKTREE }), String(devPortFor(WORKTREE)))
+})
+
+test('DEV_PORT 空串落回派生端口，不把空值传给 dsh', () => {
+  assert.equal(devPortArg({ worktree: WORKTREE, env: { DEV_PORT: '' } }), String(devPortFor(WORKTREE)))
+})
+
+test('DEV_PORT 覆盖派生端口（派生端口被占时的出口）', () => {
+  assert.equal(devPortArg({ worktree: WORKTREE, env: { DEV_PORT: '3210' } }), '3210')
+  assert.notEqual(devPortArg({ worktree: WORKTREE, env: { DEV_PORT: '3210' } }), String(devPortFor(WORKTREE)))
+})
+
+test('DEV_PORT=0 回到系统随机，不再按工作树派生', () => {
+  assert.equal(devPortArg({ worktree: WORKTREE, env: { DEV_PORT: '0' } }), '0')
 })
 
 test('默认数据根落在工作树内，源 HOME 取 ~/.dsh', () => {
@@ -263,8 +281,12 @@ test('拒绝时用调用方给的修复建议，不串别处的开关', () => {
   )
 })
 
-test('dev 的修复建议指向可换的 DSH_PROFILE', () => {
-  assert.match(devWebBundleHint(), /DSH_PROFILE/)
+test('dev 的修复建议给可执行的命令，不提已经钉死的 DSH_PROFILE', () => {
+  const hint = devWebBundleHint({ profileDir: '/home/user/.dsh/profiles/web' })
+  assert.ok(!hint.includes('DSH_PROFILE'), 'dev.mjs 已把 profile 钉成 web，设 DSH_PROFILE 是空操作')
+  assert.match(hint, /^源 profile 固定是 web/)
+  assert.match(hint, /@deepseek-ai\/dsh-web-app 加进 \/home\/user\/\.dsh\/profiles\/web 的 dsh\.profile\.bundles/)
+  assert.match(hint, /删掉 \/home\/user\/\.dsh\/profiles\/web 让 dsh 按 web 模板重建/)
 })
 
 test('start 的修复建议不提 DSH_PROFILE，给的是固定 profile 能照做的命令', () => {

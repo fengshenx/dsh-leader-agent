@@ -76,7 +76,7 @@ export async function startInstanceIn({ root, baseUrl, env = {} }) {
   assertWebBundle({
     profileDir: paths.sourceProfileDir,
     bundles: sourcePackage.dsh?.profile?.bundles,
-    hint: devWebBundleHint(),
+    hint: devWebBundleHint({ profileDir: paths.sourceProfileDir }),
   })
 
   prepareProfileDir({ worktree: WORKTREE, paths, sourcePackage })

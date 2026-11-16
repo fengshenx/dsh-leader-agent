@@ -49,6 +49,7 @@ import { describeCardRemoval } from './card-detail-view.js'
 import { ConfirmDialog } from './confirm-dialog.js'
 import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
+import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
 
 /**
  * 项目归属与 leader 身份的复核间隔。
@@ -99,12 +100,20 @@ function rememberBoard(projectId, project, cards) {
  * @returns {object} React 元素
  */
 export function BoardBody(props) {
-  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, useTabInfo, callRemote, t } = props
+  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, useTabInfo, getSidebarRight, callRemote, t } = props
   // 保留的看板 body 在别的会话/别的位置时仍挂着；只有当前可见的看板才轮询卡片。
   // `useTabInfo` 由右栏 slot 注入；缺它时按可见处理，退回旧行为。
   const useInfo = typeof useTabInfo === 'function' ? useTabInfo : useNoTabInfo
   const tabInfo = useInfo()
   const visible = tabInfo?.tab?.visible !== false
+  // 标签栏切 worker 时要不要把这块看板带过去，取决于它是否本来就在前台。
+  // 会话已经切走（mounted 不是自己）时保留记录；同一会话里被切到后台或右栏
+  // 收起时清掉——那种情况下跟随等于替用户换页面。
+  const mountedSessionId = getSidebarRight?.()?.mounted?.getSnapshot?.()
+  useEffect(() => {
+    if (visible) noteBoardForeground(sessionId)
+    else if (mountedSessionId === sessionId) clearBoardForeground(sessionId)
+  }, [visible, mountedSessionId, sessionId])
   // 标签栏补开看板时把项目 id 放进 navigation params；有它就能先用同一项目的
   // 上一份看板数据起步，新挂的 worker 面板不会先闪骨架。
   const params = tabInfo?.tab?.navigation?.params
@@ -416,6 +425,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   const [loaded, setLoaded] = useState(cached !== undefined)
   // 缓存只用于本次挂载的首帧；项目访问权回来后就不再走「保留旧状态」的分支。
   const prefilled = useRef(cached !== undefined)
+  // 可见性暂停后重入的是同一会话：要沿用已加载的卡片，不能当换会话清空。
+  const accessSession = useRef(undefined)
   const [detail, setDetail] = useState(null)
   // 删除确认框独立于详情：确认框打开时详情先卸载，避免两层 modal 同时监听
   // Escape、抢焦点陷阱。取消后详情按原 anchor 重新打开。
@@ -443,16 +454,32 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }, [project?.id])
 
   useEffect(() => {
+    // 隐藏的看板不跑时钟：相对时间回到可见时会重新取一次 Date.now()。
+    if (!visible) return undefined
+    setNow(Date.now())
     const timer = setInterval(() => { setNow(Date.now()) }, 60_000)
     return () => clearInterval(timer)
-  }, [])
+  }, [visible])
+
+  // 浮层 portal 到 document.body，不随看板 body 的显隐卸载。切走会话/切到别的
+  // tab 后它仍会盖在新会话上，所以一不可见就关掉详情与删除确认。
+  useEffect(() => {
+    if (visible) return
+    setDetail(null)
+    setPendingDelete(null)
+    setDeleteError('')
+  }, [visible])
 
   // 看板是项目维度的：先按面板所属的会话解析出项目。会话换了（面板随之重挂载）
   // 就重新解析；同一会话下定期复核——leader 可能在面板打开期间被换新或归档，
   // 身份与存活状态不能只在挂载时问一次。
   useEffect(() => {
+    // 隐藏的看板不复核项目身份：切回可见时这个 effect 会立刻重跑一次。
+    if (!visible) return undefined
     let cancelled = false
-    const keepPrefilled = prefilled.current
+    const sameSession = accessSession.current === sessionId
+    accessSession.current = sessionId
+    const keepPrefilled = prefilled.current || sameSession
     prefilled.current = false
     setProjectError(null)
     if (!keepPrefilled) {
@@ -462,11 +489,11 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       setLoaded(false)
       setWorker(undefined)
       setSlotLabels({})
+      deletedCardIds.current.clear()
     }
     // 会话换了就放弃上一条删除确认：确认框属于旧会话的看板，不能跟着新看板漂移。
     setPendingDelete(null)
     setDeleteError('')
-    deletedCardIds.current.clear()
     const load = () => {
       resolveBoardAccess(callRemote, sessionId)
         .then((access) => {
@@ -505,7 +532,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [sessionId, callRemote])
+  }, [sessionId, callRemote, visible])
 
   // 卡片取数：挂载时拉一次，之后定时刷新，窗口重新聚焦时立刻刷一次。
   // 定时刷新是必要的——卡片可能由别的会话（worker）建，那边的事件流不在本面板

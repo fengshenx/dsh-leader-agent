@@ -40,7 +40,9 @@ import {
   SESSION_TABS_STORAGE_KEY,
   serializeTabStore,
   tabAfterClose,
+  tabIdForKey,
 } from './session-tabs-logic.js'
+import { lastBoardForegroundSession } from './board-foreground.js'
 
 const STYLE_ID = 'dsh-leader-agent-session-tabs-style'
 
@@ -236,6 +238,15 @@ function mainBodyOf(slot) {
  */
 export function SessionTabsAnchor(props) {
   const [host, setHost] = useState(null)
+  // 栏是否可见由栏自己判定（项目会话、有 worker、无浮层）；这里只负责在可见时
+  // 才给宿主主面板加 flex 收缩标记。普通会话/收起状态不该被本插件改布局。
+  const visibleRef = useRef(false)
+  const applyRef = useRef(null)
+  const reportVisible = useCallback((next) => {
+    if (visibleRef.current === next) return
+    visibleRef.current = next
+    applyRef.current?.()
+  }, [])
 
   useEffect(() => {
     ensureStyles()
@@ -248,7 +259,17 @@ export function SessionTabsAnchor(props) {
     let scheduleTimer = null
     let alive = true
 
-    const ensure = () => {
+    const apply = () => {
+      if (!alive) return
+      if (!visibleRef.current) {
+        // 栏不在时连标记一起摘掉：`!important` 的 flex 覆盖只该在栏占位时生效。
+        column?.removeAttribute(COLUMN_ATTR)
+        mainBody?.removeAttribute(MAIN_ATTR)
+        created.remove()
+        column = null
+        mainBody = null
+        return
+      }
       const slot = findMainSlot()
       if (slot === null) return
       const nextColumn = findColumn(slot)
@@ -256,20 +277,21 @@ export function SessionTabsAnchor(props) {
       if (nextColumn !== column) {
         column?.removeAttribute(COLUMN_ATTR)
         column = nextColumn
-        column.setAttribute(COLUMN_ATTR, '')
       }
       if (nextBody !== mainBody) {
         mainBody?.removeAttribute(MAIN_ATTR)
         mainBody = nextBody
-        mainBody?.setAttribute(MAIN_ATTR, '')
       }
+      column.setAttribute(COLUMN_ATTR, '')
+      mainBody?.setAttribute(MAIN_ATTR, '')
       if (created.parentElement !== column) column.insertBefore(created, column.firstElementChild)
     }
+    applyRef.current = apply
 
-    ensure()
-    if (created.parentElement === null) {
+    apply()
+    if (visibleRef.current && created.parentElement === null) {
       // 壳层还没把主槽位挂出来时给一次迟到机会；之后靠 body 观察器补。
-      retry = setTimeout(ensure, 250)
+      retry = setTimeout(apply, 250)
     }
     setHost(created)
 
@@ -278,9 +300,9 @@ export function SessionTabsAnchor(props) {
       scheduled = true
       scheduleTimer = setTimeout(() => {
         scheduled = false
-        if (!alive) return
+        if (!alive || !visibleRef.current) return
         // 主面板被宿主换掉、会话体重新挂载时，标记和插入点都要重来。
-        if (created.parentElement === null || (mainBody !== null && !mainBody.isConnected)) ensure()
+        if (created.parentElement === null || (mainBody !== null && !mainBody.isConnected)) apply()
       }, 16)
     }
 
@@ -294,6 +316,8 @@ export function SessionTabsAnchor(props) {
       observer.disconnect()
       if (retry !== null) clearTimeout(retry)
       if (scheduleTimer !== null) clearTimeout(scheduleTimer)
+      applyRef.current = null
+      visibleRef.current = false
       column?.removeAttribute(COLUMN_ATTR)
       mainBody?.removeAttribute(MAIN_ATTR)
       created.remove()
@@ -304,7 +328,7 @@ export function SessionTabsAnchor(props) {
 
   return host === null
     ? null
-    : createPortal(createElement(SessionTabBar, props), host)
+    : createPortal(createElement(SessionTabBar, { ...props, reportVisible }), host)
 }
 
 /**
@@ -312,7 +336,7 @@ export function SessionTabsAnchor(props) {
  * @param {object} props - 槽位注入的运行时能力
  * @returns {object | null} React 元素；不需要标签栏时不渲染
  */
-function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, getSidebarRight }) {
+function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, getSidebarRight, reportVisible }) {
   const sessions = getSessions?.()
   const [snapshot, setSnapshot] = useState(() => sessions?.list?.getSnapshot?.() ?? {
     phase: 'pending',
@@ -325,6 +349,9 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   const [store, setStore] = useState(readStore)
   const [panelActive, setPanelActive] = useState(false)
   const lastCurrent = useRef(undefined)
+  const tabRefs = useRef(new Map())
+  // 键盘切换后要聚焦的标签：宿主切会话时会把焦点收回会话区，等它落定再抢回来。
+  const pendingFocus = useRef(undefined)
 
   const refresh = useCallback(async () => {
     if (!isProjectRemoteReady()) return
@@ -415,6 +442,15 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   }), [projects, groups, rows, currentSessionId, store])
 
   useEffect(() => {
+    const id = pendingFocus.current
+    if (id === undefined || view.activeSessionId !== id) return undefined
+    pendingFocus.current = undefined
+    // 会话切换的同一帧宿主会把焦点交给输入框；下一帧再聚焦标签，顺序才稳。
+    const frame = requestAnimationFrame(() => { tabRefs.current.get(id)?.focus() })
+    return () => cancelAnimationFrame(frame)
+  }, [view.activeSessionId])
+
+  useEffect(() => {
     if (!view.visible || !view.isWorkerCurrent || currentSessionId === undefined) return
     if (hasOpenTab(store, view.project.id, currentSessionId)) return
     setStore((current) => addOpenTab(current, view.project.id, currentSessionId))
@@ -440,6 +476,9 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     const sidebarRight = getSidebarRight?.()
     if (sidebarRight === undefined || sidebarRight === null) return
     if (typeof sidebarRight.tabsIn !== 'function') return
+    // 只有看板本来就在 leader 的前台（可见 = 右栏展开且是当前 tab）才跟随：
+    // 收起右栏或停在别的 tab 上时跟随等于替用户展开/换页面，还会抢焦点。
+    if (lastBoardForegroundSession() !== leaderId) return
     if (!sidebarRight.tabsIn(leaderId).some((tab) => tab.kind === BOARD_TAB_KIND)) return
     // 宿主在切换会话的同一帧把右栏挂到 worker 上；没落定就先不开，避免开在
     // leader 自己的右栏里。下一轮视图变化会再走到这里。
@@ -470,7 +509,12 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   useLayoutEffect(() => { carryBoard() }, [carryBoard])
   useEffect(() => { carryBoard() }, [carryBoard])
 
-  if (!view.visible || panelActive) return null
+  // 栏真正占位时才让锚点给宿主主面板加 flex 收缩标记；普通会话/浮层打开时
+  // 摘掉，别让一个全局布局补丁常驻在宿主上。
+  const barVisible = view.visible && !panelActive
+  useLayoutEffect(() => { reportVisible?.(barVisible) }, [barVisible, reportVisible])
+
+  if (!barVisible) return null
 
   const listLabel = typeof t === 'function' ? t('tabs.list') : '项目会话标签'
   const closeLabel = typeof t === 'function' ? t('tabs.close') : '关闭标签'
@@ -514,13 +558,29 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
           tabIndex: tab.id === view.activeSessionId ? 0 : -1,
           'aria-selected': tab.id === view.activeSessionId ? 'true' : 'false',
           title: tab.label,
+          ref: (node) => {
+            if (node === null) tabRefs.current.delete(tab.id)
+            else tabRefs.current.set(tab.id, node)
+          },
           onClick: () => openSession(tab.id),
           onKeyDown: (event) => {
             // 关闭按钮自己的回车/空格会冒泡到这里，不能顺手把标签再打开一次。
             if (event.target !== event.currentTarget) return
-            if (event.key !== 'Enter' && event.key !== ' ') return
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              openSession(tab.id)
+              return
+            }
+            // roving tabindex：非当前标签是 -1，方向键/Home/End 是它们唯一的入口。
+            const nextId = tabIdForKey(view.tabs, tab.id, event.key)
+            if (nextId === undefined) return
             event.preventDefault()
-            openSession(tab.id)
+            if (nextId === view.activeSessionId) {
+              tabRefs.current.get(nextId)?.focus()
+              return
+            }
+            pendingFocus.current = nextId
+            openSession(nextId)
           },
         },
         tab.kind === 'leader'

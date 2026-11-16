@@ -106,6 +106,49 @@ function seed(home, leader, workers) {
   }, null, 2)}\n`)
 }
 
+/** 运行中往数据根塞一张卡：看板每 2 秒轮询，下一轮就能看到。 */
+function seedCard(home) {
+  const now = Date.now()
+  writeFileSync(join(home, 'dsh-leader-agent', 'cards.json'), `${JSON.stringify({
+    version: 1,
+    counter: 1,
+    cards: [{
+      id: 'session-tabs-card-1',
+      number: 1,
+      revision: 1,
+      title: '标签场景卡',
+      spec: '用于验证切会话时详情浮层不留在新会话上。',
+      status: 'active',
+      projectId: 'session-tabs-project',
+      slots: {},
+      createdAt: now - 1000,
+      updatedAt: now - 1000,
+    }],
+  }, null, 2)}\n`)
+}
+
+/** 当前获得焦点的标签（按 data-session-id 读）。 */
+async function focusedTabId(page) {
+  return page.evaluate(() => document.activeElement?.closest?.('[data-session-id]')?.getAttribute('data-session-id') ?? null)
+}
+
+/** 收起右栏：只认当前会话头/可见座位上的控件，被保留的旧座位不算。 */
+async function collapseRightbar(page) {
+  const toggle = page.locator('[data-sidebar-right-toggle]:visible').first()
+  const expand = page.locator('[data-sidebar-right-expand]:visible').first()
+  await waitFor({
+    description: '右栏状态落定',
+    check: async () => (await toggle.count()) > 0 || (await expand.count()) > 0,
+    timeoutMs: 10_000,
+  })
+  if (await toggle.count() > 0) await toggle.click({ force: true })
+  await waitFor({
+    description: '右栏收起后展开按钮可用',
+    check: async () => (await expand.count()) > 0 && !(await expand.isDisabled()),
+    timeoutMs: 10_000,
+  })
+}
+
 /** 展开项目树；项目行已展开时没有切换按钮。 */
 async function expandProject(page) {
   const projectRow = page.locator('.dsh-leader-agent-project-row').first()
@@ -211,6 +254,7 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     '项目标签图标应与左栏项目行同一枚 apps 图标（三条 rect + 一个加号）',
   )
   assert.equal(await bar.locator('.dsh-leader-agent-tab[data-kind="worker"]').count(), 0, '没点开的 worker 不该先出标签')
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 1, '栏可见时才给主列加 flex 收缩标记')
 
   const barBox = await bar.boundingBox()
   const header = page.locator('header:has([data-conversation-header-leading])').first()
@@ -301,18 +345,99 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   await waitForLocator(workerBoard, { description: '重开 worker 后看板仍在', timeoutMs: 10_000 })
   assert.equal(await boardSkeletonSeen(page), false, '重开 worker 不应重挂看板骨架')
 
-  // 普通会话：同一工作区里新建，不属于项目，整条栏隐藏。
+  // 键盘：非当前标签 tabIndex=-1，方向键与 Home/End 是唯一入口。
+  await w1Tab.focus()
+  await page.keyboard.press('ArrowLeft')
+  await waitFor({
+    description: '← 切回项目标签',
+    check: async () => (await leaderTab.getAttribute('aria-selected')) === 'true',
+  })
+  assert.equal(await focusedTabId(page), leader.id, '键盘切换后焦点应落在新标签上')
+  await page.keyboard.press('End')
+  await waitFor({
+    description: 'End 切到最后一个标签',
+    check: async () => (await w1Tab.getAttribute('aria-selected')) === 'true',
+  })
+  await page.keyboard.press('Home')
+  await waitFor({
+    description: 'Home 切回第一个标签',
+    check: async () => (await leaderTab.getAttribute('aria-selected')) === 'true',
+  })
+  await page.screenshot({ path: join(artifacts, 'tabs-keyboard.png') })
+
+  // 右栏收起时切 worker：不顶开右栏（看板只在展开且在前台时跟随）。
+  // 用没被跟随过的 w2：先把 leader 的右栏收起，再第一次点开 w2。
+  const w2 = workers[1]
+  const w2Row = page.locator(`.dsh-leader-agent-session-row[data-session-id="${w2.id}"]`)
+  const w2Tab = bar.locator(`.dsh-leader-agent-tab[data-session-id="${w2.id}"]`)
+  await waitForLocator(w2Row, { description: '第二个 worker 的会话行', timeoutMs: 10_000 })
+  await collapseRightbar(page)
+  await w2Row.click()
+  await waitForLocator(w2Tab, { description: '第一次点开 w2 后出现标签', timeoutMs: 10_000 })
+  await waitFor({
+    description: '收起状态下切到 w2',
+    check: async () => (await w2Tab.getAttribute('aria-selected')) === 'true',
+  })
+  const expandButton = page.locator('[data-sidebar-right-expand]:visible').first()
+  assert.equal(await expandButton.count(), 1, '右栏收起时切 worker 不应被强行展开')
+  assert.equal(await expandButton.isDisabled(), false, '收起状态下展开按钮应可用')
+  assert.equal(
+    await page.locator(`[data-sidebar-right-session="${w2.id}"] .dsh-leader-agent-board`).isVisible().catch(() => false),
+    false,
+    '右栏收起时不应把看板打开（看板只在展开且在前台时跟随）',
+  )
+  await page.screenshot({ path: join(artifacts, 'tabs-collapsed-follow.png') })
+
+  // 展开 w2 的右栏并打开看板：它没有被跟随过，所以从 guide 入口进。
+  await expandButton.click({ force: true })
+  await waitFor({
+    description: '展开后右栏绑到 w2',
+    check: async () => (await page.locator('[data-sidebar-right-session]:visible').first().getAttribute('data-sidebar-right-session').catch(() => null)) === w2.id,
+    timeoutMs: 15_000,
+  })
+  const boardEntry2 = page.locator('.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]')
+  await waitForLocator(boardEntry2, { description: 'w2 右栏 guide 页的看板入口', timeoutMs: 15_000 })
+  await boardEntry2.click()
+  seedCard(second.home)
+  const card = page.locator('.dsh-leader-agent-board-card').filter({ hasText: '标签场景卡' })
+  await waitForLocator(card, { description: '轮询拉到新种的卡', timeoutMs: 15_000 })
+
+  // 详情浮层 portal 到 body。真实交互摸不到它背面的标签/项目树（遮罩挡住指针），
+  // 宿主的全局快捷键又按 `aria-modal` 把命令挡在 `other` modal 上——所以这条泄漏
+  // 目前不是可交互触发；用程序化 click 走同一个「切会话」状态路径，锁住隐藏时
+  // 卸载浮层的行为（见 docs/limitations.md 的暂停范围）。
+  await card.click()
+  const detail = page.locator('.dsh-leader-agent-card-detail')
+  await waitForLocator(detail, { description: '卡片详情浮层打开', timeoutMs: 10_000 })
+  await page.evaluate((sessionId) => {
+    document.querySelector(`.dsh-leader-agent-session-row[data-session-id="${sessionId}"]`)?.click()
+  }, w1.id)
+  await waitFor({
+    description: '程序化切回 w1',
+    check: async () => (await currentSessionId(page)) === w1.id,
+    timeoutMs: 20_000,
+  })
+  await waitForLocator(detail, { description: '切走后详情浮层关闭', state: 'detached', timeoutMs: 10_000 })
+  assert.equal(await page.locator('.dsh-leader-agent-modal-root').count(), 0, '旧项目的浮层不能留在新会话上')
+  await page.screenshot({ path: join(artifacts, 'overlay-closed-on-switch.png') })
+
+  // 普通会话：同一工作区里新建，不属于项目，整条栏与 flex 标记都消失。
   const ordinaryWorkspaceRow = page.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
   await waitForLocator(ordinaryWorkspaceRow, { description: '第二段默认工作区行', timeoutMs: 20_000 })
   await ordinaryWorkspaceRow.hover()
   await ordinaryWorkspaceRow.locator('button[aria-label*="新建会话"]').first().click({ force: true })
   await waitFor({
     description: '普通会话成为当前会话',
-    check: async () => (await page.locator('[data-row-key^="session:"][aria-selected="true"]').count()) > 0,
+    check: async () => {
+      const now = await currentSessionId(page)
+      return typeof now === 'string' && now !== leader.id && now !== w1.id && now !== w2.id
+    },
     timeoutMs: 20_000,
   })
   await waitForLocator(bar, { description: '普通会话不显示标签栏', state: 'detached', timeoutMs: 15_000 })
   assert.equal(await page.locator('.dsh-leader-agent-tabs').count(), 0, '普通会话整条栏都不在')
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 0, '栏隐藏后不能常驻覆盖宿主布局')
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-main]').count(), 0, '栏隐藏后会话体的 flex 标记也要摘掉')
   await page.screenshot({ path: join(artifacts, 'ordinary-session.png') })
 
   assert.deepEqual(problems, [])

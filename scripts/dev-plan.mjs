@@ -53,6 +53,24 @@ export function devPortFor(worktree) {
 }
 
 /**
+ * 算出传给 `dsh web --port` 的字符串。
+ *
+ * `DEV_PORT` 非空就用它（含 `0`，回到系统随机）；未设或空串落到按工作树派生的
+ * 稳定端口。默认端口被别的进程占住时，用法与 `DEV_PORT=0` 一样是显式覆盖——
+ * 占用检测交给 dsh 自己报 EADDRINUSE，这里不另抢一次端口。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.worktree - 当前工作树的绝对路径
+ * @param {object} [options.env] - 环境变量
+ * @returns {string} 端口字符串
+ */
+export function devPortArg({ worktree, env = {} }) {
+  // 空字符串要落到默认值：`DEV_PORT=` 这种写法传下去会让 dsh 收到空的 --port。
+  if (env.DEV_PORT !== undefined && env.DEV_PORT !== '') return env.DEV_PORT
+  return String(devPortFor(worktree))
+}
+
+/**
  * 算出开发实例的各个目录。
  *
  * @param {object} options - 选项
@@ -427,8 +445,8 @@ export function assertSeparateHome({ home, sourceHome }) {
  * 看起来是成功的。判据直接看 profile 的 bundles 里有没有 web app bundle，
  * 不抄宿主的模板表（那份表会随版本变）。
  *
- * 修复建议由调用方给：`dev` 能换 `DSH_PROFILE`，`start` 的 profile 名是固定的
- * （`profiles/web`），照前者的建议做无效。
+ * 修复建议由调用方给：`dev` 与 `start` 的 profile 名都固定（`web`），但两者的
+ * profile 目录与可执行文件不同，照抄对方的命令无效。
  *
  * @param {object} options - 选项
  * @param {string} options.profileDir - profile 目录，只用于报错定位
@@ -448,12 +466,18 @@ export function assertWebBundle({ profileDir, bundles, hint }) {
 }
 
 /**
- * `dev` 的修复建议：源 profile 名可由 `DSH_PROFILE` 换掉。
+ * `dev` 的修复建议：它的源 profile 固定是 `web`，换 profile 名的建议对它无效。
  *
+ * `dev.mjs` 已把 `DSH_PROFILE` 钉成 `web`（`dsh web` 自己也不读它），照
+ * 「设 DSH_PROFILE」做是空操作，只会拿到同一条报错。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.profileDir - 源 profile 目录
  * @returns {string} 修复建议
  */
-export function devWebBundleHint() {
-  return `用 DSH_PROFILE 指向一个 web profile，或把 ${WEB_APP_BUNDLE} 加进该 profile 的 dsh.profile.bundles。`
+export function devWebBundleHint({ profileDir }) {
+  return `源 profile 固定是 ${PROFILE_NAME}，把 ${WEB_APP_BUNDLE} 加进 ${profileDir} 的 dsh.profile.bundles，`
+    + `或删掉 ${profileDir} 让 dsh 按 ${PROFILE_NAME} 模板重建后再装本插件。`
 }
 
 /**

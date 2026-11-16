@@ -20,7 +20,7 @@
  *   实例各持一份会互相踢掉登录）；目标实例里已有的条目不动，界面上改过的 key 优先，
  *   要重新跟随源就删掉那一条。写入与运行中的实例共用一把写者锁，临时文件 + rename
  *   提交、权限 600；目标凭据文档不是 version 1 布局时不动（宿主会先自行迁移）；
- * - 端口默认交给系统分配（`--port 0`），设 `DEV_PORT` 可固定；
+ * - 端口默认按工作树路径固定（30000–39999），设 `DEV_PORT` 可覆盖（`0` 回到随机）；
  * - 客户端产物先同步构建一次（失败当场可见），再起常驻 watch：宿主 web 组合挂着
  *   `client-hmr`，产物一变就把运行中的插件换掉，改 `src/client/` 不用刷新页面；
  *   正常退出与 SIGTERM/Ctrl-C 都会清掉 watch 子进程。
@@ -40,7 +40,7 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { inheritCredentialRefs as inheritProfileCredentialRefs, prepareProfileDir } from './dev-instance.mjs'
-import { PROFILE_NAME, assertSeparateHome, assertWebBundle, devPortFor, devWebBundleHint, resolveDevPaths } from './dev-plan.mjs'
+import { PROFILE_NAME, assertSeparateHome, assertWebBundle, devPortArg, devWebBundleHint, resolveDevPaths } from './dev-plan.mjs'
 import { CommandNotFoundError, CommandShellError, commandLaunchError, spawnCommand, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -102,7 +102,7 @@ try {
   assertWebBundle({
     profileDir: paths.sourceProfileDir,
     bundles: sourcePackage.dsh?.profile?.bundles,
-    hint: devWebBundleHint(),
+    hint: devWebBundleHint({ profileDir: paths.sourceProfileDir }),
   })
 } catch (error) {
   console.error(`错误: ${error.message}`)
@@ -179,12 +179,8 @@ watcher.on('exit', (code, signal) => {
   console.error(`客户端 watch 已退出（code ${code}）：后续改动不会再自动重建`)
 })
 
-// 空字符串要落到默认值：`DEV_PORT=` 这种写法传下去会让 dsh 收到空的 --port。
 // 默认按工作树固定端口，避免每次随机端口给浏览器新增一份 auth cookie（431）。
-const port = process.env.DEV_PORT !== undefined && process.env.DEV_PORT !== ''
-  ? process.env.DEV_PORT
-  : String(devPortFor(worktree))
-const args = ['web', '--port', port]
+const args = ['web', '--port', devPortArg({ worktree, env: process.env })]
 if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
 
 // dsh 用 spawnCommand 而不是 spawnCommandSync：同步等待会卡住事件循环，上面的信号

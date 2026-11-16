@@ -86,6 +86,7 @@ export function apply(ctx) {
     inject: () => ({
       getSessions: () => ctx.sessions,
       getUiWorkspace: () => ctx.get('uiWorkspace'),
+      getSidebarRight: () => ctx.get('sidebarRight'),
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
     }),
   }, BoardBody)), 'dsh-leader-agent 看板面板')

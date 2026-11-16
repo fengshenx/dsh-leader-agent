@@ -12,6 +12,7 @@ import {
   serializeTabStore,
   sessionLabel,
   tabAfterClose,
+  tabIdForKey,
   workerTabState,
 } from '../src/client/session-tabs-logic.js'
 
@@ -59,13 +60,21 @@ test('parseTabStore：过滤非法 id、去重并按上限截断', () => {
     version: 1,
     projects: {
       p1: ['w1', 'w1', '', 'w2', 42, ...ids],
-      __proto__: ['x'],
       '': ['y'],
     },
   }))
   assert.deepEqual(Object.keys(parsed.projects), ['p1'])
   assert.equal(parsed.projects.p1.length, MAX_OPEN_TABS_PER_PROJECT)
   assert.deepEqual(parsed.projects.p1.slice(0, 2), ['w1', 'w2'])
+})
+
+test('parseTabStore：JSON 里的 __proto__ 键不污染原型', () => {
+  // 对象字面量里的 `__proto__:` 是改原型语法、`JSON.stringify` 会丢掉它，
+  // 必须用真正的 JSON 原文才测到目标。
+  const parsed = parseTabStore('{"version":1,"projects":{"p1":["w1"],"__proto__":["evil"]}}')
+  assert.deepEqual(parsed.projects.p1, ['w1'])
+  assert.equal(Object.getPrototypeOf(parsed.projects), Object.prototype)
+  assert.equal({}.evil, undefined)
 })
 
 test('serializeTabStore：只写规范后的内容', () => {
@@ -247,4 +256,23 @@ test('tabAfterClose：只有关当前标签才导航回 leader', () => {
   assert.equal(tabAfterClose(view, 'w2'), null)
   assert.equal(tabAfterClose({ visible: false }, 'w1'), null)
   assert.equal(tabAfterClose(view, undefined), null)
+})
+
+test('tabIdForKey：左右循环、Home/End 到首尾', () => {
+  const tabs = [{ id: 'leader' }, { id: 'w1' }, { id: 'w2' }]
+  assert.equal(tabIdForKey(tabs, 'leader', 'ArrowRight'), 'w1')
+  assert.equal(tabIdForKey(tabs, 'w2', 'ArrowRight'), 'leader')
+  assert.equal(tabIdForKey(tabs, 'leader', 'ArrowLeft'), 'w2')
+  assert.equal(tabIdForKey(tabs, 'w1', 'ArrowLeft'), 'leader')
+  assert.equal(tabIdForKey(tabs, 'w1', 'Home'), 'leader')
+  assert.equal(tabIdForKey(tabs, 'w1', 'End'), 'w2')
+})
+
+test('tabIdForKey：当前标签不在列表里时从第一个算，其它键不处理', () => {
+  const tabs = [{ id: 'leader' }, { id: 'w1' }]
+  assert.equal(tabIdForKey(tabs, 'missing', 'ArrowRight'), 'w1')
+  assert.equal(tabIdForKey(tabs, 'missing', 'ArrowLeft'), 'w1')
+  assert.equal(tabIdForKey(tabs, 'leader', 'Enter'), undefined)
+  assert.equal(tabIdForKey([], 'leader', 'ArrowRight'), undefined)
+  assert.equal(tabIdForKey(undefined, 'leader', 'ArrowRight'), undefined)
 })
