@@ -34,5 +34,5 @@ Status: implemented
 ## Testing
 
 - `npm run check`：1160 个用例通过（17 跳过）；Agent Note 格式、文档工具名、文档预算、语法与覆盖率门禁全过。
-- 角色正文按 `countDocUnits` 逐节计数：dev 1235、review 1080、video 1468、video-review 1226，均在 1000–1500 区间；SLOTS 总计 5358 / 5900，LEADER 2982 / 3300。
+- 角色正文按 `countDocUnits` 逐节计数：dev 1235、review 1080、video 1468、video-review 1226，均在 1000–1500 区间；SLOTS 总计 5358 / 5900，LEADER 3042 / 3300。
 - 未改运行时与前端代码，未跑 e2e；本次变化只影响项目级提示词与文档预算。
