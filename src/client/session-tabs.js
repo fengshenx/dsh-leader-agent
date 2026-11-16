@@ -445,7 +445,9 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     // leader 自己的右栏里。下一轮视图变化会再走到这里。
     if (sidebarRight.mounted?.getSnapshot?.() !== currentSessionId) return
     lastBoardCarry.current = currentSessionId
-    sidebarRight.openTab(BOARD_TAB_KIND)
+    // 把项目 id 带进 tab navigation：看板 body 新挂时先用同一项目的上一份数据
+    // 起步，不让右栏先闪一下骨架。
+    sidebarRight.openTab(BOARD_TAB_KIND, { params: { projectId: view.project.id } })
   }, [currentSessionId, getSidebarRight, panelActive, view.visible, view.isWorkerCurrent, view.project?.leaderSessionId])
 
   if (!view.visible || panelActive) return null

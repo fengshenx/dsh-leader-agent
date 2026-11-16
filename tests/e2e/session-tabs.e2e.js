@@ -49,6 +49,23 @@ function firstSession(home) {
   return null
 }
 
+/** 记录切换期间看板骨架有没有被重新挂载（保留 body 的回归点）。 */
+async function watchBoardSkeleton(page) {
+  await page.evaluate(() => {
+    window.__boardSkeletonSeen = false
+    window.__boardSkeletonObserver?.disconnect()
+    window.__boardSkeletonObserver = new MutationObserver(() => {
+      if (document.querySelector('.dsh-leader-agent-board-skeleton')) window.__boardSkeletonSeen = true
+    })
+    window.__boardSkeletonObserver.observe(document.body, { childList: true, subtree: true })
+  })
+}
+
+/** 读切换期间是否出现过看板骨架。 */
+async function boardSkeletonSeen(page) {
+  return page.evaluate(() => window.__boardSkeletonSeen === true)
+}
+
 /** 首次打开宿主会弹「预览版说明」，不关掉会挡住输入框。 */
 async function dismissWelcome(page) {
   const button = page.getByRole('dialog').getByRole('button', { name: '继续' })
@@ -227,9 +244,12 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
 
   // 点项目树里的 worker：形成标签并成为当前标签。
   const w1 = workers[0]
+  const workerBoard = page.locator(`[data-sidebar-right-session="${w1.id}"] .dsh-leader-agent-board-empty`)
+    .filter({ hasText: '还没有卡片' })
   const w1Row = page.locator(`.dsh-leader-agent-session-row[data-session-id="${w1.id}"]`)
   await waitForLocator(w1Row, { description: '第一个 worker 的会话行', timeoutMs: 10_000 })
   const rowTitle = (await w1Row.locator('.dsh-leader-agent-session-title').innerText()).trim()
+  await watchBoardSkeleton(page)
   await w1Row.click()
   const w1Tab = bar.locator(`.dsh-leader-agent-tab[data-session-id="${w1.id}"]`)
   await waitForLocator(w1Tab, { description: '点开 worker 后出现标签', timeoutMs: 10_000 })
@@ -238,11 +258,8 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     check: async () => (await w1Tab.getAttribute('aria-selected')) === 'true',
   })
   assert.equal(await bar.locator('.dsh-leader-agent-tab').count(), 2, '当前项目应有两个标签：leader + 这个 worker')
-  await waitForLocator(
-    page.locator(`[data-sidebar-right-session="${w1.id}"] .dsh-leader-agent-board-empty`)
-      .filter({ hasText: '还没有卡片' }),
-    { description: '切到 worker 后右栏仍是 leader 那块看板', timeoutMs: 15_000 },
-  )
+  await waitForLocator(workerBoard, { description: '切到 worker 后右栏仍是 leader 那块看板', timeoutMs: 15_000 })
+  assert.equal(await boardSkeletonSeen(page), false, '第一次切 worker 也不应闪看板骨架')
   await page.screenshot({ path: join(artifacts, 'worker-board.png') })
   const tabLabel = (await w1Tab.locator('.dsh-leader-agent-tab-label').innerText()).trim()
   assert.ok(tabLabel.length > 0, 'worker 标签不能是空文字')
@@ -252,13 +269,15 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   assert.ok(['ongoing', 'done', 'idle'].includes(await dot.getAttribute('data-state')), '状态灯档位应在宿主 StateDot 的三档里')
   await page.screenshot({ path: join(artifacts, 'worker-tab.png') })
 
-  // 点项目标签回到 leader。
+  // 点项目标签回到 leader：保留的看板 body 不应重挂骨架。
+  await watchBoardSkeleton(page)
   await leaderTab.click()
   await waitFor({
     description: '项目标签重新成为当前标签',
     check: async () => (await leaderTab.getAttribute('aria-selected')) === 'true',
   })
   await waitForLocator(leaderBoard, { description: '回到 leader 后看板仍在', timeoutMs: 10_000 })
+  assert.equal(await boardSkeletonSeen(page), false, '切回 leader 不应重挂看板骨架')
   assert.equal(await w1Tab.getAttribute('aria-selected'), 'false', '回到 leader 后 worker 标签不再选中')
 
   // 关 worker 标签：标签消失、会话行还在、当前回到 leader。
@@ -271,13 +290,16 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   })
   assert.equal(await page.locator('.dsh-leader-agent-session-row').count(), 2, '关标签不能动会话行')
 
-  // 从项目树重新点开：标签记回来。
+  // 从项目树重新点开：标签记回来；worker 的看板也应从保留的 body 直接显示。
+  await watchBoardSkeleton(page)
   await w1Row.click()
   await waitForLocator(w1Tab, { description: '重新点开 worker 后标签回来', timeoutMs: 10_000 })
   await waitFor({
     description: '重开的 worker 标签成为当前标签',
     check: async () => (await w1Tab.getAttribute('aria-selected')) === 'true',
   })
+  await waitForLocator(workerBoard, { description: '重开 worker 后看板仍在', timeoutMs: 10_000 })
+  assert.equal(await boardSkeletonSeen(page), false, '重开 worker 不应重挂看板骨架')
 
   // 普通会话：同一工作区里新建，不属于项目，整条栏隐藏。
   const ordinaryWorkspaceRow = page.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()

@@ -59,6 +59,34 @@ import { productIcon } from './icons.js'
 const PROJECT_RECHECK_MS = 30_000
 
 /**
+ * 看板数据的内存副本，按项目存。
+ *
+ * 右栏按会话存布局，切到 worker 时看板 body 是新挂的；先把同一项目上一份已加载
+ * 的数据画出来，再照常 revalidate，避免先闪骨架。只活在这个浏览器页面里，不落盘。
+ */
+const BOARD_CACHE = new Map()
+
+/**
+ * 读某个项目上一次加载的看板快照。
+ * @param {string} projectId - 项目 id
+ * @returns {{ project: object, cards: object[] } | undefined} 快照
+ */
+function cachedBoard(projectId) {
+  return BOARD_CACHE.get(projectId)
+}
+
+/**
+ * 记住某个项目当前的看板快照。
+ * @param {string} projectId - 项目 id
+ * @param {object} project - 项目摘要
+ * @param {object[]} cards - 卡片列表
+ * @returns {void} 无返回
+ */
+function rememberBoard(projectId, project, cards) {
+  BOARD_CACHE.set(projectId, { project, cards })
+}
+
+/**
  * 看板面板主体。
  *
  * @param {object} props - slot 注入的运行时属性
@@ -71,7 +99,16 @@ const PROJECT_RECHECK_MS = 30_000
  * @returns {object} React 元素
  */
 export function BoardBody(props) {
-  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote, t } = props
+  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, useTabInfo, callRemote, t } = props
+  // 保留的看板 body 在别的会话/别的位置时仍挂着；只有当前可见的看板才轮询卡片。
+  // `useTabInfo` 由右栏 slot 注入；缺它时按可见处理，退回旧行为。
+  const useInfo = typeof useTabInfo === 'function' ? useTabInfo : useNoTabInfo
+  const tabInfo = useInfo()
+  const visible = tabInfo?.tab?.visible !== false
+  // 标签栏补开看板时把项目 id 放进 navigation params；有它就能先用同一项目的
+  // 上一份看板数据起步，新挂的 worker 面板不会先闪骨架。
+  const params = tabInfo?.tab?.navigation?.params
+  const projectHint = typeof params?.projectId === 'string' ? params.projectId : undefined
   return createElement(BoardPanel, {
     sessionId,
     getSessions,
@@ -79,6 +116,8 @@ export function BoardBody(props) {
     useSessionStatus,
     callRemote,
     t,
+    visible,
+    projectHint,
   })
 }
 
@@ -88,6 +127,15 @@ export function BoardBody(props) {
  * 保持 hook 调用顺序稳定：同一个渲染路径上，状态 hook 的个数不能变。
  */
 function useNoSessionStatus() {
+  return undefined
+}
+
+/**
+ * 宿主没给 tabInfo hook 时的占位：按可见处理。
+ *
+ * 保持 hook 调用顺序稳定：同一个渲染路径上，状态 hook 的个数不能变。
+ */
+function useNoTabInfo() {
   return undefined
 }
 
@@ -342,25 +390,32 @@ function BoardSkeleton() {
  * @param {(method: string, args: unknown[]) => Promise<unknown>} props.callRemote - 项目通道调用
  * @param {Function} [props.useSessionStatus] - 宿主会话状态 hook
  * @param {(key: string) => string} props.t - 当前语言的翻译函数（槽位显示名）
+ * @param {boolean} [props.visible] - 当前看板是否在屏幕上可见
+ * @param {string} [props.projectHint] - 补开看板时带过来的项目 id
  * @returns {object} React 元素
  */
-function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote, t }) {
-  const [project, setProject] = useState(undefined)
+function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote, t, visible, projectHint }) {
+  // 同一项目的上一份看板数据：worker 的首帧直接画卡，不等项目/卡片 RPC。
+  const cached = projectHint === undefined ? undefined : cachedBoard(projectHint)
+  const [project, setProject] = useState(cached?.project)
   // 项目解析完成与否要和「解析出来是不属于项目」分开：解析是个异步往返，中间
   // 不能先闪一句「不属于任何项目」——那是还没问完就下的结论。
-  const [resolved, setResolved] = useState(false)
+  const [resolved, setResolved] = useState(cached !== undefined)
   // 当前会话是不是该项目的 worker：看板对项目会话开放，worker 也算。
   // `undefined` 表示还没判定——不能默认 false，那会让 worker 的首帧落进
-  // 「看板只在项目会话中打开」的分支。
-  const [worker, setWorker] = useState(undefined)
-  const [cards, setCards] = useState(() => [])
+  // 「看板只在项目会话中打开」的分支。缓存来自补开的 worker 看板，先按 worker
+  // 画出来，项目访问权回来后再校正。
+  const [worker, setWorker] = useState(cached === undefined ? undefined : true)
+  const [cards, setCards] = useState(() => cached?.cards ?? [])
   // 两个错误源分开存：项目复核失败与卡片刷新失败各自有出口，否则一方成功
   // 会把另一方的错误清掉，错误页闪进闪出且提示与真实原因不符。
   const [projectError, setProjectError] = useState(null)
   const [cardsError, setCardsError] = useState(null)
   // 槽位显示名：项目 `SLOTS.md` 的 `label:`，没声明的槽位由 locales 回落。
   const [slotLabels, setSlotLabels] = useState(() => ({}))
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(cached !== undefined)
+  // 缓存只用于本次挂载的首帧；项目访问权回来后就不再走「保留旧状态」的分支。
+  const prefilled = useRef(cached !== undefined)
   const [detail, setDetail] = useState(null)
   // 删除确认框独立于详情：确认框打开时详情先卸载，避免两层 modal 同时监听
   // Escape、抢焦点陷阱。取消后详情按原 anchor 重新打开。
@@ -397,13 +452,17 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   // 身份与存活状态不能只在挂载时问一次。
   useEffect(() => {
     let cancelled = false
+    const keepPrefilled = prefilled.current
+    prefilled.current = false
     setProjectError(null)
-    setResolved(false)
-    // 换了会话就是换了项目，上一个项目的卡片与身份不能留在面板里。
-    setCards([])
-    setLoaded(false)
-    setWorker(undefined)
-    setSlotLabels({})
+    if (!keepPrefilled) {
+      setResolved(false)
+      // 换了会话就是换了项目，上一个项目的卡片与身份不能留在面板里。
+      setCards([])
+      setLoaded(false)
+      setWorker(undefined)
+      setSlotLabels({})
+    }
     // 会话换了就放弃上一条删除确认：确认框属于旧会话的看板，不能跟着新看板漂移。
     setPendingDelete(null)
     setDeleteError('')
@@ -452,6 +511,9 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   // 定时刷新是必要的——卡片可能由别的会话（worker）建，那边的事件流不在本面板
   // 的窗口里，等不到它的变化。
   useEffect(() => {
+    // 被 keepMounted 保留但当前不可见的看板不轮询：切回可见时会立刻刷一次，
+    // 已挂着的卡片原样显示，不会因为重新挂载而闪骨架。
+    if (!visible) return undefined
     // 看板只对项目会话开放：同目录的普通会话也能解析到项目（卡片归属要用），
     // 但这里不给它们取卡。leader 会话已失效时同样不取。
     if (!isBoardViewable(project, sessionId, worker)) return undefined
@@ -489,7 +551,13 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [project, worker, callRemote, sessionId])
+  }, [project, worker, callRemote, sessionId, visible])
+
+  // 卡片状态一变就更新内存快照：同一项目的下一个看板 body 直接拿这份数据起步。
+  useEffect(() => {
+    if (project === undefined || !loaded) return
+    rememberBoard(project.id, project, cards)
+  }, [project, cards, loaded])
 
   const cardList = cards
   const states = useSlotStates(cardList, getSessions, useSessionStatus, sessionId)

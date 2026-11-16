@@ -59,6 +59,9 @@ export function apply(ctx) {
   ctx.effect(() => ctx.sidebarRightTabs.register({
     id: PLUGIN_ID,
     kind: 'dsh-leader-agent-board',
+    // 右栏按会话存布局：切会话时宿主会卸载非当前会话的栏。看板保留已访问的
+    // body（keepMounted），切回来不重挂、不重新拉项目与卡片，避免闪一下。
+    keepMounted: true,
     title: () => '看板',
     guide: [{
       id: 'board',
