@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "队长 Agent",
-    "description": "DeepSeek Harness 的队长/执行者编排：协议层 skill、项目初始化与交付看板。"
+    "title": "Leader Agent",
+    "description": "你只负责决定，Leader 负责推进：拆解任务、派工、盯完成、组织 Review，任务落进项目看板。"
   }
 }
