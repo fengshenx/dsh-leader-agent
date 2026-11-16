@@ -209,6 +209,22 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   mkdirSync(artifacts, { recursive: true })
   await page.screenshot({ path: join(artifacts, 'leader-bar.png') })
 
+  // 右栏打开 leader 看板，再切 worker：右栏按会话隔离，看板要在 worker 的右栏里
+  // 继续显示（看板是项目级的，worker 也看同一块），而不是切成 worker 的默认 guide。
+  await page.locator('[data-sidebar-right-expand="true"]').first().click({ force: true })
+  await waitFor({
+    description: '右栏绑定到 leader 会话',
+    check: async () => (await page.locator('[data-sidebar-right-session]').first().getAttribute('data-sidebar-right-session')) === leader.id,
+    timeoutMs: 15_000,
+  })
+  const boardEntry = page.locator('.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]')
+  await waitForLocator(boardEntry, { description: '右栏 guide 页的看板入口', timeoutMs: 15_000 })
+  await boardEntry.click()
+  const leaderBoard = page.locator(`[data-sidebar-right-session="${leader.id}"] .dsh-leader-agent-board-empty`)
+    .filter({ hasText: '还没有卡片' })
+  await waitForLocator(leaderBoard, { description: 'leader 右栏的看板空态', timeoutMs: 15_000 })
+  await page.screenshot({ path: join(artifacts, 'leader-board.png') })
+
   // 点项目树里的 worker：形成标签并成为当前标签。
   const w1 = workers[0]
   const w1Row = page.locator(`.dsh-leader-agent-session-row[data-session-id="${w1.id}"]`)
@@ -222,6 +238,12 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     check: async () => (await w1Tab.getAttribute('aria-selected')) === 'true',
   })
   assert.equal(await bar.locator('.dsh-leader-agent-tab').count(), 2, '当前项目应有两个标签：leader + 这个 worker')
+  await waitForLocator(
+    page.locator(`[data-sidebar-right-session="${w1.id}"] .dsh-leader-agent-board-empty`)
+      .filter({ hasText: '还没有卡片' }),
+    { description: '切到 worker 后右栏仍是 leader 那块看板', timeoutMs: 15_000 },
+  )
+  await page.screenshot({ path: join(artifacts, 'worker-board.png') })
   const tabLabel = (await w1Tab.locator('.dsh-leader-agent-tab-label').innerText()).trim()
   assert.ok(tabLabel.length > 0, 'worker 标签不能是空文字')
   assert.ok(rowTitle.startsWith(tabLabel) || tabLabel.startsWith(rowTitle), `标签文字应跟着会话标题：tab=${tabLabel} row=${rowTitle}`)
@@ -236,6 +258,7 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     description: '项目标签重新成为当前标签',
     check: async () => (await leaderTab.getAttribute('aria-selected')) === 'true',
   })
+  await waitForLocator(leaderBoard, { description: '回到 leader 后看板仍在', timeoutMs: 10_000 })
   assert.equal(await w1Tab.getAttribute('aria-selected'), 'false', '回到 leader 后 worker 标签不再选中')
 
   // 关 worker 标签：标签消失、会话行还在、当前回到 leader。

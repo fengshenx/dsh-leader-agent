@@ -148,6 +148,7 @@ export function apply(ctx) {
       getSessions: () => ctx.sessions,
       getUiWorkspace: () => ctx.get('uiWorkspace'),
       getLayout: () => ctx.get('layout'),
+      getSidebarRight: () => ctx.get('sidebarRight'),
     }),
   }, SessionTabsAnchor)), 'dsh-leader-agent 会话标签栏')
 

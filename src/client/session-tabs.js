@@ -28,6 +28,7 @@ import { productIcon } from './icons.js'
 import { currentSessionIdOf } from './project-panel-logic.js'
 import { onProjectsChanged } from './project-changes.js'
 import { isProjectRemoteReady, onProjectRemoteReady } from './project-remote.js'
+import { BOARD_TAB_KIND } from './project-board-monitor.js'
 import { createSessionCompletionTracker } from './session-completion.js'
 import {
   addOpenTab,
@@ -311,7 +312,7 @@ export function SessionTabsAnchor(props) {
  * @param {object} props - 槽位注入的运行时能力
  * @returns {object | null} React 元素；不需要标签栏时不渲染
  */
-function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout }) {
+function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, getSidebarRight }) {
   const sessions = getSessions?.()
   const [snapshot, setSnapshot] = useState(() => sessions?.list?.getSnapshot?.() ?? {
     phase: 'pending',
@@ -419,6 +420,33 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout }
     setStore((current) => addOpenTab(current, view.project.id, currentSessionId))
     // 故意不依赖 store：关掉当前标签时当前会话还没切走，依赖 store 会把它同帧加回来。
   }, [view.visible, view.isWorkerCurrent, view.project?.id, currentSessionId])
+
+  // 右栏按会话隔离：切到 worker 时宿主会换成 worker 自己的右栏布局，leader 开着
+  // 的看板就跟着消失。看板是项目级的，worker 也能看；leader 右栏里已经有看板 tab
+  // 时，切到 worker 后把它开回来，保持「屏幕上一直是同一块看板」。
+  //
+  // `tabsIn` 是 sidebarRight 服务上面向 provider 的读取方法（不在 ISidebarRight
+  // 接口里，但 rc.2 就有）；没有它时宁可不跟随，也不替用户猜要不要开。
+  const lastBoardCarry = useRef(undefined)
+  useEffect(() => {
+    if (panelActive || currentSessionId === undefined) return
+    if (!view.visible || !view.isWorkerCurrent) {
+      lastBoardCarry.current = undefined
+      return
+    }
+    if (lastBoardCarry.current === currentSessionId) return
+    const leaderId = view.project?.leaderSessionId
+    if (typeof leaderId !== 'string' || leaderId === '') return
+    const sidebarRight = getSidebarRight?.()
+    if (sidebarRight === undefined || sidebarRight === null) return
+    if (typeof sidebarRight.tabsIn !== 'function') return
+    if (!sidebarRight.tabsIn(leaderId).some((tab) => tab.kind === BOARD_TAB_KIND)) return
+    // 宿主在切换会话的同一帧把右栏挂到 worker 上；没落定就先不开，避免开在
+    // leader 自己的右栏里。下一轮视图变化会再走到这里。
+    if (sidebarRight.mounted?.getSnapshot?.() !== currentSessionId) return
+    lastBoardCarry.current = currentSessionId
+    sidebarRight.openTab(BOARD_TAB_KIND)
+  }, [currentSessionId, getSidebarRight, panelActive, view.visible, view.isWorkerCurrent, view.project?.leaderSessionId])
 
   if (!view.visible || panelActive) return null
 
