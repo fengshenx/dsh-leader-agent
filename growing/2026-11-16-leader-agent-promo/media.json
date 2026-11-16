@@ -7,6 +7,53 @@
   "keyBase": "prefix-relative",
   "versions": [
     {
+      "version": 3,
+      "fps": 60,
+      "durationSeconds": 102.888,
+      "assets": [
+        {
+          "kind": "video",
+          "key": "video/promo-1080x1920-v3.mp4",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920-v3.mp4",
+          "bytes": 16255035,
+          "sha256": "b55fecafe55be0a242a20173158d70807b0453a0048930dbce464e207728524b",
+          "contentType": "video/mp4"
+        },
+        {
+          "kind": "audio",
+          "key": "audio/narration-zh-v3.mp3",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-zh-v3.mp3",
+          "bytes": 2058765,
+          "sha256": "d9bab76d43659a0b84d7e4ef2eac73391c3e3825a36b41c4765b322b82eb5221",
+          "contentType": "audio/mpeg"
+        },
+        {
+          "kind": "html",
+          "key": "html/promo-standalone-v3.html",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/html/promo-standalone-v3.html",
+          "bytes": 759426,
+          "sha256": "0bc914fd27126dcc08fb1e637690b4cb60f233b429cc929e819b16249dfaec3a",
+          "contentType": "text/html; charset=utf-8"
+        },
+        {
+          "kind": "covers",
+          "key": "covers/cover-9x16-v2.png",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-9x16-v2.png",
+          "bytes": 2013152,
+          "sha256": "9868a7611abdde43a4b54dce6f50a0b9e405760bc8707259776aff14d16f3455",
+          "contentType": "image/png"
+        },
+        {
+          "kind": "covers",
+          "key": "covers/cover-3x4-v2.png",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-3x4-v2.png",
+          "bytes": 715091,
+          "sha256": "cf015b4ba34c468ad91314b731678e8d3c2442ba12f1aa2864e1606c287e03e3",
+          "contentType": "image/png"
+        }
+      ]
+    },
+    {
       "version": 2,
       "fps": 60,
       "durationSeconds": 85.688,
