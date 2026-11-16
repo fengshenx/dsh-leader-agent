@@ -22,7 +22,7 @@
 
 | kind | 适用 | 默认槽位 | 默认流程 | 完成判据 |
 |---|---|---|---|---|
-| 研发 | 代码、测试、构建、配置、文档 | `dev` + `review` | dev → review → CI → merge | PR 已合并 + 验证证据 |
+| 研发 | 代码、测试、构建、配置、文档 | `dev` + `review` | dev → review → CI → merge | PR 已合并 + worktree 移除 |
 | 视频 | 宣传片、封面、旁白、发布包 | `video` + `video-review` | video → video-review → 发布包 | 成片 + 封面 + 文案 + `media.json` 通过验收 |
 
 - **一张卡只能有一个 kind。** 同时涉及代码和视频时，拆成两张卡：研发卡走 `dev`/`review`，视频卡走 `video`/`video-review`；不存在「混合」kind，也不要把两边的验收塞进一张卡。
@@ -34,7 +34,7 @@
 
 ### 派工
 
-- 一个 worker 一张卡：`create_card` 建卡（写清目标、范围、验收），`spawn_worker` 派工，再用 `update_card` 把卡片的 `slots` 绑到新建的 worker 会话。
+- 一个 worker 一张卡：`create_card` 建卡（写清目标、范围、验收），`spawn_worker` 派工时带 `cardId` + `slot` 原子绑卡（`slot` 填本次派工的角色名：研发卡 `dev` / `review`，视频卡 `video` / `video-review`）。两个参数必须成对传，绑不上会销毁新会话并报错；不绑卡时只传 `name`。worker 开工时自动拿到卡片事实，不用在消息里抄 `spec`。
 - 简报必须自包含：目标、允许改动的范围、必须遵守的约束、验收方式、worktree 路径。worker 看不到你的对话。
 - 一个 worker 同时在跑一件事。挂未完成卡的 worker 不能再接别的活（投递门禁会拒绝）。
 - 同一时刻只派能给一个人做的独立单元；有依赖的单元等前一个交付后再派。
@@ -63,7 +63,7 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
    定平台、画幅、时长、受众、目标动作、必须出现/绝不能出现的内容、参考片、发布账号与时间。写进卡 `spec`；没有确认不派工。
 
 1. **脚本 + 分镜（video）**
-   `video` 交付 hook、旁白、镜头表、标题与发布文案初稿、分镜/静帧。此阶段先交小样；`video-review` 做一次轻审，重点看主张、事实、术语和平台方向是否值得继续。
+   `video` 交付 hook、旁白、镜头表、标题与发布文案初稿、分镜/静帧。此阶段先交小样；`video-review` 做一次轻审，只看主张、事实、术语和平台方向是否值得继续，判据见 `SLOTS.md` 的 `video-review` 轻审节。
 
 2. **成片（video）**
    `video` 做 TTS 时间轴、HTML/CSS/JS 动画、rough cut、最终渲染、9:16 与 3:4 封面。分镜与音频没有冻结前不许全量出片；每次返工先改小样，不重跑整条。
@@ -111,7 +111,7 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 - 首帧、末帧、封面：首帧是否完整封面，末帧是否停在品牌，封面是否可读。
 - 390×844 与 1080×1920 各看一遍；无破图、无溢出、无 `pageerror`。
 - 旁白与字幕是否一致；事实、术语、数字是否有来源。
-- `media.json` 的 URL、bytes、sha256、contentType；OSS 匿名 HEAD 200。
+- `media.json` 的字段、共用字段与版本分组按 `growing/AGENTS.md` 核对；每条 URL 做 OSS 匿名 HEAD 200。
 - 改了源码的项目，`npm run check` 与 CI 仍要过；视频验收不能替代代码门禁。
 
 ### 视频卡完成判据
@@ -124,7 +124,9 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 向用户汇报时给：结论、当前 head/PR 或成片链接、验证证据、未验证项与待决策。
 
-**产出挂卡**：worker 开出的 PR、Issue、成片、封面、发布包立刻挂到对应卡的 `links`（`update_card`）。每条要有非空 `label`，`url` 必须是能归一化为 http(s) 绝对地址的完整地址——相对路径、`ftp:`、`javascript:` 都会被工具拒绝，报错会指出第几条、收到什么、该怎么改。`links` 是整体替换（`src/host/cards/store.js:222`），先读卡带上已有条目；同时带 `expectedRevision` 写，别让并发覆盖把别的会话刚挂上的条目冲掉——冲突就重读卡片再写。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失。
+**产出挂卡**：worker 开出的 PR、Issue、成片、封面、发布包立刻用 `update_card` 的 `addLinks` 挂到对应卡：按 id 合并、没有 id 时按 `label+url` 去重，增量追加不覆盖别人刚写的条目。每条要有非空 `label`，`url` 必须是能归一化为 http(s) 绝对地址的完整地址——相对路径、`ftp:`、`javascript:` 都会被工具拒绝，报错会指出第几条、收到什么、该怎么改。只有需要整份重排时才用 `links`，那是整体替换（`src/host/cards/store.js:222`），要先把已有条目读全。两种写法都带 `expectedRevision`，别让并发覆盖把别的会话刚挂上的条目冲掉——冲突就重读卡片再写。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失。
+
+**研发卡完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，在回报里说明等合并。合并后跑 `worktree:prune --apply`（要删远端分支时带 `--delete-remote`），确认工作区干净再收尾。
 
 ## 不要做
 
