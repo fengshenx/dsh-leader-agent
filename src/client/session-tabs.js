@@ -477,7 +477,7 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout }
           ? createElement(
               'span',
               { className: 'dsh-leader-agent-tab-icon' },
-              productIcon('project-outline', { size: 14 }),
+              productIcon('apps-add-outline', { size: 14 }),
             )
           : createElement(
               'span',

@@ -29,8 +29,7 @@
  * - `DSH_HOME`        自定义开发实例的数据根（默认 `<工作树>/.dev/home`）；**不能等于
  *                     `DSH_HOME_SOURCE`**，否则会覆写日常 profile，脚本直接拒绝
  * - `DSH_HOME_SOURCE` 源 HOME，默认 `~/.dsh`
- * - `DSH_PROFILE`     源 profile 名，默认 `web`（插件 manifest 的 platform 也是 web）
- * - `DEV_PORT`        监听端口，默认 `0`（系统分配）
+ * - `DEV_PORT`        监听端口；默认按工作树路径固定（30000–39999），`0` 随机
  * - `DEV_NO_OPEN=1`   不自动打开浏览器
  * - `DEV_DSH`         dsh 可执行文件名，默认 `dsh`
  */
@@ -41,11 +40,14 @@ import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { inheritCredentialRefs as inheritProfileCredentialRefs, prepareProfileDir } from './dev-instance.mjs'
-import { assertSeparateHome, assertWebBundle, devWebBundleHint, resolveDevPaths } from './dev-plan.mjs'
+import { PROFILE_NAME, assertSeparateHome, assertWebBundle, devPortFor, devWebBundleHint, resolveDevPaths } from './dev-plan.mjs'
 import { CommandNotFoundError, CommandShellError, commandLaunchError, spawnCommand, spawnCommandSync } from './spawn-command.mjs'
 
 const worktree = join(dirname(fileURLToPath(import.meta.url)), '..')
-const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: process.env })
+// `dsh web` 固定按 web profile 启动，不读 DSH_PROFILE；派生路径却会读。agent shell
+// 里 DSH_PROFILE=desktop 时照抄会把 desktop profile 派生到数据根，web 侧拿到空
+// profile——插件静默不挂。车道只认 web，派生与子进程都钉死。
+const paths = resolveDevPaths({ worktree, homeDir: homedir(), env: { ...process.env, DSH_PROFILE: PROFILE_NAME } })
 
 /**
  * 跑一条命令，失败即终止。
@@ -177,8 +179,11 @@ watcher.on('exit', (code, signal) => {
   console.error(`客户端 watch 已退出（code ${code}）：后续改动不会再自动重建`)
 })
 
-// 空字符串要落到默认值：`DEV_PORT=` 这种写法传下去会让 dsh 收到空的 --port
-const port = process.env.DEV_PORT || '0'
+// 空字符串要落到默认值：`DEV_PORT=` 这种写法传下去会让 dsh 收到空的 --port。
+// 默认按工作树固定端口，避免每次随机端口给浏览器新增一份 auth cookie（431）。
+const port = process.env.DEV_PORT !== undefined && process.env.DEV_PORT !== ''
+  ? process.env.DEV_PORT
+  : String(devPortFor(worktree))
 const args = ['web', '--port', port]
 if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
 
@@ -188,7 +193,11 @@ if (process.env.DEV_NO_OPEN === '1') args.push('--no-open')
 const dshCommand = process.env.DEV_DSH || 'dsh'
 try {
   dsh = spawnCommand({
-    command: dshCommand, args, cwd: worktree, env: { ...process.env, DSH_HOME: paths.home }, stdio: 'inherit',
+    command: dshCommand,
+    args,
+    cwd: worktree,
+    env: { ...process.env, DSH_HOME: paths.home, DSH_PROFILE: PROFILE_NAME, DSH_PROFILE_DIR: paths.profileDir },
+    stdio: 'inherit',
   })
 } catch (error) {
   if (!(error instanceof CommandNotFoundError)) throw error

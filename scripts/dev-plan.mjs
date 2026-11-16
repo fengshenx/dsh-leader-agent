@@ -16,6 +16,7 @@
  * @module dsh-leader-agent/scripts/dev-plan
  */
 
+import { createHash } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { resolveHomeFromEnv } from '../src/host/home-paths.js'
@@ -34,6 +35,22 @@ export const COPIED_PROFILE_FILES = ['cordis.yml', 'cordis.patch.yml']
 
 /** `dsh-credentials-local` 的存储文件名，落在各自的数据根里。 */
 export const CREDENTIALS_FILE = '.credentials.yaml'
+
+/**
+ * 开发实例的默认端口：按工作树路径取稳定值。
+ *
+ * 宿主按 authority（host:port）给浏览器发 `dsh-auth-*` cookie；`--port 0` 每次
+ * 换一个 authority，浏览器里就多一份 cookie。开发实例跑多了，Cookie 请求头会超过
+ * Node 的 16KB 上限，页面在进应用之前就报 431。固定端口让同一个工作树始终复用同一
+ * 份 cookie；不同工作树路径不同，端口也不同，仍可并行。
+ *
+ * @param {string} worktree - 工作树路径
+ * @returns {number} 30000–39999 之间的端口
+ */
+export function devPortFor(worktree) {
+  const digest = createHash('sha256').update(resolve(worktree)).digest()
+  return 30000 + (digest.readUInt32BE(0) % 10000)
+}
 
 /**
  * 算出开发实例的各个目录。

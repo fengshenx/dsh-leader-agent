@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
   LEADER_AGENT_PACKAGE, WEB_APP_BUNDLE, assertLeaderAgentBundle, assertSeparateHome, assertWebBundle,
-  corruptProfilePackageMessage, credentialRefBlocks, deriveProfilePackage, devWebBundleHint, mergeCredentialRefs,
+  corruptProfilePackageMessage, credentialRefBlocks, deriveProfilePackage, devPortFor, devWebBundleHint, mergeCredentialRefs,
   planNodeModules, resolveDevPaths, startWebBundleHint,
 } from '../scripts/dev-plan.mjs'
 
@@ -29,6 +29,14 @@ function sourcePackage() {
     },
   }
 }
+
+/** 开发端口按工作树路径稳定，避开系统临时端口段。 */
+test('开发端口按工作树路径稳定且落在 30000–39999', () => {
+  const first = devPortFor('/work/repo/.worktrees/feature-a')
+  assert.equal(first, devPortFor('/work/repo/.worktrees/feature-a/../feature-a'))
+  assert.ok(first >= 30000 && first < 40000)
+  assert.notEqual(first, devPortFor('/work/repo/.worktrees/feature-b'))
+})
 
 test('默认数据根落在工作树内，源 HOME 取 ~/.dsh', () => {
   const paths = resolveDevPaths({ worktree: WORKTREE, homeDir: '/home/user', env: {} })

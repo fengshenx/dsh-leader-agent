@@ -188,6 +188,11 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   const leaderTab = bar.locator('.dsh-leader-agent-tab[data-kind="leader"]')
   await waitForLocator(leaderTab, { description: '项目标签（leader 入口）', timeoutMs: 10_000 })
   assert.equal((await leaderTab.innerText()).trim(), '网站改版', '项目标签应当是项目名，不再单列 Leader')
+  assert.equal(
+    await leaderTab.locator('.dsh-leader-agent-tab-icon svg path').count(),
+    4,
+    '项目标签图标应与左栏项目行同一枚 apps 图标（三条 rect + 一个加号）',
+  )
   assert.equal(await bar.locator('.dsh-leader-agent-tab[data-kind="worker"]').count(), 0, '没点开的 worker 不该先出标签')
 
   const barBox = await bar.boundingBox()
