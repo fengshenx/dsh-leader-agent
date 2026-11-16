@@ -303,11 +303,43 @@
   .end-tagline b{font-weight:750;color:#fff}
   .end-platform{position:absolute;left:0;right:0;top:1000px;text-align:center;font:500 34px/1 var(--mono);letter-spacing:.1em;color:rgba(183,202,238,.58);opacity:0;transform:translateY(14px)}
   .end-platform b{color:var(--cyan);font-weight:600}
-  .end-install{position:absolute;left:50%;top:1110px;width:980px;margin-left:-490px;height:120px;border-radius:18px;border:1px solid rgba(131,157,229,.2);background:rgba(10,17,34,.72);display:flex;align-items:center;gap:14px;padding:0 26px;font:400 28px/1 var(--mono);letter-spacing:-.01em;color:rgba(206,221,250,.8);opacity:0;transform:translateY(16px);box-shadow:0 24px 60px rgba(0,0,0,.28)}
-  .end-install .prompt{color:rgba(125,227,255,.65);font-size:28px}
-  .end-install .install-tag{margin-left:auto;flex:none;font:500 18px/1 var(--mono);letter-spacing:.1em;color:rgba(125,227,255,.55);border:1px solid rgba(125,227,255,.2);border-radius:999px;padding:9px 12px}
+  .end-install{position:absolute;left:50%;top:1110px;width:1000px;margin-left:-500px;height:120px;border-radius:18px;border:1px solid rgba(131,157,229,.2);background:rgba(10,17,34,.72);display:flex;align-items:center;gap:12px;padding:0 22px;font:400 32px/1 var(--mono);letter-spacing:-.01em;color:rgba(206,221,250,.8);opacity:0;transform:translateY(16px);box-shadow:0 24px 60px rgba(0,0,0,.28)}
+  .end-install .prompt{color:rgba(125,227,255,.65);font-size:32px}
+  .end-install .install-tag{position:absolute;right:22px;top:-38px;font:500 18px/1 var(--mono);letter-spacing:.1em;color:rgba(125,227,255,.55);border:1px solid rgba(125,227,255,.2);border-radius:999px;padding:9px 12px;background:rgba(10,17,34,.9)}
   .end-foot{position:absolute;left:0;right:0;top:1688px;text-align:center;font:500 32px/1 var(--mono);letter-spacing:.1em;color:rgba(175,195,235,.44);opacity:0}
   .end-foot b{color:rgba(240,246,255,.86);font-weight:500}
+
+  /* S5B 真实感受：不用切 Session，但 Token 花费同步上涨 */
+  #s5b .hero{top:210px;font-size:112px;line-height:1.02;letter-spacing:-.065em}
+  #s5b .sub{top:540px;font-size:38px}
+  .cost-board{position:absolute;left:52px;right:52px;top:660px;display:flex;flex-direction:column;gap:18px}
+  .cost-row{position:relative;height:205px;border-radius:24px;border:1px solid rgba(131,157,229,.16);background:linear-gradient(145deg,rgba(18,27,52,.74),rgba(8,12,24,.58));display:grid;grid-template-columns:90px 1fr 230px;align-items:center;gap:22px;padding:0 30px;overflow:hidden;opacity:0;transform:translateY(24px)}
+  .cost-row::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:rgba(109,140,255,.55)}
+  .cost-row.good::before{background:linear-gradient(180deg,var(--cyan),transparent 80%)}
+  .cost-row.warn::before{background:linear-gradient(180deg,var(--amber),transparent 80%)}
+  .cost-icon{width:66px;height:66px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid rgba(137,162,225,.28);font:700 32px/1 var(--sans);color:rgba(231,241,255,.92)}
+  .cost-row.good .cost-icon{color:var(--cyan);border-color:rgba(125,227,255,.3);background:rgba(29,80,94,.2)}
+  .cost-row.warn .cost-icon{color:var(--amber);border-color:rgba(255,184,77,.34);background:rgba(92,59,14,.2)}
+  .cost-copy b{display:block;font-size:38px;line-height:1.1;font-weight:700;letter-spacing:-.03em;color:rgba(240,246,255,.94)}
+  .cost-copy span{display:block;margin-top:10px;font:400 32px/1.25 var(--mono);letter-spacing:.04em;color:rgba(164,185,224,.48)}
+  .cost-val{text-align:right;font:800 112px/1 var(--sans);letter-spacing:-.08em;color:var(--cyan);font-variant-numeric:tabular-nums}
+  .cost-row.warn .cost-val{color:var(--amber)}
+  .cost-row.warn .cost-val em{font-style:normal;display:inline-block;transform:translateY(-8px);font-size:80px}
+  .s5b-foot{position:absolute;left:72px;right:72px;top:1120px;font:500 32px/1.5 var(--mono);letter-spacing:.04em;color:rgba(174,194,235,.44)}
+  .s5b-foot b{color:rgba(238,245,255,.84);font-weight:500}
+  .s5b-note{position:absolute;left:72px;right:72px;top:1200px;font-size:34px;line-height:1.5;font-weight:500;letter-spacing:-.02em;color:rgba(174,194,235,.42);opacity:0}
+  .s5b-note b{color:rgba(238,245,255,.8);font-weight:600}
+  .s5b-mark{position:absolute;right:-30px;bottom:28px;font:800 300px/1 var(--sans);letter-spacing:-.1em;color:rgba(255,184,77,.025);pointer-events:none;user-select:none}
+  /* S7 提问 */
+  #s7 .hero{top:246px;font-size:122px;line-height:1.02}
+  #s7 .q-accent{color:var(--blue2)}
+  #s7 .sub{top:700px;font-size:40px}
+  .q-mark{position:absolute;right:-26px;top:540px;font:800 760px/1 var(--sans);letter-spacing:-.1em;color:rgba(109,140,255,.035);pointer-events:none;user-select:none}
+  .q-brand{position:absolute;left:0;right:0;bottom:172px;text-align:center;font-size:44px;line-height:1;font-weight:800;letter-spacing:-.06em;color:#f5f8ff;opacity:0}
+  .q-brand span{color:var(--blue2)}
+  .q-brand small{display:block;margin-top:12px;font:500 20px/1 var(--mono);letter-spacing:.14em;color:rgba(166,187,225,.4)}
+  .q-cta{position:absolute;left:0;right:0;bottom:90px;margin:0 auto;width:max-content;display:inline-flex;align-items:center;gap:12px;padding:14px 22px;border-radius:999px;border:1px solid rgba(131,157,229,.24);background:rgba(10,17,34,.62);font:500 22px/1 var(--mono);letter-spacing:.1em;color:rgba(196,214,245,.6);opacity:0;white-space:nowrap}
+  .q-cta i{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 14px rgba(255,184,77,.7)}
   /* loader / replay */
   #loader{position:fixed;inset:0;z-index:200;background:#04060e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;transition:opacity .6s ease,visibility .6s ease}
   #loader.done{opacity:0;visibility:hidden;pointer-events:none}
@@ -546,15 +578,44 @@
       <p class="sub" id="s5-sub">不是手速变快，是注意力不再被切碎。</p>
       <div class="stats">
         <div class="stat" data-stat="0"><div class="num">1<em>个</em></div><div><div class="label">统一入口</div><div class="desc">ONE CONVERSATION</div></div></div>
-        <div class="stat" data-stat="1"><div class="num"><span data-count="20">0</span><em>+</em></div><div><div class="label">并行任务</div><div class="desc">ALL RUNNING IN PARALLEL</div></div></div>
+        <div class="stat" data-stat="1"><div class="num"><span data-count="20">0</span><em>个</em></div><div><div class="label">并行任务</div><div class="desc">ALL RUNNING IN PARALLEL</div></div></div>
         <div class="stat" data-stat="2"><div class="num">1<em>句</em></div><div><div class="label">拿到全局进度</div><div class="desc">ASK ONCE, KNOW EVERYTHING</div></div></div>
       </div>
       <div class="s5-foot" id="s5-foot">你只负责决定，<b>Leader Agent 负责推进。</b></div>
     </div>
   </section>
 
-  <!-- 06 -->
+
+  <!-- 06 · 真实感受 -->
+  <section class="scene" id="s5b">
+    <div class="inner">
+      <div class="kicker" id="s5b-kicker"><span>06</span><i>/</i><span>真实感受</span></div>
+      <h1 class="hero" id="s5b-hero">
+        <span class="ln"><span>不用切 Session，</span></span>
+        <span class="ln"><span class="amber">但 Token，涨了。</span></span>
+      </h1>
+      <p class="sub" id="s5b-sub">省下的是注意力，不是账单。</p>
+      <div class="cost-board">
+        <div class="cost-row good" data-cost="0">
+          <div class="cost-icon">✓</div>
+          <div class="cost-copy"><b>Session 切换</b><span>不用在窗口之间来回跳</span></div>
+          <div class="cost-val">↓</div>
+        </div>
+        <div class="cost-row warn" data-cost="1">
+          <div class="cost-icon">↑</div>
+          <div class="cost-copy"><b>Token 花费</b><span>并行不是免费的</span></div>
+          <div class="cost-val"><em>↑</em></div>
+        </div>
+      </div>
+      <div class="s5b-foot" id="s5b-foot">真实感受：<b>轻松是真的，成本也是真的。</b></div>
+      <div class="s5b-note" id="s5b-note">把成本花在并行上，<b>而不是花在来回切换上。</b></div>
+      <div class="s5b-mark" aria-hidden="true">TOKEN</div>
+    </div>
+  </section>
+
+  <!-- 07 · 尾声 -->
   <section class="scene" id="s6">
+
     <div class="end-orbit"></div>
     <div class="end-core"><b>1</b></div>
     <div class="end-brand">dsh-leader-<span>agent</span></div>
@@ -564,7 +625,25 @@
     <div class="end-foot">把注意力，留给<b>要什么</b>。</div>
   </section>
 
+
+  <!-- 08 · 提问 -->
+  <section class="scene" id="s7">
+    <div class="inner">
+      <div class="q-mark" aria-hidden="true">?</div>
+      <div class="kicker" id="s7-kicker"><span>08</span><i>/</i><span>聊聊</span></div>
+      <h1 class="hero" id="s7-hero">
+        <span class="ln"><span>大家平时，</span></span>
+        <span class="ln"><span class="q-accent">用什么多 Agent</span></span>
+        <span class="ln"><span>编排系统？</span></span>
+      </h1>
+      <p class="sub" id="s7-sub">评论区聊聊，你是怎么管并行任务的。</p>
+      <div class="q-brand" id="s7-brand">dsh-leader-<span>agent</span><small>DEEPSEEK HARNESS</small></div>
+      <div class="q-cta" id="s7-cta"><i></i>COMMENT / 说说你的方案</div>
+    </div>
+  </section>
+
   <div id="replay">
+
     <div class="replay-brand">dsh<span>-leader-agent</span></div>
     <button id="btn-replay" aria-label="重播">↺</button>
     <div class="replay-label">再看一遍</div>
@@ -613,6 +692,14 @@
   const s6 = {
     orbit: $('.end-orbit'), core: $('.end-core'), brand: $('.end-brand'), tagline: $('.end-tagline'),
     install: $('.end-install'), platform: $('.end-platform'), foot: $('.end-foot'),
+  };
+  const s5b = {
+    kicker: $('#s5b-kicker'), hero: $('#s5b-hero'), sub: $('#s5b-sub'),
+    rows: $$('#s5b .cost-row'), foot: $('#s5b-foot'), note: $('#s5b-note'),
+  };
+  const s7 = {
+    kicker: $('#s7-kicker'), hero: $('#s7-hero'), sub: $('#s7-sub'),
+    brand: $('#s7-brand'), cta: $('#s7-cta'), mark: $('.q-mark'),
   };
 
   // S3：20 张并行任务卡 + 从 Leader Agent 发出的辐条
@@ -815,6 +902,30 @@
     fade(s5.foot, prog(t, 2.7, 3.1), 16);
   }
 
+  function updateS5B(t) {
+    fade(s5b.kicker, prog(t, .1, .45));
+    revealLines(s5b.hero, t, .22, .12);
+    fade(s5b.sub, prog(t, .8, 1.15), 22);
+    s5b.rows.forEach((row, i) => {
+      const p = easeOut(prog(t, 1.15 + i * .18, 1.55 + i * .18));
+      row.style.opacity = p;
+      row.style.transform = 'translateY(' + ((1 - p) * 22) + 'px)';
+    });
+    fade(s5b.foot, prog(t, 1.9, 2.3), 14);
+    fade(s5b.note, prog(t, 2.35, 2.75), 14);
+  }
+
+  function updateS7(t) {
+    fade(s7.kicker, prog(t, .1, .45));
+    revealLines(s7.hero, t, .22, .13);
+    fade(s7.sub, prog(t, .8, 1.15), 22);
+    fade(s7.brand, prog(t, 1.05, 1.45), 12);
+    fade(s7.cta, prog(t, 1.3, 1.7), 12);
+    const mp = easeOut(prog(t, 0, 1.6));
+    s7.mark.style.opacity = .035 * mp;
+    s7.mark.style.transform = 'translateY(' + ((1 - mp) * 30) + 'px)';
+  }
+
   function updateS6(t) {
     const op = easeOut(prog(t, .05, .65));
     s6.brand.style.opacity = op;
@@ -841,17 +952,19 @@
     { id: 's3', label: '编排', start: 28.11, end: 37.4, update: updateS3 },
     { id: 's4', label: '实战', start: 37.4, end: 63.896, update: updateS4 },
     { id: 's5', label: '结果', start: 63.896, end: 73.57, update: updateS5 },
-    { id: 's6', label: '尾声', start: 73.57, end: 85.688, update: updateS6 },
+    { id: 's5b', label: '真实感受', start: 73.57, end: 83.484, update: updateS5B },
+    { id: 's6', label: '尾声', start: 83.484, end: 95.602, update: updateS6 },
+    { id: 's7', label: '提问', start: 95.602, end: 102.888, update: updateS7 },
   ];
   SCENES.forEach((sc) => { sc.el = document.getElementById(sc.id); });
   const HUD_SCENES = SCENES.filter((sc) => sc.id !== 's0');
-  const DURATION = 85.688;
+  const DURATION = 102.888;
   let now = 0, playing = true, last = 0, raf = null;
 
   function sceneOpacity(sc, t) {
     const a = sc.id === 's0' ? 1 : smooth(prog(t, sc.start, sc.start + .45));
     // 末屏不淡出：成片停在品牌上，避免最后一帧变黑
-    const b = sc.id === 's6' ? 1 : 1 - smooth(prog(t, sc.end - .45, sc.end));
+    const b = sc.id === 's7' ? 1 : 1 - smooth(prog(t, sc.end - .45, sc.end));
     return a * b;
   }
   function updateHud(t) {
