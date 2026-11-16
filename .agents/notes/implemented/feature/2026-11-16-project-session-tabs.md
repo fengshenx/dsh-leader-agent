@@ -17,7 +17,7 @@ Status: implemented
 - **状态灯复用宿主 `StateDot` 三档**：运行中、完成未读、空闲，与项目树会话行同一口径。「等你输入」「失败」不在会话快照里，不另造判定。
 - **切 worker 时看板跟着走**：leader 右栏里已经有看板 tab 时，切到 worker 后在 worker 的右栏把它打开——看板按项目组织，内容仍是同一块。宿主右栏按会话存布局，没有跨会话 pin 的入口，所以不是把右栏钉在 leader，而是在目标会话里补开同一个 tab；leader 没开看板时不替用户打开。
 - **看板访问权有登记表兜底**：项目索引按 leader 指针或会话 cwd 反查，重启后 worker 会话可能还没 materialize、cwd 取不到；`resolveBoardAccess` 在索引查不到时用 `sessionsByProject` + 项目列表补出项目，避免把已登记的 worker 显示成「不属于任何项目」。
-- **切换不闪**：看板 tab 注册 `keepMounted`，已访问的 body 跟着会话保留；不可见时暂停卡片轮询，切回来立刻刷一次。标签栏补开看板时把 `projectId` 放进 navigation params，新 body 先用同一项目的内存快照起步（首帧直接画卡），再 revalidate。新 worker 第一次打开右栏仍会有一次面板展开，这是挂载而不是数据骨架。
+- **切换不闪**：看板 tab 注册 `keepMounted`，已访问的 body 跟着会话保留；不可见时暂停卡片轮询，切回来立刻刷一次。标签栏补开看板时把 `projectId` 放进 navigation params，新 body 先用同一项目的内存快照起步（首帧直接画卡），再 revalidate。补开动作先放在 layout effect，失败再由 effect 兜底，尽量赶在 paint 前把 worker 的右栏从默认 guide 切到看板；目标右栏已经有看板 tab 时只切焦点，不再 `openTab`——`openTab` 对已存在的页走 reveal，宿主会让 pane 闪一下高亮，切一次闪一次。新 worker 第一次打开右栏仍可能有宿主自己的面板展开动画（不是数据骨架），第二次起复用保留的视图。
 - **挂载**：在 `shell.overlay` 注册不占布局的锚，effect 里把宿主节点插到 `[data-slot="main"]` 父列的第一个子节点，portal 渲染标签栏；主面板与会话体加 flex 收缩标记。主槽定位与这部分标记参考 `dsh-session-tabs` 0.1.6（MIT），未复制其产物。宿主换掉主面板时用 `MutationObserver` 插回；找不到主槽只隐藏标签栏，不影响会话。
 - **不 retain 后台会话**：标签只是 `openSession` 的快捷方式，保留策略仍归宿主。看板、设置这类全局面板打开时标签栏让位。
 - **许可与测试基线**：新增脚本生成 `THIRD_PARTY_LICENSE`（内联的 minidenticons、参考实现、构建/测试工具分节，参考实现的 MIT 全文随仓库保存），`npm run check` 校验不过期。e2e 夹具把 profile 钉死为 `web`：`dsh web` 不读 `DSH_PROFILE` 而派生路径会读，在 agent shell 里照抄 `desktop` 会让插件静默不挂。

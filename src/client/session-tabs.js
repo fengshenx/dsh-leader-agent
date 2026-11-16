@@ -21,7 +21,7 @@
  * @module dsh-leader-agent/client/session-tabs
  */
 
-import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
@@ -428,7 +428,7 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   // `tabsIn` 是 sidebarRight 服务上面向 provider 的读取方法（不在 ISidebarRight
   // 接口里，但 rc.2 就有）；没有它时宁可不跟随，也不替用户猜要不要开。
   const lastBoardCarry = useRef(undefined)
-  useEffect(() => {
+  const carryBoard = useCallback(() => {
     if (panelActive || currentSessionId === undefined) return
     if (!view.visible || !view.isWorkerCurrent) {
       lastBoardCarry.current = undefined
@@ -444,11 +444,31 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     // 宿主在切换会话的同一帧把右栏挂到 worker 上；没落定就先不开，避免开在
     // leader 自己的右栏里。下一轮视图变化会再走到这里。
     if (sidebarRight.mounted?.getSnapshot?.() !== currentSessionId) return
+    // 目标会话的右栏已经有看板 tab（keepMounted 保留的）时只切焦点，不再
+    // openTab：openTab 对已存在的页走 reveal，宿主会让 pane 闪一下高亮——
+    // 那正是「切一次闪一次」的来源。
+    const existing = sidebarRight.tabsIn(currentSessionId).find((tab) => tab.kind === BOARD_TAB_KIND)
+    if (existing !== undefined) {
+      lastBoardCarry.current = currentSessionId
+      if (sidebarRight.active?.()?.id !== existing.id) sidebarRight.focus(existing.id)
+      return
+    }
+    try {
+      // 把项目 id 带进 tab navigation：看板 body 新挂时先用同一项目的上一份
+      // 数据起步，不让右栏先闪一下骨架。
+      sidebarRight.openTab(BOARD_TAB_KIND, { params: { projectId: view.project.id } })
+    } catch {
+      // layout effect 可能早于宿主 adopt worker 的右栏 store；这时不标记已处理，
+      // 让下面的 effect 在 paint 后重试。openTab 的公开契约也会在没有 surface
+      // 时抛错，不能把异常漏进渲染。
+      return
+    }
     lastBoardCarry.current = currentSessionId
-    // 把项目 id 带进 tab navigation：看板 body 新挂时先用同一项目的上一份数据
-    // 起步，不让右栏先闪一下骨架。
-    sidebarRight.openTab(BOARD_TAB_KIND, { params: { projectId: view.project.id } })
-  }, [currentSessionId, getSidebarRight, panelActive, view.visible, view.isWorkerCurrent, view.project?.leaderSessionId])
+  }, [currentSessionId, getSidebarRight, panelActive, view.visible, view.isWorkerCurrent, view.project?.id, view.project?.leaderSessionId])
+  // 先抢在 paint 前开：worker 的右栏默认收起/停在 guide，晚一帧开会让面板
+  // 先关再开，看起来闪一下。layout effect 失败时由同名 effect 兜底。
+  useLayoutEffect(() => { carryBoard() }, [carryBoard])
+  useEffect(() => { carryBoard() }, [carryBoard])
 
   if (!view.visible || panelActive) return null
 
