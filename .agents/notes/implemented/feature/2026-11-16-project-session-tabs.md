@@ -16,7 +16,7 @@ Status: implemented
 - **键盘可达**：标签用 roving tabindex，只有当前标签 `tabIndex=0`；←/→ 循环、Home/End 到首尾，切换会话与聚焦同步。关闭按钮保留自己的回车/空格语义。
 - **按项目持久化**在 localStorage `dsh-leader-agent.session-tabs.v1`，不进 `$DSH_HOME`：标签是浏览器侧导航快捷方式，不是会话真源，不值得为它加写宿主数据的协议。
 - **状态灯复用宿主 `StateDot` 三档**：运行中、完成未读、空闲，与项目树会话行同一口径。「等你输入」「失败」不在会话快照里，不另造判定。
-- **切 worker 时看板跟着走**：leader 右栏里已经有看板 tab、右栏展开、且看板是 leader 的前台 tab 时，切到 worker 后在 worker 的右栏把它打开——看板按项目组织，内容仍是同一块。宿主右栏按会话存布局，没有跨会话 pin 的入口，所以不是把右栏钉在 leader，而是在目标会话里补开同一个 tab；leader 没开看板、停在其他 tab、或右栏收着时不替用户打开（收起时强行展开会抢焦点）。
+- **切 worker 时看板跟着走**：leader 右栏里已经有看板 tab、右栏展开、且看板是 leader 的前台 tab 时，切到 worker 后在 worker 的右栏把它打开——看板按项目组织，内容仍是同一块。宿主右栏按会话存布局，没有跨会话 pin 的入口，所以不是把右栏钉在 leader，而是在目标会话里补开同一个 tab；leader 没开看板、停在其他 tab、或右栏收着时不替用户打开（收起时强行展开会抢焦点）；从 worker 切到另一个 worker 也不跟随——前台记录已经属于那个 worker，带过去等于替它换右栏。
 - **看板访问权有登记表兜底**：项目索引按 leader 指针或会话 cwd 反查，重启后 worker 会话可能还没 materialize、cwd 取不到；`resolveBoardAccess` 在索引查不到时用 `sessionsByProject` + 项目列表补出项目，避免把已登记的 worker 显示成「不属于任何项目」。
 - **切换不闪**：看板 tab 注册 `keepMounted`，已访问的 body 跟着会话保留；不可见时暂停卡片轮询，切回来立刻刷一次。标签栏补开看板时把 `projectId` 放进 navigation params，新 body 先用同一项目的内存快照起步（首帧直接画卡），再 revalidate。补开动作先放在 layout effect，失败再由 effect 兜底，尽量赶在 paint 前把 worker 的右栏从默认 guide 切到看板；目标右栏已经有看板 tab 时只切焦点，不再 `openTab`——`openTab` 对已存在的页走 reveal，宿主会让 pane 闪一下高亮，切一次闪一次。新 worker 第一次打开右栏仍可能有宿主自己的面板展开动画（不是数据骨架），第二次起复用保留的视图。
 - **挂载**：在 `shell.overlay` 注册不占布局的锚，effect 里把宿主节点插到 `[data-slot="main"]` 父列的第一个子节点，portal 渲染标签栏；栏可见时才给主面板与会话体加 flex 收缩标记，栏隐藏即摘掉，普通会话不受影响。主槽定位与这部分标记参考 `dsh-session-tabs` 0.1.6（MIT），未复制其产物。宿主换掉主面板时用 `MutationObserver` 插回；找不到主槽只隐藏标签栏，不影响会话。
@@ -40,7 +40,7 @@ Status: implemented
 - 依赖宿主 `[data-slot="main"]` 与主面板结构；宿主改布局时标签栏可能不显示或落位错误，见[已知限制](../../../../docs/limitations.md#客户端与宿主耦合)。flex 标记是 DOM 补丁，不是宿主契约。
 - 同一时刻只显示当前项目的标签栏，不支持跨项目混排；顺序固定为项目树顺序，没有拖拽；worker 标题相同时标签文字也会相同。状态灯只有三档。
 - worker 的看板是它自己右栏里的一次拷贝（同一项目卡片），滚动位置与详情浮层不跟 leader 共享；只在 leader 已开看板时跟随。
-- 已访问的看板 body 会保留在内存（宿主 `keepMounted`）：隐藏时卡片轮询、30 秒项目复核、60 秒时钟与 `focus` 监听全停，portal 到 `document.body` 的详情/确认浮层立即卸载；仍在的只有宿主的 `tabInfo`/会话状态订阅和一份按项目的内存快照。浏览器刷新后快照清空，第一次打开仍走一次加载。
+- 已访问的看板 body 会保留在内存（宿主 `keepMounted`）：隐藏时卡片轮询、30 秒项目复核、60 秒时钟与 `focus` 监听全停，portal 到 `document.body` 的详情/确认浮层立即卸载；仍在的只有宿主的 `tabInfo`/会话状态订阅、一份按项目的内存快照，以及 `useSlotStates` 对卡面槽位会话的 `sessions.retain`——保留同时让宿主不回收这些会话，隐藏的看板仍会占住它们（圆点状态来源的代价）。浏览器刷新后快照与保留都清空，第一次打开仍走一次加载。
 - 收益：项目内切 leader 与 worker 不用回左栏找行；关标签不动会话，误关只是再点一次；普通会话完全不受影响。
 
 ## Testing

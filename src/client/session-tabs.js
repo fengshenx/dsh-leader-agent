@@ -478,6 +478,8 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     if (typeof sidebarRight.tabsIn !== 'function') return
     // 只有看板本来就在 leader 的前台（可见 = 右栏展开且是当前 tab）才跟随：
     // 收起右栏或停在别的 tab 上时跟随等于替用户展开/换页面，还会抢焦点。
+    // 从 worker 切到另一个 worker 也不跟随：前台记录已属于那个 worker，
+    // 带过去等于替目标会话换右栏。
     if (lastBoardForegroundSession() !== leaderId) return
     if (!sidebarRight.tabsIn(leaderId).some((tab) => tab.kind === BOARD_TAB_KIND)) return
     // 宿主在切换会话的同一帧把右栏挂到 worker 上；没落定就先不开，避免开在

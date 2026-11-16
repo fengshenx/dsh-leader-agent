@@ -26,3 +26,7 @@ growing/**/*.m4a
 growing/**/*.zip
 growing/**/*standalone*.html
 growing/**/dist/
+
+# 会话标签栏的本地设计稿与对比图（视觉探索，不入库）
+/design-session-tabs.html
+/design/
