@@ -9,10 +9,10 @@
 `npm run dev` 不碰你日常的 `~/.dsh`：数据根落在工作树内的 `.dev/home`（会话、项目、卡片都在那里，删掉即重置），profile 从 `~/.dsh/profiles/web` 派生，`node_modules` 逐条符号链接到源 profile、只有 `dsh-leader-agent` 指向当前工作树。所以几个工作树可以同时跑，各自的插件版本与数据互不干扰；源 profile 升级 dsh 或改插件组合时，开发实例跟着走。
 
 - 凭据文件跟着数据根独立，新工作树第一次起实例本来要在界面上重填 API key：启动前会把源 HOME `.credentials.yaml` 的 `refs` 并进开发实例那一份。只搬 `refs`（按环境变量名存的密钥），不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录。目标里已有的条目不动，界面里改过的值优先；要重新跟随源就删掉 `.dev/home/.credentials.yaml` 里那一条。块式与行内（`refs: {}`）两种 `refs` 节形态都认，写回替换该节；认不出、重复 `refs:`、锁超时都直接报错，不猜拼接位置。目标凭据文档不是 version 1 布局时不动——pre-release 扁平布局由宿主启动时自行迁移，先追加 `refs:` 会让它两种布局都不成立。写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。没走 `DEEPSEEK_API_KEY` 启动环境那条路：它在 dsh 的凭据解析顺序里排在存储文件之后本来就能用，但 key 会留在 agent 工具进程的环境里。
-- 端口默认交给系统分配，启动日志里打印带 token 的 URL；要固定就 `DEV_PORT=3210 npm run dev`。
+- 端口默认按工作树路径固定（30000–39999），启动日志打印带 token 的 URL；`DEV_PORT=3210` 覆盖，`DEV_PORT=0` 随机。宿主按端口发 `dsh-auth-*` cookie，随机端口跑多了 Cookie 头会超限（431），清掉 `127.0.0.1` 的这组 cookie。
 - 改客户端代码（`src/client/`）由 `npm run dev` 挂的 esbuild watch 自动重建，宿主 web 组合默认挂着 `client-hmr`：它每 500ms 轮询插件产物的 `mtime/ctime/size`，变化就把运行中的插件换掉（拆旧 fiber、重新 `apply`），页面不刷新、插件内 React 状态重置、会话与连接数据保留。构建失败时正式产物保持上一份，watch 打印错误后继续监听；单独重建用 `npm run build:client`。宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
 - 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 minidenticons），改 `package.json` 请在主 checkout 安装。
-- 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DSH_PROFILE`（源 profile 名，默认 `web`；那个 profile 的 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。
+- 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。源 profile 固定 `web`，其 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错。
 
 ## 日常实例
 
@@ -47,6 +47,8 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 `release:check = check + build:client + verify:pack`，`prepublishOnly` 挂的就是它：手动 `npm publish` 与 CI 走同一条链路，漏构建产物、漏 skill、混进测试都在上传前失败。顺序不能倒——`verify:pack` 要求 `lib/client.js` 已存在；只从无参发布的理由见[已知限制](limitations.md#发布)。
 
 包内容判定不复刻 npm 的收录规则（`files` 前缀、dot 目录、`.gitignore` 都在 npm 里）：`npm pack` 打真实 tarball，用它的清单与 `scripts/pack-manifest.mjs` 的判定比对——必需集从 `main` / `exports` / `dsh.bundle.patch` 与 `files` 里的固定路径推导，skill 与 locale 由磁盘枚举，`.agents/` 只放行 `skills/` 前缀。清单过后把 tarball 装进临时目录按包名加载一遍（包入口导出、`src/host/**` 与 `src/shared/**` 逐文件 import、`lib/client.js` 外壳与 patch 文件）：`files` 收窄成 `["src/host/**"]` 时 `src/shared/*` 没进包、装上即 `ERR_MODULE_NOT_FOUND`。
+
+随包分发的第三方许可清单由 `npm run licenses` 生成到根目录 `THIRD_PARTY_LICENSE`：来源是 `package.json` 的依赖、`scripts/third-party-sources.json` 的参考实现与 `scripts/third-party/` 里的许可全文；`npm run check` 用 `--check` 校验它没有过期，`files` 已收录该文件。
 
 发版走 tag：改 `package.json` 的 `version` → 提交 → 打 `v<version>` 并 push。`.github/workflows/publish.yml` 校验 tag 与 version 一致、提交在 `origin/main` 上（`git merge-base --is-ancestor`），再以 trusted publishing（OIDC）发布并建 GitHub Release；`ci.yml` 跑同一条 `release:check`（node 取 `24.9.0` 与最新 `24` 两档），发布 job 握着 OIDC 身份与 `contents: write`，所以 `actions/*` 都 pin 到 commit SHA。预发布走 `next` dist-tag，Release 标 prerelease。步骤与失败处理见 [发版手册](release.md)。
 

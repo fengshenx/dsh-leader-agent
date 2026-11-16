@@ -99,6 +99,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 - **身份决定工具面**：Leader 拿得到 `spawn_worker` / `message_worker`，worker 拿不到；工具面在会话创建时由宿主裁剪，不是靠提示词约束模型。
 - **完成由机制结算并自动唤醒**：worker 那一轮结束时，Leader 自动收到一条回报（渲染成 worker 的发言气泡），不轮询、不靠 worker 自觉。
 - **worker 是常驻根会话**：能同时跑多个，人可以直接打开它的会话接着聊，进程重启后能冷恢复。代价是 Leader 侧不能强杀它，见[当前限制](#当前限制)。
+- **项目会话有标签栏**：第一个标签是项目名（Leader 入口），点开的 worker 带着状态灯加入；关标签只丢快捷方式，会话仍在项目树里。
 
 ## 设计取舍
 
@@ -147,6 +148,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 - **Leader 能纠偏、但不能中止 worker**：worker 是普通根会话，宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它无效（`interrupt_agent` 会返回假成功）。跑偏了用 `message_worker` 把纠偏指令 steer 进它当前轮次（正在跑就插下一步）；没有中止手段——宿主的 `Agent.cancel()` 没被接成工具，真卡死只能请人去那个会话处理。能读它的会话过程（`read_worker_session`，只读、不唤醒）。
 - **完成回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算；重启后自己打开 worker 会话看或续聊。
 - **看板只对项目会话展示**：leader 与该项目的 worker 能看到；同目录的普通会话与已换下的 leader 只看到提示，不属于任何项目的会话也没有看板。
+- **会话标签栏是 DOM 注入，不是宿主原生能力**：它插在会话头之上，标签状态按项目存在浏览器 localStorage，不随数据根迁移。
 - **卡片详情的人工写操作只有链接与删除**：链接可在详情里增删改；删除在详情页脚，二次确认后硬删、不可撤销，编号不复用，槽位绑定一并解除；完成、置顶、重命名仍归 leader 的卡片工具。模型没有删除卡片的工具，删除只能由人点出来。
 - **项目注册表只经左栏区块操作**：模型没有项目工具；目录选择器不可用时无法建项目，需换 web profile。
 - **项目树与官方工作区树并存**：项目不注册也不占用 dsh 工作区，项目会话落进官方树的「未分组」，在那里被渲染层排除（官方计数与搜索仍包含它们）；组里只剩被排除的行时「未分组」组头一起藏起来。
@@ -191,8 +193,12 @@ npm run e2e                       # 浏览器 e2e
 
 本方案在设计时参考过 **Cursor 的 Project 实现**与 **PStack 的编排机制**：把项目当成一等实体、按项目聚合会话与交付物，以及「leader 派工 / 执行者回报 / 交付看板」这条主线。
 
+会话标签栏参考了 [dsh-session-tabs](https://github.com/QIN-SMART/dsh-session-tabs)（MIT）的主面板定位与标签持久化实现；完整第三方清单见 [THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE)。
+
 也感谢 **DeepSeek Harness 团队**：宿主的插件契约，以及 worktree 并发、Agent Note、AGENTS.md 渐进式披露、文档防腐化这套工程实践，是本仓直接对照的来源。
 
 ## 许可证
 
 [MIT](LICENSE)
+
+第三方许可：[THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE)。

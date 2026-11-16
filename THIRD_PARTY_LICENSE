@@ -1,0 +1,84 @@
+# THIRD_PARTY_LICENSE
+
+本文件由 `node scripts/third-party-license.mjs` 生成，请勿手改。
+重新生成：`npm run licenses`；校验：`npm run licenses:check`（已并入 `npm run check`）。
+
+本包（dsh-leader-agent）自身以 MIT 许可发布，见 `LICENSE`。下面只列第三方代码与参考实现。
+
+## 随客户端产物分发的第三方代码
+
+### minidenticons 4.2.1（MIT）
+
+- 来源：https://github.com/laurentpayot/minidenticons
+- 版权：Copyright (c) 2021 Laurent Payot
+- 用途：worker / leader 头像的确定性像素图案。实现由 esbuild 内联进 lib/client.js；产物头部另有同份 MIT 声明。
+
+```text
+MIT License
+
+Copyright (c) 2021 Laurent Payot
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 随包安装的运行时依赖
+
+无。运行时只依赖宿主提供的基线模块（React、React DOM、`@deepseek-ai/dsh-client-ui-primitives`），它们由宿主模块表提供，不随本包分发。
+
+## 参考实现（未随包分发）
+
+### dsh-session-tabs 0.1.6（MIT）
+
+- 来源：https://github.com/QIN-SMART/dsh-session-tabs
+- 版权：Copyright (c) 2026 QIN-SMART
+- 参考位置：`src/client/session-tabs.js`
+- 参考内容：主面板槽位（`data-slot="main"`）定位与父列选择、`retainedBy.mainView` 判定当前会话、主面板与会话体的 flex 收缩标记，以及按项目持久化标签的部分实现。上游产物不随本包分发，许可全文见下。
+
+```text
+MIT License
+
+Copyright (c) 2026 QIN-SMART
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 构建与测试工具（不随包分发）
+
+| 包 | 版本 | 许可 | 来源 |
+| --- | --- | --- | --- |
+| esbuild | 0.28.2 | MIT | https://github.com/evanw/esbuild |
+| playwright | 1.64.1 | Apache-2.0 | https://github.com/microsoft/playwright |
+
+这些工具只在开发、构建或测试时使用，不进入 npm 包或客户端产物；完整许可文本在各自安装目录的 `LICENSE` 文件里。

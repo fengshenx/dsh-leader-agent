@@ -203,10 +203,42 @@ test('解析看板访问权：退役 leader 虽在项目会话表里，也不算
   assert.deepEqual(await resolveBoardAccess(worker.callRemote, 'worker-1'), { project, worker: true })
 })
 
-test('解析看板访问权：不属于项目就不问 worker 表', async () => {
+test('解析看板访问权：项目索引查不到时，登记表里没有就无项目', async () => {
   const remote = fakeRemote({ resolveProject: undefined })
   assert.deepEqual(await resolveBoardAccess(remote.callRemote, 'plain-1'), { project: undefined, worker: false })
-  assert.deepEqual(remote.calls, ['resolveProject'])
+  assert.deepEqual(remote.calls, ['resolveProject', 'sessionsByProject'])
+})
+
+test('解析看板访问权：项目索引查不到 worker cwd 时按登记表兜底', async () => {
+  const project = { id: 'p1', name: '项目一', leaderSessionId: 'leader-1' }
+  const groups = [{ projectId: 'p1', sessionIds: ['worker-1'] }]
+
+  const worker = fakeRemote({ resolveProject: undefined, sessionsByProject: groups, list: [project] })
+  assert.deepEqual(await resolveBoardAccess(worker.callRemote, 'worker-1'), { project, worker: true })
+  assert.deepEqual(worker.calls, ['resolveProject', 'sessionsByProject', 'list'])
+
+  // 登记表里的退役 leader 仍是项目会话表的历史，不是 worker
+  const retiredProject = { ...project, retiredLeaderSessionIds: ['retired-1'] }
+  const retired = fakeRemote({
+    resolveProject: undefined,
+    sessionsByProject: [{ projectId: 'p1', sessionIds: ['retired-1'] }],
+    list: [retiredProject],
+  })
+  assert.deepEqual(await resolveBoardAccess(retired.callRemote, 'retired-1'), { project: retiredProject, worker: false })
+
+  // 登记表里没有、项目列表读不到都 fail closed
+  const missing = fakeRemote({ resolveProject: undefined, sessionsByProject: groups, list: [project] })
+  assert.deepEqual(await resolveBoardAccess(missing.callRemote, 'other-1'), { project: undefined, worker: false })
+  const noList = fakeRemote({ resolveProject: undefined, sessionsByProject: groups })
+  assert.deepEqual(await resolveBoardAccess(noList.callRemote, 'worker-1'), { project: undefined, worker: false })
+})
+
+test('解析看板访问权：索引查不到且登记表读失败时 fail closed', async () => {
+  const remote = fakeRemote({
+    resolveProject: undefined,
+    sessionsByProject: new Error('项目通道调用失败：sessionsByProject（boom）'),
+  })
+  assert.deepEqual(await resolveBoardAccess(remote.callRemote, 'worker-1'), { project: undefined, worker: false })
 })
 
 test('解析看板访问权：worker 表失败按「不是 worker」兜底', async () => {

@@ -161,7 +161,10 @@ export function isBoardEntryVisible(project, sessionId, isWorker) {
  */
 export async function resolveBoardAccess(callRemote, sessionId) {
   const project = await resolveProject(callRemote, sessionId)
-  if (project === undefined) return { project, worker: false }
+  // 项目索引按 leader 或会话 cwd 反查；worker 的会话在宿主里可能还没 materialize
+  // （重启后按需加载），这时 cwd 取不到，索引给「不属于任何项目」。登记表知道它
+  // 属于哪个项目，用它兜底，别把已登记的 worker 当成普通会话。
+  if (project === undefined) return resolveBoardAccessFromRegistry(callRemote, sessionId)
   if (isLeaderProject(project, sessionId)) return { project, worker: false }
   // 退役会话与 worker 在同一个集合里（那张表列的是项目下的会话），身份要按
   // 项目摘要再分一次。
@@ -173,6 +176,38 @@ export async function resolveBoardAccess(callRemote, sessionId) {
     // worker 表读不到时按「不是 worker」处理：入口与面板都不越权展示，下一轮
     // 复核或聚焦时会重问。
     return { project, worker: false }
+  }
+}
+
+/**
+ * 项目索引反查不到时，按 worker 登记表找项目。
+ *
+ * 登记表同时列 worker 与换下的 leader；后者虽然能定位到项目，但不是项目会话，
+ * 这里按 `retiredLeaderSessionIds` 再分一次。登记表或项目列表读不到时 fail
+ * closed——判错这一侧的代价是少看见板，比越权展示小。
+ *
+ * @param {(method: string, args: unknown[]) => Promise<unknown>} callRemote - 远程调用
+ * @param {string} sessionId - 当前会话
+ * @returns {Promise<{ project: object | undefined, worker: boolean }>} 访问权
+ */
+async function resolveBoardAccessFromRegistry(callRemote, sessionId) {
+  try {
+    const sessions = await fetchProjectSessions(callRemote)
+    let projectId
+    for (const [id, ids] of sessions) {
+      if (ids.has(sessionId)) {
+        projectId = id
+        break
+      }
+    }
+    if (projectId === undefined) return { project: undefined, worker: false }
+    const projects = await callRemote('list', [])
+    const project = Array.isArray(projects) ? projects.find((item) => item?.id === projectId) : undefined
+    if (project === undefined) return { project: undefined, worker: false }
+    if (isRetiredLeaderSession(project, sessionId)) return { project, worker: false }
+    return { project, worker: !isLeaderProject(project, sessionId) }
+  } catch {
+    return { project: undefined, worker: false }
   }
 }
 

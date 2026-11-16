@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { prepareProfileDir, spawnDshWeb } from '../../scripts/dev-instance.mjs'
 import {
-  COPIED_PROFILE_FILES, assertWebBundle, devWebBundleHint, explicitEndpointFiles, resolveDevPaths,
+  COPIED_PROFILE_FILES, PROFILE_NAME, assertWebBundle, devWebBundleHint, explicitEndpointFiles, resolveDevPaths,
 } from '../../scripts/dev-plan.mjs'
 
 /** 仓库根：e2e 文件在 `<repo>/tests/e2e/`。 */
@@ -54,10 +54,15 @@ export async function startInstance({ baseUrl, env = {} }) {
  */
 export async function startInstanceIn({ root, baseUrl, env = {} }) {
   const home = join(root, 'home')
+  // `dsh web` 固定按 web profile 启动，不读 DSH_PROFILE；而 resolveDevPaths 会读。
+  // 在 DSH 自己的 agent shell 里 DSH_PROFILE=desktop，照抄就会把 desktop profile
+  // 派生到 home 下，web 侧拿到的却是空 profile——插件静默不挂，页面看起来正常。
+  // 车道只认 web，两端都钉死。
+  const profile = PROFILE_NAME
   const paths = resolveDevPaths({
     worktree: WORKTREE,
     homeDir: homedir(),
-    env: { DSH_HOME: home, DSH_HOME_SOURCE: process.env.DSH_HOME_SOURCE, DSH_PROFILE: process.env.DSH_PROFILE },
+    env: { DSH_HOME: home, DSH_HOME_SOURCE: process.env.DSH_HOME_SOURCE, DSH_PROFILE: profile },
   })
 
   const sourcePackagePath = join(paths.sourceProfileDir, 'package.json')
@@ -71,7 +76,7 @@ export async function startInstanceIn({ root, baseUrl, env = {} }) {
   assertWebBundle({
     profileDir: paths.sourceProfileDir,
     bundles: sourcePackage.dsh?.profile?.bundles,
-    hint: devWebBundleHint(),
+    hint: devWebBundleHint({ profileDir: paths.sourceProfileDir }),
   })
 
   prepareProfileDir({ worktree: WORKTREE, paths, sourcePackage })
@@ -96,6 +101,8 @@ export async function startInstanceIn({ root, baseUrl, env = {} }) {
       ...process.env,
       ...env,
       DSH_HOME: home,
+      DSH_PROFILE: profile,
+      DSH_PROFILE_DIR: paths.profileDir,
       // 假的密钥只是为了让适配器通过启动检查；请求全部落在本地 mock。
       DEEPSEEK_API_KEY: 'e2e-mock-key',
       DEEPSEEK_BASE_URL: baseUrl,

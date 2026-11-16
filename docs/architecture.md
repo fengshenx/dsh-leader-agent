@@ -92,6 +92,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 左栏项目区块 | 在「面板列表 nav」之后 DOM 注入容器，用 portal 渲染；0.2.2 起宿主把面板列表与工作区包进滚动网格，容器改插工作区顶部。布局取位「自动化任务之下、工作区之上」，找不到锚点时退回原槽 |
 | 项目树 | 自建树，列出该项目派出的 worker 与退役 leader；行形态与活动提示（宿主 `StateDot`）复刻官方工作区行，但行首图标用宿主 `apps-add-outline`（三格 + 一个加号），不用官方目录字形 |
 | 官方树排除 | 渲染层按 `data-row-key="session:<id>"` 给 leader 与 worker 行加隐藏类；数据层不动，因此官方计数与搜索仍包含它们 |
+| 项目会话标签栏 | 在 `shell.overlay` 挂一个不占布局的锚，effect 把宿主节点插到主面板第一个子节点、portal 渲染真正的栏；首标签是项目名（leader 入口），worker 标签按项目记在浏览器 localStorage；栏可见时给主面板与会话体加 flex 收缩标记（参考 dsh-session-tabs，见 `THIRD_PARTY_LICENSE`） |
 | 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
 | leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手说明（与输入框同宽同圆角）；「了解怎么用」经宿主 `inputActions` 发一条消息：先讲协作方式，再问是否初始化 `LEADER.md` 与 `SLOTS.md`（确认前不写文件）；关闭标记存 localStorage |
@@ -109,6 +110,8 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
 | `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
+
+浏览器侧的项目标签打开集合存在 localStorage 的 `dsh-leader-agent.session-tabs.v1` 下，按项目 id 分组，不进数据根；它只是导航快捷方式，清掉不影响任何会话。
 
 会话本体是宿主的 JSONL（`$DSH_HOME/sessions/`），不在本 bundle 手里。仓外插件不能新增 session event 类型（[capability-gaps 第 8 条](capability-gaps.md)），卡片与通知状态因此走独立存储域 + session projection。
 
