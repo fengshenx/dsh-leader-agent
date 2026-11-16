@@ -49,7 +49,7 @@ docs/               长期文档（架构地图、已知限制、宿主能力边
 .agents/notes/      决策记忆：按 {lifecycle}/{class}/ 归位（口径见目录内 README.md）
 LEADER.md           本仓作为项目时，leader 会话自动注入的手册
 COORDINATOR.md      旧名兼容入口，正文只指向 LEADER.md（外部工具用）
-SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review）
+SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review / video / video-review）
 ```
 
 ## 常用命令
