@@ -10,7 +10,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 竖屏视频 1080×1920，102.9 秒，60fps | [promo-1080x1920-v3.mp4](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920-v3.mp4) |
+| 竖屏视频 1080×1920，102.9 秒，60fps | [promo-1080x1920-v4.mp4](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920-v4.mp4) |
 | 单文件交互 HTML（下载后打开） | [promo-standalone-v3.html](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/html/promo-standalone-v3.html) |
 | 旁白 MP3 | [narration-zh-v3.mp3](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-zh-v3.mp3) |
 | 封面 9:16（视频首帧） | [cover-9x16-v2.png](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/covers/cover-9x16-v2.png) |
@@ -25,10 +25,12 @@
 
 ## v3 新增
 
+- **v4 修正大字抖动**：按场景固定页面并等两帧再截；音轨/HTML 仍用 v3。
+
 - **S5B 真实感受**（73.570–83.484）：`Session 切换 0` / `Token 花费 ↑`。旁白直接说：“我终于不用在 Session 之间来回切换了。但代价也很直接：Token 花费，同步涨上去了。”不把并行包装成免费。
 - **S7 提问**（95.602–102.888）：`大家平时，用什么多 Agent 编排系统？` 评论区聊聊。
 - S4B 的产品表述保留修正：**卡片是任务，不是会话**；同一个任务背后可能有多个 Worker Agent 会话。
-- 封面没有重做：S0 未变，9:16 / 3:4 继续用 v2 封面。
+- 封面未重做：S0 未变，9:16 / 3:4 用 v2。
 
 ## 事实
 
@@ -41,4 +43,4 @@
 
 - Bucket：`dsh-agent-leader`（`oss-cn-beijing`，公共读，专用 bucket）
 - 前缀：`growing/2026-11-16-leader-agent-promo/`
-- v3 只新增视频/旁白/standalone 的 key；封面沿用 v2，v1/v2 全部保留。上传/校验方法见 [`../AGENTS.md`](../AGENTS.md)。
+- v3 新增旁白/standalone 的 key，v4 只新增修正后的视频 key；封面沿用 v2，v1/v2/v3 全部保留。上传/校验方法见 [`../AGENTS.md`](../AGENTS.md)。
