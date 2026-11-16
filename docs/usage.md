@@ -28,6 +28,10 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 
 回合里「任务」是 leader 投递的正文，「用户」是人下钻到该会话说的话；宿主注入的上下文（换目录、plan 模式等）只记条数、不渲染正文。正文上限、权限与截断细节见[已知限制](limitations.md#worker-的控制面)。
 
+## 项目会话标签
+
+项目里有 worker 时，leader 会话顶部会出现标签栏：第一个是项目名（点它回 leader），点开的 worker 带状态灯加入（运行中 / 完成未读 / 空闲）。点标签切会话；× 只关标签，会话还在项目树里，再点一次就回来。标签按项目记在浏览器 localStorage，清缓存后 worker 标签要重新点开；普通会话不显示。
+
 ## 卡片
 
 调用 `create_card` 建卡（`title` 必填），`update_card` 改卡（`id` 必填，改内容带 `expectedRevision` 做乐观并发），`list_cards` 查卡（默认只列 active，一页 20 张；传 `cardId` 读单卡完整规格与链接）。`list_cards` 与 `create_card` 只给 leader；`update_card` leader 与 worker 都有（worker 用它把产物链接挂到自己的卡），普通会话一件也没有——它不在项目编排里，建出来的卡没有槽位、没有 leader 认领。worker 不建卡（建卡与派工是 leader 的动作链），`update_card` 也只作用于自己挂着的卡，且不能改状态、规格、标题、分类、排序与槽位绑定：完成由 leader 验收后判定（`done` / `archived` 会释放执行者），换执行者同样由它做；规格与标题都是验收锚点（走同一条注入通道），worker 的进展与产物写进回报和 `links`。

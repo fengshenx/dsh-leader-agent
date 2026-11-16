@@ -99,6 +99,7 @@ Three mechanisms make this more than "a smarter prompt":
 - **Identity decides the tool surface.** The Leader gets `spawn_worker` / `message_worker`; workers don't. The host trims the tool surface when a session is created — the model is not trusted to hold back.
 - **Completion is settled by the runtime, which wakes the Leader.** When a worker's turn ends, the Leader receives a report (rendered as the worker speaking), with no polling from the Leader and no submit step from the worker.
 - **Workers are persistent root sessions.** Several run at once, you can open any of them and keep the conversation going, and they cold-resume after a restart. The cost: the Leader cannot stop one, see [Current limitations](#current-limitations).
+- **Project sessions get a tab bar.** The project name is the Leader tab; workers you open join it with a live status light. Closing a tab only drops the shortcut — the session stays in the project tree.
 
 ## Design trade-offs
 
@@ -147,6 +148,7 @@ Running ten features in parallel requires real isolation between tasks: one work
 - **The Leader can steer a worker but cannot cancel one.** Workers are ordinary root sessions, so the host's `list_agents` / `send_message` / `interrupt_agent` do not apply to them (`interrupt_agent` even returns a false success). A worker that goes off track is steered with `message_worker`: the message is injected into the next step of its current turn. There is no cancel — the host's `Agent.cancel()` is not exposed as a tool here — so a wedged worker needs a human in its own session. You can read what it is doing (`read_worker_session`, read-only, no wake-up).
 - **Completion reports depend on the turn ending normally.** If the process dies before a worker finishes, that turn is never settled. After a restart, open the worker session and continue there.
 - **The board only shows for project sessions.** The leader and that project's workers see it; an ordinary session in the same directory, or a retired leader, only gets a notice, and sessions outside any project get no board at all.
+- **The session tab bar is a DOM overlay, not a native host feature.** It is inserted above the conversation header; per-project tab state lives in browser localStorage and does not travel with the data root.
 - **Card details only write links and delete the card.** Links can be added, edited and removed; deletion lives in the detail footer, asks for confirmation, and is a hard delete with no undo. Completing, pinning and renaming still belong to the Leader's card tools. Card numbers increase globally and are never reused or reclaimed; models have no card-deletion tool, so a human must click it.
 - **The project registry is only reachable from the left sidebar.** There are no project tools for the model; if the directory picker is unavailable you cannot create a project and need the web profile.
 - **The project tree coexists with the official workspace tree.** Projects neither register nor occupy dsh workspaces: project sessions land in the official tree's "Ungrouped" section and are excluded there at render time (official counts and search still include them); when nothing but excluded rows is left in that section, its header is hidden too.
@@ -191,8 +193,12 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 
 The design drew on **Cursor's Project implementation** and **PStack's orchestration mechanism**: treating a project as a first-class entity, aggregating sessions and deliverables per project, and the leader-dispatches / executor-reports / delivery-board line.
 
+The session tab bar drew on [dsh-session-tabs](https://github.com/QIN-SMART/dsh-session-tabs) (MIT) for main-panel anchoring and per-project tab persistence; see [THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE) for the full third-party inventory.
+
 Thanks also to the **DeepSeek Harness team**: the host plugin contract, and the worktree, Agent Note, progressive-disclosure and documentation practices this repository mirrors directly.
 
 ## License
 
 [MIT](LICENSE)
+
+Third-party notices: [THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE).

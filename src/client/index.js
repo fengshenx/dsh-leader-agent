@@ -24,6 +24,7 @@ import { SLOT_LOCALE_NAMESPACE, en, zh } from './locales.js'
 import { callProjectRemote, mountProjectRemote, reportProjectRemoteError } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
+import { SessionTabsAnchor } from './session-tabs.js'
 import { ToastOverlay } from './toast-view.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from './worker-report-definition.js'
 import { WorkerReportView } from './worker-report-view.js'
@@ -133,6 +134,22 @@ export function apply(ctx) {
     id: 'dsh-leader-agent-toast',
     order: 20,
   }, ToastOverlay)), 'dsh-leader-agent 提示浮层')
+
+  // 项目会话标签栏：宿主主区域一次只挂一条会话，没有原生多标签。挂到跨栏
+  // 浮层只是借一个稳定的 React 生命周期，真正的 DOM 由组件插到主面板顶部。
+  // 普通会话由组件自己判定隐藏，这里不做过滤。
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'dsh-leader-agent-session-tabs',
+    order: 30,
+    locale: SLOT_LOCALE_NAMESPACE,
+    inject: () => ({
+      callRemote: (method, args) => callProjectRemote(ctx, method, args),
+      getSessions: () => ctx.sessions,
+      getUiWorkspace: () => ctx.get('uiWorkspace'),
+      getLayout: () => ctx.get('layout'),
+    }),
+  }, SessionTabsAnchor)), 'dsh-leader-agent 会话标签栏')
 
   // leader 视图目标：让 leader 会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调

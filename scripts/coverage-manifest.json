@@ -15,6 +15,7 @@
     "src/client/modal-shell.js": "弹层外壳（焦点陷阱与 Escape 处理），归 e2e",
     "src/client/project-panel.js": "项目面板组件，归 e2e",
     "src/client/project-section.js": "项目树分区组件，归 e2e",
+    "src/client/session-tabs.js": "会话标签栏组件（DOM 注入 + React portal），依赖宿主主槽与真实会话切换，归 e2e",
     "src/client/toast-view.js": "toast 渲染组件，归 e2e",
     "src/client/worker-report-view.js": "worker 报告渲染组件，归 e2e",
     "src/client/worker-task-view.js": "leader 任务气泡组件，依赖宿主模块表，归 e2e"

@@ -132,8 +132,9 @@ test('详情里删卡：先确认、可取消，确认后卡片从看板与卡�
   watchProblems(page, problems)
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
   // 宿主新版本会先弹一次「预览版说明」；它盖住左栏，先按界面上的继续关掉。
+  // 弹窗晚于 goto 出现时，count() 会读到 0——等它一下，没弹窗再继续。
   const welcome = page.getByRole('button', { name: '继续', exact: true })
-  if (await welcome.count() > 0) await welcome.first().click()
+  try { await welcome.first().click({ timeout: 4000 }) } catch { /* 没弹窗就继续 */ }
 
   const projectRow = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })

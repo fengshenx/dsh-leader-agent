@@ -42,6 +42,8 @@ export const zh = Object.freeze({
   'guide.action.intro': '了解怎么用',
   'guide.action.dismiss': '知道了',
   'guide.intro.prompt': '这个项目还没配置，先讲讲 dsh-leader-agent 怎么用。',
+  'tabs.list': '项目会话标签',
+  'tabs.close': '关闭标签',
 })
 
 /** 英文字典，键与中文字典一致。 */
@@ -54,6 +56,8 @@ export const en = Object.freeze({
   'guide.action.intro': 'Show me how to use it',
   'guide.action.dismiss': 'Got it',
   'guide.intro.prompt': "This project isn't set up yet — show me how dsh-leader-agent works.",
+  'tabs.list': 'Project session tabs',
+  'tabs.close': 'Close tab',
 })
 
 /**
