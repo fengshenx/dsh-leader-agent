@@ -219,6 +219,30 @@ export function createWorkerRegistry({
     },
 
     /**
+     * 记录一次回报时刻。
+     *
+     * 回报时间是执行者的活性事实：巡查按它判断「多久没动静」，`list_cards` 的
+     * 槽位行按它告诉 leader「最后回报在多久前」。只写这一个字段，不动
+     * `registeredAt`（那是登记顺序，不是活跃度）与父会话归属。
+     *
+     * 没有这条记录时返回 undefined 且不写盘：派工登记失败是另一条路径上的故障，
+     * 不在这里补登记（补出来的记录没有父会话，续聊反而会找错人）。
+     *
+     * @param {string} childId - worker 会话 id
+     * @param {number} [at] - 回报时刻（毫秒）
+     * @returns {Promise<object | undefined>} 更新后的记录；没有这条时 undefined
+     */
+    async markReported(childId, at = Date.now()) {
+      return serializeDeferredWrite(async (registry, flush) => {
+        const existing = registry.workers.find((item) => item.childId === childId)
+        if (existing === undefined) return undefined
+        existing.lastReportAt = at
+        await flush()
+        return existing
+      })
+    },
+
+    /**
      * 删掉一个 worker 记录。
      *
      * 归档的会话不再能被续聊——宿主的归档闸门会拒绝对它的模型步——记录留着只会

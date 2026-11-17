@@ -1445,3 +1445,40 @@ test('worker 不能改卡片排序：排序是 leader 对看板的组织动作',
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('查卡结果带槽位会话的活性附注，只算本次返回的卡上的会话', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
+  try {
+    const store = createCardStore({ home })
+    const card = await store.create({ title: '实现派工', slots: { dev: { sessionId: 's1' } } })
+    await store.create({ title: '没有槽位' })
+    // 附注按真实当前时刻算相对时长；按固定毫秒基准会读成几十万小时。
+    const now = Date.now()
+    const tool = createListCardsTool({
+      store,
+      workerFacts: async () => new Map([
+        ['s1', { lastReportAt: now - 3 * 60_000, runningSince: now - 22 * 60_000 }],
+        // 不在本次返回的卡上：不能混进输出。
+        ['s9', { lastReportAt: now - 1_000 }],
+      ]),
+    })
+    const listed = await tool.execute({}, exec)
+    assert.equal(listed.slotNotes.s1, '最后回报 3 分钟前 · 已连续 22 分钟')
+    assert.equal(Object.hasOwn(listed.slotNotes, 's9'), false)
+    const rendered = tool.output.render({}, listed)[0].text
+    assert.match(rendered, new RegExp(`dev=s1（最后回报 3 分钟前 · 已连续 22 分钟）`))
+
+    // 没有活性事实时不加这个键：空对象没有意义，也过不了 lossless 判定的直觉。
+    const plain = createListCardsTool({ store, workerFacts: async () => new Map() })
+    const noNotes = await plain.execute({}, exec)
+    assert.equal(Object.hasOwn(noNotes, 'slotNotes'), false)
+    assert.match(plain.output.render({}, noNotes)[0].text, new RegExp(`dev=s1\\b`))
+
+    // 没接活性提供方时与从前一致，没有这个字段。
+    const legacy = await createListCardsTool({ store }).execute({}, exec)
+    assert.equal(Object.hasOwn(legacy, 'slotNotes'), false)
+    assert.equal(card.slots.dev.sessionId, 's1')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

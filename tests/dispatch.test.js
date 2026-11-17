@@ -7,6 +7,8 @@ import { createCardStore } from '../src/host/cards/store.js'
 import { createWorkerRegistry } from '../src/host/worker-registry.js'
 import { createWorkerSessions } from '../src/host/worker-sessions.js'
 import { createSpawnWorkerTool } from '../src/host/tools/spawn-worker.js'
+import { WORKER_STALL_SOURCE_KIND } from '../src/shared/worker-stall.js'
+import { WORKER_REPORT_SOURCE_KIND } from '../src/shared/worker-report.js'
 
 // 临时目录统一登记、测试结束后统一删：用例自己 rm 容易漏，也会在在途写盘
 // 与删除之间撞出 ENOENT / ENOTEMPTY。
@@ -231,6 +233,12 @@ function createMemoryRegistry() {
       const existing = workers.get(childId)
       if (existing === undefined) return undefined
       existing.name = name
+      return existing
+    },
+    async markReported(childId, at = Date.now()) {
+      const existing = workers.get(childId)
+      if (existing === undefined) return undefined
+      existing.lastReportAt = at
       return existing
     },
   }
@@ -1671,6 +1679,67 @@ test('接管后按会话 id 补投：改投过来的通知直接送到新 leader
   assert.deepEqual(await store.listPending(), [])
 })
 
+test('换 leader 交接：live 巡查提醒补投给新 leader，过期的丢弃', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const messages = []
+  const parent2 = createParent('leader-2', messages)
+  const ctx = {
+    ...fixture.ctx,
+    get(key) {
+      if (key === 'sessionController') {
+        return {
+          async resolveAgent(sessionId) {
+            return sessionId === 'leader-2' ? { agent: parent2 } : { error: '会话不在内存' }
+          },
+        }
+      }
+      return fixture.ctx.get(key)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx, store, workers: fixture.workers })
+  const parent1 = createParent('leader-1', fixture.delivered)
+  fixture.agents.set('leader-1', parent1)
+  await dispatchAndStart(dispatcher, {
+    parent: parent1,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const startedAt = (await dispatcher.workerFacts()).get(childId).runningSince
+  assert.equal(typeof startedAt, 'number')
+
+  // 旧 leader 盘上两条 stalled：一条对应仍在飞的同一轮，另一条 runStartedAt 已对不上。
+  const base = {
+    notice: 'stalled',
+    childId,
+    parentSessionId: 'leader-1',
+    name: '长活',
+    text: 'worker「长活」已连续 15 分钟没有回报，可能卡住了。',
+    summary: 'worker「长活」已连续 15 分钟没有回报',
+    createdAt: 1700000000000,
+    attempts: 0,
+  }
+  await store.enqueue({ ...base, id: 'stall-live', runStartedAt: startedAt })
+  await store.enqueue({ ...base, id: 'stall-stale', runStartedAt: startedAt - 1 })
+
+  // 交接：在飞记录与盘上通知一起改绑到新 leader。
+  assert.equal(dispatcher.reassignParent('leader-1', 'leader-2'), 1)
+  assert.equal(await store.reassignParent('leader-1', 'leader-2'), 2)
+  assert.equal(await dispatcher.redeliverPendingFor('leader-2'), 1)
+
+  // 断言最终 delivered 的 source，而不是只数 reassignParent 的条数。
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].source.kind, WORKER_STALL_SOURCE_KIND)
+  assert.equal(messages[0].source.stall.childSessionId, childId)
+  assert.equal(messages[0].source.stall.runStartedAt, startedAt)
+  assert.equal(fixture.delivered.length, 0)
+  assert.deepEqual(await store.listPending(), [])
+  dispatcher.dispose()
+})
+
 test('补投期间会话转忙：新进等待表的那条仍然送达', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
@@ -2628,4 +2697,343 @@ test('通知落盘失败时保留在飞记录，重试送出的仍是这一轮�
   assert.match(text, /第一轮产物/)
   assert.doesNotMatch(text, /第二轮产物/)
   assert.equal((await store.listPending()).length, 0)
+})
+
+test('每轮结算把回报时刻写进登记表，供巡查与槽位行判断活性', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const before = await fixture.workers.get(childId)
+  assert.equal(before.lastReportAt, undefined)
+  // 这一轮还没结束：活性事实里只有本轮起点。
+  const running = await dispatcher.workerFacts()
+  assert.equal(typeof running.get(childId).runningSince, 'number')
+  assert.equal(running.get(childId).lastReportAt, undefined)
+
+  await fixture.finishTurn(childId, { text: '改完了' })
+  await waitFor(() => fixture.delivered.length === 1)
+  const after = await fixture.workers.get(childId)
+  assert.equal(typeof after.lastReportAt, 'number')
+
+  // 人自己跟 worker 聊的轮次不经过派工器，不改回报时刻。
+  const reportedAt = after.lastReportAt
+  const settled = await fixture.finishTurn(childId, { text: '顺手问一句' })
+  assert.equal(settled, false)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal((await fixture.workers.get(childId)).lastReportAt, reportedAt)
+})
+
+test('未到 15 分钟不注入巡查提醒', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const startedAt = Date.now()
+  assert.equal(await dispatcher.scanStalled(startedAt + 15 * 60 * 1000 - 1), 0)
+  assert.equal(fixture.delivered.length, 0)
+  assert.equal((await store.listPending()).length, 0)
+  dispatcher.dispose()
+})
+
+test('长时间没有回报：注入一条后台巡查提醒，带卡与可照抄的回看调用', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 投递之后才「绑上」卡：投递门禁会拒绝挂未完成卡的 worker 接别的活，这里的
+  // 目的是验证巡查取卡，不是门禁。
+  let bound = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    listCardBindings: async () => (bound ? [
+      { cardId: 'card-1', number: 7, title: '修 auth 超时', status: 'active', slot: 'dev' },
+      { cardId: 'card-2', number: 8, title: '已完成的卡', status: 'done', slot: 'review' },
+    ] : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  bound = true
+  const childId = fixture.spawned.at(-1).sessionId
+  const at = Date.now() + 15 * 60 * 1000
+  assert.equal(await dispatcher.scanStalled(at), 1)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  const message = fixture.delivered[0]
+  assert.equal(message.source.kind, WORKER_STALL_SOURCE_KIND)
+  assert.equal(message.source.stall.childSessionId, childId)
+  assert.equal(typeof message.source.stall.runStartedAt, 'number')
+  const text = message.content[0].text
+  assert.match(text, /^【后台巡查】例行检查：worker「长活」已连续 15 分钟没有回报/)
+  assert.match(text, /worker「长活」/)
+  assert.match(text, /#7 修 auth 超时（槽位 dev）/)
+  assert.doesNotMatch(text, /#8 已完成的卡/)
+  assert.match(text, new RegExp(`read_worker_session\\(\\{ sessionId: "${childId}", turns: 3 \\}\\)`))
+  assert.match(text, /没有中止 worker 的手段/)
+  // 入队即投递，队列里不留残余。
+  assert.equal((await store.listPending()).length, 0)
+
+  // 结算之后这一轮不再巡查。
+  await fixture.finishTurn(childId, { text: '改完了' })
+  await waitFor(() => fixture.delivered.length === 2)
+  assert.equal(await dispatcher.scanStalled(at + 15 * 60 * 1000), 0)
+  dispatcher.dispose()
+})
+
+test('扫描与入队之间正好结算：不补发旧轮次的巡查提醒', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 把 activeCardsOf 的读盘卡住，让扫描停在最后一个 await 上；期间结算这一轮，
+  // 再放行。没有入队前的同步复核时，这条用例会先收回报、再收一条过期的提醒。
+  let releaseCards
+  const cardsGate = new Promise((resolve) => { releaseCards = resolve })
+  let enteredCards = false
+  // 只卡巡查里的 activeCardsOf，不能卡派工时 message 的投递门禁（同一个提供方）。
+  let gateScan = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    listCardBindings: async () => {
+      if (!gateScan) return []
+      enteredCards = true
+      await cardsGate
+      return []
+    },
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  gateScan = true
+  const scan = dispatcher.scanStalled(Date.now() + 15 * 60 * 1000)
+  await waitFor(() => enteredCards)
+  assert.equal(await fixture.finishTurn(childId, { text: '改完了' }), true)
+  releaseCards()
+  const injected = await scan
+  // 入队/投递还有微任务尾巴：给它们一个窗口，确认没有第二条。
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.deepEqual(
+    fixture.delivered.map((message) => message.source.kind),
+    [WORKER_REPORT_SOURCE_KIND],
+  )
+  assert.equal(injected, 0)
+  assert.equal((await store.listPending()).filter((item) => item.notice === 'stalled').length, 0)
+  dispatcher.dispose()
+})
+
+test('重启后补投：没有在飞轮次的巡查提醒直接丢弃', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 盘上留着上一进程的巡查提醒；新 dispatcher 没有任何在飞记录，补投它只会让
+  // leader 去查一个早已结束的轮次。
+  await store.enqueue({
+    id: 'stall-child-old-1700000000000',
+    notice: 'stalled',
+    childId: 'child-old',
+    parentSessionId: 'parent-1',
+    runStartedAt: 1700000000000,
+    name: '旧长活',
+    text: 'worker「旧长活」已连续 15 分钟没有回报，可能卡住了。',
+    summary: 'worker「旧长活」已连续 15 分钟没有回报',
+    createdAt: 1700000000000,
+    attempts: 0,
+  })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  assert.equal(await dispatcher.redeliverPending(parent), 0)
+  assert.equal(fixture.delivered.length, 0)
+  assert.deepEqual(await store.listPending(), [])
+
+  // 换 leader 的接管路径同样不补投过期提醒。
+  await store.enqueue({
+    id: 'stall-child-old-2-1700000000001',
+    notice: 'stalled',
+    childId: 'child-old-2',
+    parentSessionId: 'leader-2',
+    runStartedAt: 1700000000001,
+    name: '另一个旧长活',
+    text: 'worker「另一个旧长活」已连续 15 分钟没有回报，可能卡住了。',
+    summary: 'worker「另一个旧长活」已连续 15 分钟没有回报',
+    createdAt: 1700000000001,
+    attempts: 0,
+  })
+  assert.equal(await dispatcher.redeliverPendingFor('leader-2'), 0)
+  assert.deepEqual(await store.listPending(), [])
+  dispatcher.dispose()
+})
+
+test('等待期间这一轮结算：过期巡查提醒在空闲后也不投', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  // 父会话先忙：巡查提醒与随后的完成回报都进等待表。
+  const parent = createParent('parent-1', fixture.delivered, 'running')
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  assert.equal(await dispatcher.scanStalled(Date.now() + 15 * 60 * 1000), 1)
+  assert.equal((await store.listPending()).filter((item) => item.notice === 'stalled').length, 1)
+
+  await fixture.finishTurn(childId, { text: '改完了' })
+  assert.equal((await store.listPending()).filter((item) => item.notice === 'stalled').length, 1)
+  parent.status = 'idle'
+  await waitFor(() => fixture.delivered.length === 1)
+  // 空闲轮询是 500ms 一拍：再给一拍，确认过期提醒没有被补投。
+  await new Promise((resolve) => setTimeout(resolve, 700))
+  assert.deepEqual(
+    fixture.delivered.map((message) => message.source.kind),
+    [WORKER_REPORT_SOURCE_KIND],
+  )
+  assert.equal((await store.listPending()).filter((item) => item.notice === 'stalled').length, 0)
+  dispatcher.dispose()
+})
+
+test('提醒后十五分钟再提醒一次，同一次停滞不会重复入队', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  // 父会话正忙：提醒只能留在落盘队列里等空闲。
+  const parent = createParent('parent-1', fixture.delivered, 'running')
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const at = Date.now() + 15 * 60 * 1000
+  assert.equal(await dispatcher.scanStalled(at), 1)
+  assert.equal((await store.listPending()).filter((item) => item.notice === 'stalled').length, 1)
+
+  // 同一条还没被消费：下一拍跳过，不再堆第二条。
+  assert.equal(await dispatcher.scanStalled(at + 15 * 60 * 1000), 0)
+  assert.equal((await store.listPending()).filter((item) => item.notice === 'stalled').length, 1)
+  assert.equal(fixture.delivered.length, 0)
+  dispatcher.dispose()
+})
+
+test('父会话空闲后第二条巡查提醒照常投递', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const at = Date.now() + 15 * 60 * 1000
+  assert.equal(await dispatcher.scanStalled(at), 1)
+  assert.equal(await dispatcher.scanStalled(at + 15 * 60 * 1000), 1)
+  await waitFor(() => fixture.delivered.length === 2)
+  // 两次提醒是两个不同 id 的通知，没有互相顶掉。
+  assert.notEqual(
+    fixture.delivered[0].id,
+    fixture.delivered[1].id,
+  )
+  dispatcher.dispose()
+})
+
+test('会话已销毁、或插件已卸载时不再巡查', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const at = Date.now() + 15 * 60 * 1000
+  dispatcher.markDisposed(childId)
+  // 销毁的会话不会再 turn/end，提醒只会变成噪声。
+  assert.equal(await dispatcher.scanStalled(at), 0)
+  dispatcher.markAlive(childId)
+  assert.equal(await dispatcher.scanStalled(at), 1)
+  dispatcher.dispose()
+  assert.equal(await dispatcher.scanStalled(at + 15 * 60 * 1000), 0)
+})
+
+test('登记表读不出来时巡查退化为只按本轮起点判定，槽位附注也跳过', async () => {
+  const fixture = createFixture()
+  const logs = []
+  // 只有 list 坏：投递路径还要读 get，坏在读登记表与坏在登记本身是两回事。
+  const brokenRegistry = {
+    ...createMemoryRegistry(),
+    async list() {
+      throw new Error('workers.json 损坏')
+    },
+  }
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: brokenRegistry,
+    logger: (message) => logs.push(message),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const facts = await dispatcher.workerFacts()
+  assert.equal(facts.size, 1)
+  assert.equal(typeof facts.get(fixture.spawned.at(-1).sessionId).runningSince, 'number')
+  assert.equal(logs.some((line) => line.includes('读取 worker 活性事实失败')), true)
+  // 登记表坏了仍然按本轮起点判超时；故障不静默，日志里能查到。
+  assert.equal(await dispatcher.scanStalled(Date.now() + 15 * 60 * 1000), 1)
+  assert.equal(logs.some((line) => line.includes('巡查读取 worker 登记表失败')), true)
+  dispatcher.dispose()
 })

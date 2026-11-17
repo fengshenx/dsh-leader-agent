@@ -43,6 +43,8 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让 leader 卡在等待里。唤醒走 `agent.followup()`：宿主的 completion notice 只投给 subagent 树里的创建者，worker 是根会话不在树上，所以本 bundle 自己订阅会话事件重建同一条路径，并多做一层落盘（父会话离线时下次启动补投）。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步）且父会话空闲才投；为什么这样定、代价是什么见[限制](limitations.md#宿主语义与运行形态)。人下钻到 worker 会话直接对话不经过这条路径：那种轮次不登记在飞记录，不结算。
 
+worker 长时间没有回报时另一条链路会说话：一个 60s 的**巡查节拍**扫描 leader 发起、尚未 `turn/end` 的轮次，基线取 `max(本轮起点, 最后回报, 上次提醒)`，超过 15 分钟就往完成通知的落盘队列里放一条「后台巡查」提醒（独立 `source.kind` + 带 `【后台巡查】` 前缀的普通文本；不再注册会话节点，始终显示为官方上下文行）。同一 worker 已有未消费提醒时不再入队；结算后自动退出巡查，进程重启不重新生成提醒，补投时也会丢弃盘上已过期的巡查提醒。
+
 ### 工具面分配
 
 工具面按角色在**会话创建时**裁剪，落在 `agent/created` 上：
@@ -108,7 +110,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|
 | `projects.json` | 项目注册表：名字、目录、leader 会话、退役 leader 会话列表；数组顺序即左栏显示顺序（拖拽改，见[笔记](../.agents/notes/implemented/feature/2026-11-02-project-row-drag-order.md)） |
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
-| `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属 |
+| `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属；最后一轮回报时刻是巡查与 `list_cards` 槽位行的活性事实 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
 
 浏览器侧的项目标签打开集合存在 localStorage 的 `dsh-leader-agent.session-tabs.v1` 下，按项目 id 分组，不进数据根；它只是导航快捷方式，清掉不影响任何会话。

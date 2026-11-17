@@ -213,7 +213,8 @@ function mountBoardMonitor(ctx) {
  * 两类消息共用同一套注册机制：leader 派给 worker 的任务（worker 会话里，渲染成
  * 右侧用户气泡）与 worker 的回报（leader 会话里，渲染成左侧 agent 气泡）。定义都用
  * exclusive claim 接管带自家 `source.kind` 的 `user/message`，让它们不再走官方
- * 上下文行；渲染器按节点 kind 注册，键必须等于 kind。
+ * 上下文行；渲染器按节点 kind 注册，键必须等于 kind。后台巡查提醒不注册节点，
+ * 它是带 `【后台巡查】` 前缀的普通文本；不再注册会话节点，始终显示为官方上下文行。
  *
  * @param {object} ctx - 客户端 Cordis 上下文（已注入 `uiConversation`）
  * @returns {void}

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import {
   LIST_DEFAULT_LIMIT,
@@ -7,6 +8,7 @@ import {
   parseListQuery,
   renderCardList,
   selectCards,
+  slotSessionNotes,
 } from '../src/host/cards/card-list-view.js'
 
 /**
@@ -188,4 +190,78 @@ test('列表视图：分类显式成行，未分类写「无」', () => {
 test('列表视图：单卡查询同样给出分类', () => {
   const cards = [card({ kind: '文档' })]
   assert.match(renderCardList(cards, query({ cardId: 'card-1' })), /kind: 文档/)
+})
+
+test('槽位行附执行者的最后回报与在跑时长', () => {
+  const now = 10_000_000
+  const cards = [card({ slots: { dev: { sessionId: 's1' }, review: { sessionId: 's2' } } })]
+  const notes = slotSessionNotes(new Map([
+    ['s1', { lastReportAt: now - 3 * 60_000, runningSince: now - 22 * 60_000 }],
+    ['s2', { lastReportAt: now - 5 * 60_000 }],
+  ]), now)
+  const rendered = renderCardList(cards, query(), notes)
+  assert.match(rendered, /slots: dev=s1（最后回报 3 分钟前 · 已连续 22 分钟） review=s2（最后回报 5 分钟前）/)
+})
+
+test('在跑且从没回报过写「无记录」，空闲且从没回报过整段省略', () => {
+  const now = 10_000_000
+  const notes = slotSessionNotes(new Map([
+    ['s1', { runningSince: now - 15 * 60_000 }],
+    ['s2', {}],
+  ]), now)
+  assert.deepEqual(notes, { s1: '最后回报 无记录 · 已连续 15 分钟' })
+  const rendered = renderCardList([card({ slots: { dev: { sessionId: 's1' }, review: { sessionId: 's2' } } })], query(), notes)
+  assert.match(rendered, /dev=s1（最后回报 无记录 · 已连续 15 分钟）/)
+  // 没有活性事实的槽位与从前一样，只写会话 id。
+  assert.match(rendered, /review=s2(?!（)/)
+})
+
+test('没有活性快照或空槽时不加附注，槽位行保持原样', () => {
+  assert.deepEqual(slotSessionNotes(undefined), {})
+  assert.deepEqual(slotSessionNotes(null), {})
+  const rendered = renderCardList(
+    [card({ slots: { dev: { sessionId: 's1' }, review: {} } })],
+    query(),
+    slotSessionNotes(new Map(), 1),
+  )
+  assert.match(rendered, /slots: dev=s1 review=empty/)
+})
+
+test('单卡查询同样带活性附注', () => {
+  const now = 10_000_000
+  const notes = slotSessionNotes(new Map([['s1', { runningSince: now - 60_000 }]]), now)
+  const detail = renderCardList([card({ slots: { dev: { sessionId: 's1' } } })], query({ cardId: 'card-1' }), notes)
+  assert.match(detail, /slots: dev=s1（最后回报 无记录 · 已连续 1 分钟）/)
+})
+
+test('无活性提供方时查卡文本与改动前逐字节一致（golden）', () => {
+  const cards = [
+    {
+      id: 'card-a', number: 1, revision: 0, title: '实现派工', status: 'active',
+      createdAt: 1700000000000, updatedAt: 1700000001000,
+      slots: { dev: { sessionId: 's2' } },
+    },
+    {
+      id: 'card-b', number: 2, revision: 3, title: '修 auth 超时', kind: 'bug-fix', status: 'active',
+      createdAt: 1700000000000, updatedAt: 1700000003000,
+      spec: '验收：登录失败有可读原因。\n第二行。',
+      links: [
+        { id: 'l1', label: 'MR', url: 'https://example.test/mr/7' },
+        { id: 'l2', label: '日志', purpose: '现场' },
+      ],
+      slots: { dev: { sessionId: 's1' }, review: { sessionId: '' } },
+    },
+    {
+      id: 'card-c', number: 3, revision: 1, title: '前端切片', status: 'active',
+      createdAt: 1700000000000, updatedAt: 1700000002000, links: [], slots: {},
+    },
+    {
+      id: 'card-d', number: 4, revision: 2, title: '已完成的卡', status: 'done',
+      createdAt: 1700000000000, updatedAt: 1700000004000,
+    },
+  ]
+  const text = renderCardList(cards, query({ limit: 2 }))
+  // fixture 由 7cd537b 的渲染器生成；逐字节比对，不只比某个键在不在。
+  const golden = readFileSync(new URL('./fixtures/list-cards-no-provider.txt', import.meta.url), 'utf8')
+  assert.deepEqual(Buffer.from(text, 'utf8'), Buffer.from(golden, 'utf8'))
 })
