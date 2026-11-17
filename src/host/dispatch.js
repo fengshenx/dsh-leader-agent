@@ -421,6 +421,11 @@ export function createDispatcher({
         }
         const { notification } = item
         if (!pending.some((entry) => entry.id === notification.id)) continue
+        // 等待期间这一轮可能已经结算：过期提醒不再投，落盘队列里也一并丢掉。
+        if (notification.notice === 'stalled' && !stalledNoticeIsLive(notification)) {
+          await store.discard(notification.id)
+          continue
+        }
         const agent = await resolveParentAgent(parentSessionId, item.agent)
         if (agent === undefined || agent.status !== 'idle') {
           remaining.push(item)
@@ -961,6 +966,31 @@ export function createDispatcher({
   }
 
   /**
+   * 这个会话是否仍是同一条在飞、未结算的轮次。
+   *
+   * 巡查从扫描到入队跨了多个 await，期间 `turn/end` 可能已经结算并把记录删掉。
+   * 每次跨 await 之后都必须用这个同步判定复核，否则会把已经结束那轮的提醒补发出去。
+   *
+   * @param {string} sessionId - worker 会话 id
+   * @param {number} startedAt - 扫描时记录的本轮起点
+   * @returns {boolean} 是否同一条仍在飞且未结算的记录
+   */
+  function sameInflightRun(sessionId, startedAt) {
+    const current = inflight.get(sessionId)
+    return current !== undefined && current.summary === undefined && current.startedAt === startedAt
+  }
+
+  /**
+   * 盘上的巡查提醒是否仍对应一条在飞、未结算的同一轮。
+   *
+   * @param {object} notification - 待投递/补投的巡查提醒
+   * @returns {boolean} 是否还有效
+   */
+  function stalledNoticeIsLive(notification) {
+    return sameInflightRun(notification.childId, notification.runStartedAt)
+  }
+
+  /**
    * 给一个超时没有回报的 worker 注入一条巡查提醒。
    *
    * 落盘复用完成通知的队列：巡查与回报走同一条投递路径（父会话空闲才投、忙则等、
@@ -978,10 +1008,7 @@ export function createDispatcher({
     if (closed) return false
     // 扫描与注入之间轮次可能已经结束、或者 leader 又发了一条消息开了新的一轮：
     // 那就不再是「这条轮次」的停滞，下一拍会按新的起点重算。
-    const current = inflight.get(item.sessionId)
-    if (current === undefined || current.summary !== undefined || current.startedAt !== item.runStartedAt) {
-      return false
-    }
+    if (!sameInflightRun(item.sessionId, item.runStartedAt)) return false
     const pending = await store.listPending()
     if (pending.some((entry) => entry.notice === 'stalled' && entry.childId === item.sessionId)) {
       return false
@@ -996,6 +1023,10 @@ export function createDispatcher({
       ? worker.lastReportAt
       : item.lastReportAt
     const cards = await activeCardsOf(item.sessionId)
+    // 扫描到入队之间还有 listPending / workers.get / activeCardsOf 三个 await：
+    // 这一轮可能已经结算。入队前必须同步再核一次（不跨 await），否则会把结束
+    // 那轮的提醒补发出去，leader 会先收到回报、紧接着又收到「15 分钟没回报」。
+    if (!sameInflightRun(item.sessionId, item.runStartedAt)) return false
     const text = buildStallNoticeText({
       name: item.name,
       childId: item.sessionId,
@@ -1010,6 +1041,7 @@ export function createDispatcher({
       notice: 'stalled',
       childId: item.sessionId,
       parentSessionId,
+      runStartedAt: item.runStartedAt,
       name: item.name,
       text,
       summary: stallNoticeSummary(item.name, formatElapsed(item.elapsedMs)),
@@ -1166,6 +1198,13 @@ export function createDispatcher({
       let delivered = 0
       for (const notification of pending) {
         if (notification.parentSessionId !== agent.id) continue
+        // 重启后盘上的巡查提醒已经没有在飞轮次可对应。补投一条「15 分钟没回报」
+        // 只会让 leader 去查一个早已结束的轮次，和「重启不重新生成提醒」的意图
+        // 相反：直接丢弃，不占用一次唤醒与自动续行额度。
+        if (notification.notice === 'stalled' && !stalledNoticeIsLive(notification)) {
+          await store.discard(notification.id)
+          continue
+        }
         if (await deliver(notification, agent) === DELIVERED) delivered += 1
       }
       // 不清等待表：补投期间可能有条目刚进去（会话转忙、额度用尽），整表删会把它们
@@ -1189,6 +1228,11 @@ export function createDispatcher({
       let delivered = 0
       for (const notification of pending) {
         if (notification.parentSessionId !== parentSessionId) continue
+        // 与 `redeliverPending` 同一条边界：接管时盘上的过期巡查提醒不再补投。
+        if (notification.notice === 'stalled' && !stalledNoticeIsLive(notification)) {
+          await store.discard(notification.id)
+          continue
+        }
         if (await deliver(notification, undefined) === DELIVERED) delivered += 1
       }
       // 同 `redeliverPending`：不清等待表，这一轮新进去的条目要留在里面等空闲。

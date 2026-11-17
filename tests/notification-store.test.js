@@ -45,6 +45,20 @@ test('入队后可读出，标记已投递后移出队列', async () => {
   }
 })
 
+test('丢弃不再成立的通知：移出队列，不累计投递尝试', async () => {
+  const { store, home } = await createStore()
+  try {
+    await store.enqueue(SAMPLE)
+    await store.discard('note-1')
+    assert.deepEqual(await store.listPending(), [])
+    // 已不在队列时幂等，不写盘也不报错。
+    await store.discard('note-1')
+    assert.deepEqual(await store.listPending(), [])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('投递失败时通知留在队列并累计尝试次数', async () => {
   const { store, home } = await createStore()
   try {

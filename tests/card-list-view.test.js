@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import {
   LIST_DEFAULT_LIMIT,
@@ -231,4 +232,36 @@ test('单卡查询同样带活性附注', () => {
   const notes = slotSessionNotes(new Map([['s1', { runningSince: now - 60_000 }]]), now)
   const detail = renderCardList([card({ slots: { dev: { sessionId: 's1' } } })], query({ cardId: 'card-1' }), notes)
   assert.match(detail, /slots: dev=s1（最后回报 无记录 · 已连续 1 分钟）/)
+})
+
+test('无活性提供方时查卡文本与改动前逐字节一致（golden）', () => {
+  const cards = [
+    {
+      id: 'card-a', number: 1, revision: 0, title: '实现派工', status: 'active',
+      createdAt: 1700000000000, updatedAt: 1700000001000,
+      slots: { dev: { sessionId: 's2' } },
+    },
+    {
+      id: 'card-b', number: 2, revision: 3, title: '修 auth 超时', kind: 'bug-fix', status: 'active',
+      createdAt: 1700000000000, updatedAt: 1700000003000,
+      spec: '验收：登录失败有可读原因。\n第二行。',
+      links: [
+        { id: 'l1', label: 'MR', url: 'https://example.test/mr/7' },
+        { id: 'l2', label: '日志', purpose: '现场' },
+      ],
+      slots: { dev: { sessionId: 's1' }, review: { sessionId: '' } },
+    },
+    {
+      id: 'card-c', number: 3, revision: 1, title: '前端切片', status: 'active',
+      createdAt: 1700000000000, updatedAt: 1700000002000, links: [], slots: {},
+    },
+    {
+      id: 'card-d', number: 4, revision: 2, title: '已完成的卡', status: 'done',
+      createdAt: 1700000000000, updatedAt: 1700000004000,
+    },
+  ]
+  const text = renderCardList(cards, query({ limit: 2 }))
+  // fixture 由 7cd537b 的渲染器生成；逐字节比对，不只比某个键在不在。
+  const golden = readFileSync(new URL('./fixtures/list-cards-no-provider.txt', import.meta.url), 'utf8')
+  assert.deepEqual(Buffer.from(text, 'utf8'), Buffer.from(golden, 'utf8'))
 })

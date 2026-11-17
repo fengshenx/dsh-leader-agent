@@ -138,6 +138,25 @@ export function createNotificationStore({ home, logger = () => {} } = {}) {
     },
 
     /**
+     * 丢弃一条不再成立的通知（例如结算之后过期的巡查提醒）。
+     *
+     * 与 `markDelivered` 分开命名：这不是「投出去了」，只是不再投；调用方读日志/
+     * 补投统计时不会把它误算成一次成功投递。
+     *
+     * @param {string} id - 通知 id
+     * @returns {Promise<void>} 落盘完成
+     */
+    discard(id) {
+      return serialize(async () => {
+        const queue = await read()
+        const next = queue.pending.filter((item) => item.id !== id)
+        if (next.length === queue.pending.length) return
+        queue.pending = next
+        await write(queue)
+      })
+    },
+
+    /**
      * 标记通知已投递并移出队列。
      * @param {string} id - 通知 id
      * @returns {Promise<void>} 落盘完成

@@ -1,0 +1,13 @@
+卡片快照（scope=project，status=active，共 3 张）：
+# #2 修 auth 超时 [active] cardId: card-b revision: 3 更新于 2023-11-14T22:13:23.000Z
+  kind: bug-fix
+  spec: 有
+  links: MR · 日志
+  slots: dev=s1 review=empty
+# #3 前端切片 [active] cardId: card-c revision: 1 更新于 2023-11-14T22:13:22.000Z
+  kind: 无
+  spec: 无
+  links: 无
+
+本页显示 2 张，还有 1 张未显示（offset=2 继续）。
+本项目：active 3 · done 1 · archived 0，用 status 参数切换。
