@@ -2789,7 +2789,7 @@ test('长时间没有回报：注入一条后台巡查提醒，带卡与可照�
   assert.equal(message.source.stall.childSessionId, childId)
   assert.equal(typeof message.source.stall.runStartedAt, 'number')
   const text = message.content[0].text
-  assert.match(text, /^【后台巡查】worker「长活」已连续 15 分钟没有回报/)
+  assert.match(text, /^【后台巡查】例行检查：worker「长活」已连续 15 分钟没有回报/)
   assert.match(text, /worker「长活」/)
   assert.match(text, /#7 修 auth 超时（槽位 dev）/)
   assert.doesNotMatch(text, /#8 已完成的卡/)
