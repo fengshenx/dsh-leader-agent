@@ -1734,6 +1734,7 @@ test('换 leader 交接：live 巡查提醒补投给新 leader，过期的丢弃
   assert.equal(messages.length, 1)
   assert.equal(messages[0].source.kind, WORKER_STALL_SOURCE_KIND)
   assert.equal(messages[0].source.stall.childSessionId, childId)
+  assert.equal(messages[0].source.stall.runStartedAt, startedAt)
   assert.equal(fixture.delivered.length, 0)
   assert.deepEqual(await store.listPending(), [])
   dispatcher.dispose()
@@ -2786,8 +2787,9 @@ test('长时间没有回报：注入一条后台巡查提醒，带卡与可照�
   const message = fixture.delivered[0]
   assert.equal(message.source.kind, WORKER_STALL_SOURCE_KIND)
   assert.equal(message.source.stall.childSessionId, childId)
-  assert.match(message.source.stall.detail, /已连续 15 分钟 没有回报/)
+  assert.equal(typeof message.source.stall.runStartedAt, 'number')
   const text = message.content[0].text
+  assert.match(text, /^【后台巡查】worker「长活」已连续 15 分钟没有回报/)
   assert.match(text, /worker「长活」/)
   assert.match(text, /#7 修 auth 超时（槽位 dev）/)
   assert.doesNotMatch(text, /#8 已完成的卡/)

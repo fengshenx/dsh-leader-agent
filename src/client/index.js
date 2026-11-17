@@ -28,8 +28,6 @@ import { SessionTabsAnchor } from './session-tabs.js'
 import { ToastOverlay } from './toast-view.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from './worker-report-definition.js'
 import { WorkerReportView } from './worker-report-view.js'
-import { WORKER_STALL_NODE_KIND, workerStallDefinition } from './worker-stall-definition.js'
-import { WorkerStallView } from './worker-stall-view.js'
 import { WORKER_TASK_NODE_KIND, workerTaskDefinition } from './worker-task-definition.js'
 import { WorkerTaskView } from './worker-task-view.js'
 
@@ -212,11 +210,11 @@ function mountBoardMonitor(ctx) {
 /**
  * 注册 agent 消息的会话节点定义与渲染器。
  *
- * 三类消息共用同一套注册机制：leader 派给 worker 的任务（worker 会话里，渲染成
- * 右侧用户气泡）、worker 的回报（leader 会话里，渲染成左侧 agent 气泡）与后台
- * 巡查提醒（leader 会话里，渲染成紧凑触发行）。定义都用 exclusive claim 接管带自家
- * `source.kind` 的 `user/message`，让它们不再走官方上下文行；渲染器按节点 kind
- * 注册，键必须等于 kind。
+ * 两类消息共用同一套注册机制：leader 派给 worker 的任务（worker 会话里，渲染成
+ * 右侧用户气泡）与 worker 的回报（leader 会话里，渲染成左侧 agent 气泡）。定义都用
+ * exclusive claim 接管带自家 `source.kind` 的 `user/message`，让它们不再走官方
+ * 上下文行；渲染器按节点 kind 注册，键必须等于 kind。后台巡查提醒不注册节点，
+ * 它是带 `【后台巡查】` 前缀的普通文本，客户端没加载时由宿主降级为官方上下文行。
  *
  * @param {object} ctx - 客户端 Cordis 上下文（已注入 `uiConversation`）
  * @returns {void}
@@ -225,7 +223,6 @@ function mountMessageBubbles(ctx) {
   const bubbles = [
     { kind: WORKER_TASK_NODE_KIND, definition: workerTaskDefinition, view: WorkerTaskView, label: 'leader 任务' },
     { kind: WORKER_REPORT_NODE_KIND, definition: workerReportDefinition, view: WorkerReportView, label: 'worker 回报' },
-    { kind: WORKER_STALL_NODE_KIND, definition: workerStallDefinition, view: WorkerStallView, label: '后台巡查' },
   ]
   for (const bubble of bubbles) {
     try {

@@ -3,7 +3,6 @@ import { test } from 'node:test'
 import {
   STALL_THRESHOLD_MS,
   STALL_TICK_MS,
-  buildStallNoticeDetail,
   buildStallNoticeText,
   createStallWatch,
   formatElapsed,
@@ -56,7 +55,7 @@ test('阈值边界：差一毫秒不算，到点算', () => {
   assert.equal(STALL_TICK_MS < STALL_THRESHOLD_MS, true)
 })
 
-test('提醒正文带卡、时长、最后回报、可照抄的回看调用与「没有中止手段」', () => {
+test('提醒正文是自包含纯文本：前缀、sessionId、卡、回看调用与「提醒不是中止」', () => {
   const now = 10_000_000
   const text = buildStallNoticeText({
     name: '实现派工',
@@ -66,8 +65,8 @@ test('提醒正文带卡、时长、最后回报、可照抄的回看调用与�
     now,
     cards: [{ number: 7, title: '修 auth 超时', slot: 'dev' }],
   })
-  assert.match(text, /worker「实现派工」已连续 22 分钟 没有回报/)
-  assert.match(text, /子会话：child-1/)
+  assert.match(text, /^【后台巡查】worker「实现派工」已连续 22 分钟没有回报，可能卡住了。这是提醒，不是中止。/)
+  assert.match(text, /子会话 sessionId：child-1/)
   assert.match(text, /#7 修 auth 超时（槽位 dev）/)
   assert.match(text, /最后回报：3 分钟前/)
   assert.match(text, /read_worker_session\(\{ sessionId: "child-1", turns: 3 \}\)/)
@@ -84,15 +83,6 @@ test('没有挂卡、没有回报过时如实写「无记录」，不编造轮�
   })
   assert.doesNotMatch(text, /挂着的卡/)
   assert.match(text, /最后回报：无记录（这一轮还没有结束过）/)
-})
-
-test('界面正文只说「出了什么事、下一步做什么」，不带协议字段', () => {
-  const now = 10_000_000
-  const detail = buildStallNoticeDetail({ elapsedMs: 22 * 60_000, lastReportAt: now - 3 * 60_000, now })
-  assert.equal(detail, '已连续 22 分钟 没有回报，最后回报在 3 分钟前。先回看它的会话，再决定继续等待还是处理。')
-  const never = buildStallNoticeDetail({ elapsedMs: 15 * 60_000, now })
-  assert.match(never, /这一轮还没有结束过/)
-  assert.doesNotMatch(never, /child-|read_worker_session/)
 })
 
 test('单节拍按阈值注入，提醒后从不提醒时刻重新起算 15 分钟', async () => {

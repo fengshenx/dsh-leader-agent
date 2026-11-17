@@ -42,7 +42,6 @@ import { stallNoticeSummary, workerStallSource } from '../shared/worker-stall.js
 import {
   STALL_THRESHOLD_MS,
   STALL_TICK_MS,
-  buildStallNoticeDetail,
   buildStallNoticeText,
   createStallWatch,
   formatElapsed,
@@ -272,8 +271,7 @@ export function createDispatcher({
           notification.childId,
           notification.summary ?? notification.text.split('\n')[0] ?? '',
           {
-            detail: notification.detail ?? '',
-            elapsedMs: notification.elapsedMs ?? 0,
+            runStartedAt: notification.runStartedAt,
             lastReportAt: notification.lastReportAt,
           },
         )
@@ -1045,8 +1043,6 @@ export function createDispatcher({
       name: item.name,
       text,
       summary: stallNoticeSummary(item.name, formatElapsed(item.elapsedMs)),
-      detail: buildStallNoticeDetail({ elapsedMs: item.elapsedMs, lastReportAt, now: item.now }),
-      elapsedMs: item.elapsedMs,
       // 值为 undefined 的键过不了宿主工具结果的 lossless JSON 判定。
       ...lastReportAt === undefined ? {} : { lastReportAt },
       createdAt: item.now,

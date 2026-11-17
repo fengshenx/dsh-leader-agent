@@ -3,7 +3,6 @@ import { afterEach, test } from 'node:test'
 import { ensureBoardStyles } from '../src/client/board-styles.js'
 import { ensureAgentBubbleStyles } from '../src/client/agent-bubble-styles.js'
 import { ensureWorkerTaskStyles } from '../src/client/worker-task-styles.js'
-import { ensureWorkerStallStyles } from '../src/client/worker-stall-styles.js'
 
 /**
  * 造一个够用的 document 桩。
@@ -64,19 +63,9 @@ test('leader 任务气泡样式表注入一次，重复调用不重复追加', (
   assert.match(head[0].textContent, /\.dsh-leader-agent-worker-task/)
 })
 
-test('后台巡查触发行的样式表注入一次，重复调用不重复追加', () => {
-  const head = installDocument()
-  ensureWorkerStallStyles()
-  ensureWorkerStallStyles()
-  assert.equal(head.length, 1)
-  assert.equal(head[0].id, 'dsh-leader-agent-stall-notice')
-  assert.match(head[0].textContent, /\.dsh-leader-agent-stall-notice/)
-})
-
 test('没有 document 时直接返回，不抛错', () => {
   delete globalThis.document
   ensureBoardStyles()
   ensureAgentBubbleStyles()
   ensureWorkerTaskStyles()
-  ensureWorkerStallStyles()
 })

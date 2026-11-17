@@ -18,8 +18,7 @@
     "src/client/session-tabs.js": "会话标签栏组件（DOM 注入 + React portal），依赖宿主主槽与真实会话切换，归 e2e",
     "src/client/toast-view.js": "toast 渲染组件，归 e2e",
     "src/client/worker-report-view.js": "worker 报告渲染组件，归 e2e",
-    "src/client/worker-task-view.js": "leader 任务气泡组件，依赖宿主模块表，归 e2e",
-    "src/client/worker-stall-view.js": "后台巡查触发行的渲染组件（React.createElement + hooks），单测无渲染环境；当前没有该 source kind 的 e2e 场景，view 的运行时错误未被自动化覆盖"
+    "src/client/worker-task-view.js": "leader 任务气泡组件，依赖宿主模块表，归 e2e"
   },
   "thresholds": {
     "src/client/project-board-monitor.js": {

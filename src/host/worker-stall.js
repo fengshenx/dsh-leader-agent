@@ -101,8 +101,8 @@ export function buildStallNoticeText({
   now,
   cards = [],
 }) {
-  const lines = [`worker「${name}」已连续 ${formatElapsed(elapsedMs)} 没有回报，可能卡住了。`]
-  lines.push(`子会话：${childId}`)
+  const lines = [`【后台巡查】worker「${name}」已连续 ${formatElapsed(elapsedMs)}没有回报，可能卡住了。这是提醒，不是中止。`]
+  lines.push(`子会话 sessionId：${childId}`)
   if (cards.length > 0) {
     const refs = cards
       .map((card) => `#${card.number} ${card.title}（槽位 ${card.slot}）`)
@@ -115,25 +115,6 @@ export function buildStallNoticeText({
   lines.push(`下一步：先查明再决定继续等待或停止——调 read_worker_session({ sessionId: "${childId}", turns: 3 }) 回看它这一轮卡在哪一步。`)
   lines.push('本流程没有中止 worker 的手段；确认卡死时请人在项目树里打开它的会话处理，或 message_worker 投一条纠偏指令。')
   return lines.join('\n')
-}
-
-/**
- * 构造界面显示的提醒正文。
- *
- * 协议字段（子会话 id、可照抄调用）留在给模型读的正文里；界面上只需要「出了什么
- * 事、下一步做什么」。
- *
- * @param {object} input - 提醒内容
- * @param {number} input.elapsedMs - 已连续未回报的时长
- * @param {number} [input.lastReportAt] - 最后一次回报的时刻
- * @param {number} input.now - 当前时刻
- * @returns {string} 界面正文
- */
-export function buildStallNoticeDetail({ elapsedMs, lastReportAt, now }) {
-  const last = lastReportAt === undefined
-    ? '这一轮还没有结束过'
-    : `最后回报在 ${formatElapsed(now - lastReportAt)}前`
-  return `已连续 ${formatElapsed(elapsedMs)} 没有回报，${last}。先回看它的会话，再决定继续等待还是处理。`
 }
 
 /**
