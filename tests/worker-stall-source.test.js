@@ -14,7 +14,8 @@ test('巡查 source 带独立 kind、身份与队列要用的机器事实', () =
   assert.equal(source.kind, WORKER_STALL_SOURCE_KIND)
   assert.equal(source.form, 'notice')
   assert.equal(source.summary, '【后台巡查】摘要')
-  // 四个字段一个都不能少：队列去重、在飞核对与换 leader 改投都靠它们。
+  // 四个字段是投递时随消息带出的机器事实；队列去重、在飞核对与换 leader 改投
+  // 读的是 notification 的 childId / runStartedAt / parentSessionId，不是这里。
   assert.deepEqual(source.stall, {
     name: '实现派工',
     childSessionId: 'child-1',
