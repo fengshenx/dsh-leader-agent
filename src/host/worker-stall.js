@@ -101,7 +101,7 @@ export function buildStallNoticeText({
   now,
   cards = [],
 }) {
-  const lines = [`【后台巡查】worker「${name}」已连续 ${formatElapsed(elapsedMs)}没有回报，可能卡住了。这是提醒，不是中止。`]
+  const lines = [`【后台巡查】例行检查：worker「${name}」已连续 ${formatElapsed(elapsedMs)}没有回报。这不一定是卡住，也不代表任务失败；这是提醒，不是中止。`]
   lines.push(`子会话 sessionId：${childId}`)
   if (cards.length > 0) {
     const refs = cards

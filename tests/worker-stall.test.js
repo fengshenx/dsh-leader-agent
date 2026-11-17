@@ -65,7 +65,7 @@ test('提醒正文是自包含纯文本：前缀、sessionId、卡、回看调�
     now,
     cards: [{ number: 7, title: '修 auth 超时', slot: 'dev' }],
   })
-  assert.match(text, /^【后台巡查】worker「实现派工」已连续 22 分钟没有回报，可能卡住了。这是提醒，不是中止。/)
+  assert.match(text, /^【后台巡查】例行检查：worker「实现派工」已连续 22 分钟没有回报。这不一定是卡住，也不代表任务失败；这是提醒，不是中止。/)
   assert.match(text, /子会话 sessionId：child-1/)
   assert.match(text, /#7 修 auth 超时（槽位 dev）/)
   assert.match(text, /最后回报：3 分钟前/)

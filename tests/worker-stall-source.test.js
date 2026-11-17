@@ -33,10 +33,10 @@ test('缺 runStartedAt / lastReportAt 时干脆不带键（undefined 过不了 l
 test('摘要是带前缀的完整句子，并压到宿主上下文行的上限', () => {
   assert.equal(
     stallNoticeSummary('实现派工', '15 分钟'),
-    'worker「实现派工」已连续 15 分钟没有回报，可能卡住了',
+    '例行巡查：worker「实现派工」已连续 15 分钟没有回报',
   )
   const summary = stallNoticeSummary('x'.repeat(200), '15 分钟')
   assert.equal(summary.length, 120)
-  assert.match(summary, /^worker「/)
+  assert.match(summary, /^例行巡查：/)
   assert.match(summary, /…$/)
 })

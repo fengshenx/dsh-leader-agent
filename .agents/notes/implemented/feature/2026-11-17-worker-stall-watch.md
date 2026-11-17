@@ -14,7 +14,7 @@ leader 看不到 worker「已经连续跑了多久」：完成通知只在 `turn
 
 **提醒复用完成通知通道。** 提醒走同一个落盘队列与 `deliver`：父会话空闲才投、忙则等、换 leader 一并改投、共享自动续行护栏。入队前先看盘上有没有该 worker 未消费的 `stalled` 提醒——leader 长期缺位时每个 worker 只留一条，不会每 15 分钟堆一条。扫描到入队跨了 `listPending` / `workers.get` / `activeCardsOf` 三个 await，入队前再**同步**核一次在飞轮次的 `summary` / `startedAt`（不跨 await），堵住「扫描期间正好结算、随后补发旧轮次提醒」的窗口。提醒正文带挂着的未完成卡、已连续时长、最后回报、一条可照抄的 `read_worker_session({ sessionId, turns: 3 })`，并写明本流程没有中止手段（否则 leader 会去找一个不存在的停止工具）。
 
-**提醒是独立来源，但不再自绘。** `dsh-leader-agent/worker-stall` source kind 与 `source.stall`（`name` / `childSessionId` / `runStartedAt` / `lastReportAt`）保留：落盘队列去重、`stalledNoticeIsLive` 与换 leader 改投都靠它。呈现回到带 `【后台巡查】` 前缀的普通文本：正文自包含 worker 名字、可照抄的 sessionId、挂着的卡、已连续时长、最后回报与回看调用，并写明「这是提醒，不是中止」。客户端没有加载这个插件时，宿主按官方上下文行降级（裸 kind 标签 + 完整 summary + 正文），内容不丢。放弃自绘行的收益是删掉 223 行 client 代码、自维护 CSS 与零覆盖的 view；代价是失去点击名字下钻。
+**提醒是独立来源，但不再自绘。** `dsh-leader-agent/worker-stall` source kind 与 `source.stall`（`name` / `childSessionId` / `runStartedAt` / `lastReportAt`）保留：落盘队列去重、`stalledNoticeIsLive` 与换 leader 改投都靠它。呈现回到带 `【后台巡查】` 前缀的例行检查文本：正文自包含 worker 名字、可照抄的 sessionId、挂着的卡、已连续时长、最后回报与回看调用，并写明「不一定是卡住，也不代表任务失败；这是提醒，不是中止」。客户端没有加载这个插件时，宿主按官方上下文行降级（裸 kind 标签 + 完整 summary + 正文），内容不丢。放弃自绘行的收益是删掉 223 行 client 代码、自维护 CSS 与零覆盖的 view；代价是失去点击名字下钻。
 
 **工具面同步活性事实。** `workerFacts()` 一次读盘取全量登记表、叠上本进程在飞起点；`list_cards` 的槽位行据此附上「最后回报 X 前 · 已连续 Y」。running 且从未回报写「最后回报 无记录」，idle 且从未回报整段省略——非运行态没有回报过的历史会话，这个附注没有决策价值。协议层只在 `leader-mode` 的编排 playbook 加一条「收到巡查先回看再决定」的规则。
 

@@ -3,10 +3,9 @@
  *
  * worker 长时间没有回报时，机制侧注入一条提醒到 leader 会话。这条消息不是
  * worker 的产物，也不是用户输入：正文自己带「【后台巡查】」前缀，让它一眼区别于
- * 完成回报；`source.kind` 与 `source.stall` 留给机制读，不参与呈现。
+ * 完成回报；`source.kind` 与 `source.stall` 给机制与降级路径读，不驱动自绘呈现。
  *
- * 标记放在 `source` 而不是只靠正文前缀，理由与 worker 回报相同（见
- * `src/shared/worker-report.js`）：正文是模型读的事实，续聊与去重需要机器可读的
+ * 标记放在 `source` 而不是只靠正文前缀：前缀是给人读的，续聊与去重需要机器可读的
  * 身份；`stall` 里的 `childSessionId` / `runStartedAt` / `lastReportAt` 是落盘
  * 队列去重、`stalledNoticeIsLive` 与换 leader 改投的依据，一条都不能少。
  *
@@ -29,7 +28,7 @@ export const WORKER_STALL_SOURCE_KIND = 'dsh-leader-agent/worker-stall'
  * @returns {string} 一行摘要
  */
 export function stallNoticeSummary(name, elapsedText) {
-  return boundSummary(`worker「${name}」已连续 ${elapsedText}没有回报，可能卡住了`)
+  return boundSummary(`例行巡查：worker「${name}」已连续 ${elapsedText}没有回报`)
 }
 
 /**
