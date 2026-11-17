@@ -10,12 +10,16 @@
  * - 列表按最近更新倒序，默认只列 active，一页 20 张；
  * - 列表只给可观测事实（标题、编号、状态、id、版本、更新时间、链接标签、槽位），
  *   规格全文只在单卡查询出现——它是 leader 自述，读回不产生新信息；
+ * - 槽位行附上执行者的活性事实（最后回报、在跑时长）：卡面信号灯只表示状态，
+ *   看不出「它已经多久没动静」，而这正是 leader 判断要不要介入的依据；
  * - 规格与链接两项无论有无都显式成行：省略会让模型把「未渲染」读成
  *   「没有」，而「这张卡该补规格」「这张卡有产物链接」都会改变下一步动作；
  * - 输出有字符预算，逐卡累加，超出按卡截断并给出续页位置。
  *
  * @module dsh-leader-agent/host/cards/card-list-view
  */
+
+import { formatElapsed } from '../worker-stall.js'
 
 /** 单页张数缺省值。 */
 export const LIST_DEFAULT_LIMIT = 20
@@ -179,18 +183,68 @@ function summarizeLinks(card) {
 }
 
 /**
- * 槽位行：谁在这张卡上干活。
+ * 一个执行者的活性附注。
+ *
+ * 口径与巡查一致：在跑时「最后回报 + 已连续」都给，从没回报过就如实写「无记录」；
+ * 空闲时只给最后回报，从没回报过的历史会话整段省略——那不是决策信息，写出来只会
+ * 让行更长。
+ *
+ * @param {{ lastReportAt?: number, runningSince?: number } | undefined} fact - 活性事实
+ * @param {number} now - 当前时刻
+ * @returns {string} 附注；无可写事实时为空串
+ */
+function describeSessionActivity(fact, now) {
+  if (fact === null || typeof fact !== 'object') return ''
+  const lastReportAt = typeof fact.lastReportAt === 'number' && Number.isFinite(fact.lastReportAt)
+    ? fact.lastReportAt
+    : undefined
+  const runningSince = typeof fact.runningSince === 'number' && Number.isFinite(fact.runningSince)
+    ? fact.runningSince
+    : undefined
+  if (runningSince !== undefined) {
+    const last = lastReportAt === undefined ? '最后回报 无记录' : `最后回报 ${formatElapsed(now - lastReportAt)}前`
+    return `${last} · 已连续 ${formatElapsed(now - runningSince)}`
+  }
+  return lastReportAt === undefined ? '' : `最后回报 ${formatElapsed(now - lastReportAt)}前`
+}
+
+/**
+ * 把活性快照翻成槽位行附注。
+ *
+ * 只翻调用方给的这些会话：一次列卡把全项目 worker 的最后回报都写进输出，会让本就
+ * 有字符预算的列表被无关行挤占。
+ *
+ * @param {Map<string, { lastReportAt?: number, runningSince?: number }> | undefined} facts - 会话 id → 活性事实
+ * @param {number} [now] - 当前时刻
+ * @returns {Record<string, string>} 会话 id → 附注
+ */
+export function slotSessionNotes(facts, now = Date.now()) {
+  const notes = {}
+  if (facts === undefined || facts === null) return notes
+  for (const [sessionId, fact] of facts) {
+    if (typeof sessionId !== 'string' || sessionId === '') continue
+    const note = describeSessionActivity(fact, now)
+    if (note !== '') notes[sessionId] = note
+  }
+  return notes
+}
+
+/**
+ * 槽位行：谁在这张卡上干活、它多久没动静了。
  *
  * 只列卡片自己声明的槽位；空槽（没派工）不写——槽位没有会话就是没有，不必占行。
  *
  * @param {object} card - 卡片
+ * @param {Record<string, string>} [notes] - 会话 id → 活性附注
  * @returns {string | undefined} 槽位行
  */
-function renderSlots(card) {
+function renderSlots(card, notes = {}) {
   if (!card.slots || typeof card.slots !== 'object' || Array.isArray(card.slots)) return undefined
   const parts = Object.entries(card.slots).map(([name, binding]) => {
     const sessionId = binding?.sessionId
-    return `${name}=${typeof sessionId === 'string' && sessionId !== '' ? sessionId : 'empty'}`
+    if (typeof sessionId !== 'string' || sessionId === '') return `${name}=empty`
+    const note = notes[sessionId]
+    return `${name}=${sessionId}${typeof note === 'string' && note !== '' ? `（${note}）` : ''}`
   })
   return parts.length === 0 ? undefined : `  slots: ${parts.join(' ')}`
 }
@@ -201,12 +255,12 @@ function renderSlots(card) {
  * @param {object} card - 卡片
  * @returns {string[]} 摘要行
  */
-function renderCardBrief(card) {
+function renderCardBrief(card, notes) {
   const lines = [cardHeading(card)]
   lines.push(renderKind(card))
   lines.push(`  spec: ${hasSpec(card) ? '有' : '无'}`)
   lines.push(`  links: ${summarizeLinks(card)}`)
-  const slots = renderSlots(card)
+  const slots = renderSlots(card, notes)
   if (slots !== undefined) lines.push(slots)
   return lines
 }
@@ -217,7 +271,7 @@ function renderCardBrief(card) {
  * @param {object} card - 卡片
  * @returns {string[]} 详情行
  */
-function renderCardDetail(card) {
+function renderCardDetail(card, notes) {
   const lines = [cardHeading(card)]
   lines.push(renderKind(card))
   if (hasSpec(card)) {
@@ -231,7 +285,7 @@ function renderCardDetail(card) {
       lines.push(`  - ${link?.label ?? ''}${url}${purpose}`)
     }
   }
-  const slots = renderSlots(card)
+  const slots = renderSlots(card, notes)
   if (slots !== undefined) lines.push(slots)
   return lines
 }
@@ -320,13 +374,14 @@ export function renderCardDetailText(card, specPage) {
  *
  * @param {readonly object[]} cards - 全部卡片
  * @param {{ cardId: string | undefined, status: string, scope: string, limit: number, offset: number }} query - 查询条件
+ * @param {Record<string, string>} [slotNotes] - 会话 id → 槽位活性附注
  * @returns {string} 给模型看的文本
  */
-export function renderCardList(cards, query) {
+export function renderCardList(cards, query, slotNotes = {}) {
   if (query.cardId !== undefined) {
     const found = cards.find((card) => card.id === query.cardId)
     if (found === undefined) return `卡片不存在：cardId=${query.cardId}`
-    return renderCardDetail(found).join('\n')
+    return renderCardDetail(found, slotNotes).join('\n')
   }
   const { page, total, counts } = selectCards(cards, query)
   // 「项目」与「全库」是两种范围，措辞要跟着变：把全库说成「项目」会让模型
@@ -350,7 +405,7 @@ export function renderCardList(cards, query) {
   const blocks = []
   let used = header.length
   for (const card of page) {
-    const block = renderCardBrief(card).join('\n')
+    const block = renderCardBrief(card, slotNotes).join('\n')
     // 逐卡累加，超预算就从这里截断（宁可少给几张，也不整页灌进上下文）
     if (blocks.length > 0 && used + block.length > LIST_MAX_CHARS) break
     blocks.push(block)

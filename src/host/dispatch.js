@@ -38,6 +38,15 @@ import { createUserMessage } from './message.js'
 import { messageText } from '../shared/message-text.js'
 import { foldTurns, renderTranscript } from './worker-transcript.js'
 import { workerReportSource } from '../shared/worker-report.js'
+import { stallNoticeSummary, workerStallSource } from '../shared/worker-stall.js'
+import {
+  STALL_THRESHOLD_MS,
+  STALL_TICK_MS,
+  buildStallNoticeDetail,
+  buildStallNoticeText,
+  createStallWatch,
+  formatElapsed,
+} from './worker-stall.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
@@ -122,6 +131,9 @@ export function buildWorkerReport(outcome) {
  * @param {(input: { cardId: string, slot: string, sessionId: string }) => Promise<object>} [options.bindCardSlot] - 派工时把卡槽位绑到新会话；缺省时传了 cardId 就报错
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 调用方会话所属项目；与 `getCard` 一起校验绑卡归属
  * @param {(cardId: string) => Promise<object | undefined>} [options.getCard] - 按 id 读卡；派工绑卡前校验归属与状态
+ * @param {number} [options.stallThresholdMs] - 多久没有回报算可能卡住
+ * @param {number} [options.stallTickMs] - 巡查节拍间隔
+ * @param {() => number} [options.now] - 当前时刻（测试注入）
  * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 派工器接口
  */
@@ -140,6 +152,9 @@ export function createDispatcher({
   bindCardSlot,
   resolveProject,
   getCard,
+  stallThresholdMs = STALL_THRESHOLD_MS,
+  stallTickMs = STALL_TICK_MS,
+  now = Date.now,
   logger = () => {},
 }) {
   // 派工校验依赖它，漏传就整段静默跳过——宁可装配时报错，也不要悄悄少一道闸。
@@ -183,6 +198,8 @@ export function createDispatcher({
   let flushing = false
   /** @type {boolean} 插件是否已卸载：卸载后不再起定时器、不再投递。 */
   let closed = false
+  /** @type {Map<string, number>} 每个 worker 上一次注入巡查提醒的时刻 */
+  const alertAt = new Map()
 
   /**
    * 解析父会话的 agent。
@@ -247,16 +264,29 @@ export function createDispatcher({
     }
     const message = createUserMessage(
       [{ type: 'text', text: notification.text }],
-      workerReportSource(
-        // 本轮改名（label → name）之前落盘的通知只有 label，读旧队列时退回它。
-        notification.name ?? notification.label,
-        notification.childId,
-        // 改造前落盘的记录没有 summary / report / outcome：摘要退回正文首行
-        // （与当时的算法一致），回报正文与终态按缺省处理。
-        notification.summary ?? notification.text.split('\n')[0] ?? '',
-        notification.report ?? '',
-        notification.outcome ?? 'completed',
-      ),
+      // 巡查提醒不是 worker 的产物：换一个 source kind，界面才不会把「沉寂」
+      // 渲染成一次交付。
+      notification.notice === 'stalled'
+        ? workerStallSource(
+          notification.name ?? notification.label,
+          notification.childId,
+          notification.summary ?? notification.text.split('\n')[0] ?? '',
+          {
+            detail: notification.detail ?? '',
+            elapsedMs: notification.elapsedMs ?? 0,
+            lastReportAt: notification.lastReportAt,
+          },
+        )
+        : workerReportSource(
+          // 本轮改名（label → name）之前落盘的通知只有 label，读旧队列时退回它。
+          notification.name ?? notification.label,
+          notification.childId,
+          // 改造前落盘的记录没有 summary / report / outcome：摘要退回正文首行
+          // （与当时的算法一致），回报正文与终态按缺省处理。
+          notification.summary ?? notification.text.split('\n')[0] ?? '',
+          notification.report ?? '',
+          notification.outcome ?? 'completed',
+        ),
     )
     injected.add(message.id)
     resumeCounts.set(notification.parentSessionId, used + 1)
@@ -850,6 +880,158 @@ export function createDispatcher({
   }
 
   /**
+   * 取当前在跑、值得巡查的 worker。
+   *
+   * 只认本进程的在飞记录：进程重启后没有正在跑的轮次，也就没有必要补提醒；
+   * 已经结算、正在等落盘重试的记录（`summary` 已冻结）不算在跑。
+   *
+   * `lastReportAt` 从落盘登记表读：它跨进程还在，而本轮起点只活在内存里。
+   *
+   * @returns {Promise<object[]>} 巡查候选
+   */
+  async function listRunningForStall() {
+    if (inflight.size === 0) return []
+    let records = []
+    try {
+      records = await workers.list()
+    } catch (error) {
+      // 读不出登记表时不算「没在跑」：本轮起点仍然是活性事实，按没有 lastReportAt 判。
+      logger(`dsh-leader-agent: 巡查读取 worker 登记表失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+    const byId = new Map(records.map((record) => [record.childId, record]))
+    const items = []
+    for (const [sessionId, record] of inflight) {
+      if (record.summary !== undefined) continue
+      // 会话已销毁：它的 turn/end 不会再来，提醒只会变成噪声。
+      if (disposed.has(sessionId)) continue
+      items.push({
+        sessionId,
+        name: record.name ?? sessionId,
+        parentSessionId: record.parentSessionId,
+        parentAgent: record.parent,
+        runStartedAt: record.startedAt,
+        lastReportAt: byId.get(sessionId)?.lastReportAt,
+        lastAlertAt: alertAt.get(sessionId),
+      })
+    }
+    return items
+  }
+
+  /**
+   * worker 挂着的未完成卡：提醒里要能指出是哪条工作线。
+   *
+   * 与投递门禁同口径，只看 `active`：已完成的卡已经不是它当前在服务的工作。
+   *
+   * @param {string} sessionId - worker 会话 id
+   * @returns {Promise<{ number: number|string, title: string, slot: string }[]>} 卡引用
+   */
+  async function activeCardsOf(sessionId) {
+    if (typeof listCardBindings !== 'function') return []
+    const bindings = await listCardBindings(sessionId)
+    return bindings
+      .filter((binding) => binding.status === 'active')
+      .map((binding) => ({ number: binding.number, title: binding.title, slot: binding.slot }))
+  }
+
+  /**
+   * 取 worker 的活性快照：最后回报时刻与「从什么时候起在跑」。
+   *
+   * `list_cards` 的槽位行与巡查共用这份事实。一次读盘取全量登记表，再叠上本进程
+   * 的在飞起点——逐 worker 读 `workers.json` 会让一次列卡付 O(N × 文件体积)。
+   *
+   * @returns {Promise<Map<string, { lastReportAt?: number, runningSince?: number }>>} 会话 id → 活性事实
+   */
+  async function workerFacts() {
+    const facts = new Map()
+    try {
+      for (const record of await workers.list()) {
+        facts.set(record.childId, {
+          ...typeof record.lastReportAt === 'number' ? { lastReportAt: record.lastReportAt } : {},
+        })
+      }
+    } catch (error) {
+      // 读不出登记表时不阻塞查卡：只是槽位行少一段附注。
+      logger(`dsh-leader-agent: 读取 worker 活性事实失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+    for (const [sessionId, record] of inflight) {
+      const previous = facts.get(sessionId) ?? {}
+      facts.set(sessionId, { ...previous, runningSince: record.startedAt })
+    }
+    return facts
+  }
+
+  /**
+   * 给一个超时没有回报的 worker 注入一条巡查提醒。
+   *
+   * 落盘复用完成通知的队列：巡查与回报走同一条投递路径（父会话空闲才投、忙则等、
+   * 换 leader 一并改投），不需要第二套唤醒机制。
+   *
+   * 幂等两层：
+   * - 盘上已有该 worker 没被消费的提醒时不再入队——leader 长期缺位时每个 worker
+   *   只留一条，不会每十五分钟堆一条；
+   * - 入队后立刻记 `lastAlertAt`，下一拍起算新的 15 分钟。
+   *
+   * @param {object} item - 巡查候选（见 `listRunningForStall`）
+   * @returns {Promise<boolean>} 是否真的注入了提醒
+   */
+  async function alertStalled(item) {
+    if (closed) return false
+    // 扫描与注入之间轮次可能已经结束、或者 leader 又发了一条消息开了新的一轮：
+    // 那就不再是「这条轮次」的停滞，下一拍会按新的起点重算。
+    const current = inflight.get(item.sessionId)
+    if (current === undefined || current.summary !== undefined || current.startedAt !== item.runStartedAt) {
+      return false
+    }
+    const pending = await store.listPending()
+    if (pending.some((entry) => entry.notice === 'stalled' && entry.childId === item.sessionId)) {
+      return false
+    }
+    // 父会话归属以落盘登记表为准：换 leader 后内存记录已经改过，但登记表才是
+    // 跨进程真源；读不到时退回在飞记录上的归属。
+    const worker = await workers.get(item.sessionId)
+    const parentSessionId = typeof worker?.parentSessionId === 'string'
+      ? worker.parentSessionId
+      : item.parentSessionId
+    const lastReportAt = typeof worker?.lastReportAt === 'number'
+      ? worker.lastReportAt
+      : item.lastReportAt
+    const cards = await activeCardsOf(item.sessionId)
+    const text = buildStallNoticeText({
+      name: item.name,
+      childId: item.sessionId,
+      elapsedMs: item.elapsedMs,
+      lastReportAt,
+      now: item.now,
+      cards,
+    })
+    const notification = {
+      // 同一段停滞只对应一条提醒：baseline 在两次扫描间稳定，入队幂等。
+      id: `stall-${item.sessionId}-${item.baseline}`,
+      notice: 'stalled',
+      childId: item.sessionId,
+      parentSessionId,
+      name: item.name,
+      text,
+      summary: stallNoticeSummary(item.name, formatElapsed(item.elapsedMs)),
+      detail: buildStallNoticeDetail({ elapsedMs: item.elapsedMs, lastReportAt, now: item.now }),
+      elapsedMs: item.elapsedMs,
+      // 值为 undefined 的键过不了宿主工具结果的 lossless JSON 判定。
+      ...lastReportAt === undefined ? {} : { lastReportAt },
+      createdAt: item.now,
+      attempts: 0,
+    }
+    await store.enqueue(notification)
+    alertAt.set(item.sessionId, item.now)
+    try {
+      await deliver(notification, item.parentAgent)
+    } catch (error) {
+      // 已落盘：投递失败留给空闲检测与补投通道，下一拍不再重复入队。
+      logger(`dsh-leader-agent: 投递 worker ${item.sessionId} 的巡查提醒失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+    return true
+  }
+
+  /**
    * 结算一个 worker 的轮次：把这一轮的产物或失败原因交给 leader。
    *
    * 产出取这一轮的 `assistant/message`，终态取 `turn/end` 的 `reason`——与宿主
@@ -877,9 +1059,18 @@ export function createDispatcher({
     // 还在，这个 worker 下一轮结束时再结算同一份内容；`enqueue` 按 id 幂等，
     // 重试不会多出一条通知。
     const notification = await emitNotification(record, judged)
+    // 回报时间是执行者的活性事实（巡查与 `list_cards` 都读它）：落盘成功之后再记，
+    // 写不进去只少了这一个读面，不能让已经送到的结算回头变成失败。
+    try {
+      await workers.markReported(sessionId, Date.now())
+    } catch (error) {
+      logger(`dsh-leader-agent: worker ${sessionId} 的回报时间落盘失败：${error instanceof Error ? error.message : String(error)}`)
+    }
     // 落盘期间 leader 可能已经投出下一轮并登记了新记录：只清自己那一条，否则
     // 会把新记录一起删掉，那一轮结束时就漏结算。
     if (inflight.get(sessionId) === record) inflight.delete(sessionId)
+    // 这一轮已经结束，下一次提醒从下一轮重新起算。
+    alertAt.delete(sessionId)
     try {
       await deliver(notification, record.parent)
     } catch (error) {
@@ -927,10 +1118,39 @@ export function createDispatcher({
   // 与 `turn/end`），那是版本契约问题，不是装配期能判定的事。
   const stopTurns = ctx.on('session/event', (session, event) => observeTurn(session, event))
 
+  // 单个 60s 节拍扫全部在飞轮次：没有在跑的 worker 时零动作，不给 leader 发例行询问。
+  const stallWatch = createStallWatch({
+    listRunning: listRunningForStall,
+    alert: alertStalled,
+    thresholdMs: stallThresholdMs,
+    tickMs: stallTickMs,
+    now,
+    logger,
+  })
+
   return {
     dispatch,
     message,
     transcript,
+
+    /**
+     * 立刻扫一遍巡查（不等下一拍）。
+     *
+     * 定时节拍是生产路径；这里给测试一个可注入时刻的确定性入口。
+     *
+     * @param {number} [at] - 判定时刻
+     * @returns {Promise<number>} 实际注入的提醒条数
+     */
+    scanStalled(at) {
+      return stallWatch.scan(at)
+    },
+
+    /**
+     * worker 的活性快照（最后回报 / 在跑起点），`list_cards` 的槽位行用它。
+     *
+     * @returns {Promise<Map<string, { lastReportAt?: number, runningSince?: number }>>} 会话 id → 活性事实
+     */
+    workerFacts,
 
     /**
      * 补投队列里属于某个父会话的通知。
@@ -983,11 +1203,13 @@ export function createDispatcher({
       closed = true
       // 卸载后不再有派工：留着订阅会继续替已死记录结算，也会让宿主持住这个模块。
       stopTurns()
+      stallWatch.dispose()
       if (idleTimer !== undefined) {
         clearInterval(idleTimer)
         idleTimer = undefined
       }
       waiting.clear()
+      alertAt.clear()
     },
 
     /**
@@ -1101,6 +1323,8 @@ export function createDispatcher({
      */
     markDisposed(sessionId) {
       disposed.add(sessionId)
+      // 会话没了就不会再有回报，也没有可巡查的轮次。
+      alertAt.delete(sessionId)
       // 会话已经没了：本进程归属也一并摘掉，后续投递改走登记表判断，
       // 避免「认得出归属却投不进」的半死状态。
       owners.delete(sessionId)

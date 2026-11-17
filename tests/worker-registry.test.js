@@ -154,3 +154,25 @@ test('没有可改绑的记录时不写盘', async () => {
   assert.notEqual((await stat(file)).ino, before.ino)
   assert.equal((await createWorkerRegistry({ home }).get('child-1')).parentSessionId, 'leader-b')
 })
+
+test('记录回报时刻：只动 lastReportAt，不动登记顺序与归属', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  const registered = await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
+  const updated = await registry.markReported('child-1', 1_700_000_000_000)
+  assert.equal(updated.lastReportAt, 1_700_000_000_000)
+  assert.equal(updated.registeredAt, registered.registeredAt)
+  assert.equal(updated.parentSessionId, 'parent-1')
+  assert.equal(updated.name, '工')
+
+  // 跨实例读得到：进程重启后巡查仍能拿到最后回报。
+  const reloaded = await createWorkerRegistry({ home }).get('child-1')
+  assert.equal(reloaded.lastReportAt, 1_700_000_000_000)
+})
+
+test('记录回报时刻时没有这条记录就不写盘、不补登记', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  assert.equal(await registry.markReported('missing', 1), undefined)
+  assert.equal(await registry.get('missing'), undefined)
+})

@@ -17,6 +17,7 @@ import {
   parseListQuery,
   renderCardDetailText,
   renderCardList,
+  slotSessionNotes,
   sliceSpec,
 } from '../cards/card-list-view.js'
 import { isValidSlotName } from '../slots/slot-templates.js'
@@ -864,6 +865,40 @@ export function createReadCardTool({ store, resolveProject, isWorkerSession, car
 }
 
 /**
+ * 给查卡结果补槽位会话的活性附注。
+ *
+ * 只给本次返回的卡上那些会话算：一次列卡把全项目 worker 的活性都塞进输出，会
+ * 挤占列表本就不宽裕的字符预算。没有活性事实时不加这个键——工具返回值要过宿主
+ * 的 lossless JSON 判定，空对象没有意义，多写一次只是噪声。
+ *
+ * @param {object[]} cards - 卡片
+ * @param {object} query - 查询条件
+ * @param {(() => Promise<Map<string, { lastReportAt?: number, runningSince?: number }>>) | undefined} workerFacts - 活性快照
+ * @returns {Promise<object>} 工具返回值
+ */
+async function withSlotNotes(cards, query, workerFacts) {
+  if (typeof workerFacts !== 'function') return { cards, query }
+  const ids = new Set()
+  for (const card of cards) {
+    if (!card.slots || typeof card.slots !== 'object' || Array.isArray(card.slots)) continue
+    for (const binding of Object.values(card.slots)) {
+      if (typeof binding?.sessionId === 'string' && binding.sessionId !== '') ids.add(binding.sessionId)
+    }
+  }
+  if (ids.size === 0) return { cards, query }
+  const facts = await workerFacts()
+  const relevant = new Map()
+  for (const id of ids) {
+    const fact = facts.get(id)
+    if (fact !== undefined) relevant.set(id, fact)
+  }
+  const slotNotes = slotSessionNotes(relevant)
+  return Object.keys(slotNotes).length === 0
+    ? { cards, query }
+    : { cards, query, slotNotes }
+}
+
+/**
  * 创建 `list_cards` 工具定义。
  *
  * 模型读 `render` 的列表视图（摘要 + 分页），客户端读 `presentationMeta` 的全量
@@ -877,9 +912,11 @@ export function createReadCardTool({ store, resolveProject, isWorkerSession, car
  * @param {{ list: (filter?: object) => Promise<object[]> }} options.store - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] -
  *   解析调用方会话所属项目
+ * @param {(() => Promise<Map<string, { lastReportAt?: number, runningSince?: number }>>) | undefined} [options.workerFacts] -
+ *   会话活性快照；省略时槽位行不带最后回报
  * @returns {object} dsh 工具定义
  */
-export function createListCardsTool({ store, resolveProject }) {
+export function createListCardsTool({ store, resolveProject, workerFacts }) {
   return {
     name: 'list_cards',
     description:
@@ -927,12 +964,17 @@ export function createListCardsTool({ store, resolveProject }) {
             },
             required: ['status', 'scope', 'limit', 'offset'],
           },
+          slotNotes: {
+            type: 'object',
+            description: '槽位会话的活性附注：会话 id → 「最后回报 X 前 · 已连续 Y」。只在有活性事实时出现。',
+            additionalProperties: true,
+          },
         },
         required: ['cards', 'query'],
       },
       render(args, value) {
-        const result = /** @type {{ cards: object[], query: { cardId?: string, status: string, scope: string, limit: number, offset: number } }} */ (value)
-        return [{ type: 'text', text: renderCardList(result.cards, result.query) }]
+        const result = /** @type {{ cards: object[], query: { cardId?: string, status: string, scope: string, limit: number, offset: number }, slotNotes?: Record<string, string> }} */ (value)
+        return [{ type: 'text', text: renderCardList(result.cards, result.query, result.slotNotes) }]
       },
       presentationMeta(args, value) {
         const result = /** @type {{ cards: object[] }} */ (value)
@@ -941,16 +983,17 @@ export function createListCardsTool({ store, resolveProject }) {
     },
     async execute(args, exec) {
       const query = parseListQuery(args)
+      let cards
       // 单卡查询不受范围限制：模型拿着 cardId 来读，要的就是那张卡。但两条路径都
       // 跨项目寻址，退役会话要先过身份闸。
       if (query.scope === 'all' || query.cardId !== undefined) {
         await assertCrossProjectRead(exec.agent?.id, resolveProject)
-        const cards = await store.list()
-        return { cards, query }
+        cards = await store.list()
+      } else {
+        const project = await resolveProject?.(exec.agent?.id)
+        cards = await store.list({ projectId: project?.id ?? '' })
       }
-      const project = await resolveProject?.(exec.agent?.id)
-      const cards = await store.list({ projectId: project?.id ?? '' })
-      return { cards, query }
+      return withSlotNotes(cards, query, workerFacts)
     },
   }
 }

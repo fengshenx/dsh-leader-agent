@@ -28,6 +28,8 @@ import { SessionTabsAnchor } from './session-tabs.js'
 import { ToastOverlay } from './toast-view.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from './worker-report-definition.js'
 import { WorkerReportView } from './worker-report-view.js'
+import { WORKER_STALL_NODE_KIND, workerStallDefinition } from './worker-stall-definition.js'
+import { WorkerStallView } from './worker-stall-view.js'
 import { WORKER_TASK_NODE_KIND, workerTaskDefinition } from './worker-task-definition.js'
 import { WorkerTaskView } from './worker-task-view.js'
 
@@ -222,6 +224,7 @@ function mountMessageBubbles(ctx) {
   const bubbles = [
     { kind: WORKER_TASK_NODE_KIND, definition: workerTaskDefinition, view: WorkerTaskView, label: 'leader 任务' },
     { kind: WORKER_REPORT_NODE_KIND, definition: workerReportDefinition, view: WorkerReportView, label: 'worker 回报' },
+    { kind: WORKER_STALL_NODE_KIND, definition: workerStallDefinition, view: WorkerStallView, label: '后台巡查' },
   ]
   for (const bubble of bubbles) {
     try {

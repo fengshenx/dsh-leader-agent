@@ -7,6 +7,7 @@ import {
   parseListQuery,
   renderCardList,
   selectCards,
+  slotSessionNotes,
 } from '../src/host/cards/card-list-view.js'
 
 /**
@@ -188,4 +189,46 @@ test('列表视图：分类显式成行，未分类写「无」', () => {
 test('列表视图：单卡查询同样给出分类', () => {
   const cards = [card({ kind: '文档' })]
   assert.match(renderCardList(cards, query({ cardId: 'card-1' })), /kind: 文档/)
+})
+
+test('槽位行附执行者的最后回报与在跑时长', () => {
+  const now = 10_000_000
+  const cards = [card({ slots: { dev: { sessionId: 's1' }, review: { sessionId: 's2' } } })]
+  const notes = slotSessionNotes(new Map([
+    ['s1', { lastReportAt: now - 3 * 60_000, runningSince: now - 22 * 60_000 }],
+    ['s2', { lastReportAt: now - 5 * 60_000 }],
+  ]), now)
+  const rendered = renderCardList(cards, query(), notes)
+  assert.match(rendered, /slots: dev=s1（最后回报 3 分钟前 · 已连续 22 分钟） review=s2（最后回报 5 分钟前）/)
+})
+
+test('在跑且从没回报过写「无记录」，空闲且从没回报过整段省略', () => {
+  const now = 10_000_000
+  const notes = slotSessionNotes(new Map([
+    ['s1', { runningSince: now - 15 * 60_000 }],
+    ['s2', {}],
+  ]), now)
+  assert.deepEqual(notes, { s1: '最后回报 无记录 · 已连续 15 分钟' })
+  const rendered = renderCardList([card({ slots: { dev: { sessionId: 's1' }, review: { sessionId: 's2' } } })], query(), notes)
+  assert.match(rendered, /dev=s1（最后回报 无记录 · 已连续 15 分钟）/)
+  // 没有活性事实的槽位与从前一样，只写会话 id。
+  assert.match(rendered, /review=s2(?!（)/)
+})
+
+test('没有活性快照或空槽时不加附注，槽位行保持原样', () => {
+  assert.deepEqual(slotSessionNotes(undefined), {})
+  assert.deepEqual(slotSessionNotes(null), {})
+  const rendered = renderCardList(
+    [card({ slots: { dev: { sessionId: 's1' }, review: {} } })],
+    query(),
+    slotSessionNotes(new Map(), 1),
+  )
+  assert.match(rendered, /slots: dev=s1 review=empty/)
+})
+
+test('单卡查询同样带活性附注', () => {
+  const now = 10_000_000
+  const notes = slotSessionNotes(new Map([['s1', { runningSince: now - 60_000 }]]), now)
+  const detail = renderCardList([card({ slots: { dev: { sessionId: 's1' } } })], query({ cardId: 'card-1' }), notes)
+  assert.match(detail, /slots: dev=s1（最后回报 无记录 · 已连续 1 分钟）/)
 })

@@ -33,6 +33,7 @@
 4. **Many projects in parallel, one Leader each** — Adding a project binds a leader session to it, and the project tree lists the workers that Leader spawned; rows can be dragged to reorder, and deleting a project only drops the record while keeping the folder and the sessions (dsh workspaces are untouched). Projects stay out of each other's way. Swap in a new Leader and the existing workers plus undelivered reports move over, so it can dispatch immediately.
 5. **The `leader-mode` skill: an orchestration protocol for the Leader** — Not "you are a tech lead". Staged playbooks across discussion → design → implementation and delivery → review → merge, plus guidance on parallel collaboration and handoff.
 6. **Read back what a worker did, without waking it** — `read_worker_session` reads a worker's session log directly and returns each turn's task, body, the tools it called and why anything failed. Read-only: it does not wake the worker and triggers no model call. The completion notice tells you what came out; this tells you how it got there, so debugging does not need another round.
+7. **A worker that goes quiet gets flagged** — When a Leader-dispatched turn produces no report for 15 minutes, a background patrol notice arrives with the card it holds, how long it has been silent, its last report and a copy-pasteable read-back call. At most one every 15 minutes: no polling, and no pretending it is still alive.
 
 ## Install
 
