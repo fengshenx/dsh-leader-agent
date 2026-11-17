@@ -41,7 +41,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 派工分两步：`spawn_worker` 建会话、登记、可选绑卡槽位后**立即返回且不开工**；开工由 `message_worker` 的第一条消息触发。这样槽位绑定与卡片事实先落盘，首轮请求就带着它们。`message_worker` 既是开工入口也是续聊入口：会话活着就把消息 `steer` 进它的当前轮次（下一步注入，空闲则立即开一轮）。「活着」分两层——插件自己的 `live` 表，以及宿主 `agents.get()` 里的活 agent（GUI 打开或进程启动时恢复的会话在这里，写句柄随它常驻）；两层都没有才冷恢复。回执按投递形态分：前两层都算 `merged`，只有冷恢复是 `sent`，可选 `rename` 改名。
 
-完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让 leader 卡在等待里。唤醒走 `agent.followup()`：宿主的 completion notice 只投给 subagent 树里的创建者，worker 是根会话不在树上，所以本 bundle 自己订阅会话事件重建同一条路径，并多做一层落盘（父会话离线时下次启动补投）。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步）且父会话空闲才投；为什么这样定、代价是什么见[限制](limitations.md#宿主语义与运行形态)。人下钻到 worker 会话直接对话不经过这条路径：那种轮次不登记在飞记录，不结算。
+完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让 leader 卡在等待里。唤醒走 `agent.followup()`：宿主的 completion notice 只投给 subagent 树里的创建者，worker 是根会话不在树上，所以本 bundle 自己订阅会话事件重建同一条路径，并多做一层落盘（父会话离线时下次启动补投）。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步）且父会话空闲才投；为什么这样定、代价是什么见[限制](limitations.md#宿主语义与运行形态)。结算按**回合归属**判：`turn/end` 只在「这一轮取走了那条 leader 消息、且这一轮由 leader 开启」时结算，人自己下钻聊出来的回合不回报；leader 的消息若还没被取走，记录留到它真正进入的那一轮。
 
 worker 长时间没有回报时另一条链路会说话：一个 60s 的**巡查节拍**扫描 leader 发起、尚未 `turn/end` 的轮次，基线取 `max(本轮起点, 最后回报, 上次提醒)`，超过 15 分钟就往完成通知的落盘队列里放一条「后台巡查」提醒（独立 `source.kind` + 带 `【后台巡查】` 前缀的普通文本；不再注册会话节点，始终显示为官方上下文行）。同一 worker 已有未消费提醒时不再入队；结算后自动退出巡查，进程重启不重新生成提醒，补投时也会丢弃盘上已过期的巡查提醒。
 
