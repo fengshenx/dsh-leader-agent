@@ -1679,6 +1679,66 @@ test('接管后按会话 id 补投：改投过来的通知直接送到新 leader
   assert.deepEqual(await store.listPending(), [])
 })
 
+test('换 leader 交接：live 巡查提醒补投给新 leader，过期的丢弃', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const messages = []
+  const parent2 = createParent('leader-2', messages)
+  const ctx = {
+    ...fixture.ctx,
+    get(key) {
+      if (key === 'sessionController') {
+        return {
+          async resolveAgent(sessionId) {
+            return sessionId === 'leader-2' ? { agent: parent2 } : { error: '会话不在内存' }
+          },
+        }
+      }
+      return fixture.ctx.get(key)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx, store, workers: fixture.workers })
+  const parent1 = createParent('leader-1', fixture.delivered)
+  fixture.agents.set('leader-1', parent1)
+  await dispatchAndStart(dispatcher, {
+    parent: parent1,
+    initialMessage: '做一件长活',
+    name: '长活',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const startedAt = (await dispatcher.workerFacts()).get(childId).runningSince
+  assert.equal(typeof startedAt, 'number')
+
+  // 旧 leader 盘上两条 stalled：一条对应仍在飞的同一轮，另一条 runStartedAt 已对不上。
+  const base = {
+    notice: 'stalled',
+    childId,
+    parentSessionId: 'leader-1',
+    name: '长活',
+    text: 'worker「长活」已连续 15 分钟没有回报，可能卡住了。',
+    summary: 'worker「长活」已连续 15 分钟没有回报',
+    createdAt: 1700000000000,
+    attempts: 0,
+  }
+  await store.enqueue({ ...base, id: 'stall-live', runStartedAt: startedAt })
+  await store.enqueue({ ...base, id: 'stall-stale', runStartedAt: startedAt - 1 })
+
+  // 交接：在飞记录与盘上通知一起改绑到新 leader。
+  assert.equal(dispatcher.reassignParent('leader-1', 'leader-2'), 1)
+  assert.equal(await store.reassignParent('leader-1', 'leader-2'), 2)
+  assert.equal(await dispatcher.redeliverPendingFor('leader-2'), 1)
+
+  // 断言最终 delivered 的 source，而不是只数 reassignParent 的条数。
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].source.kind, WORKER_STALL_SOURCE_KIND)
+  assert.equal(messages[0].source.stall.childSessionId, childId)
+  assert.equal(fixture.delivered.length, 0)
+  assert.deepEqual(await store.listPending(), [])
+  dispatcher.dispose()
+})
+
 test('补投期间会话转忙：新进等待表的那条仍然送达', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
