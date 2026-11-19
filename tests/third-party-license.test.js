@@ -26,10 +26,10 @@ test('THIRD_PARTY_LICENSE 与生成脚本同步', () => {
 
 test('许可清单列出内联依赖、参考实现与工具', () => {
   const text = readFileSync(TARGET, 'utf8')
-  assert.match(text, /minidenticons 4\.2\.1（MIT）/)
+  assert.match(text, /blobatar 2\.7\.0（MIT）/)
   assert.match(text, /dsh-session-tabs 0\.1\.6（MIT）/)
   assert.match(text, /Copyright \(c\) 2026 QIN-SMART/)
-  assert.match(text, /Copyright \(c\) 2021 Laurent Payot/)
+  assert.match(text, /Copyright \(c\) 2026 Alain/)
   assert.match(text, /\| esbuild \|/)
   assert.match(text, /\| playwright \|/)
   const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'))

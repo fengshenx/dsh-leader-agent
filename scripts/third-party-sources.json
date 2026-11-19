@@ -1,7 +1,7 @@
 {
   "version": 1,
   "bundled": {
-    "minidenticons": "worker / leader 头像的确定性像素图案。实现由 esbuild 内联进 lib/client.js；产物头部另有同份 MIT 声明。"
+    "blobatar": "worker / leader 头像的确定性「身体 + 胶囊眼」几何。实现由 esbuild 内联进 lib/client.js；产物头部另有同份 MIT 声明。"
   },
   "references": [
     {

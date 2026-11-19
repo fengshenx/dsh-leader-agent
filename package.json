@@ -76,8 +76,8 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "blobatar": "^2.7.0",
     "esbuild": "^0.28.2",
-    "minidenticons": "^4.2.1",
     "playwright": "^1.64.1"
   }
 }

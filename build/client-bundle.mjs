@@ -44,14 +44,14 @@ const PLUGIN_ID = 'dsh-leader-agent'
 /**
  * 内联进产物的第三方代码的许可声明。
  *
- * `src/client/worker-report-avatar.js` 用 minidenticons，构建把实现打进产物（只有基线
+ * `src/client/worker-report-avatar.js` 用 blobatar，构建把实现打进产物（只有基线
  * 模块留在外面）。MIT 要求许可随每一份副本走，而该包源码头部不带声明、许可只在
  * 独立的 LICENSE 文件里——不写进 banner，发出去的产物里就没有任何版权信息。
  * 新增内联第三方依赖时在这里补齐。
  */
 const THIRD_PARTY_NOTICES = `/*!
- * minidenticons - https://github.com/laurentpayot/minidenticons
- * Copyright (c) 2021 Laurent Payot
+ * blobatar - https://github.com/Alain00/blobatar
+ * Copyright (c) 2026 Alain
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
