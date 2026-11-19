@@ -1,5 +1,5 @@
 {
-  "AGENTS.md": 4440,
+  "AGENTS.md": 4660,
   "README.md": 3530,
   "README_ZH.md": 5270,
   "LEADER.md": 3500,
@@ -15,8 +15,9 @@
   "docs/e2e-testing.md": 2670,
   "docs/release.md": 1542,
   "growing/AGENTS.md": 1784,
-  "growing/README.md": 342,
+  "growing/README.md": 360,
   "growing/2026-11-16-leader-agent-promo/README.md": 645,
   "growing/2026-11-16-leader-agent-promo/storyboard.md": 1059,
-  "growing/2026-11-16-leader-agent-promo/script.md": 930
+  "growing/2026-11-16-leader-agent-promo/script.md": 930,
+  "growing/2026-11-19-project-intro/README.md": 590
 }

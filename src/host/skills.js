@@ -39,7 +39,7 @@ async function readCandidate(directory, providerName) {
   }
   if (!info.isFile()) return undefined
   const text = await readFile(file, 'utf8')
-  const { data, body } = parseFrontmatter(text)
+  const { data } = parseFrontmatter(text)
   const name = data.name ?? ''
   const description = data.description ?? ''
   if (!isValidSkillName(name) || description === '') return undefined

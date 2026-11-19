@@ -24,6 +24,7 @@ function validKey(value) {
   return typeof value === 'string'
     && value.length > 0
     && value.length <= 200
+    // oxlint-disable-next-line no-control-regex -- 校验的正是控制字符本身
     && !/[\u0000-\u001f\u007f]/.test(value)
 }
 

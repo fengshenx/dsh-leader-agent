@@ -34,7 +34,8 @@ export function onProjectsChanged(listener) {
  * @returns {void}
  */
 export function notifyProjectsChanged() {
-  for (const listener of [...listeners]) {
+  // 先快照：单个回调可能退订或新增订阅者，实时迭代会让本轮多叫一次。
+  for (const listener of Array.from(listeners)) {
     try {
       listener()
     } catch (error) {

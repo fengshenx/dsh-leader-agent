@@ -156,7 +156,7 @@ export function apply(ctx) {
   )
 
   // 项目注册表：编排语境的容器。目录是代码语境，项目是编排语境，二者不合并。
-  const projects = createProjectStore({ home: resolveDshHome(), logger })
+  const projects = createProjectStore({ home: resolveDshHome() })
   // worker 会话管理器要先建：项目服务列 worker 时要用它的同步判定（会话头没有
   // subagent 标记了，只有登记知道谁是 worker）。
   const workerSessions = createWorkerSessions({ ctx, logger })
@@ -184,7 +184,7 @@ export function apply(ctx) {
     awaitIndex: () => projectService.awaitIndex(),
   })
 
-  const cards = createCardStore({ home: resolveDshHome(), logger })
+  const cards = createCardStore({ home: resolveDshHome() })
   // 卡片按项目归属：归属由宿主按调用方会话判定，模型不传项目参数。
   const resolveProject = (sessionId) => projectService.resolveProjectOfSession(sessionId)
 

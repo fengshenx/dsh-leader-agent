@@ -11,7 +11,7 @@
 - 凭据文件跟着数据根独立，新工作树第一次起实例本来要在界面上重填 API key：启动前会把源 HOME `.credentials.yaml` 的 `refs` 并进开发实例那一份。只搬 `refs`（按环境变量名存的密钥），不搬 `records`——账号授权的刷新令牌两个实例各持一份会互相踢掉登录。目标里已有的条目不动，界面里改过的值优先；要重新跟随源就删掉 `.dev/home/.credentials.yaml` 里那一条。块式与行内（`refs: {}`）两种 `refs` 节形态都认，写回替换该节；认不出、重复 `refs:`、锁超时都直接报错，不猜拼接位置。目标凭据文档不是 version 1 布局时不动——pre-release 扁平布局由宿主启动时自行迁移，先追加 `refs:` 会让它两种布局都不成立。写入走临时文件 + rename、权限 600，并与运行中的实例共用宿主的写者锁。没走 `DEEPSEEK_API_KEY` 启动环境那条路：它在 dsh 的凭据解析顺序里排在存储文件之后本来就能用，但 key 会留在 agent 工具进程的环境里。
 - 端口默认按工作树路径固定（30000–39999），启动日志打印带 token 的 URL；`DEV_PORT=3210` 覆盖，`DEV_PORT=0` 随机。宿主按端口发 `dsh-auth-*` cookie，随机端口跑多了 Cookie 头会超限（431），清掉 `127.0.0.1` 的这组 cookie。
 - 改客户端代码（`src/client/`）由 `npm run dev` 挂的 esbuild watch 自动重建，宿主 web 组合默认挂着 `client-hmr`：它每 500ms 轮询插件产物的 `mtime/ctime/size`，变化就把运行中的插件换掉（拆旧 fiber、重新 `apply`），页面不刷新、插件内 React 状态重置、会话与连接数据保留。构建失败时正式产物保持上一份，watch 打印错误后继续监听；单独重建用 `npm run build:client`。宿主侧（`src/host/`）由 Node 直接加载，重启实例即可。
-- 依赖共享主 checkout 的 `node_modules`（本仓库只有 esbuild 与 blobatar），改 `package.json` 请在主 checkout 安装。
+- 依赖共享主 checkout 的 `node_modules`（构建/测试工具是 esbuild、playwright、oxlint 与 blobatar：esbuild 打客户端产物，playwright 跑浏览器 e2e，oxlint 是 lint 门禁，blobatar 在构建期内联进客户端），改 `package.json` 请在主 checkout 安装。
 - 覆盖项：`DSH_HOME`（数据根，**不能等于 `DSH_HOME_SOURCE`**——那条路径会把日常 profile 改写成自指死链，脚本直接拒绝）、`DSH_HOME_SOURCE`（源 HOME，默认 `~/.dsh`）、`DEV_PORT`、`DEV_NO_OPEN=1`（不自动开浏览器）。源 profile 固定 `web`，其 bundles 里必须有 `@deepseek-ai/dsh-web-app`，否则脚本拒绝——缺它的 profile 跑 `dsh web` 不监听、不打印、也不报错。
 
 ## 日常实例
@@ -36,7 +36,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 ## 测试与构建
 
-只有 `node:test`，没有 lint：未使用的 import、死代码、拼写错误抓不到，改完要手扫。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
+测试用 `node:test`，lint 用 oxlint（`npm run lint`，已接进 `npm run check` 最前面；配置在 `.oxlintrc.json`，`--deny-warnings` 让 warning 也判失败）：未使用的 import 与死代码由 lint 拦住，拼写错误仍靠人工。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
 
 覆盖率门禁 `npm run test:coverage`（`npm run check` 末尾跑的就是它）判 `src` 下 per-file 行覆盖：没登记门槛的文件要求 100%，存量欠账按整数记在 `scripts/coverage-manifest.json` 的 `thresholds`，掉到门槛以下变红，涨出门槛会提示抬高。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由（客户端组件由 e2e 覆盖）——新增 `src` 文件既不进报告也不登记同样变红。只判行覆盖：分支与函数覆盖率既不设门槛，也不进门禁输出。
 
