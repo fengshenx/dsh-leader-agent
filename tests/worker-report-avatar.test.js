@@ -26,14 +26,14 @@ function bodyPaths(svg) {
   return [...groupMarkup(svg, 0)[2].matchAll(/<path d="([^"]+)"\/>/g)].map((match) => match[1])
 }
 
-function pathArea(d) {
+function samplePath(d, steps = 48) {
   const tokens = d.match(/[A-Z]|-?\d*\.?\d+(?:e[-+]?\d+)?/g)
+  const points = []
   let index = 0
   let cursor = [0, 0]
   let start = [0, 0]
-  let area = 0
   const lineTo = (x, y) => {
-    area += cursor[0] * y - x * cursor[1]
+    points.push([x, y])
     cursor = [x, y]
   }
   while (index < tokens.length) {
@@ -41,6 +41,7 @@ function pathArea(d) {
     if (command === 'M') {
       start = [Number(tokens[index++]), Number(tokens[index++])]
       cursor = start
+      points.push(start)
     } else if (command === 'L') {
       lineTo(Number(tokens[index++]), Number(tokens[index++]))
     } else if (command === 'C') {
@@ -51,8 +52,8 @@ function pathArea(d) {
       const x = Number(tokens[index++])
       const y = Number(tokens[index++])
       const from = cursor
-      for (let step = 1; step <= 64; step++) {
-        const t = step / 64
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps
         const rest = 1 - t
         lineTo(
           rest ** 3 * from[0] + 3 * rest ** 2 * t * x1 + 3 * rest * t ** 2 * x2 + t ** 3 * x,
@@ -65,8 +66,8 @@ function pathArea(d) {
       const x = Number(tokens[index++])
       const y = Number(tokens[index++])
       const from = cursor
-      for (let step = 1; step <= 64; step++) {
-        const t = step / 64
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps
         const rest = 1 - t
         lineTo(rest ** 2 * from[0] + 2 * rest * t * x1 + t ** 2 * x, rest ** 2 * from[1] + 2 * rest * t * y1 + t ** 2 * y)
       }
@@ -74,7 +75,48 @@ function pathArea(d) {
       lineTo(start[0], start[1])
     }
   }
-  return Math.abs(area) / 2
+  return points
+}
+
+/**
+ * 独立口径：把解码后的 body path 采样成多边形，用扫描线求可见并集面积。
+ * 不调用实现里的面积/凸包函数；droplet 若退回「两条 path 相加」，这里仍算并集，
+ * 半径会掉到 32.4 左右。
+ */
+function scanlineUnionArea(svg, rows = 512) {
+  const polygons = bodyPaths(svg).map((d) => samplePath(d))
+  let area = 0
+  for (let row = 0; row < rows; row++) {
+    const y = ((row + 0.5) * 100) / rows
+    const intervals = []
+    for (const polygon of polygons) {
+      const crossings = []
+      for (let index = 0; index < polygon.length; index++) {
+        const [x0, y0] = polygon[index]
+        const [x1, y1] = polygon[(index + 1) % polygon.length]
+        if ((y0 > y) !== (y1 > y)) crossings.push(x0 + ((y - y0) * (x1 - x0)) / (y1 - y0))
+      }
+      crossings.sort((left, right) => left - right)
+      for (let index = 0; index + 1 < crossings.length; index += 2) {
+        intervals.push([crossings[index], crossings[index + 1]])
+      }
+    }
+    intervals.sort((left, right) => left[0] - right[0])
+    let covered = 0
+    let [start, end] = intervals[0] ?? [0, 0]
+    for (const [nextStart, nextEnd] of intervals.slice(1)) {
+      if (nextStart > end) {
+        covered += end - start
+        start = nextStart
+        end = nextEnd
+      } else {
+        end = Math.max(end, nextEnd)
+      }
+    }
+    covered += end - start
+    area += covered * (100 / rows)
+  }
+  return area
 }
 
 function channels(hex) {
@@ -129,23 +171,48 @@ test('SVG 只有一组带描边的身体与一组眼睛，name 不进标记', ()
   assert.equal(svg.includes('>>'), false)
 })
 
-test('五种形状按路径面积统一到 34/100，宽高比在 0.926–1.087', () => {
+test('五种形状按可见并集统一到 34/100，宽高比在 0.926–1.087', () => {
   const seen = new Map()
-  for (let index = 0; seen.size < SHAPES.length && index < 2_000; index++) {
+  for (let index = 0; seen.size < SHAPES.length * 3 && index < 5_000; index++) {
     const name = `worker-${index}`
     const svg = decode(name)
     const shape = /data-shape="([^"]+)"/.exec(svg)?.[1]
-    if (!seen.has(shape)) seen.set(shape, { name, svg, layout: _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }) })
+    const bucket = seen.get(shape) ?? []
+    if (bucket.length >= 3) continue
+    bucket.push({ svg, layout: _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }) })
+    seen.set(shape, bucket)
   }
   for (const shape of SHAPES) {
-    const { svg, layout } = seen.get(shape)
-    const area = bodyPaths(svg).reduce((sum, d) => sum + pathArea(d), 0)
-    const radius = Math.sqrt(area / Math.PI)
-    assert.ok(Math.abs(radius - 34) < 0.1, `${shape} 的等效半径是 ${radius}`)
-    const ratio = layout.body.rx / layout.body.ry
-    assert.ok(ratio >= 0.926 && ratio <= 1.087, `${shape} 的宽高比是 ${ratio}`)
-    assert.match(svg, /stroke-width="2\.5"/)
+    for (const { svg, layout } of seen.get(shape)) {
+      const radius = Math.sqrt(scanlineUnionArea(svg) / Math.PI)
+      assert.ok(Math.abs(radius - 34) < 0.1, `${shape} 的可见并集半径是 ${radius}`)
+      const ratio = layout.body.rx / layout.body.ry
+      assert.ok(ratio >= 0.926 && ratio <= 1.087, `${shape} 的宽高比是 ${ratio}`)
+      assert.match(svg, /stroke-width="2\.5"/)
+      if (shape === 'droplet') {
+        assert.equal(bodyPaths(svg).length, 1, 'droplet 的并集应只有一个身体 path，避免内缝描边')
+        const points = bodyPaths(svg).flatMap((d) => samplePath(d))
+        assert.ok(Math.min(...points.map(([, y]) => y)) - 1.25 >= -0.01, 'droplet 尖顶的描边越过 viewBox 顶边')
+        assert.ok(Math.max(...points.map(([, y]) => y)) + 1.25 <= 100.01, 'droplet 底部描边越过 viewBox')
+      }
+    }
   }
+})
+
+test('5000 个名字里所有 droplet 的可见并集半径都在 34±0.1', () => {
+  let droplets = 0
+  for (let index = 0; index < 5_000; index++) {
+    const svg = decode(`worker-${index}`)
+    if (!svg.includes('data-shape="droplet"')) continue
+    droplets++
+    const radius = Math.sqrt(scanlineUnionArea(svg) / Math.PI)
+    assert.ok(Math.abs(radius - 34) < 0.1, `worker-${index} 的可见并集半径是 ${radius}`)
+    assert.equal(bodyPaths(svg).length, 1, 'droplet 的并集应只有一个身体 path，避免内缝描边')
+    const points = bodyPaths(svg).flatMap((d) => samplePath(d))
+    assert.ok(Math.min(...points.map(([, y]) => y)) - 1.25 >= -0.01, `worker-${index} 的尖顶描边越过 viewBox 顶边`)
+    assert.ok(Math.max(...points.map(([, y]) => y)) + 1.25 <= 100.01, `worker-${index} 的底部描边越过 viewBox`)
+  }
+  assert.ok(droplets > 0, '5000 个名字里应至少出现一个 droplet')
 })
 
 test('浅色描边、深色身体与眼睛的对比度达标', () => {

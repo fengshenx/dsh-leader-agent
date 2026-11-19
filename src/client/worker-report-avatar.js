@@ -63,19 +63,20 @@ function darken(hex) {
 }
 
 /**
- * 用鞋带公式算闭合路径面积；曲线按 24 段折线采样，误差远小于一个 viewBox 单位。
+ * 把路径采样成闭合多边形；曲线按 24 段折线表示，误差远小于一个 viewBox 单位。
  * @param {string} d - 绝对坐标的 SVG path
- * @returns {number} 面积
+ * @param {number} [steps] - 每段曲线的采样段数
+ * @returns {number[][]} 多边形顶点
  */
-function pathArea(d) {
+function pathPolygon(d, steps = 24) {
   const tokens = d.match(PATH_TOKEN)
+  const points = []
   let cursor = [0, 0]
   let start = [0, 0]
-  let area = 0
   let index = 0
 
   const lineTo = (x, y) => {
-    area += cursor[0] * y - x * cursor[1]
+    points.push([x, y])
     cursor = [x, y]
   }
 
@@ -84,6 +85,7 @@ function pathArea(d) {
     if (command === 'M') {
       start = [Number(tokens[index++]), Number(tokens[index++])]
       cursor = start
+      points.push(start)
     } else if (command === 'L') {
       lineTo(Number(tokens[index++]), Number(tokens[index++]))
     } else if (command === 'C') {
@@ -94,14 +96,13 @@ function pathArea(d) {
       const x = Number(tokens[index++])
       const y = Number(tokens[index++])
       const from = cursor
-      for (let step = 1; step <= 24; step++) {
-        const t = step / 24
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps
         const rest = 1 - t
-        const a = rest * rest * rest
-        const b = 3 * rest * rest * t
-        const c = 3 * rest * t * t
-        const e = t * t * t
-        lineTo(a * from[0] + b * x1 + c * x2 + e * x, a * from[1] + b * y1 + c * y2 + e * y)
+        lineTo(
+          rest ** 3 * from[0] + 3 * rest ** 2 * t * x1 + 3 * rest * t ** 2 * x2 + t ** 3 * x,
+          rest ** 3 * from[1] + 3 * rest ** 2 * t * y1 + 3 * rest * t ** 2 * y2 + t ** 3 * y,
+        )
       }
     } else if (command === 'Q') {
       const x1 = Number(tokens[index++])
@@ -109,35 +110,87 @@ function pathArea(d) {
       const x = Number(tokens[index++])
       const y = Number(tokens[index++])
       const from = cursor
-      for (let step = 1; step <= 24; step++) {
-        const t = step / 24
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps
         const rest = 1 - t
-        lineTo(rest * rest * from[0] + 2 * rest * t * x1 + t * t * x, rest * rest * from[1] + 2 * rest * t * y1 + t * t * y)
+        lineTo(
+          rest ** 2 * from[0] + 2 * rest * t * x1 + t ** 2 * x,
+          rest ** 2 * from[1] + 2 * rest * t * y1 + t ** 2 * y,
+        )
       }
     } else if (command === 'Z') {
       lineTo(start[0], start[1])
     }
   }
 
+  return points
+}
+
+/**
+ * 鞋带公式求多边形面积。
+ * @param {number[][]} points - 多边形顶点
+ * @returns {number} 面积
+ */
+function polygonArea(points) {
+  let area = 0
+  for (let index = 0; index < points.length; index++) {
+    const [x0, y0] = points[index]
+    const [x1, y1] = points[(index + 1) % points.length]
+    area += x0 * y1 - x1 * y0
+  }
   return Math.abs(area) / 2
 }
 
 /**
- * 把路径绕身体中心缩放，并把中心搬到 viewBox 的 (50, 50)。
+ * 路径面积；需要并集时由调用方先取凸包。
+ * @param {string} d - 绝对坐标的 SVG path
+ * @returns {number} 面积
+ */
+function pathArea(d) {
+  return polygonArea(pathPolygon(d))
+}
+
+/**
+ * 单调链凸包。白名单里只有 droplet 是多条 path，它的椭圆与 taper 是相切的
+ * 凸形，并集仍是凸集；取凸包就是可见并集轮廓，也避免两条 path 各描一圈留下内缝。
+ * @param {number[][]} points - 多边形顶点
+ * @returns {number[][]} 凸包顶点
+ */
+function convexHull(points) {
+  const sorted = [...points].sort((left, right) => left[0] - right[0] || left[1] - right[1])
+  const cross = (origin, a, b) =>
+    (a[0] - origin[0]) * (b[1] - origin[1]) - (a[1] - origin[1]) * (b[0] - origin[0])
+  const lower = []
+  for (const point of sorted) {
+    while (lower.length >= 2 && cross(lower.at(-2), lower.at(-1), point) <= 0) lower.pop()
+    lower.push(point)
+  }
+  const upper = []
+  for (const point of sorted.reverse()) {
+    while (upper.length >= 2 && cross(upper.at(-2), upper.at(-1), point) <= 0) upper.pop()
+    upper.push(point)
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1))
+}
+
+/**
+ * 把路径绕身体中心缩放，并把中心搬到 viewBox 的 (50, 50)；shiftY 用于给 droplet
+ * 尖顶的描边留出上边距。
  * @param {string} d - 绝对坐标的 SVG path
  * @param {number} scale - 缩放系数
  * @param {number} cx - 身体中心 x
  * @param {number} cy - 身体中心 y
+ * @param {number} [shiftY] - 额外下移量
  * @returns {string} 变换后的 path
  */
-function transformPath(d, scale, cx, cy) {
+function transformPath(d, scale, cx, cy, shiftY = 0) {
   const tokens = d.match(PATH_TOKEN)
   let index = 0
   let output = ''
 
   const pair = () => {
     const x = round2(50 + (Number(tokens[index++]) - cx) * scale)
-    const y = round2(50 + (Number(tokens[index++]) - cy) * scale)
+    const y = round2(50 + (Number(tokens[index++]) - cy) * scale + shiftY)
     return `${x} ${y}`
   }
 
@@ -158,6 +211,21 @@ function transformPath(d, scale, cx, cy) {
 }
 
 /**
+ * 把多边形顶点写成缩放后的 path。
+ * @param {number[][]} points - 凸包顶点
+ * @param {number} scale - 缩放系数
+ * @param {number} cx - 身体中心 x
+ * @param {number} cy - 身体中心 y
+ * @param {number} shiftY - 额外下移量
+ * @returns {string} path
+ */
+function polygonPath(points, scale, cx, cy, shiftY) {
+  return 'M' + points
+    .map(([x, y]) => `${round2(50 + (x - cx) * scale)} ${round2(50 + (y - cy) * scale + shiftY)}`)
+    .join('L') + 'Z'
+}
+
+/**
  * 名字 → SVG data URI（走 `<img src>`，不引入内联 SVG 注入面）。
  * @param {string} name - worker 身份名
  * @returns {string} data URI
@@ -173,13 +241,24 @@ export function agentAvatarDataUri(name) {
 
   const bodyPaths = [...bodyMarkup.matchAll(/<path d="([^"]+)"\/>/g)].map((match) => match[1])
   const eyePaths = [...eyeMarkup.matchAll(/<path d="([^"]+)"\/>/g)].map((match) => match[1])
-  const area = bodyPaths.reduce((sum, d) => sum + pathArea(d), 0)
+  // droplet 的 taper 与椭圆在原始 viewBox 里重叠；按路径直接相加会把重叠区算两次，
+  // 头像会缩得偏小。两条 path 的并集轮廓是凸包，按凸包面积反推才是可见面积。
+  const union = bodyPaths.length > 1
+    ? convexHull(bodyPaths.flatMap((d) => pathPolygon(d, 32)))
+    : null
+  const area = union === null ? bodyPaths.reduce((sum, d) => sum + pathArea(d), 0) : polygonArea(union)
   const scale = TARGET_RADIUS / Math.sqrt(area / Math.PI)
   const head = bodyGroup[1]
   const eye = eyeGroup[1]
 
-  const body = bodyPaths.map((d) => `<path d="${transformPath(d, scale, layout.body.cx, layout.body.cy)}"/>`).join('')
-  const eyes = eyePaths.map((d) => `<path d="${transformPath(d, scale, layout.body.cx, layout.body.cy)}"/>`).join('')
+  const padding = STROKE_WIDTH / 2 + 0.25
+  const shiftY = union === null
+    ? 0
+    : Math.max(0, padding - Math.min(...union.map(([, y]) => 50 + (y - layout.body.cy) * scale)))
+  const body = union === null
+    ? bodyPaths.map((d) => `<path d="${transformPath(d, scale, layout.body.cx, layout.body.cy)}"/>`).join('')
+    : `<path d="${polygonPath(union, scale, layout.body.cx, layout.body.cy, shiftY)}"/>`
+  const eyes = eyePaths.map((d) => `<path d="${transformPath(d, scale, layout.body.cx, layout.body.cy, shiftY)}"/>`).join('')
   const markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-shape="${layout.shape}">`
     + `<g fill="${head}" stroke="${darken(head)}" stroke-width="${STROKE_WIDTH}" stroke-linejoin="round">${body}</g>`
     + `<g fill="${eye}">${eyes}</g></svg>`

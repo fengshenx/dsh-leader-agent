@@ -53,6 +53,12 @@ test('产物保持 closure-factory 外壳，基线模块留给宿主模块表', 
     // 产物是用户拿到版权信息的唯一位置。esbuild 自己会留下含包名的路径注释，
     // 所以断言落在版权行上，不含包名的注释不能算数。
     assert.match(source, /Copyright \(c\) 2026 Alain/)
+    // 产物 banner 与许可清单必须是上游 LICENSE 的逐字全文，不是另写一版「标准 MIT」
+    const upstream = readFileSync(join(ROOT, 'node_modules/blobatar/LICENSE'), 'utf8').trim()
+    const notice = source.slice(source.indexOf('/*!'), source.indexOf('*/') + 2)
+    const noticeText = notice.split('\n').map((line) => line.replace(/^ \* ?/, '').replace(/^\/\*!$/, '')).join('\n')
+    assert.ok(noticeText.includes(upstream), '客户端 banner 应逐字包含 blobatar 的上游 LICENSE')
+    assert.ok(readFileSync(join(ROOT, 'THIRD_PARTY_LICENSE'), 'utf8').includes(upstream), 'THIRD_PARTY_LICENSE 应逐字包含 blobatar 的上游 LICENSE')
     // 真实入口图里的基线模块都必须 external，不能有第二份 React / ui-primitives 实例。
     for (const name of BASELINE_MODULES) assertExternal(source, name)
     // 原子写：staging 在成功后 rename 走，产物目录里只剩正式文件。
