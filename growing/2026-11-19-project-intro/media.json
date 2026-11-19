@@ -7,6 +7,19 @@
   "keyBase": "prefix-relative",
   "versions": [
     {
+      "version": 2,
+      "assets": [
+        {
+          "kind": "html",
+          "key": "html/deck-1600x900-v2.html",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/html/deck-1600x900-v2.html",
+          "bytes": 45144,
+          "sha256": "d8c91240a5c7ee4ed72335417a963820746ff0bbca0ea235a6d885c60affc976",
+          "contentType": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
       "version": 1,
       "assets": [
         {

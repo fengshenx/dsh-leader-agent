@@ -10,7 +10,7 @@
 
 | 内容 | 位置 |
 |---|---|
-| 成品 HTML（单文件、无外部依赖） | [deck-1600x900-v1.html](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/html/deck-1600x900-v1.html) |
+| 成品 HTML（单文件、无外部依赖） | [deck-1600x900-v2.html](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/html/deck-1600x900-v2.html) |
 | 可编辑源 HTML（与成品同字节） | [`source/deck.html`](source/deck.html) |
 | 封面预览 1600×900 | [`preview.jpg`](preview.jpg) |
 
@@ -36,4 +36,4 @@
 
 ## 状态
 
-已上传 OSS（`html/deck-1600x900-v1.html`），身份字段见 [`media.json`](media.json)；`source/deck.html` 只是可编辑源。
+已上传 OSS（`html/deck-1600x900-v2.html`；v1 保留不覆盖），身份字段见 [`media.json`](media.json)；`source/deck.html` 只是可编辑源。
