@@ -10,7 +10,7 @@ Status: implemented
 
 - **`dispatch.js` 订阅 `session/event`，在 `turn/end` 那一刻结算这一轮**：`turn` 是 `agent.run()` 的一次调用、内部含多个 step，所以「一次派工 = 一个 `turn/end`」；同一 turn 取最后一条非空 assistant 文本当摘要。
 - **终态用 `reason.kind`**：`completed` 判成功；`aborted` / `blocked` / `error` / `max-tokens` / `interrupted` 判失败，摘要改写成对应原因而不是半截产物——失败轮次的文本往往只写到一半，拿它当摘要会让协调者高估这一轮。
-- **归属判据不变**：只有 `inflight` 里有记录的会话才结算，人直接跟 worker 聊的轮次根本进不了这张表。
+- **归属判据按回合判**（2026-11-17 修正）：只有这一轮真的取走了在飞记录的那条 leader 消息、且这一轮由 leader 开启时才结算；人自己跟 worker 聊的回合不回报。原先按「会话里有在飞记录」判的写法在两者交错时会拿用户的产物回报，见[修正](../bug-fix/2026-11-17-user-turn-not-settled.md)。
 - **投递层完全复用**：`emitNotification` → 落盘队列 → 父会话空闲时 `agent.followup()`。
 - **`worker_done`、`WORKER_ONLY_TOOLS`、协议层「每轮必须调一次」一并删除**，`restrict()` 对未注册工具名直接抛错，所以 deny 列表必须同步改。
 
@@ -27,7 +27,7 @@ Status: implemented
 - **通知按 id 幂等**：`note-<child>-<startedAt>` 在同一次结算里稳定，`enqueue` 按 id 去重，重试不会多出一条。
 - **同一轮只结算一次**：结算即从在飞表删除，后续 `turn/end` 得 `false`（inbox 还有消息时会连着跑多个 turn）。
 - **同一 worker 上一轮未结束时再派工，两轮只结算一次**：在飞记录按会话 id 存在，新一轮的 `message_worker` 会覆盖它；要修得把在飞记录改成按会话排队（见[投递语义提案](../../proposed/architecture/2026-11-03-worker-delivery-idempotency.md)）。
-- **只给在飞会话攒文本**：既收敛内存，也不把人在 worker 会话里自己聊的内容当成派工产物。
+- **文本按回合攒，不按会话**：`turn/start` 之后、`turn/end` 之前的 `assistant/message` 记在当前回合上；没有在飞记录的回合不落任何东西，内存只随打开的回合增长。
 - **不能依赖宿主的 `finalAssistantOutput`**（内部包导出，本仓对 dsh 零依赖），折叠逻辑自己写，量只有「拼 text 块 + 映射 `reason.kind`」。
 - **摘要取不到时如实写「（worker 未产出文本）」**，不编造。
 
@@ -37,4 +37,4 @@ Status: implemented
 
 ## Testing
 
-`tests/dispatch-continuation.test.js` 与 `tests/dispatch.test.js` 钉住结算、幂等与摘要冻结。双向读数：撤掉在飞归属判据，人直聊的轮次也会被结算而变红；把 `turnText` 的清理挪到 `emitNotification` 之后，落盘失败重试用例读到摘要串轮而变红。
+`tests/dispatch-continuation.test.js` 与 `tests/dispatch.test.js` 钉住结算、幂等与摘要冻结。双向读数：撤掉回合归属判据，人直聊的轮次也会被结算而变红；把 `turnText` 的清理挪到 `emitNotification` 之后，落盘失败重试用例读到摘要串轮而变红。2026-11-17 的归属修正由 [bug-fix 笔记](../bug-fix/2026-11-17-user-turn-not-settled.md) 记录双向验证。

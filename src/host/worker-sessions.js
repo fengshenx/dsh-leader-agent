@@ -96,12 +96,14 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
    * @param {string} text - 正文
    * @param {string} name - worker 显示名
    * @param {string} parentSessionId - leader 会话 id
+   * @param {string | undefined} messageId - 投递方预生成的消息 id（结算按它判回合归属）
    * @returns {object} 用户消息
    */
-  function taskMessage(text, name, parentSessionId) {
+  function taskMessage(text, name, parentSessionId, messageId) {
     return createUserMessage(
       [{ type: 'text', text }],
       { kind: WORKER_TASK_SOURCE_KIND, name, parentSessionId },
+      messageId,
     )
   }
 
@@ -149,12 +151,13 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
    * @param {string} options.text - 正文
    * @param {string} [options.name] - 顺手改的显示名
    * @param {string} options.parentSessionId - leader 会话 id
+   * @param {string | undefined} options.messageId - 调用方预生成的消息 id
    * @returns {'live' | 'resumed'} 投递形态
    */
-  function deliver(agent, form, { sessionId, text, name, parentSessionId }) {
+  function deliver(agent, form, { sessionId, text, name, parentSessionId, messageId }) {
     const displayName = name ?? agent.session?.header?.title ?? sessionId
     if (name !== undefined) renameTitle(agent, name)
-    agent.steer(taskMessage(text, displayName, parentSessionId))
+    agent.steer(taskMessage(text, displayName, parentSessionId, messageId))
     return form
   }
 
@@ -361,19 +364,20 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} options.text - 正文
      * @param {string} [options.name] - 顺手改的显示名
      * @param {string} options.parentSessionId - leader 会话 id
+     * @param {string} [options.messageId] - 调用方预生成的消息 id
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<'live' | 'resumed'>} 投递形态
      */
-    async send({ sessionId, text, name, parentSessionId, signal }) {
+    async send({ sessionId, text, name, parentSessionId, messageId, signal }) {
       const current = live.get(sessionId)
       if (current !== undefined) {
-        return deliver(current.agent, 'live', { sessionId, text, name, parentSessionId })
+        return deliver(current.agent, 'live', { sessionId, text, name, parentSessionId, messageId })
       }
       // 复用宿主 agent 但不登记进 live：dispose 是持有句柄那一方的所有权，这里
       // 只是借它的作用域投递，不能替宿主收掉一个被人打开着的会话。
       const active = ctx.get('agents')?.get(sessionId)
       if (active !== undefined) {
-        return deliver(active, 'live', { sessionId, text, name, parentSessionId })
+        return deliver(active, 'live', { sessionId, text, name, parentSessionId, messageId })
       }
       let handle
       try {
@@ -381,7 +385,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       } catch (error) {
         throw explainOccupiedError(error, sessionId)
       }
-      return deliver(handle.agent, 'resumed', { sessionId, text, name, parentSessionId })
+      return deliver(handle.agent, 'resumed', { sessionId, text, name, parentSessionId, messageId })
     },
 
     /**
