@@ -1,0 +1,10 @@
+{
+  "campaign": "2026-11-19-project-intro",
+  "bucket": "dsh-agent-leader",
+  "region": "oss-cn-beijing",
+  "prefix": "growing/2026-11-19-project-intro/",
+  "baseUrl": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/",
+  "keyBase": "prefix-relative",
+  "note": "本地可编辑 HTML deck，尚未上传 OSS；versions 为空。",
+  "versions": []
+}

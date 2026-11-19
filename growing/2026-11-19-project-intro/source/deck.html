@@ -1,0 +1,1310 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-leader-agent — 项目介绍</title>
+<style>
+  :root {
+    --bg: #f7f7f4;
+    --paper: #ffffff;
+    --ink: #111210;
+    --ink-2: #4d4f4a;
+    --ink-3: #8b8d86;
+    --line: #dfdfd8;
+    --line-soft: #ecece6;
+    --accent: #0e9f76;
+    --accent-ink: #087a5a;
+    --accent-soft: #e6f4ee;
+    --amber: #c58a32;
+    --sans: "SF Pro Display", "Inter", -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --ease: cubic-bezier(.22, .7, .2, 1);
+    --pad-x: clamp(28px, 6vw, 104px);
+    --pad-y: clamp(48px, 7vh, 84px);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-snap-type: y proximity; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  ::selection { background: var(--accent); color: #fff; }
+
+  /* ---------- ambient texture ---------- */
+  .atmosphere {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .atmosphere::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(17, 18, 16, .10) 1px, transparent 0);
+    background-size: 26px 26px;
+    -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 0%, transparent 78%);
+    mask-image: radial-gradient(ellipse 75% 65% at 50% 45%, #000 0%, transparent 78%);
+    opacity: .55;
+  }
+  .atmosphere::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: .022;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------- chrome ---------- */
+  .progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 20;
+    background: transparent;
+  }
+  .progress span {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    transform: scaleX(.125);
+    transform-origin: left center;
+    transition: transform .5s var(--ease);
+  }
+
+  .rail {
+    position: fixed;
+    right: clamp(16px, 2.2vw, 34px);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 15;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 6px;
+  }
+  .rail-dot {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 6px 4px;
+    cursor: pointer;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+  }
+  .rail-dot i {
+    display: block;
+    width: 16px;
+    height: 2px;
+    border-radius: 2px;
+    background: #c9c9c2;
+    transition: width .35s var(--ease), background .35s var(--ease);
+  }
+  .rail-dot:hover i { background: var(--ink-3); width: 22px; }
+  .rail-dot.is-active i { width: 30px; background: var(--accent); }
+  .rail-dot span {
+    position: absolute;
+    right: 46px;
+    font: 500 9px/1 var(--mono);
+    letter-spacing: .14em;
+    color: var(--ink-3);
+    opacity: 0;
+    transform: translateX(4px);
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .rail-dot:hover span { opacity: 1; transform: none; }
+
+  .counter {
+    position: fixed;
+    left: var(--pad-x);
+    bottom: clamp(18px, 3.4vh, 34px);
+    z-index: 15;
+    font: 500 10px/1 var(--mono);
+    letter-spacing: .16em;
+    color: var(--ink-3);
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+  }
+  .counter b { font-weight: 600; color: var(--ink); }
+  .counter .sep { opacity: .45; }
+
+  .hint {
+    position: fixed;
+    left: 50%;
+    bottom: clamp(18px, 3.4vh, 34px);
+    transform: translateX(-50%);
+    z-index: 15;
+    font: 500 9px/1 var(--mono);
+    letter-spacing: .16em;
+    color: var(--ink-3);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    transition: opacity .4s;
+  }
+  .hint kbd {
+    font-family: var(--mono);
+    font-size: 9px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 3px 5px;
+    color: var(--ink-2);
+    background: rgba(255, 255, 255, .6);
+  }
+
+  /* ---------- slide shell ---------- */
+  .slide {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    min-height: 100svh;
+    padding: var(--pad-y) var(--pad-x) calc(var(--pad-y) + 26px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    scroll-snap-align: start;
+  }
+  .wrap {
+    width: 100%;
+    max-width: 1440px;
+    margin: 0 auto;
+  }
+
+  /* ---------- type ---------- */
+  .kicker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font: 500 10px/1 var(--mono);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .kicker::before {
+    content: "";
+    width: 26px;
+    height: 1px;
+    background: var(--accent);
+  }
+  h1, h2, h3, p { margin: 0; }
+  h2 {
+    font-size: clamp(2.5rem, 5.7vw, 5.4rem);
+    line-height: 1.03;
+    letter-spacing: -.045em;
+    font-weight: 600;
+    margin-top: clamp(20px, 3vh, 32px);
+  }
+  .lead {
+    max-width: 36em;
+    font-size: clamp(1rem, 1.35vw, 1.24rem);
+    line-height: 1.65;
+    color: var(--ink-2);
+    margin-top: clamp(18px, 2.6vh, 28px);
+  }
+  .lead strong { color: var(--ink); font-weight: 600; }
+  .footnote {
+    font: 400 12px/1.7 var(--mono);
+    letter-spacing: .01em;
+    color: var(--ink-3);
+    margin-top: clamp(22px, 3.4vh, 38px);
+  }
+  .accent { color: var(--accent); }
+
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .8s var(--ease), transform .8s var(--ease);
+    transition-delay: var(--d, 0s);
+  }
+  .is-visible .reveal { opacity: 1; transform: none; }
+
+  /* ---------- 01 cover ---------- */
+  .cover { overflow: hidden; }
+  .cover-orb {
+    position: absolute;
+    right: -16vw;
+    top: -28vh;
+    width: 76vw;
+    height: 76vw;
+    max-width: 1080px;
+    max-height: 1080px;
+    background: radial-gradient(circle at 50% 50%, rgba(14, 159, 118, .15), rgba(14, 159, 118, .05) 42%, rgba(14, 159, 118, 0) 68%);
+    filter: blur(6px);
+    pointer-events: none;
+  }
+  .cover-ring {
+    position: absolute;
+    right: 7vw;
+    top: 50%;
+    width: min(38vw, 560px);
+    aspect-ratio: 1;
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+  .cover-ring::before {
+    content: "";
+    position: absolute;
+    left: -5px;
+    top: 50%;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 9px rgba(14, 159, 118, .08);
+  }
+  .cover-ring::after {
+    content: "";
+    position: absolute;
+    inset: 11%;
+    border: 1px dashed rgba(17, 18, 16, .08);
+    border-radius: 50%;
+  }
+  .cover-inner { position: relative; z-index: 1; }
+  .wordmark {
+    margin-top: clamp(28px, 6vh, 60px);
+    font-size: clamp(3rem, 9.4vw, 10.2rem);
+    line-height: .94;
+    letter-spacing: -.055em;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .wordmark .tick {
+    display: inline-block;
+    width: .085em;
+    height: .085em;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-left: .06em;
+    vertical-align: .06em;
+  }
+  .cover-line {
+    margin-top: clamp(22px, 3.4vh, 36px);
+    font-size: clamp(1.1rem, 2vw, 1.62rem);
+    letter-spacing: -.02em;
+    color: var(--ink-2);
+  }
+  .cover-meta {
+    margin-top: clamp(34px, 6vh, 64px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 26px;
+    font: 500 10px/1.6 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    max-width: 600px;
+  }
+  .cover-foot {
+    position: absolute;
+    left: var(--pad-x);
+    right: var(--pad-x);
+    bottom: clamp(52px, 9vh, 84px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font: 500 9px/1 var(--mono);
+    letter-spacing: .18em;
+    color: var(--ink-3);
+  }
+  .scroll-cue { display: flex; align-items: center; gap: 10px; }
+  .scroll-cue i {
+    width: 1px;
+    height: 26px;
+    background: linear-gradient(var(--ink-3), transparent);
+    animation: cue 2.4s var(--ease) infinite;
+  }
+  @keyframes cue {
+    0% { transform: scaleY(.2); transform-origin: top; opacity: .2; }
+    45% { transform: scaleY(1); transform-origin: top; opacity: 1; }
+    100% { transform: scaleY(1); transform-origin: top; opacity: 0; }
+  }
+
+  /* ---------- 02 what ---------- */
+  .what-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(260px, .8fr);
+    gap: 6vw;
+    align-items: end;
+    margin-top: clamp(28px, 5vh, 46px);
+  }
+  .ratio {
+    justify-self: end;
+    display: grid;
+    grid-template-columns: auto auto auto;
+    align-items: center;
+    gap: clamp(10px, 1.4vw, 22px);
+    padding-bottom: 6px;
+  }
+  .ratio b {
+    font-size: clamp(5rem, 11vw, 10rem);
+    line-height: .8;
+    font-weight: 600;
+    letter-spacing: -.08em;
+  }
+  .ratio b.outline {
+    color: transparent;
+    -webkit-text-stroke: 1.5px var(--accent);
+    font-weight: 500;
+  }
+  .ratio .arrow {
+    font: 300 clamp(1.6rem, 2.4vw, 2.4rem)/1 var(--sans);
+    color: var(--ink-3);
+  }
+  .ratio-label {
+    grid-column: 1 / -1;
+    justify-self: end;
+    text-align: right;
+    font: 500 9px/1.6 var(--mono);
+    letter-spacing: .18em;
+    color: var(--ink-3);
+    border-top: 1px solid var(--line);
+    padding-top: 12px;
+    margin-top: 4px;
+    width: 100%;
+  }
+
+  /* ---------- feature slides ---------- */
+  .feature-head { display: flex; justify-content: space-between; gap: 5vw; align-items: flex-end; }
+  .feature-head .lead { max-width: 30em; margin-top: 0; padding-bottom: .4em; }
+  .feature-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(280px, .88fr);
+    gap: clamp(36px, 5vw, 84px);
+    align-items: center;
+    margin-top: clamp(34px, 6vh, 64px);
+  }
+
+  /* topology */
+  .topology-wrap { position: relative; }
+  .topology { width: 100%; height: auto; display: block; overflow: visible; }
+  .topology text { font-family: var(--sans); }
+  .edges path {
+    fill: none;
+    stroke: #d7d7cf;
+    stroke-width: 1;
+    stroke-dasharray: 3 5;
+  }
+  .dot-live { animation: pulse 2.6s ease-out infinite; transform-origin: center; transform-box: fill-box; }
+  @keyframes pulse {
+    0% { opacity: 1; }
+    55% { opacity: .45; }
+    100% { opacity: 1; }
+  }
+  .diagram-note {
+    display: flex;
+    gap: 22px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line-soft);
+    font: 500 9px/1.5 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .diagram-note span { display: flex; align-items: center; gap: 7px; }
+  .diagram-note i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); display: inline-block; }
+  .diagram-note i.gray { background: #cfcfc8; }
+
+  .points { border-top: 1px solid var(--line); }
+  .point {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px 18px;
+    padding: clamp(16px, 2.6vh, 24px) 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .point .key {
+    grid-column: 1 / -1;
+    font: 500 9px/1 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .point b { font-size: clamp(1.02rem, 1.35vw, 1.2rem); font-weight: 600; letter-spacing: -.01em; }
+  .point p { grid-column: 1 / -1; font-size: clamp(.86rem, 1.02vw, .96rem); line-height: 1.55; color: var(--ink-2); }
+  .point .idx { font: 400 10px/1 var(--mono); color: var(--ink-3); }
+
+  /* ---------- 03 board mock ---------- */
+  .mock {
+    display: grid;
+    grid-template-columns: 172px minmax(0, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--paper);
+    overflow: hidden;
+    box-shadow: 0 40px 90px -60px rgba(17, 18, 16, .42);
+  }
+  .mock-side {
+    padding: 18px 14px;
+    border-right: 1px solid var(--line-soft);
+    background: #fbfbf8;
+  }
+  .mock-label {
+    font: 500 8px/1 var(--mono);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding: 0 6px 12px;
+  }
+  .proj {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 8px;
+    border-radius: 7px;
+    background: #f0f0eb;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: -.01em;
+    margin-bottom: 10px;
+  }
+  .proj i {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    border: 1px solid #b9b9b1;
+    display: grid;
+    place-items: center;
+    background: #fff;
+  }
+  .proj i::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    background: var(--accent);
+  }
+  .tree-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px 7px 18px;
+    font-size: 10.5px;
+    color: var(--ink-2);
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .tree-row::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #d0d0c9;
+    flex: none;
+  }
+  .tree-row.live::before { background: var(--accent); box-shadow: 0 0 0 3px rgba(14, 159, 118, .10); }
+  .tree-row.retired { color: var(--ink-3); }
+  .tree-row.retired::before { background: transparent; border: 1px solid #c9c9c2; }
+
+  .mock-main { padding: 16px; background: #f6f6f2; min-width: 0; }
+  .mock-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 0 2px 12px;
+  }
+  .mock-head .count {
+    margin-left: auto;
+    font: 500 8px/1 var(--mono);
+    color: var(--ink-3);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 3px 7px;
+    background: #fff;
+  }
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(14, 159, 118, .10);
+  }
+  .mock-cards { display: grid; gap: 8px; }
+  .mcard {
+    background: #fff;
+    border: 1px solid var(--line-soft);
+    border-radius: 9px;
+    padding: 11px 12px 10px;
+    box-shadow: 0 1px 0 rgba(17, 18, 16, .02);
+  }
+  .mcard-top { display: flex; align-items: center; justify-content: space-between; }
+  .mcard .num { font: 500 8px/1 var(--mono); letter-spacing: .1em; color: var(--ink-3); }
+  .mcard h4 { font-size: 12px; font-weight: 600; letter-spacing: -.01em; margin: 6px 0 10px; }
+  .mcard-foot { display: flex; align-items: center; gap: 8px; font-size: 8.5px; }
+  .chip {
+    font: 500 8px/1 var(--mono);
+    letter-spacing: .1em;
+    padding: 3px 6px;
+    border-radius: 4px;
+    background: #f1f1ec;
+    color: var(--ink-2);
+  }
+  .state { margin-left: auto; font: 500 8px/1 var(--mono); letter-spacing: .08em; color: var(--ink-3); display: flex; align-items: center; gap: 5px; }
+  .state::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: #c9c9c2; }
+  .state.running::before { background: var(--accent); }
+  .state.waiting::before { background: var(--amber); }
+  .state.done::before { background: #a7a7a0; }
+  .mcard.waiting { border-color: #eadfc9; }
+  .mcard.done { opacity: .78; }
+  .mcard.done h4 { color: var(--ink-3); }
+
+  /* ---------- 04 files ---------- */
+  .files {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(12px, 1.6vw, 20px);
+    margin-top: clamp(32px, 5.5vh, 56px);
+  }
+  .file {
+    position: relative;
+    padding: clamp(22px, 2.8vw, 34px);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--paper);
+    overflow: hidden;
+  }
+  .file::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), rgba(14, 159, 118, 0));
+    opacity: .7;
+  }
+  .file-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+  .file-name { font: 600 clamp(1rem, 1.4vw, 1.2rem)/1 var(--mono); letter-spacing: -.02em; }
+  .file-kind { font: 500 8px/1 var(--mono); letter-spacing: .16em; color: var(--ink-3); }
+  .file p { margin-top: 16px; font-size: clamp(.86rem, 1.02vw, .96rem); line-height: 1.55; color: var(--ink-2); }
+  .file-list {
+    list-style: none;
+    padding: 0;
+    margin: 18px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+  .file-list li {
+    font: 500 9px/1 var(--mono);
+    letter-spacing: .06em;
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: #fbfbf8;
+  }
+  .skill-strip {
+    margin-top: clamp(12px, 1.6vw, 20px);
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(14, 159, 118, .18);
+  }
+  .skill-strip .file-name { color: var(--accent-ink); }
+  .skill-strip p { font-size: clamp(.82rem, .98vw, .92rem); color: #2c5f4e; }
+  .skill-strip .flowline { margin-left: auto; font: 500 9px/1.6 var(--mono); letter-spacing: .08em; color: #3e7a66; }
+
+  /* ---------- 05 human ---------- */
+  .trio {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    margin-top: clamp(34px, 6vh, 64px);
+    border-top: 1px solid var(--line);
+  }
+  .trio article {
+    padding: clamp(22px, 3vw, 36px) clamp(18px, 2.4vw, 34px) 0;
+    border-left: 1px solid var(--line);
+  }
+  .trio article:first-child { border-left: 0; padding-left: 0; }
+  .trio .no {
+    font: 500 9px/1 var(--mono);
+    letter-spacing: .18em;
+    color: var(--accent);
+  }
+  .trio h3 {
+    margin-top: 16px;
+    font-size: clamp(1.4rem, 2vw, 1.9rem);
+    letter-spacing: -.03em;
+    font-weight: 600;
+  }
+  .trio p {
+    margin-top: 12px;
+    font-size: clamp(.86rem, 1vw, .95rem);
+    line-height: 1.65;
+    color: var(--ink-2);
+    max-width: 24em;
+  }
+  .trio code {
+    font: 500 .88em/1 var(--mono);
+    color: var(--ink);
+    background: #efefe9;
+    padding: 2px 5px;
+    border-radius: 4px;
+  }
+
+  /* ---------- 06 compare ---------- */
+  .compare {
+    margin-top: clamp(26px, 4.5vh, 44px);
+    border-top: 1px solid var(--ink);
+  }
+  .crow {
+    display: grid;
+    grid-template-columns: minmax(74px, .55fr) 1.25fr 1.25fr;
+    gap: clamp(12px, 2vw, 30px);
+    padding: clamp(11px, 1.55vh, 16px) 0;
+    border-bottom: 1px solid var(--line);
+    align-items: start;
+  }
+  .crow.head {
+    border-bottom: 1px solid var(--line);
+    padding: 10px 0 12px;
+    align-items: end;
+  }
+  .crow .dim {
+    font: 500 8.5px/1.4 var(--mono);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding-top: .35em;
+  }
+  .crow .us, .crow .them {
+    font-size: clamp(.78rem, 1.02vw, .95rem);
+    line-height: 1.45;
+    color: var(--ink);
+  }
+  .crow .them { color: var(--ink-2); }
+  .crow.head .us, .crow.head .them {
+    font: 600 10px/1.3 var(--mono);
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .crow.head .us { color: var(--accent-ink); display: flex; align-items: center; gap: 7px; }
+  .crow.head .us::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .takeaway {
+    margin-top: clamp(18px, 2.8vh, 28px);
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    align-items: baseline;
+    flex-wrap: wrap;
+    padding-left: 16px;
+    border-left: 2px solid var(--accent);
+  }
+  .takeaway p { font-size: clamp(.9rem, 1.12vw, 1.04rem); letter-spacing: -.01em; }
+  .takeaway span { font-size: clamp(.72rem, .86vw, .8rem); color: var(--ink-3); line-height: 1.5; }
+
+  /* ---------- 07 close ---------- */
+  .close { overflow: hidden; }
+  .close-orb {
+    position: absolute;
+    right: -12vw;
+    bottom: -30vh;
+    width: 64vw;
+    height: 64vw;
+    max-width: 900px;
+    max-height: 900px;
+    background: radial-gradient(circle at 50% 50%, rgba(14, 159, 118, .14), rgba(14, 159, 118, 0) 66%);
+    pointer-events: none;
+  }
+  .close h2 { font-size: clamp(2.9rem, 7.4vw, 7rem); }
+  .install {
+    margin-top: clamp(34px, 6vh, 60px);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 4px 4px 18px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, .7);
+    position: relative;
+    z-index: 1;
+  }
+  .install code {
+    font: 400 clamp(.76rem, 1.02vw, .9rem)/1 var(--mono);
+    letter-spacing: -.01em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+  .install button {
+    appearance: none;
+    border: 0;
+    border-radius: 7px;
+    background: var(--ink);
+    color: #fff;
+    font: 500 10px/1 var(--mono);
+    letter-spacing: .05em;
+    padding: 11px 14px;
+    cursor: pointer;
+    transition: background .2s;
+    white-space: nowrap;
+  }
+  .install button:hover { background: var(--accent); }
+  .close-meta {
+    margin-top: clamp(26px, 4.5vh, 44px);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 24px;
+    font: 500 10px/1.7 var(--mono);
+    letter-spacing: .1em;
+    color: var(--ink-3);
+    position: relative;
+    z-index: 1;
+  }
+  .close-meta a { color: var(--ink-2); text-decoration: none; border-bottom: 1px solid var(--line); padding-bottom: 2px; }
+  .close-meta a:hover { color: var(--accent-ink); border-color: var(--accent); }
+  .close-note {
+    margin-top: clamp(40px, 8vh, 80px);
+    font-size: clamp(1.2rem, 2.2vw, 1.8rem);
+    letter-spacing: -.03em;
+    color: var(--ink-2);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 1020px) {
+    .feature-head { display: block; }
+    .feature-head .lead { margin-top: 16px; }
+    .what-grid { grid-template-columns: 1fr; gap: 40px; }
+    .ratio { justify-self: start; }
+    .ratio-label { justify-self: start; text-align: left; }
+    .feature-body { grid-template-columns: 1fr; gap: 32px; }
+    .topology-wrap { max-width: 620px; }
+    .files { grid-template-columns: 1fr; }
+    .mock { max-width: 680px; }
+  }
+
+  @media (max-width: 820px) {
+    html { scroll-snap-type: none; }
+    .rail, .hint { display: none; }
+    .cover-ring { width: 62vw; right: -16vw; opacity: .7; }
+    .cover-foot { display: none; }
+    .trio { grid-template-columns: 1fr; border-top: 0; gap: 0; }
+    .trio article {
+      border-left: 0;
+      border-top: 1px solid var(--line);
+      padding: 22px 0;
+    }
+    .trio article:first-child { border-top: 1px solid var(--line); }
+    .trio p { max-width: none; }
+    .crow { grid-template-columns: 68px 1fr 1fr; }
+    .crow .us, .crow .them { font-size: .78rem; }
+    .takeaway { display: block; }
+    .takeaway span { display: block; margin-top: 8px; }
+    .install { display: flex; width: 100%; }
+    .install code { white-space: normal; word-break: break-all; line-height: 1.5; }
+    .install button { flex: none; }
+  }
+
+  @media (max-width: 700px) {
+    .compare { margin-top: 22px; }
+    .crow { grid-template-columns: 1fr; gap: 7px; padding: 13px 0; }
+    .crow.head { display: none; }
+    .crow .dim { padding-top: 0; }
+    .crow .us, .crow .them { font-size: .78rem; line-height: 1.45; }
+    .crow .us::before, .crow .them::before {
+      display: block;
+      font: 600 8px/1.4 var(--mono);
+      letter-spacing: .14em;
+      margin-bottom: 1px;
+    }
+    .crow .us::before { content: "LEADER AGENT"; color: var(--accent-ink); }
+    .crow .them::before { content: "AGENT TEAM"; color: var(--ink-3); }
+    .takeaway { margin-top: 16px; }
+  }
+
+  @media (max-width: 700px) {
+    .br-wide { display: none; }
+  }
+
+  @media (max-width: 520px) {
+    .wordmark { white-space: nowrap; font-size: 8.1vw; word-break: normal; }
+    .cover-ring { display: none; }
+    .cover-meta { letter-spacing: .1em; }
+    .mock { grid-template-columns: 1fr; }
+    .mock-side { display: none; }
+    .skill-strip .flowline { margin-left: 0; }
+
+  }
+
+  @media (max-height: 760px) and (min-width: 821px) {
+    :root { --pad-y: 46px; }
+    h2 { font-size: clamp(2.2rem, 4.6vw, 4.2rem); }
+    .feature-body, .trio, .files, .compare { margin-top: 24px; }
+    .footnote { margin-top: 18px; }
+    .point { padding: 14px 0; }
+    .crow { padding: 9px 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .reveal { opacity: 1; transform: none; transition: none; }
+    .dot-live, .scroll-cue i { animation: none; }
+  }
+
+  @media print {
+    @page { size: 16in 9in; margin: 0; }
+    html, body { background: #fff; }
+    .atmosphere, .rail, .counter, .hint, .progress { display: none !important; }
+    .slide {
+      min-height: 0;
+      height: 100vh;
+      page-break-after: always;
+      padding: 46px 64px;
+    }
+    .reveal { opacity: 1 !important; transform: none !important; }
+    .cover-foot { display: flex; }
+  }
+</style>
+</head>
+<body>
+<div class="atmosphere" aria-hidden="true"></div>
+<div class="progress" aria-hidden="true"><span id="progress-bar"></span></div>
+
+<nav class="rail" aria-label="幻灯片导航">
+  <button class="rail-dot is-active" data-slide="0" aria-label="封面"><span>封面</span><i></i></button>
+  <button class="rail-dot" data-slide="1" aria-label="它是什么"><span>它是什么</span><i></i></button>
+  <button class="rail-dot" data-slide="2" aria-label="并行"><span>并行</span><i></i></button>
+  <button class="rail-dot" data-slide="3" aria-label="看板"><span>看板</span><i></i></button>
+  <button class="rail-dot" data-slide="4" aria-label="编排"><span>编排</span><i></i></button>
+  <button class="rail-dot" data-slide="5" aria-label="介入"><span>介入</span><i></i></button>
+  <button class="rail-dot" data-slide="6" aria-label="对比"><span>对比</span><i></i></button>
+  <button class="rail-dot" data-slide="7" aria-label="收尾"><span>收尾</span><i></i></button>
+</nav>
+
+<div class="counter" aria-hidden="true"><b id="current">01</b><span class="sep">/</span><span>08</span></div>
+<div class="hint" aria-hidden="true"><kbd>↓</kbd><span>SCROLL / 空格 / ← →</span><kbd>F</kbd><span>全屏</span></div>
+
+<main>
+
+  <!-- 01 cover -->
+  <section class="slide cover is-visible" data-title="封面">
+    <div class="cover-orb" aria-hidden="true"></div>
+    <div class="cover-ring" aria-hidden="true"></div>
+    <div class="wrap cover-inner">
+      <div class="kicker reveal">DeepSeek Harness · Plugin</div>
+      <h1 class="wordmark reveal" style="--d:.08s">dsh-leader-agent<span class="tick" aria-hidden="true"></span></h1>
+      <p class="cover-line reveal" style="--d:.16s">一个人，带一支 Agent 团队。</p>
+      <div class="cover-meta reveal" style="--d:.24s">
+        <span>Leader-driven dispatch</span>
+        <span>Project board</span>
+        <span>Parallel workers</span>
+      </div>
+    </div>
+    <div class="cover-foot reveal" style="--d:.34s">
+      <span>PROJECT INTRO / 2026</span>
+      <span class="scroll-cue">SCROLL <i></i></span>
+    </div>
+  </section>
+
+  <!-- 02 what -->
+  <section class="slide" data-title="它是什么">
+    <div class="wrap">
+      <div class="kicker reveal">01 / 它是什么</div>
+      <div class="what-grid">
+        <div>
+          <h2 class="reveal" style="--d:.06s">你只跟 Leader<br>说目标。</h2>
+          <p class="lead reveal" style="--d:.14s">拆解、派工、盯完成、收产物，由它接手。<br>注意力回到<strong>「要什么」</strong>，而不是逐个陪跑。</p>
+        </div>
+        <div class="ratio reveal" style="--d:.2s" aria-hidden="true">
+          <b>1</b><span class="arrow">→</span><b class="outline">N</b>
+          <div class="ratio-label">ONE LEADER<br>N PARALLEL WORKERS</div>
+        </div>
+      </div>
+      <p class="footnote reveal" style="--d:.28s">不是更聪明的 prompt，是会话、工具面与结算机制。</p>
+    </div>
+  </section>
+
+  <!-- 03 parallel -->
+  <section class="slide" data-title="并行">
+    <div class="wrap">
+      <div class="kicker reveal">02 / 主要功能</div>
+      <div class="feature-head">
+        <h2 class="reveal" style="--d:.06s">把串行开发，<br>改成并行推进。</h2>
+        <p class="lead reveal" style="--d:.14s">Leader 拆完就派出去。worker 在各自目录后台开工，<br class="br-wide">结束自动回报，不用你一个个催。</p>
+      </div>
+      <div class="feature-body">
+        <div class="topology-wrap reveal" style="--d:.2s">
+          <svg class="topology" viewBox="0 0 620 360" role="img" aria-label="一个 Leader 连接四个 worker">
+            <g class="edges">
+              <path d="M176 180 C 270 180, 300 54, 424 54"/>
+              <path d="M176 180 C 270 180, 300 138, 424 138"/>
+              <path d="M176 180 C 270 180, 300 222, 424 222"/>
+              <path d="M176 180 C 270 180, 300 306, 424 306"/>
+            </g>
+            <circle cx="118" cy="180" r="58" fill="#111210"/>
+            <text x="118" y="176" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="600">Leader</text>
+            <text x="118" y="196" text-anchor="middle" fill="#8b8d86" font-size="8" letter-spacing="2">YOU</text>
+            <g>
+              <circle cx="458" cy="54" r="28" fill="#ffffff" stroke="#dfdfd8"/>
+              <circle class="dot-live" cx="478" cy="34" r="4" fill="#0e9f76"/>
+              <text x="458" y="58" text-anchor="middle" fill="#111210" font-size="10">dev-01</text>
+            </g>
+            <g>
+              <circle cx="458" cy="138" r="28" fill="#ffffff" stroke="#dfdfd8"/>
+              <circle class="dot-live" cx="478" cy="118" r="4" fill="#0e9f76"/>
+              <text x="458" y="142" text-anchor="middle" fill="#111210" font-size="10">dev-02</text>
+            </g>
+            <g>
+              <circle cx="458" cy="222" r="28" fill="#ffffff" stroke="#dfdfd8"/>
+              <circle cx="478" cy="202" r="4" fill="#c58a32"/>
+              <text x="458" y="226" text-anchor="middle" fill="#111210" font-size="10">review</text>
+            </g>
+            <g>
+              <circle cx="458" cy="306" r="28" fill="#ffffff" stroke="#dfdfd8"/>
+              <circle cx="478" cy="286" r="4" fill="#cfcfc8"/>
+              <text x="458" y="310" text-anchor="middle" fill="#111210" font-size="10">docs</text>
+            </g>
+          </svg>
+          <div class="diagram-note">
+            <span><i></i>RUNNING</span>
+            <span><i class="gray"></i>DONE</span>
+            <span>4 WORKERS / 1 LEADER</span>
+          </div>
+        </div>
+        <div class="points reveal" style="--d:.28s">
+          <div class="point">
+            <span class="key">01 / Worker</span>
+            <b>常驻根会话</b>
+            <span class="idx">spawn_worker</span>
+            <p>后台各自开工，进程重启后还能冷恢复；人也可以直接打开它的会话。</p>
+          </div>
+          <div class="point">
+            <span class="key">02 / Isolation</span>
+            <b>一人一个 worktree</b>
+            <span class="idx">CONVENTION</span>
+            <p>任务隔离先于并行：各自目录、各自实例，不互相覆盖改动与数据。</p>
+          </div>
+          <div class="point">
+            <span class="key">03 / Settlement</span>
+            <b>完成自动结算</b>
+            <span class="idx">AUTO</span>
+            <p>worker 那一轮结束，机制侧折叠产物并唤醒 Leader。不轮询，也不靠 worker 自觉交作业。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 board -->
+  <section class="slide" data-title="看板">
+    <div class="wrap">
+      <div class="kicker reveal">03 / 主要功能</div>
+      <div class="feature-head">
+        <h2 class="reveal" style="--d:.06s">任务有卡，<br>不靠聊天记录。</h2>
+        <p class="lead reveal" style="--d:.14s">一个项目一块看板。<br class="br-wide">卡片是任务事实，槽位是执行者，信号灯是此刻的状态。</p>
+      </div>
+      <div class="feature-body">
+        <div class="mock reveal" style="--d:.2s" role="img" aria-label="项目树与交付看板示意">
+          <aside class="mock-side">
+            <div class="mock-label">项目</div>
+            <div class="proj"><i></i>dsh-leader-agent</div>
+            <div class="tree-row live">leader</div>
+            <div class="tree-row live">dev-01</div>
+            <div class="tree-row">review-02</div>
+            <div class="tree-row retired">dev-old</div>
+          </aside>
+          <div class="mock-main">
+            <div class="mock-head"><span class="live-dot"></span>交付看板<span class="count">3</span></div>
+            <div class="mock-cards">
+              <article class="mcard">
+                <div class="mcard-top"><span class="num">#012</span><span class="state running">RUNNING</span></div>
+                <h4>会话标签栏</h4>
+                <div class="mcard-foot"><span class="chip">dev</span><span class="state done">按项目归类</span></div>
+              </article>
+              <article class="mcard waiting">
+                <div class="mcard-top"><span class="num">#013</span><span class="state waiting">WAITING</span></div>
+                <h4>看板信号灯</h4>
+                <div class="mcard-foot"><span class="chip">review</span><span class="state done">7 档状态</span></div>
+              </article>
+              <article class="mcard done">
+                <div class="mcard-top"><span class="num">#014</span><span class="state done">DONE</span></div>
+                <h4>巡查提醒文案</h4>
+                <div class="mcard-foot"><span class="chip">docs</span><span class="state done">已归档</span></div>
+              </article>
+            </div>
+          </div>
+        </div>
+        <div class="points reveal" style="--d:.28s">
+          <div class="point">
+            <span class="key">01 / Scope</span>
+            <b>按项目归属</b>
+            <span class="idx">PROJECT-BOUND</span>
+            <p>卡片编号全局递增、不复用；跨项目改卡会被拒绝，看板只聚合本项目。</p>
+          </div>
+          <div class="point">
+            <span class="key">02 / Signal</span>
+            <b>槽位 + 信号灯</b>
+            <span class="idx">LIVE</span>
+            <p>谁在执行、跑到哪一步、是不是卡住了，卡面直接读出来。</p>
+          </div>
+          <div class="point">
+            <span class="key">03 / Drill-down</span>
+            <b>点一下就到会话</b>
+            <span class="idx">ONE CLICK</span>
+            <p>点卡看目标、范围、验收与链接；点槽位直接进那个 worker 的会话接着聊。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 files -->
+  <section class="slide" data-title="编排">
+    <div class="wrap">
+      <div class="kicker reveal">04 / 主要功能</div>
+      <h2 class="reveal" style="--d:.06s">改文件，<br>就是改行为。</h2>
+      <p class="lead reveal" style="--d:.14s">项目怎么指挥、怎么干活，都写在文件里。<br class="br-wide">每次请求前求值，正文变了才追加，不用重建会话。</p>
+      <div class="files">
+        <article class="file reveal" style="--d:.2s">
+          <div class="file-head"><span class="file-name">LEADER.md</span><span class="file-kind">PROJECT</span></div>
+          <p>这个项目怎么指挥：职责边界、派工粒度、硬约束与验收口径。</p>
+          <ul class="file-list"><li>边界</li><li>派工</li><li>验收</li></ul>
+        </article>
+        <article class="file reveal" style="--d:.26s">
+          <div class="file-head"><span class="file-name">SLOTS.md</span><span class="file-kind">ROLE</span></div>
+          <p>每种角色怎么干活。卡片把槽位绑到会话，被绑会话注入对应分节。</p>
+          <ul class="file-list"><li>dev</li><li>review</li><li>…</li></ul>
+        </article>
+      </div>
+      <div class="skill-strip reveal" style="--d:.32s">
+        <span class="file-name">leader-mode</span>
+        <p>给 Leader 的分阶段 playbook，不是一句「你是 tech lead」。</p>
+        <span class="flowline">讨论 → 设计 → 交付 → 审查 → 合入</span>
+      </div>
+      <p class="footnote reveal" style="--d:.38s">三份东西各管一层，都只贡献提示词，不授予工具权限。</p>
+    </div>
+  </section>
+
+  <!-- 06 human -->
+  <section class="slide" data-title="介入">
+    <div class="wrap">
+      <div class="kicker reveal">05 / 主要功能</div>
+      <h2 class="reveal" style="--d:.06s">不是全自动，<br>是随时可介入。</h2>
+      <p class="lead reveal" style="--d:.14s">Agent 还不够完善，人仍在回路里。<br class="br-wide">区别是：你只在需要的时候出现。</p>
+      <div class="trio">
+        <article class="reveal" style="--d:.2s">
+          <div class="no">01 / DRILL DOWN</div>
+          <h3>下钻</h3>
+          <p>点开任意 worker 的会话，绕过 Leader 直接对话、直接推进。</p>
+        </article>
+        <article class="reveal" style="--d:.26s">
+          <div class="no">02 / READ ONLY</div>
+          <h3>回看</h3>
+          <p>用 <code>read_worker_session</code> 复盘每一轮：任务、正文、调过哪些工具、哪步失败。不唤醒，不产生模型调用。</p>
+        </article>
+        <article class="reveal" style="--d:.32s">
+          <div class="no">03 / STALL WATCH</div>
+          <h3>巡查</h3>
+          <p>15 分钟没有回报，机制侧给 Leader 一条提醒：哪张卡、挂了多久、最后回报在哪。</p>
+        </article>
+      </div>
+      <p class="footnote reveal" style="--d:.38s">Leader 能纠偏，但无法中止 worker；真卡死，人去那个会话里处理。</p>
+    </div>
+  </section>
+
+  <!-- 07 compare -->
+  <section class="slide" data-title="对比">
+    <div class="wrap">
+      <div class="kicker reveal">06 / 对比</div>
+      <h2 class="reveal" style="--d:.06s">和 Agent Team<br>模式，差在哪？</h2>
+      <div class="compare reveal" style="--d:.16s">
+        <div class="crow head">
+          <div class="dim">维度</div>
+          <div class="us">dsh-leader-agent</div>
+          <div class="them">Harness Agent Team</div>
+        </div>
+        <div class="crow">
+          <div class="dim">组织</div>
+          <div class="us">项目：一个项目一个 Leader + 一块看板</div>
+          <div class="them">会话：根会话开启 Team，整棵 subagent 树共用一块任务板</div>
+        </div>
+        <div class="crow">
+          <div class="dim">成员</div>
+          <div class="us">常驻根会话 worker，可冷恢复、可下钻</div>
+          <div class="them">可继续 subagent teammate，通过标准 subagent 工具寻址</div>
+        </div>
+        <div class="crow">
+          <div class="dim">工作区</div>
+          <div class="us">约定一人一个 worktree，任务隔离</div>
+          <div class="them">成员共享同一检出目录，不提供 worktree</div>
+        </div>
+        <div class="crow">
+          <div class="dim">任务</div>
+          <div class="us">项目绑定卡片 + 槽位 + 实时信号灯</div>
+          <div class="them">共享任务板 + 依赖 / 认领 / 写域提示</div>
+        </div>
+        <div class="crow">
+          <div class="dim">人的位置</div>
+          <div class="us">项目树、标签栏、下钻、随时纠偏</div>
+          <div class="them">标准 subagent 导航，send_message / interrupt_agent</div>
+        </div>
+        <div class="crow">
+          <div class="dim">结算</div>
+          <div class="us">turn 结束自动结算 + 唤醒 + 15 分钟巡查</div>
+          <div class="them">完成通知 + wait_agent；任务更新不唤醒成员</div>
+        </div>
+      </div>
+      <div class="takeaway reveal" style="--d:.28s">
+        <p>Team 是运行时的协作原语；Leader Agent 是面向交付的编排层。</p>
+        <span>不建议同时启用：worker 会被 Team 当成隐式 Lead。</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 close -->
+  <section class="slide close" data-title="收尾">
+    <div class="close-orb" aria-hidden="true"></div>
+    <div class="wrap">
+      <div class="kicker reveal">07 / 收尾</div>
+      <h2 class="reveal" style="--d:.06s">把注意力，<br>留给要什么。</h2>
+      <div class="install reveal" style="--d:.16s">
+        <code>dsh plugin --profile web add dsh-leader-agent</code>
+        <button type="button" data-copy="dsh plugin --profile web add dsh-leader-agent">复制</button>
+      </div>
+      <div class="close-meta reveal" style="--d:.24s">
+        <a href="https://github.com/fengshenx/dsh-leader-agent" target="_blank" rel="noreferrer">github.com/fengshenx/dsh-leader-agent</a>
+        <span>MIT</span>
+        <span>dsh ≥ 0.2.1-rc.2</span>
+      </div>
+      <p class="close-note reveal" style="--d:.32s">一个人，也可以同时推进十个 feature。</p>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  (() => {
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const rail = Array.from(document.querySelectorAll('.rail-dot'));
+    const bar = document.getElementById('progress-bar');
+    const currentEl = document.getElementById('current');
+    let current = -1;
+    let ticking = false;
+
+    const clamp = (n) => Math.max(0, Math.min(slides.length - 1, n));
+
+    function setCurrent(index, scroll) {
+      const i = clamp(index);
+      if (i === current) {
+        if (scroll) slides[i].scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
+      current = i;
+      slides.forEach((slide, idx) => slide.classList.toggle('is-current', idx === i));
+      rail.forEach((dot, idx) => dot.classList.toggle('is-active', idx === i));
+      currentEl.textContent = String(i + 1).padStart(2, '0');
+      bar.style.transform = `scaleX(${(i + 1) / slides.length})`;
+      if (history.replaceState) history.replaceState(null, '', `#s${i + 1}`);
+      if (scroll) slides[i].scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function update() {
+      ticking = false;
+      const mid = window.innerHeight / 2;
+      let best = 0;
+      let bestDist = Infinity;
+      slides.forEach((slide, i) => {
+        const rect = slide.getBoundingClientRect();
+        if (rect.top < window.innerHeight * 0.88 && rect.bottom > window.innerHeight * 0.12) {
+          slide.classList.add('is-visible');
+        }
+        const center = rect.top + rect.height / 2;
+        const dist = Math.abs(center - mid);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      });
+      setCurrent(best, false);
+    }
+
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    }
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+
+    rail.forEach((dot) => {
+      dot.addEventListener('click', () => setCurrent(Number(dot.dataset.slide), true));
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.target.closest('input, textarea, select')) return;
+      const key = event.key;
+      if (key === 'ArrowDown' || key === 'ArrowRight' || key === 'PageDown' || key === ' ') {
+        event.preventDefault();
+        setCurrent(current + 1, true);
+      } else if (key === 'ArrowUp' || key === 'ArrowLeft' || key === 'PageUp') {
+        event.preventDefault();
+        setCurrent(current - 1, true);
+      } else if (key === 'Home') {
+        event.preventDefault();
+        setCurrent(0, true);
+      } else if (key === 'End') {
+        event.preventDefault();
+        setCurrent(slides.length - 1, true);
+      } else if (key === 'f' || key === 'F') {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+      }
+    });
+
+    const copyButton = document.querySelector('[data-copy]');
+    if (copyButton) {
+      copyButton.addEventListener('click', async () => {
+        const text = copyButton.dataset.copy;
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          const area = document.createElement('textarea');
+          area.value = text;
+          area.style.position = 'fixed';
+          area.style.opacity = '0';
+          document.body.appendChild(area);
+          area.select();
+          document.execCommand('copy');
+          area.remove();
+        }
+        const original = copyButton.textContent;
+        copyButton.textContent = '已复制';
+        setTimeout(() => { copyButton.textContent = original; }, 1600);
+      });
+    }
+
+    const initial = Number((location.hash.match(/^#s(\d+)$/) || [])[1]);
+    if (initial && initial >= 1 && initial <= slides.length) {
+      slides[initial - 1].scrollIntoView({ behavior: 'instant' });
+    }
+
+    slides[0].classList.add('is-visible');
+    update();
+  })();
+</script>
+</body>
+</html>
