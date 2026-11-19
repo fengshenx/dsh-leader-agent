@@ -55,7 +55,8 @@ SLOTS.md            本仓作为项目时，执行者角色槽位（dev / review
 ## 常用命令
 
 ```bash
-npm run check                     # Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查（index/src/scripts/build/.agents/skills）+ 覆盖率门禁（含全部单测）
+npm run check                     # oxlint + Agent Note 格式 + 文档工具名 + 文档预算 + 语法检查 + 覆盖率门禁（含全部单测）
+npm run lint                      # oxlint（--deny-warnings；index.js src tests scripts build .agents/skills）
 npm run test                      # 只跑单测
 npm run test:coverage             # 只跑单测 + per-file 行覆盖门禁
 npm run e2e                       # 构建客户端产物 + 浏览器 e2e（真实宿主 + 本地 mock，无密钥）
@@ -72,7 +73,7 @@ npm run release:check             # 发版门禁：check + build:client + verify
 
 ## 测试
 
-- 只有 `node:test`，**没有 lint**：未使用的 import、死代码、拼写错误都抓不到，改完要手扫。
+- **lint 用 oxlint**：`npm run lint` 已接进 `npm run check` 最前面，`--deny-warnings` 把 warning 也判成失败；未使用的 import 与死代码由 lint 拦住，拼写错误仍靠人工。
 - **覆盖率按 per-file 行覆盖判**：`src` 下没登记门槛的文件要求 100%，存量欠账登记在 `scripts/coverage-manifest.json`。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由，否则新增文件照样变红（机制见 [docs/development.md](docs/development.md#测试与构建)）。
 - 判据在宿主 UI 里的行为跑 `npm run e2e`（真实 `dsh` + 本地 mock + chromium，不进 `npm run check`）；要截图取证时用同一套夹具——车道命令、场景模板与截图落点见 [docs/e2e-testing.md](docs/e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。
 - **假件照宿主的真实 API 面构造**：夹具多给一个宿主方法，就会掩盖「下限版本没有它」这类缺口——`tests/tool-gate.test.js` 的 `makeAgent` 是范例，它只给 rc.2 就有的 `restrict` / `get` / `schemas`。

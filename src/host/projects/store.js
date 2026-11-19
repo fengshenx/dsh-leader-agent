@@ -149,10 +149,9 @@ function isProjectRecord(value) {
  *
  * @param {object} options - 选项
  * @param {string} options.home - dsh home 目录
- * @param {(message: string) => void} [options.logger] - 日志输出
  * @returns {object} 项目注册表接口
  */
-export function createProjectStore({ home, logger = () => {} } = {}) {
+export function createProjectStore({ home } = {}) {
   const directory = join(home, 'dsh-leader-agent')
   const file = join(directory, 'projects.json')
   const temporary = join(directory, 'projects.json.tmp')

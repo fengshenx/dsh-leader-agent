@@ -44,7 +44,7 @@ import { homedir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import { withFileLockSync, writeFileAtomicSync } from './atomic-write.mjs'
 import { inheritCredentialRefs, prepareProfileDir } from './dev-instance.mjs'
-import { CREDENTIALS_FILE, LEADER_AGENT_PACKAGE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
+import { CREDENTIALS_FILE, assertSeparateHome, assertWebBundle, resolveDevPaths } from './dev-plan.mjs'
 import {
   DESKTOP_APP_NAME, DESKTOP_PROFILE, desktopPathsOf, derivedDesktopHome, expandHomePath,
   installedSpecOf, looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable,

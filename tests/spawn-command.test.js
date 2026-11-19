@@ -25,6 +25,7 @@ const NODE_DIR = 'C:\\Program Files\\nodejs'
  * @returns {string} 去掉颜色转义后的文本
  */
 function plain(text) {
+  // oxlint-disable-next-line no-control-regex -- 要剥掉的就是 ANSI 转义序列本身
   return text.replace(/\u001B\[[0-9;]*m/g, '')
 }
 

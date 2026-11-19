@@ -553,13 +553,13 @@ export function deriveProfilePackage(sourcePackage, worktree) {
   return {
     ...sourcePackage,
     dependencies: {
-      ...(sourcePackage?.dependencies ?? {}),
+      ...sourcePackage?.dependencies,
       [LEADER_AGENT_PACKAGE]: `link:${worktree}`,
     },
     dsh: {
-      ...(sourcePackage?.dsh ?? {}),
+      ...sourcePackage?.dsh,
       profile: {
-        ...(sourcePackage?.dsh?.profile ?? {}),
+        ...sourcePackage?.dsh?.profile,
         bundles,
       },
     },

@@ -79,6 +79,7 @@ SOFTWARE.
 | 包 | 版本 | 许可 | 来源 |
 | --- | --- | --- | --- |
 | esbuild | 0.28.2 | MIT | https://github.com/evanw/esbuild |
+| oxlint | 1.94.0 | MIT | https://github.com/oxc-project/oxc |
 | playwright | 1.64.1 | Apache-2.0 | https://github.com/microsoft/playwright |
 
 这些工具只在开发、构建或测试时使用，不进入 npm 包或客户端产物；完整许可文本在各自安装目录的 `LICENSE` 文件里。

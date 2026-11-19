@@ -406,7 +406,7 @@ export function createDispatcher({
     const hasWork = [...waiting.values()].some((list) => list.some((item) => item.exhausted !== true))
     if (!hasWork) return
     const pending = await store.listPending()
-    for (const [parentSessionId, list] of [...waiting]) {
+    for (const [parentSessionId, list] of Array.from(waiting)) {
       // 先摘后投：投递期间等待表里没有这些条目，轮询重入也拿不到同一条。
       waiting.delete(parentSessionId)
       /** 已达上限、等人工介入复位的条目：不投、不写盘、不记日志，但留在表里。 */
@@ -948,9 +948,9 @@ export function createDispatcher({
     const facts = new Map()
     try {
       for (const record of await workers.list()) {
-        facts.set(record.childId, {
-          ...typeof record.lastReportAt === 'number' ? { lastReportAt: record.lastReportAt } : {},
-        })
+        facts.set(record.childId, typeof record.lastReportAt === 'number'
+          ? { lastReportAt: record.lastReportAt }
+          : {})
       }
     } catch (error) {
       // 读不出登记表时不阻塞查卡：只是槽位行少一段附注。

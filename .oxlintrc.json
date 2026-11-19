@@ -1,0 +1,17 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    "lib/**",
+    "node_modules/**",
+    ".worktrees/**",
+    ".dev/**",
+    "growing/**/dist/**"
+  ],
+  "rules": {
+    "no-unused-vars": ["warn", {
+      "varsIgnorePattern": "^_",
+      "argsIgnorePattern": "^_",
+      "caughtErrorsIgnorePattern": "^_"
+    }]
+  }
+}
