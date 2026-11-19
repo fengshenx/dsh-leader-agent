@@ -6,6 +6,8 @@
 <title>dsh-leader-agent — one Leader drives a team of coding agents</title>
 <meta name="description" content="A leader/worker orchestration plugin for DeepSeek Harness (dsh): the Leader splits work, dispatches workers, tracks every task to completion and runs review — on a project board you can read at a glance.">
 <link rel="canonical" href="https://fengshenx.github.io/dsh-leader-agent/">
+<link rel="icon" type="image/svg+xml" href="logo-mark.svg">
+<meta name="theme-color" content="#06070a">
 <meta property="og:type" content="website">
 <meta property="og:title" content="dsh-leader-agent — one Leader drives a team of coding agents">
 <meta property="og:description" content="Leader/worker orchestration for DeepSeek Harness: dispatch, board, review. Run ten features in parallel instead of babysitting each one.">
@@ -14,7 +16,7 @@
 <meta property="og:site_name" content="dsh-leader-agent">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="dsh-leader-agent — one Leader drives a team of coding agents">
-<meta name="twitter:description" content="Leader/worker orchestration for DeepSeek Harness (dsh): dispatch, board, review.">
+<meta name="twitter:description" content="Leader/worker orchestration for DeepSeek Harness: dispatch, board, review.">
 <meta name="twitter:image" content="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png">
 <script type="application/ld+json">
 {
@@ -37,129 +39,799 @@
 </script>
 <style>
   :root {
-    --ink: #16181d;
-    --muted: #5d6470;
-    --line: #e6e4de;
-    --bg: #fbfaf8;
-    --card: #ffffff;
-    --brand: #4b6fff;
-    --brand-ink: #3453d9;
-    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --bg: #06070a;
+    --bg-elevated: #0b0d14;
+    --surface: rgba(255, 255, 255, 0.028);
+    --surface-hover: rgba(255, 255, 255, 0.048);
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+    --ink: #f4f5f8;
+    --ink-soft: #9aa3b2;
+    --ink-muted: #647084;
+    --accent: #4f6fff;
+    --accent-cyan: #38bdf8;
+    --accent-soft: rgba(79, 111, 255, 0.14);
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
+    --radius-sm: 8px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
   }
+
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    color-scheme: dark;
+  }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    font: 15.5px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
   }
-  a { color: var(--brand-ink); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
 
-  header.site { border-bottom: 1px solid var(--line); }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 28px;
+  }
+
+  /* Ambient architectural backdrop */
+  .hero-backdrop {
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-backdrop::before {
+    content: "";
+    position: absolute;
+    inset: -120px 0 auto 0;
+    height: 680px;
+    background:
+      radial-gradient(62% 52% at 50% 18%, rgba(79, 111, 255, 0.18) 0%, rgba(56, 189, 248, 0.06) 42%, transparent 74%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .hero-backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 640px;
+    background-image: radial-gradient(rgba(255, 255, 255, 0.12) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(65% 65% at 50% 25%, #000 0%, transparent 100%);
+    -webkit-mask-image: radial-gradient(65% 65% at 50% 25%, #000 0%, transparent 100%);
+    opacity: 0.45;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .hero-backdrop > * { position: relative; z-index: 1; }
+
+  /* Sticky glass header */
+  header.site {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    background: rgba(6, 7, 10, 0.72);
+    backdrop-filter: blur(18px) saturate(160%);
+    -webkit-backdrop-filter: blur(18px) saturate(160%);
+    border-bottom: 1px solid var(--border);
+  }
   header.site .wrap {
-    display: flex; align-items: center; gap: 12px;
-    padding-top: 18px; padding-bottom: 18px;
+    display: flex;
+    align-items: center;
+    height: 64px;
+    gap: 16px;
   }
-  header.site img { height: 30px; width: auto; }
-  header.site .name { font-weight: 650; letter-spacing: -0.01em; }
-  header.site nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
-  header.site nav a { color: var(--muted); }
-  header.site nav a:hover { color: var(--ink); text-decoration: none; }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    font-weight: 650;
+    font-size: 15px;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+  }
+  .brand img {
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    display: block;
+  }
+  .brand-pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 999px;
+    letter-spacing: 0;
+  }
+  header.site nav {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+  }
+  header.site nav a {
+    transition: color 0.16s ease;
+  }
+  header.site nav a:hover {
+    color: var(--ink);
+  }
+  .nav-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+  }
+  .nav-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    font-weight: 500;
+    transition: background 0.16s ease, border-color 0.16s ease;
+  }
+  .nav-cta:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: var(--border-strong);
+  }
 
-  .hero { padding: 84px 0 64px; text-align: center; }
+  /* Hero */
+  .hero {
+    padding: 108px 0 72px;
+    text-align: center;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-bottom: 28px;
+  }
+  .eyebrow-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    box-shadow: 0 0 12px var(--accent-cyan);
+    animation: pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.85); }
+  }
   .hero h1 {
-    font-size: clamp(30px, 5.2vw, 46px);
-    line-height: 1.16; letter-spacing: -0.022em;
-    margin: 0 auto 18px; max-width: 780px; font-weight: 700;
+    margin: 0 auto 22px;
+    max-width: 980px;
+    font-size: clamp(32px, 4.9vw, 58px);
+    font-weight: 700;
+    line-height: 1.1;
+    letter-spacing: -0.038em;
+    background: linear-gradient(180deg, #ffffff 15%, rgba(255, 255, 255, 0.74) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
-  .hero h1 em { font-style: normal; color: var(--brand); }
+  .hero h1 em {
+    font-style: normal;
+    background: linear-gradient(95deg, #6b8cff 0%, #38bdf8 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
   .hero p.lead {
-    color: var(--muted); font-size: 18px; max-width: 640px;
-    margin: 0 auto 30px;
+    margin: 0 auto 38px;
+    max-width: 620px;
+    font-size: clamp(16px, 2vw, 18.5px);
+    line-height: 1.65;
+    color: var(--ink-soft);
+    font-weight: 400;
   }
-  .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 28px;
+  }
   .btn {
-    display: inline-block; padding: 11px 22px; border-radius: 10px;
-    font-size: 15px; font-weight: 600; border: 1px solid transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 22px;
+    border-radius: 10px;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+    cursor: pointer;
   }
-  .btn:hover { text-decoration: none; }
-  .btn-primary { background: var(--brand); color: #fff; }
-  .btn-primary:hover { background: var(--brand-ink); }
-  .btn-ghost { border-color: var(--line); background: var(--card); color: var(--ink); }
-  .btn-ghost:hover { border-color: var(--muted); }
+  .btn-primary {
+    background: #ffffff;
+    color: #06070a;
+    border: 1px solid #ffffff;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1), 0 10px 30px -8px rgba(79, 111, 255, 0.45);
+  }
+  .btn-primary:hover {
+    background: #eef2ff;
+    transform: translateY(-1px);
+  }
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--ink);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+  }
 
-  .band { border-top: 1px solid var(--line); padding: 56px 0; }
-  .band h2 {
-    font-size: 13px; font-weight: 650; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--muted);
-    margin: 0 0 28px; text-align: center;
+  /* Quick install pill in hero */
+  .quick-cmd {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 100%;
+    padding: 8px 10px 8px 16px;
+    border-radius: 999px;
+    background: rgba(11, 13, 20, 0.85);
+    border: 1px solid var(--border);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: #cbd5e1;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
   }
-  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  .card {
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 12px; padding: 20px 22px;
-  }
-  .card h3 { margin: 0 0 8px; font-size: 16px; letter-spacing: -0.01em; }
-  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
-  .card code {
-    font-family: var(--mono); font-size: 13px; background: #f1f0ec;
-    border-radius: 4px; padding: 1px 5px;
-  }
-
-  figure.shot { margin: 0; text-align: center; }
-  figure.shot img {
-    max-width: 100%; border: 1px solid var(--line); border-radius: 12px;
-    box-shadow: 0 18px 44px rgba(22, 24, 29, 0.09);
-  }
-  figure.shot figcaption { color: var(--muted); font-size: 14px; margin-top: 14px; }
-
-  .video-row { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 44px; align-items: center; }
-  .video-row video {
-    width: 100%; border-radius: 14px; border: 1px solid var(--line);
-    display: block; background: #000;
-  }
-  .video-row h3 { margin: 0 0 12px; font-size: 22px; letter-spacing: -0.015em; }
-  .video-row ul { margin: 0; padding-left: 20px; color: var(--muted); }
-  .video-row li { margin: 8px 0; }
-  .video-row li strong { color: var(--ink); font-weight: 600; }
-
-  .install { max-width: 720px; margin: 0 auto; }
-  .install h3 { font-size: 18px; margin: 34px 0 10px; text-align: center; }
-  .install h3:first-of-type { margin-top: 0; }
-  .install .note { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 14px; }
-  .cmd {
-    position: relative; background: #14161b; color: #e8eaf0;
-    border-radius: 10px; padding: 16px 56px 16px 18px;
-    font-family: var(--mono); font-size: 13.5px; line-height: 1.7;
-    overflow-x: auto; white-space: pre;
-  }
-  .cmd .c { color: #7d8698; }
-  .cmd button {
-    position: absolute; top: 12px; right: 12px;
-    background: #232733; color: #aab3c2; border: 1px solid #333947;
-    border-radius: 7px; font-size: 12px; padding: 4px 10px; cursor: pointer;
+  .quick-cmd .prompt { color: var(--accent-cyan); user-select: none; }
+  .quick-cmd code {
     font-family: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .cmd button:hover { color: #fff; border-color: #4c556a; }
-  .install p.ghost-note { text-align: center; color: var(--muted); font-size: 13.5px; margin-top: 22px; }
+  .quick-cmd button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .quick-cmd button:hover {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-strong);
+  }
 
-  footer.site { border-top: 1px solid var(--line); padding: 34px 0 46px; }
+  /* Product showcase frame */
+  .showcase {
+    padding: 12px 0 96px;
+  }
+  .window-frame {
+    position: relative;
+    border-radius: var(--radius-lg);
+    padding: 1px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(79, 111, 255, 0.22) 35%, rgba(255, 255, 255, 0.05) 100%);
+    box-shadow:
+      0 32px 90px -24px rgba(0, 0, 0, 0.85),
+      0 0 80px -28px rgba(79, 111, 255, 0.32);
+  }
+  .window-inner {
+    background: #0b0d14;
+    border-radius: calc(var(--radius-lg) - 1px);
+    overflow: hidden;
+  }
+  .window-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+  .win-dots {
+    display: flex;
+    gap: 7px;
+  }
+  .win-dots span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+  }
+  .win-title {
+    margin: 0 auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    padding-right: 44px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .window-inner img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .panes-legend {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .pane-item {
+    padding: 16px 18px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .pane-item .idx {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent-cyan);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .pane-item strong {
+    display: block;
+    font-size: 14.5px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--ink);
+  }
+  .pane-item p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+
+  /* Section chrome */
+  .section {
+    position: relative;
+    padding: 96px 0;
+  }
+  .section::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(1120px, 92%);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+  }
+  .section-head {
+    max-width: 640px;
+    margin: 0 auto 56px;
+    text-align: center;
+  }
+  .section-kicker {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent-cyan);
+    margin-bottom: 12px;
+  }
+  .section-head h2 {
+    margin: 0 0 14px;
+    font-size: clamp(26px, 3.6vw, 38px);
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+  }
+  .section-head p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 16px;
+  }
+
+  /* Architecture 4-step strip */
+  .flow-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+  .flow-step {
+    position: relative;
+    padding: 22px 20px;
+    border-radius: var(--radius-md);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0.015) 100%);
+    border: 1px solid var(--border);
+  }
+  .flow-step .step-num {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .flow-step .step-num::after {
+    content: "→";
+    color: rgba(79, 111, 255, 0.7);
+    font-size: 13px;
+  }
+  .flow-step:last-child .step-num::after {
+    content: "✓";
+    color: var(--accent-cyan);
+  }
+  .flow-step h3 {
+    margin: 0 0 6px;
+    font-size: 15.5px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .flow-step p {
+    margin: 0;
+    font-size: 13.5px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+
+  /* Bento features grid */
+  .bento {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+  .bento-card {
+    position: relative;
+    padding: 26px 26px 28px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  }
+  .bento-card:hover {
+    border-color: rgba(79, 111, 255, 0.36);
+    background: var(--surface-hover);
+    transform: translateY(-2px);
+  }
+  .bento-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(79, 111, 255, 0.12);
+    border: 1px solid rgba(79, 111, 255, 0.24);
+    color: #82a4ff;
+    margin-bottom: 18px;
+  }
+  .bento-card h3 {
+    margin: 0 0 10px;
+    font-size: 16.5px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+  .bento-card p {
+    margin: 0;
+    font-size: 14.2px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+  .flow-step code,
+  .bento-card code,
+  .install-note code,
+  .gui-step code {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: #c7d7ff;
+    background: rgba(79, 111, 255, 0.12);
+    border: 1px solid rgba(79, 111, 255, 0.22);
+    border-radius: 6px;
+    padding: 1.5px 6px;
+  }
+
+  /* Watch it run (video + narrative) */
+  .demo-grid {
+    display: grid;
+    grid-template-columns: minmax(260px, 340px) 1fr;
+    gap: 56px;
+    align-items: center;
+  }
+  .video-bezel {
+    padding: 10px;
+    border-radius: 26px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.03) 100%);
+    border: 1px solid var(--border);
+    box-shadow:
+      0 28px 70px -20px rgba(0, 0, 0, 0.85),
+      0 0 60px -24px rgba(56, 189, 248, 0.24);
+  }
+  .video-bezel video {
+    display: block;
+    width: 100%;
+    border-radius: 18px;
+    background: #000;
+  }
+  .demo-copy h3 {
+    margin: 0 0 10px;
+    font-size: clamp(24px, 3vw, 32px);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+  .demo-copy > p {
+    margin: 0 0 28px;
+    color: var(--ink-soft);
+    font-size: 15.5px;
+  }
+  .demo-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 14px;
+  }
+  .demo-list li {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    padding: 16px 18px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .demo-list .num {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent-cyan);
+    padding-top: 2px;
+  }
+  .demo-list strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 3px;
+  }
+  .demo-list span {
+    display: block;
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.55;
+  }
+
+  /* Install terminal */
+  .install-shell {
+    max-width: 780px;
+    margin: 0 auto;
+    border-radius: var(--radius-lg);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 64px -20px rgba(0, 0, 0, 0.75);
+    overflow: hidden;
+  }
+  .install-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.025);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .tab-group {
+    display: inline-flex;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .tab-btn {
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    padding: 6px 14px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .tab-btn:hover { color: var(--ink); }
+  .tab-btn[aria-selected="true"] {
+    background: rgba(79, 111, 255, 0.2);
+    color: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(79, 111, 255, 0.45);
+  }
+  .req-tag {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-muted);
+  }
+  .install-panel {
+    display: none;
+    padding: 24px 24px 26px;
+  }
+  .install-panel.active { display: block; }
+  .install-note {
+    margin: 0 0 16px;
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+  .cmd {
+    position: relative;
+    background: #06070a;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 18px 84px 18px 20px;
+    font-family: var(--mono);
+    font-size: 13.5px;
+    line-height: 1.75;
+    color: #e6edf7;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  .cmd .c { color: #64748b; }
+  .cmd .p { color: var(--accent-cyan); user-select: none; }
+  .cmd button[data-copy] {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .cmd button[data-copy]:hover {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--border-strong);
+  }
+  .gui-steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .gui-step {
+    padding: 16px;
+    border-radius: 12px;
+    background: #06070a;
+    border: 1px solid var(--border);
+  }
+  .gui-step span {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent-cyan);
+    margin-bottom: 6px;
+  }
+  .gui-step strong {
+    display: block;
+    font-size: 14px;
+    margin-bottom: 4px;
+  }
+  .gui-step p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .install-meta {
+    margin-top: 22px;
+    text-align: center;
+    font-size: 13.5px;
+    color: var(--ink-muted);
+  }
+  .install-meta a {
+    color: #93b4ff;
+    transition: color 0.15s ease;
+  }
+  .install-meta a:hover { color: #ffffff; }
+
+  /* Footer */
+  footer.site {
+    border-top: 1px solid var(--border);
+    padding: 36px 0 48px;
+  }
   footer.site .wrap {
-    display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: center;
-    color: var(--muted); font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px 24px;
+    font-size: 13.5px;
+    color: var(--ink-muted);
   }
+  .footer-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--ink-soft);
+  }
+  .footer-brand img {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+  }
+  .footer-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 22px;
+  }
+  .footer-links a:hover { color: var(--ink); }
 
-  @media (max-width: 860px) {
-    .cards { grid-template-columns: 1fr 1fr; }
-    .video-row { grid-template-columns: 1fr; gap: 24px; }
-    .video-row video { max-width: 320px; margin: 0 auto; }
+  /* Responsive */
+  @media (max-width: 960px) {
+    .flow-grid { grid-template-columns: repeat(2, 1fr); }
+    .bento { grid-template-columns: repeat(2, 1fr); }
+    .panes-legend { grid-template-columns: 1fr; }
+    .demo-grid { grid-template-columns: 1fr; gap: 36px; }
+    .video-bezel { max-width: 340px; margin: 0 auto; }
   }
-  @media (max-width: 560px) {
-    .cards { grid-template-columns: 1fr; }
-    .hero { padding: 56px 0 44px; }
+  @media (max-width: 640px) {
+    .wrap { padding: 0 18px; }
+    header.site nav a.hide-sm,
+    header.site nav .nav-sep { display: none; }
+    .brand-pill { display: none; }
+    .hero { padding: 72px 0 52px; }
+    .section { padding: 68px 0; }
+    .flow-grid,
+    .bento,
+    .gui-steps { grid-template-columns: 1fr; }
+    .quick-cmd { width: 100%; justify-content: space-between; }
+    .win-title { padding-right: 0; }
+    footer.site .wrap { flex-direction: column; align-items: flex-start; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .eyebrow-dot { animation: none; }
+    .btn, .bento-card { transition: none; }
   }
 </style>
 </head>
@@ -167,128 +839,329 @@
 
 <header class="site">
   <div class="wrap">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent logo" width="132" height="30">
-    <span class="name">dsh-leader-agent</span>
-    <nav>
+    <a class="brand" href="#">
+      <img src="logo-mark.svg" alt="dsh-leader-agent mark" width="28" height="28">
+      <span>dsh-leader-agent</span>
+      <span class="brand-pill">dsh plugin</span>
+    </a>
+    <nav aria-label="Primary">
+      <a class="hide-sm" href="#workflow">Workflow</a>
+      <a class="hide-sm" href="#features">Features</a>
+      <a class="hide-sm" href="#demo">Demo</a>
+      <a class="hide-sm" href="#install">Install</a>
+      <span class="nav-sep" aria-hidden="true"></span>
       <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
-      <a href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
-      <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">简体中文</a>
+      <a class="hide-sm" href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
+      <a class="nav-cta" href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">中文</a>
     </nav>
   </div>
 </header>
 
 <main>
-  <section class="hero wrap">
-    <h1>One Leader drives the work and the review,<br>so you can run <em>ten features in parallel</em> instead of babysitting each one.</h1>
-    <p class="lead">A leader/worker orchestration bundle for DeepSeek Harness (dsh). You state the goal once; the Leader splits work, dispatches workers, tracks every task to completion, checks what comes back and organizes review.</p>
-    <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/fengshenx/dsh-leader-agent">View on GitHub</a>
-      <a class="btn btn-ghost" href="#install">Install</a>
-    </div>
-  </section>
+  <div class="hero-backdrop">
+    <section class="hero wrap">
+      <div class="eyebrow">
+        <span class="eyebrow-dot" aria-hidden="true"></span>
+        <span>DeepSeek Harness Plugin · Open Source (MIT)</span>
+      </div>
+      <h1>One Leader drives the work and review.<br>Run <em>ten features in parallel</em>.</h1>
+      <p class="lead">State the goal once. The Leader splits cards, dispatches persistent workers, tracks every turn to completion, verifies deliverables, and organizes review — on a live project board you can read at a glance.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#install">
+          <span>Install Plugin</span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </a>
+        <a class="btn btn-ghost" href="https://github.com/fengshenx/dsh-leader-agent">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.69-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
+          <span>View on GitHub</span>
+        </a>
+      </div>
+      <div class="quick-cmd">
+        <span class="prompt">$</span>
+        <code>dsh plugin --profile web add dsh-leader-agent</code>
+        <button type="button" data-copy-text="dsh plugin --profile web add dsh-leader-agent">Copy</button>
+      </div>
+    </section>
 
-  <section class="band">
+    <section class="showcase wrap" aria-label="Workspace screenshot">
+      <div class="window-frame">
+        <div class="window-inner">
+          <div class="window-bar" aria-hidden="true">
+            <div class="win-dots"><span></span><span></span><span></span></div>
+            <div class="win-title">DeepSeek Harness — dsh-leader-agent</div>
+          </div>
+          <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="dsh-leader-agent: project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200">
+        </div>
+      </div>
+      <div class="panes-legend">
+        <div class="pane-item">
+          <div class="idx">01 / Left Rail</div>
+          <strong>Project Tree &amp; Workers</strong>
+          <p>Each project binds one Leader session and lists every persistent worker it spawned underneath.</p>
+        </div>
+        <div class="pane-item">
+          <div class="idx">02 / Center Stage</div>
+          <strong>The Leader Session</strong>
+          <p>One thread for goal, dispatch, automated worker reports, verification, and review verdicts.</p>
+        </div>
+        <div class="pane-item">
+          <div class="idx">03 / Right SidePanel</div>
+          <strong>Live Delivery Board</strong>
+          <p>One card per task with executor slot chips and live status lights — click any slot to drill straight in.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="section" id="workflow">
     <div class="wrap">
-      <h2>What you get</h2>
-      <div class="cards">
-        <div class="card">
-          <h3>One Leader drives dev and review</h3>
-          <p>The Leader opens cards, dispatches workers, watches each one finish, verifies the deliverable and organizes review. Your attention goes back to <em>what</em> you want.</p>
+      <div class="section-head">
+        <span class="section-kicker">Orchestration Loop</span>
+        <h2>Stop babysitting individual agents</h2>
+        <p>A clear separation of roles: you steer the goal, the Leader owns dispatch and quality, and workers execute in parallel.</p>
+      </div>
+      <div class="flow-grid">
+        <div class="flow-step">
+          <div class="step-num">STEP 01</div>
+          <h3>State the Goal</h3>
+          <p>Talk only to the Leader. Scope, acceptance criteria, and links land on structured project cards.</p>
         </div>
-        <div class="card">
-          <h3>A board you can read at a glance</h3>
-          <p>One board per project. Each card carries its executor slot and a live status light; click a slot to drill into that agent's session and keep talking.</p>
+        <div class="flow-step">
+          <div class="step-num">STEP 02</div>
+          <h3>Dispatch Roles</h3>
+          <p>The Leader spawns or reuses persistent worker sessions shaped by <code>SLOTS.md</code> (dev, review, and more).</p>
         </div>
-        <div class="card">
-          <h3>Behavior lives in two files</h3>
-          <p><code>LEADER.md</code> holds the orchestration rules, <code>SLOTS.md</code> gives each worker role its own rules. Editing a file changes behavior — no session restart.</p>
+        <div class="flow-step">
+          <div class="step-num">STEP 03</div>
+          <h3>Parallel Execution</h3>
+          <p>Workers run autonomously in the background, settle their own cards when a turn ends, and report back.</p>
         </div>
-        <div class="card">
-          <h3>Many projects, one Leader each</h3>
-          <p>The project tree lists the workers each Leader spawned. Swap in a new Leader and the existing workers plus undelivered reports move over.</p>
-        </div>
-        <div class="card">
-          <h3>Read back what a worker did</h3>
-          <p><code>read_worker_session</code> reads a worker's session log directly — every turn, every tool call, why anything failed — without waking it or triggering a model call.</p>
-        </div>
-        <div class="card">
-          <h3>Quiet workers get flagged</h3>
-          <p>When a dispatched turn produces no report for 15 minutes, a patrol notice arrives with the session id, its card and a copy-pasteable read-back call.</p>
+        <div class="flow-step">
+          <div class="step-num">STEP 04</div>
+          <h3>Verify &amp; Review</h3>
+          <p>The Leader inspects deliverables, routes independent review, and summarizes what is ready to merge.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="band">
+  <section class="section" id="features">
     <div class="wrap">
-      <figure class="shot">
-        <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="dsh-leader-agent: project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200" loading="lazy">
-        <figcaption>Left: projects and their workers. Center: the Leader's session — task, dispatch, worker report, verdict. Right: the delivery board, one card per task, a slot chip per executor.</figcaption>
-      </figure>
+      <div class="section-head">
+        <span class="section-kicker">Capabilities</span>
+        <h2>Built for multi-feature throughput</h2>
+        <p>Everything needed to coordinate a team of coding agents without losing visibility or control.</p>
+      </div>
+      <div class="bento">
+        <article class="bento-card">
+          <div class="bento-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M9 12h6.5"/><path d="M9 12c2.5 0 2.5-6 6.5-6"/><path d="M9 12c2.5 0 2.5 6 6.5 6"/></svg>
+          </div>
+          <h3>One Leader drives dev and review</h3>
+          <p>The Leader opens cards, dispatches workers, watches each one finish, verifies the deliverable and organizes review. Your attention returns to <em>what</em> you want.</p>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/><path d="M15 4v16"/></svg>
+          </div>
+          <h3>A board you can read at a glance</h3>
+          <p>One board per project. Each card carries its executor slot and a live status light; click a slot to drill into that agent's session and keep talking.</p>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+          </div>
+          <h3>Behavior lives in two files</h3>
+          <p><code>LEADER.md</code> holds the orchestration rules, <code>SLOTS.md</code> gives each worker role its own rules. Editing a file changes behavior live — no session restart.</p>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M8 13h8"/></svg>
+          </div>
+          <h3>Many projects, one Leader each</h3>
+          <p>The project tree lists the workers each Leader spawned. Swap in a new Leader and the existing workers plus undelivered reports move over seamlessly.</p>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <h3>Read back without waking</h3>
+          <p><code>read_worker_session</code> reads a worker's session log directly — every turn, every tool call, why anything failed — without waking it or triggering a model call.</p>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <h3>Quiet workers get flagged</h3>
+          <p>When a dispatched turn produces no report for 15 minutes, a patrol notice arrives with the session id, its card and a copy-pasteable read-back call.</p>
+        </article>
+      </div>
     </div>
   </section>
 
-  <section class="band">
+  <section class="section" id="demo">
     <div class="wrap">
-      <h2>Watch it run</h2>
-      <div class="video-row">
-        <video controls preload="metadata" playsinline src="https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920-v5.mp4">
-          Your browser does not support embedded video. <a href="https://github.com/fengshenx/dsh-leader-agent">See the README on GitHub.</a>
-        </video>
-        <div>
+      <div class="demo-grid">
+        <div class="video-bezel">
+          <video controls preload="metadata" playsinline src="https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-en-1080x1920-v1.mp4">
+            Your browser does not support embedded video. <a href="https://github.com/fengshenx/dsh-leader-agent">See the README on GitHub.</a>
+          </video>
+        </div>
+        <div class="demo-copy">
+          <span class="section-kicker">Watch It Run</span>
           <h3>One person, one agent team</h3>
-          <ul>
-            <li><strong>You talk to the Leader only.</strong> Splitting, dispatching, tracking and acceptance all happen without you herding agents.</li>
-            <li><strong>Workers are persistent sessions.</strong> Each owns one worktree, settles its own card when a turn ends, and reports back automatically.</li>
-            <li><strong>Facts land on the board.</strong> Goal, scope, acceptance, links and live status — visible the moment you look.</li>
-            <li><strong>You can always reach in.</strong> Drill into any worker's session directly, or read its log without waking it.</li>
+          <p>See how a single Leader orchestrates parallel coding and review sessions inside DeepSeek Harness.</p>
+          <ul class="demo-list">
+            <li>
+              <div class="num">01</div>
+              <div>
+                <strong>You talk to the Leader only</strong>
+                <span>Splitting, dispatching, tracking and acceptance all happen without you herding agents.</span>
+              </div>
+            </li>
+            <li>
+              <div class="num">02</div>
+              <div>
+                <strong>Workers are persistent sessions</strong>
+                <span>Each owns its own working context, settles its card when a turn ends, and reports back automatically.</span>
+              </div>
+            </li>
+            <li>
+              <div class="num">03</div>
+              <div>
+                <strong>Facts land on the board</strong>
+                <span>Goal, scope, acceptance, links and live status — visible the moment you glance right.</span>
+              </div>
+            </li>
+            <li>
+              <div class="num">04</div>
+              <div>
+                <strong>You can always reach in</strong>
+                <span>Drill into any worker's session directly, or inspect its full log without waking it.</span>
+              </div>
+            </li>
           </ul>
         </div>
       </div>
     </div>
   </section>
 
-  <section class="band" id="install">
+  <section class="section" id="install">
     <div class="wrap">
-      <h2>Install</h2>
-      <div class="install">
-        <h3>Web</h3>
-        <p class="note">Profile must be named <code>web</code>; requires dsh <code>&gt;=0.2.1-rc.2 &lt;0.3.0</code>.</p>
-        <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># install the plugin, then start the web app</span>
-dsh plugin --profile web add dsh-leader-agent
-dsh web</div>
-
-        <h3>Desktop (DeepSeek Harness Desktop)</h3>
-        <p class="note">GUI: Plugins → Add plugin → type <code>dsh-leader-agent</code>. Or use the CLI bundled with the desktop install (quit the app first):</p>
-        <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># macOS; on Windows / Linux use runtime/cli/bin/dsh inside the install dir</span>
-"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
-  plugin --profile desktop add dsh-leader-agent</div>
-
-        <p class="ghost-note">npm package: <a href="https://www.npmjs.com/package/dsh-leader-agent">dsh-leader-agent</a> · Developer preview. <a href="https://github.com/fengshenx/dsh-leader-agent#readme">Full README →</a></p>
+      <div class="section-head">
+        <span class="section-kicker">Get Started</span>
+        <h2>Install in seconds</h2>
+        <p>Works with both DeepSeek Harness Web and Desktop.</p>
       </div>
+
+      <div class="install-shell">
+        <div class="install-tabs">
+          <div class="tab-group" role="tablist" aria-label="Install method">
+            <button class="tab-btn" type="button" role="tab" aria-selected="true" data-tab="web">Web</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="desktop-gui">Desktop GUI</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="desktop-cli">Desktop CLI</button>
+          </div>
+          <span class="req-tag">dsh &gt;=0.2.1-rc.2 &lt;0.3.0</span>
+        </div>
+
+        <div class="install-panel active" id="panel-web" role="tabpanel">
+          <p class="install-note">Profile must be named <code>web</code>. Install the bundle and launch DeepSeek Harness Web:</p>
+          <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># install the plugin, then start the web app</span>
+<span class="p">$ </span>dsh plugin --profile web add dsh-leader-agent
+<span class="p">$ </span>dsh web</div>
+        </div>
+
+        <div class="install-panel" id="panel-desktop-gui" role="tabpanel">
+          <p class="install-note">Install directly inside DeepSeek Harness Desktop without touching the terminal:</p>
+          <div class="gui-steps">
+            <div class="gui-step">
+              <span>STEP 01</span>
+              <strong>Open Plugins</strong>
+              <p>Click <em>Plugins</em> in the left sidebar of DeepSeek Harness Desktop.</p>
+            </div>
+            <div class="gui-step">
+              <span>STEP 02</span>
+              <strong>Add Plugin</strong>
+              <p>Click <em>Add plugin</em> in the top right and enter <code>dsh-leader-agent</code>.</p>
+            </div>
+            <div class="gui-step">
+              <span>STEP 03</span>
+              <strong>Install &amp; Go</strong>
+              <p>Click <em>Install</em> to activate the project tree and right-hand delivery board.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="install-panel" id="panel-desktop-cli" role="tabpanel">
+          <p class="install-note">Quit DeepSeek Harness Desktop completely first, then run the CLI bundled with the app:</p>
+          <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># macOS; on Windows / Linux use runtime/cli/bin/dsh inside the install dir</span>
+<span class="p">$ </span>"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add dsh-leader-agent</div>
+        </div>
+      </div>
+
+      <p class="install-meta">
+        npm package: <a href="https://www.npmjs.com/package/dsh-leader-agent">dsh-leader-agent</a> · Developer preview · <a href="https://github.com/fengshenx/dsh-leader-agent#readme">Full README →</a>
+      </p>
     </div>
   </section>
 </main>
 
 <footer class="site">
   <div class="wrap">
-    <span>MIT License</span>
-    <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
-    <a href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
-    <a href="https://fengshenx.github.io/dsh-leader-agent/">Landing page</a>
-    <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">简体中文</a>
+    <div class="footer-brand">
+      <img src="logo-mark.svg" alt="" width="22" height="22">
+      <span>dsh-leader-agent · MIT License</span>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
+      <a href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
+      <a href="https://fengshenx.github.io/dsh-leader-agent/">Landing page</a>
+      <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">简体中文</a>
+    </div>
   </div>
 </footer>
 
 <script>
+  // Tab switcher for install methods
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var target = btn.getAttribute('data-tab');
+      document.querySelectorAll('.tab-btn[data-tab]').forEach(function (b) {
+        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+      });
+      document.querySelectorAll('.install-panel').forEach(function (p) {
+        p.classList.toggle('active', p.id === 'panel-' + target);
+      });
+    });
+  });
+
+  // Copy buttons for code blocks (strips leading "$ " prompt markers)
+  function flashCopied(btn) {
+    var prev = btn.textContent;
+    btn.textContent = 'Copied';
+    setTimeout(function () { btn.textContent = prev; }, 1500);
+  }
+
   document.querySelectorAll('.cmd button[data-copy]').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var clone = btn.parentNode.cloneNode(true);
-      var b = clone.querySelector('button');
-      if (b) b.remove();
+      clone.querySelectorAll('button, .p').forEach(function (el) { el.remove(); });
       navigator.clipboard.writeText(clone.textContent.replace(/\n$/, '')).then(function () {
-        btn.textContent = 'Copied';
-        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+        flashCopied(btn);
+      });
+    });
+  });
+
+  document.querySelectorAll('button[data-copy-text]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(btn.getAttribute('data-copy-text')).then(function () {
+        flashCopied(btn);
       });
     });
   });

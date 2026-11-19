@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent: a Leader fanning out to several workers, with a project board on the right" width="560">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent: a Leader keystone fanning out into parallel worker tracks" width="460">
   </picture>
 </p>
 

@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-agent：Leader 扇出到多个 worker，右侧是项目看板" width="560">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-agent：Leader 节点扇出三条并行执行轨" width="460">
   </picture>
 </p>
 

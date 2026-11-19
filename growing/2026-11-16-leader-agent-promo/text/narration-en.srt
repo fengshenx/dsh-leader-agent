@@ -1,0 +1,43 @@
+1
+00:00:00,350 --> 00:00:09,062
+Shipping twenty features in parallel isn't about working overtime. Hand the follow-ups to a Leader Agent, and keep your focus on decisions.
+
+2
+00:00:10,262 --> 00:00:22,502
+What does running five tasks at once feel like? One needs confirmation, another throws an error. Jumping back and forth splits your attention five ways.
+
+3
+00:00:23,752 --> 00:00:34,312
+The problem isn't the workload. It's you. You became the bottleneck in the loop. Confirm, reply, review — every single task is waiting on you.
+
+4
+00:00:35,462 --> 00:00:43,310
+Take yourself out of the loop. Hand it to a Leader Agent. It dispatches, it follows up — one entry point managing twenty tasks.
+
+5
+00:00:44,460 --> 00:00:53,172
+Drop the tasks to the Leader Agent. No manual splitting, no manual dispatch. One prompt sets twenty tasks in motion.
+
+6
+00:00:53,822 --> 00:01:07,142
+On the right, a live board card appears. Title, slots, and status at a glance. Each card is an active task, backed by multiple worker agent sessions running in parallel.
+
+7
+00:01:07,892 --> 00:01:16,364
+Stop chasing agents one by one. Just ask: give me a status report. Twenty tasks, summarized in one reply.
+
+8
+00:01:17,414 --> 00:01:26,510
+Throughput jumps immediately. Not because you type faster, but because your focus stays intact. You make the calls; the Leader Agent drives the work.
+
+9
+00:01:27,710 --> 00:01:37,022
+To be real with you: I finally stopped jumping between sessions. The trade-off is just as clear — token spend scales right up with it.
+
+10
+00:01:38,222 --> 00:01:47,774
+One person, twenty parallel tasks. That's Leader Agent. Install dsh-leader-agent in DeepSeek Harness, and save your attention for what matters.
+
+11
+00:01:49,324 --> 00:01:56,740
+One last question: what multi-agent orchestration tools are you using today? Share your workflow with us.
