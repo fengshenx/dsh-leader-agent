@@ -4,9 +4,9 @@
       "key": "s0",
       "lead": 0.35,
       "tail": 0.85,
-      "text": "Shipping twenty features in parallel isn't about working overtime. Hand the follow-ups to a Leader Agent, and keep your focus on decisions.",
-      "speech": 8.712,
-      "duration": 9.912,
+      "text": "Shipping ten features in parallel isn't about working overtime. Hand the follow-ups to a Leader Agent, and keep your focus on decisions.",
+      "speech": 9.048,
+      "duration": 10.248,
       "start": 0
     },
     {
@@ -14,122 +14,122 @@
       "lead": 0.35,
       "tail": 0.9,
       "text": "What does running five tasks at once feel like? One needs confirmation, another throws an error. Jumping back and forth splits your attention five ways.",
-      "speech": 12.24,
-      "duration": 13.49,
-      "start": 9.912
+      "speech": 10.68,
+      "duration": 11.93,
+      "start": 10.248
     },
     {
       "key": "s2",
       "lead": 0.35,
       "tail": 0.8,
       "text": "The problem isn't the workload. It's you. You became the bottleneck in the loop. Confirm, reply, review — every single task is waiting on you.",
-      "speech": 10.56,
-      "duration": 11.71,
-      "start": 23.402
+      "speech": 9.672,
+      "duration": 10.822,
+      "start": 22.178
     },
     {
       "key": "s3",
       "lead": 0.35,
       "tail": 0.85,
-      "text": "Take yourself out of the loop. Hand it to a Leader Agent. It dispatches, it follows up — one entry point managing twenty tasks.",
-      "speech": 7.848,
-      "duration": 9.048,
-      "start": 35.112
+      "text": "Take yourself out of the loop. Hand it to a Leader Agent. It dispatches, it follows up — one entry point managing ten tasks.",
+      "speech": 10.032,
+      "duration": 11.232,
+      "start": 33
     },
     {
       "key": "s4a",
       "lead": 0.3,
       "tail": 0.45,
-      "text": "Drop the tasks to the Leader Agent. No manual splitting, no manual dispatch. One prompt sets twenty tasks in motion.",
-      "speech": 8.712,
-      "duration": 9.462,
-      "start": 44.16
+      "text": "Drop the tasks to the Leader Agent. No manual splitting, no manual dispatch. One prompt sets ten tasks in motion.",
+      "speech": 9.24,
+      "duration": 9.99,
+      "start": 44.232
     },
     {
       "key": "s4b",
       "lead": 0.2,
       "tail": 0.55,
       "text": "On the right, a live board card appears. Title, slots, and status at a glance. Each card is an active task, backed by multiple worker agent sessions running in parallel.",
-      "speech": 13.32,
-      "duration": 14.07,
-      "start": 53.622
+      "speech": 13.248,
+      "duration": 13.998,
+      "start": 54.222
     },
     {
       "key": "s4c",
       "lead": 0.2,
       "tail": 0.7,
-      "text": "Stop chasing agents one by one. Just ask: give me a status report. Twenty tasks, summarized in one reply.",
-      "speech": 8.472,
-      "duration": 9.372,
-      "start": 67.692
+      "text": "Stop chasing agents one by one. Just ask: give me a status report. Ten tasks, summarized in one reply.",
+      "speech": 8.856,
+      "duration": 9.756,
+      "start": 68.22
     },
     {
       "key": "s5",
       "lead": 0.35,
       "tail": 0.85,
       "text": "Throughput jumps immediately. Not because you type faster, but because your focus stays intact. You make the calls; the Leader Agent drives the work.",
-      "speech": 9.096,
-      "duration": 10.296,
-      "start": 77.064
+      "speech": 9.624,
+      "duration": 10.824,
+      "start": 77.976
     },
     {
       "key": "s5b",
       "lead": 0.35,
       "tail": 0.85,
       "text": "To be real with you: I finally stopped jumping between sessions. The trade-off is just as clear — token spend scales right up with it.",
-      "speech": 9.312,
-      "duration": 10.512,
-      "start": 87.36
+      "speech": 10.248,
+      "duration": 11.448,
+      "start": 88.8
     },
     {
       "key": "s6",
       "lead": 0.35,
       "tail": 1.2,
-      "text": "One person, twenty parallel tasks. That's Leader Agent. Install dsh-leader-agent in DeepSeek Harness, and save your attention for what matters.",
-      "speech": 9.552,
-      "duration": 11.102,
-      "start": 97.872
+      "text": "One person, ten parallel tasks. That's Leader Agent. Install dsh-leader-agent in DeepSeek Harness, and save your attention for what matters.",
+      "speech": 9.456,
+      "duration": 11.006,
+      "start": 100.248
     },
     {
       "key": "s7",
       "lead": 0.35,
       "tail": 1,
       "text": "One last question: what multi-agent orchestration tools are you using today? Share your workflow with us.",
-      "speech": 7.416,
-      "duration": 8.766,
-      "start": 108.974
+      "speech": 7.248,
+      "duration": 8.598,
+      "start": 111.254
     }
   ],
   "starts": {
     "s0": 0,
-    "s1": 9.912,
-    "s2": 23.402,
-    "s3": 35.112,
-    "s4a": 44.16,
-    "s4b": 53.622,
-    "s4c": 67.692,
-    "s5": 77.064,
-    "s5b": 87.36,
-    "s6": 97.872,
-    "s7": 108.974
+    "s1": 10.248,
+    "s2": 22.178,
+    "s3": 33,
+    "s4a": 44.232,
+    "s4b": 54.222,
+    "s4c": 68.22,
+    "s5": 77.976,
+    "s5b": 88.8,
+    "s6": 100.248,
+    "s7": 111.254
   },
   "ends": {
-    "s0": 9.912,
-    "s1": 23.402,
-    "s2": 35.112,
-    "s3": 44.16,
-    "s4a": 53.622,
-    "s4b": 67.692,
-    "s4c": 77.064,
-    "s5": 87.36,
-    "s5b": 97.872,
-    "s6": 108.974,
-    "s7": 117.74
+    "s0": 10.248,
+    "s1": 22.178,
+    "s2": 33,
+    "s3": 44.232,
+    "s4a": 54.222,
+    "s4b": 68.22,
+    "s4c": 77.976,
+    "s5": 88.8,
+    "s5b": 100.248,
+    "s6": 111.254,
+    "s7": 119.852
   },
-  "duration": 117.74,
+  "duration": 119.852,
   "lang": "en",
   "speaker": "en_male_tim_uranus_bigtts",
-  "rate": -5,
-  "version": 1,
+  "rate": 0,
+  "version": 2,
   "fps": 30
 }

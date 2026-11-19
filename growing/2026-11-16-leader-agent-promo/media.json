@@ -7,6 +7,30 @@
   "keyBase": "prefix-relative",
   "versions": [
     {
+      "version": "en-v2",
+      "lang": "en",
+      "fps": 30,
+      "durationSeconds": 119.852,
+      "assets": [
+        {
+          "kind": "video",
+          "key": "video/promo-en-1080x1920-v2.mp4",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-en-1080x1920-v2.mp4",
+          "bytes": 9785463,
+          "sha256": "2964218141f2a93d1cfa2a458b28b0fae61b6ac5c326d17cd81763fe1668a620",
+          "contentType": "video/mp4"
+        },
+        {
+          "kind": "audio",
+          "key": "audio/narration-en-v2.mp3",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-en-v2.mp3",
+          "bytes": 2877741,
+          "sha256": "a09d0ff762643e52b7a4d95bec3051da3055f97b22412bea3a7bf3bcfb7531e2",
+          "contentType": "audio/mpeg"
+        }
+      ]
+    },
+    {
       "version": "en-v1",
       "lang": "en",
       "fps": 30,

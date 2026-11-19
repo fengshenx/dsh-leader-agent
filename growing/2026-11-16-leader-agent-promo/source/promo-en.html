@@ -195,7 +195,7 @@
   .leader-label{font:500 24px/1 var(--mono);letter-spacing:.12em;color:rgba(158,181,224,.52)}
   #s3-lines{position:absolute;inset:0;width:1080px;height:1920px;pointer-events:none;z-index:1}
   #s3-lines path{fill:none;stroke:rgba(109,140,255,.3);stroke-width:1.6;stroke-dasharray:1;stroke-dashoffset:1}
-  .task-grid{position:absolute;left:94px;top:1032px;width:892px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;z-index:2}
+  .task-grid{position:absolute;left:94px;top:1032px;width:892px;display:grid;grid-template-columns:repeat(5,1fr);gap:16px;z-index:2}
   .gcard{
     height:96px;border-radius:14px;border:1px solid rgba(121,148,214,.17);
     background:linear-gradient(145deg,rgba(17,27,52,.9),rgba(8,13,26,.82));
@@ -204,7 +204,7 @@
   .gcard .g-top{display:flex;align-items:center;justify-content:space-between;font:500 20px/1 var(--mono);letter-spacing:.08em;color:rgba(147,170,215,.45)}
   .gcard .g-top i{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px rgba(255,184,77,.55)}
   .gcard .g-code{font:600 25px/1 var(--mono);letter-spacing:.1em;color:rgba(218,229,252,.78)}
-  .s3-pill{position:absolute;left:72px;top:1668px;opacity:0}
+  .s3-pill{position:absolute;left:72px;top:1330px;opacity:0}
   /* S4 common */
   .s4-phase{position:absolute;inset:0;opacity:0;transform:translateY(28px);transition:opacity .45s ease,transform .45s ease;pointer-events:none;will-change:opacity,transform}
   .s4-phase.on{opacity:1;transform:none;pointer-events:auto}
@@ -378,17 +378,17 @@
   <section class="scene cover-scene" id="s0">
     <div class="cover-inner">
       <div class="cover-badge" id="s0-badge"><i></i>AI CODING WORKFLOW</div>
-      <div class="cover-kicker" id="s0-kicker">ONE DEVELOPER · 20 PARALLEL FEATURES</div>
-      <div class="cover-watermark" aria-hidden="true">20</div>
+      <div class="cover-kicker" id="s0-kicker">ONE DEVELOPER · 10 PARALLEL FEATURES</div>
+      <div class="cover-watermark" aria-hidden="true">10</div>
       <h1 class="cover-title" id="s0-hero">
         <span class="ln"><span>How I ship</span></span>
-        <span class="ln"><span><em>20</em> features</span></span>
+        <span class="ln"><span><em>10</em> features</span></span>
         <span class="ln"><span class="cover-exp">in parallel</span></span>
       </h1>
       <p class="cover-sub" id="s0-sub">Not by working overtime —<br>by handing follow-ups to a <b>Leader Agent</b>.</p>
       <div class="cover-foot" id="s0-foot">
         <div class="cover-brand">dsh-leader-<span>agent</span><small>DEEPSEEK HARNESS</small></div>
-        <div class="cover-side"><b>1 Developer</b>20 parallel tasks</div>
+        <div class="cover-side"><b>1 Developer</b>10 parallel tasks</div>
       </div>
     </div>
   </section>
@@ -472,14 +472,14 @@
         <span class="ln"><span>of the</span></span>
         <span class="ln"><span class="amber">loop.</span></span>
       </h1>
-      <p class="sub" id="s3-sub">Let a Leader Agent orchestrate all 20 tasks.</p>
+      <p class="sub" id="s3-sub">Let a Leader Agent orchestrate all 10 tasks.</p>
       <svg id="s3-lines" viewBox="0 0 1080 1920" aria-hidden="true"></svg>
       <div class="leader-hub" id="s3-hub">
         <div class="leader-core"><span>LEADER AGENT</span><b>1</b></div>
         <div class="leader-label">dsh-leader-agent</div>
       </div>
       <div class="task-grid" id="s3-grid"></div>
-      <div class="pill s3-pill" id="s3-pill"><i></i>1 Entry Point · 20 Parallel Workers</div>
+      <div class="pill s3-pill" id="s3-pill"><i></i>1 Entry Point · 10 Parallel Workers</div>
     </div>
   </section>
 
@@ -494,10 +494,10 @@
         </h1>
         <p class="s4-sub" id="s4a-sub">No manual splitting. No manual dispatch.</p>
         <div class="app-window">
-          <div class="aw-head"><i></i><i></i><i></i><span>atlas-web / 20 parallel tasks</span><b>REAL SESSION</b></div>
+          <div class="aw-head"><i></i><i></i><i></i><span>atlas-web / 10 parallel tasks</span><b>REAL SESSION</b></div>
           <div class="aw-body">
             <img src="assets/app-empty.png" alt="dsh-leader-agent live workspace: empty board and composer">
-            <img src="assets/app-running.png" id="s4a-running" alt="20 task cards running on the board">
+            <img src="assets/app-running.png" id="s4a-running" alt="task cards running on the board">
             <div class="aw-hotspot"></div>
           </div>
         </div>
@@ -505,7 +505,7 @@
           <div class="cb-text" id="s4a-text">Send a message or create tasks…</div>
           <div class="cb-send" id="s4a-send">↑</div>
         </div>
-        <div class="pill s4a-pill" id="s4a-pill"><i></i>20 tasks dispatched</div>
+        <div class="pill s4a-pill" id="s4a-pill"><i></i>10 tasks dispatched</div>
       </div>
 
       <div class="s4-phase" id="s4b">
@@ -516,7 +516,7 @@
         </h1>
         <p class="s4-sub" id="s4b-sub">Title, executor slots, and live status at a glance.</p>
         <div class="board-panel">
-          <div class="bp-head"><b>Board</b><span>20 ACTIVE</span><span class="bp-live"><i></i>LIVE</span></div>
+          <div class="bp-head"><b>Board</b><span>10 ACTIVE</span><span class="bp-live"><i></i>LIVE</span></div>
           <div class="bp-cards">
             <div class="pcard"><img src="assets/portrait-card-20-wide.png" alt="Release Go / No-Go checklist card, 3 slots"><span class="sig"></span></div>
             <div class="pcard"><img src="assets/portrait-card-19-wide.png" alt="Release notes and migration guide card, 2 slots"><span class="sig"></span></div>
@@ -537,20 +537,20 @@
         <div class="report-card" id="s4c-report">
           <div class="rc-head"><span>Status Report · 20:47</span><b>LEADER AGENT</b></div>
           <div class="rc-metrics">
-            <div class="rc-metric"><b>12</b><span>In Progress</span></div>
-            <div class="rc-metric"><b>6</b><span>In Review</span></div>
-            <div class="rc-metric"><b>2</b><span>Need Decision</span></div>
+            <div class="rc-metric"><b>6</b><span>In Progress</span></div>
+            <div class="rc-metric"><b>3</b><span>In Review</span></div>
+            <div class="rc-metric"><b>1</b><span>Need Decision</span></div>
           </div>
           <div class="rc-body">
-            <div class="rc-line">All 20 tasks have active workers assigned</div>
+            <div class="rc-line">All 10 tasks have active workers assigned</div>
             <div class="rc-line">Deliverables &amp; links synced to the board</div>
             <div class="rc-line">Canary rollout &amp; launch checklist await sign-off</div>
             <div class="rc-ok">Zero blockers. Next summary scheduled in 10 min.</div>
           </div>
-          <div class="rc-foot"><span>20 TASKS · ONE SUMMARY</span><b>LIVE STREAM</b></div>
+          <div class="rc-foot"><span>10 TASKS · ONE SUMMARY</span><b>LIVE STREAM</b></div>
         </div>
         <div class="receipt-board" id="s4c-receipt">
-          <div class="receipt-top"><b>20 / 20 REPORTED</b><span>ALL TASKS ACCOUNTED FOR</span></div>
+          <div class="receipt-top"><b>10 / 10 REPORTED</b><span>ALL TASKS ACCOUNTED FOR</span></div>
           <div class="receipt-grid" id="s4c-grid"></div>
         </div>
       </div>
@@ -570,7 +570,7 @@
       <p class="sub" id="s5-sub">Not faster typing — uninterrupted focus.</p>
       <div class="stats">
         <div class="stat" data-stat="0"><div class="num">1</div><div><div class="label">Unified Entry Point</div><div class="desc">ONE CONVERSATION</div></div></div>
-        <div class="stat" data-stat="1"><div class="num"><span data-count="20">0</span></div><div><div class="label">Parallel Tasks</div><div class="desc">ALL RUNNING IN PARALLEL</div></div></div>
+        <div class="stat" data-stat="1"><div class="num"><span data-count="10">0</span></div><div><div class="label">Parallel Tasks</div><div class="desc">ALL RUNNING IN PARALLEL</div></div></div>
         <div class="stat" data-stat="2"><div class="num">1</div><div><div class="label">Prompt for Full Status</div><div class="desc">ASK ONCE, KNOW EVERYTHING</div></div></div>
       </div>
       <div class="s5-foot" id="s5-foot">You make the calls. <b>Leader Agent drives execution.</b></div>
@@ -609,7 +609,7 @@
     <div class="end-orbit"></div>
     <div class="end-core"><b>1</b></div>
     <div class="end-brand">dsh-leader-<span>agent</span></div>
-    <div class="end-tagline">One developer, <b>20 parallel tasks</b>.</div>
+    <div class="end-tagline">One developer, <b>10 parallel tasks</b>.</div>
     <div class="end-platform">Install in <b>DeepSeek Harness</b></div>
     <div class="end-install"><span class="prompt">$</span><span>dsh plugin --profile web add dsh-leader-agent</span><span class="install-tag">INSTALL</span></div>
     <div class="end-foot">Save your attention for <b>what matters</b>.</div>
@@ -689,7 +689,7 @@
     brand: $('#s7-brand'), cta: $('#s7-cta'), mark: $('.q-mark'),
   };
 
-  const CODES = ['LCP', 'PAY', 'SRCH', 'RBAC', 'MAIL', 'SDK', 'iOS', 'PERF', 'GRAY', 'P99', 'SQL', 'API', 'QA', 'CI', 'SEC', 'FEED', 'ONB', 'DARK', 'DOC', 'GO'];
+  const CODES = ['LCP', 'PAY', 'SRCH', 'RBAC', 'MAIL', 'SDK', 'iOS', 'PERF', 'GRAY', 'P99'];
   CODES.forEach((code, i) => {
     const el = document.createElement('div');
     el.className = 'gcard';
@@ -698,10 +698,10 @@
   });
   const gc = $$('#s3 .gcard');
   const NS = 'http://www.w3.org/2000/svg';
-  for (let i = 0; i < 20; i += 1) {
-    const col = i % 4, row = Math.floor(i / 4);
-    const x = 94 + 105 + col * 228;
-    const y = 1032 + 48 + row * 112;
+  for (let i = 0; i < 10; i += 1) {
+    const col = i % 5, row = Math.floor(i / 5);
+    const x = Math.round(176.8 + col * 181.6);
+    const y = 1080 + row * 112;
     const p = document.createElementNS(NS, 'path');
     p.setAttribute('d', 'M540 842 C540 ' + (y - 80) + ' ' + x + ' ' + (y - 80) + ' ' + x + ' ' + y);
     p.setAttribute('pathLength', '1');
@@ -726,9 +726,9 @@
     el.style.pointerEvents = on ? 'auto' : 'none';
   }
 
-  const TYPE = 'Run these 20 tasks in parallel and report back when ready.';
+  const TYPE = 'Run these 10 tasks in parallel and report back when ready.';
   const receiptGrid = $('#s4c-grid');
-  for (let i = 0; i < 20; i += 1) {
+  for (let i = 0; i < 10; i += 1) {
     const chip = document.createElement('div');
     chip.className = 'rchip';
     chip.innerHTML = '<span>#' + String(i + 1).padStart(2, '0') + '</span><i></i>';
@@ -738,7 +738,7 @@
   function updateS0(t) {
     [s0.badge, s0.kicker, s0.sub, s0.foot].forEach((el) => { el.style.opacity = '1'; el.style.transform = 'none'; });
     $$('.ln > span', s0.hero).forEach((el) => { el.style.opacity = '1'; el.style.transform = 'none'; });
-    const p = clamp(t / 9.912);
+    const p = clamp(t / 10.248);
     $('.cover-inner').style.transform = 'scale(' + (1.015 - p * .015).toFixed(4) + ')';
   }
 
@@ -882,7 +882,7 @@
       card.style.transform = 'translateY(' + ((1 - p) * 24) + 'px)';
     });
     const cp = smooth(prog(t, 1.4, 2.7));
-    if (s5.count) s5.count.textContent = String(Math.round(cp * 20));
+    if (s5.count) s5.count.textContent = String(Math.round(cp * 10));
     fade(s5.foot, prog(t, 2.7, 3.1), 16);
   }
 
@@ -930,19 +930,19 @@
   }
 
   const SCENES = [
-    { id: 's0', label: 'COVER', start: 0, end: 9.912, update: updateS0 },
-    { id: 's1', label: 'REALITY', start: 9.912, end: 23.402, update: updateS1 },
-    { id: 's2', label: 'BOTTLENECK', start: 23.402, end: 35.112, update: updateS2 },
-    { id: 's3', label: 'ORCHESTRATION', start: 35.112, end: 44.16, update: updateS3 },
-    { id: 's4', label: 'IN ACTION', start: 44.16, end: 77.064, update: updateS4 },
-    { id: 's5', label: 'OUTCOME', start: 77.064, end: 87.36, update: updateS5 },
-    { id: 's5b', label: 'HONEST TAKE', start: 87.36, end: 97.872, update: updateS5B },
-    { id: 's6', label: 'BRAND', start: 97.872, end: 108.974, update: updateS6 },
-    { id: 's7', label: 'QUESTION', start: 108.974, end: 117.74, update: updateS7 },
+    { id: 's0', label: 'COVER', start: 0, end: 10.248, update: updateS0 },
+    { id: 's1', label: 'REALITY', start: 10.248, end: 22.178, update: updateS1 },
+    { id: 's2', label: 'BOTTLENECK', start: 22.178, end: 33, update: updateS2 },
+    { id: 's3', label: 'ORCHESTRATION', start: 33, end: 44.232, update: updateS3 },
+    { id: 's4', label: 'IN ACTION', start: 44.232, end: 77.976, update: updateS4 },
+    { id: 's5', label: 'OUTCOME', start: 77.976, end: 88.8, update: updateS5 },
+    { id: 's5b', label: 'HONEST TAKE', start: 88.8, end: 100.248, update: updateS5B },
+    { id: 's6', label: 'BRAND', start: 100.248, end: 111.254, update: updateS6 },
+    { id: 's7', label: 'QUESTION', start: 111.254, end: 119.852, update: updateS7 },
   ];
   SCENES.forEach((sc) => { sc.el = document.getElementById(sc.id); });
   const HUD_SCENES = SCENES.filter((sc) => sc.id !== 's0');
-  const DURATION = 117.74;
+  const DURATION = 119.852;
   let now = 0, playing = true, last = 0, raf = null;
 
   function sceneOpacity(sc, t) {

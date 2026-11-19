@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-`site/index.html` 单文件静态页（深色极简科技风、内联 CSS，原生 JS 只做安装方式 tab 切换与命令复制按钮）+ `site/logo-mark.svg` 独立品牌标/favicon，GitHub Actions 部署到 Pages（`build_type=workflow`；仓库 Settings → Pages 的 Source 需设为 GitHub Actions，合并后配置）。同步重绘 README 浅/深色中英文 Logo（`docs/assets/readme/logo-*.svg`）。页面媒体来源按 OSS 强制下载边界选：OSS 对 HTML/PNG 带 `Content-Disposition: attachment`，所以页面内图片与 og:image 走 GitHub raw；mp4 无强制下载头，英文宣传视频（`promo-en-1080x1920-v1.mp4`，豆包 TTS 2.0 英文旁白）直接嵌 OSS URL。
+`site/index.html` 单文件静态页（深色极简科技风、内联 CSS，原生 JS 只做安装方式 tab 切换与命令复制按钮）+ `site/logo-mark.svg` 独立品牌标/favicon，GitHub Actions 部署到 Pages（`build_type=workflow`；仓库 Settings → Pages 的 Source 需设为 GitHub Actions，合并后配置）。同步重绘 README 浅/深色中英文 Logo（`docs/assets/readme/logo-*.svg`）。页面媒体来源按 OSS 强制下载边界选：OSS 对 HTML/PNG 带 `Content-Disposition: attachment`，所以页面内图片与 og:image 走 GitHub raw；mp4 无强制下载头，英文宣传视频（`promo-en-1080x1920-v2.mp4`，豆包 TTS 2.0 英文旁白）直接嵌 OSS URL。
 
 ## Alternatives considered
 
