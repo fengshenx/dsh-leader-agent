@@ -12,10 +12,11 @@ permissions:
   pages: write
   id-token: write
 
-# 部署队列只有一个槽：新部署直接顶掉进行中的旧部署，避免旧内容最后上线。
+# 部署队列只有一个槽，但**不取消进行中的部署**（官方 Pages starter 的默认）：
+# 中途取消可能留下失败的 deployment 或让旧内容最后上线；新 push 排队，等前一个部署完成后再部署。
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
