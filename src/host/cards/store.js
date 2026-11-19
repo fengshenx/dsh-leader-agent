@@ -65,7 +65,7 @@ async function readStore(file, onCorrupt, io = defaultIo) {
       ),
     )
     return { version: STORE_VERSION, counter, cards: parsed.cards }
-  } catch (error) {
+  } catch {
     const backup = `${file}.corrupt-${Date.now()}`
     await rename(file, backup).catch(() => undefined)
     // 备份后必须写回空库：否则存储文件就此消失，下次启动连"库是空的"都读不出来。
@@ -79,13 +79,12 @@ async function readStore(file, onCorrupt, io = defaultIo) {
  *
  * @param {object} options - 存储选项
  * @param {string} options.home - dsh home 目录
- * @param {(message: string) => void} [options.logger] - 日志输出
  * @param {object} [options.io] - 文件读写实现（测试可替换）
  * @param {() => number} [options.clock] - 取当前时间的函数：排序依赖卡片更新时间戳，
  *   同一毫秒内的两次写入会退回插入序，测试可注入可控时钟避免这种巧合
  * @returns {object} 卡片存储接口
  */
-export function createCardStore({ home, logger = () => {}, io = defaultIo, clock = Date.now } = {}) {
+export function createCardStore({ home, io = defaultIo, clock = Date.now } = {}) {
   const directory = join(home, 'dsh-leader-agent')
   const file = join(directory, 'cards.json')
   const temporary = join(directory, 'cards.json.tmp')

@@ -45,7 +45,7 @@ export function createReadySignal() {
       // 先快照再遍历：通知期间新增的订阅者不该被本轮顺带叫一次，它们自己会排
       // 一次微任务；`Set` 的迭代是活的，不拍快照就会重复。反过来，通知期间新增
       // 的订阅者也不能被压掉——那会让它们在已就绪之后再没人通知。
-      for (const listener of [...listeners]) notify(listener)
+      for (const listener of Array.from(listeners)) notify(listener)
     },
 
     /**

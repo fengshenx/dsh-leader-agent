@@ -12,7 +12,7 @@
  * @module dsh-leader-agent/client/leader-view
  */
 
-import { createElement, useLayoutEffect } from 'react'
+import { useLayoutEffect } from 'react'
 import {
   activateLeaderView,
   createLeaderViewDefinition,

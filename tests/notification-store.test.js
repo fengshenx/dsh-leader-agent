@@ -88,7 +88,7 @@ test('同一 id 重复入队只留一条，不覆盖已落盘的内容', async (
 })
 
 test('队列文件损坏时备份并以空队列继续', async () => {
-  const { store, home } = await createStore()
+  const { home } = await createStore()
   const logs = []
   const noisy = createNotificationStore({ home, logger: (message) => logs.push(message) })
   try {

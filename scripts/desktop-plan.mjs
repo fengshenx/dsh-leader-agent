@@ -349,7 +349,7 @@ export function planDesktopEnable({ manifest, worktree }) {
   if (!bundles.includes(LEADER_AGENT_PACKAGE)) bundles.push(LEADER_AGENT_PACKAGE)
   const next = {
     ...manifest,
-    dependencies: { ...(manifest.dependencies ?? {}), [LEADER_AGENT_PACKAGE]: spec },
+    dependencies: { ...manifest.dependencies, [LEADER_AGENT_PACKAGE]: spec },
     dsh: { ...manifest.dsh, profile: { ...manifest.dsh.profile, bundles } },
   }
   return { manifest: next, changed: JSON.stringify(next) !== JSON.stringify(manifest) }
@@ -388,7 +388,7 @@ export function planDesktopDisable({ manifest, worktree }) {
       + '或在 DeepSeek Harness 的插件管理里卸载。',
     )
   }
-  const dependencies = { ...(manifest?.dependencies ?? {}) }
+  const dependencies = { ...manifest?.dependencies }
   delete dependencies[LEADER_AGENT_PACKAGE]
   const bundles = current.filter((name) => name !== LEADER_AGENT_PACKAGE)
   const next = {

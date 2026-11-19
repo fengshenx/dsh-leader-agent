@@ -23,7 +23,7 @@ function desktopPackage(overrides = {}) {
     private: true,
     dependencies: {
       'dsh-session-file-reveal': 'link:./plugins/session-file-reveal',
-      ...(overrides.dependencies ?? {}),
+      ...overrides.dependencies,
     },
     dsh: {
       profile: {
