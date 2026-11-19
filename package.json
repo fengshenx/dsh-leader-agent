@@ -69,8 +69,17 @@
     }
   },
   "keywords": [
+    "deepseek",
     "dsh-plugin",
     "deepseek-harness",
+    "ai-agent",
+    "multi-agent",
+    "agentic-coding",
+    "coding-agent",
+    "agent-orchestration",
+    "kanban",
+    "task-management",
+    "llm-tools",
     "leader",
     "dispatch",
     "delivery-board"
