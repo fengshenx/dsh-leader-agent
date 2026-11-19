@@ -43,8 +43,11 @@ const STYLE_TEXT = `
   transform-origin: center;
 }
 
-.dsh-leader-agent-agent-bubble__avatar:hover .dsh-leader-agent-agent-bubble__avatar-eye {
-  animation: dsh-leader-agent-avatar-blink 520ms ease-in-out;
+/* 触屏没有 hover 语义，不要把「点一下」当成悬停。 */
+@media (hover: hover) {
+  .dsh-leader-agent-agent-bubble__avatar:hover .dsh-leader-agent-agent-bubble__avatar-eye {
+    animation: dsh-leader-agent-avatar-blink 520ms ease-in-out;
+  }
 }
 
 @keyframes dsh-leader-agent-avatar-blink {

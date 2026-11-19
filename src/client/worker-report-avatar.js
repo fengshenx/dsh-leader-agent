@@ -269,18 +269,3 @@ export function buildAvatar(name) {
 
   return { shape: layout.shape, head, stroke: darken(head), eye, body, eyes, strokeWidth: STROKE_WIDTH }
 }
-
-/**
- * 名字 → 内联 SVG 字符串；单元测试与静态检查用，气泡走 buildAvatar 的 React 树。
- * @param {string} name - worker 身份名
- * @returns {string} SVG 片段
- */
-export function agentAvatarSvg(name) {
-  const avatar = buildAvatar(name)
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-shape="${avatar.shape}">`
-    + `<g fill="${avatar.head}" stroke="${avatar.stroke}" stroke-width="${avatar.strokeWidth}" stroke-linejoin="round">`
-    + avatar.body.map((d) => `<path d="${d}"/>`).join('')
-    + `</g><g class="${AVATAR_EYE_CLASS}" fill="${avatar.eye}">`
-    + avatar.eyes.map((d) => `<path d="${d}"/>`).join('')
-    + '</g></svg>'
-}

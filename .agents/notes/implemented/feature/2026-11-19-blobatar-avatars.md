@@ -29,4 +29,4 @@ minidenticons 在 20px 下是一块彩色噪点，没有主体和五官，同屏
 
 ## Testing
 
-`tests/worker-report-avatar.test.js` 钉住同名字节一致、五种 shape band 的实际覆盖、`data-shape` 与 blobatar layout 一致、扫描线并集面积等效半径 34±0.1（5000 个 name 覆盖全部 droplet，另四种各 3 个）、宽高比 0.926–1.087、三组对比度、name 不进 SVG；`tests/e2e/avatar.e2e.js` 在真实宿主里断言内联 SVG、hover 眨眼与 reduced-motion 退化；`tests/client-build.test.js` 校验产物 banner 的 blobatar 版权行。双向验证：把 shape band 换成单个值，覆盖五种形状的用例变红；把描边系数改回 1，浅色描边对比度用例变红；把 droplet 的并集改回两条 path 求和，5000 个 name 的用例变红（worker-17 的可见半径 32.399）。
+`tests/worker-report-avatar.test.js` 直接断言生产函数 `buildAvatar` 的返回值：同名字节一致、五种 shape band 的实际覆盖、`data-shape` 与 blobatar layout 一致、扫描线并集面积等效半径 34±0.1（5000 个 name 覆盖全部 droplet，另四种各 3 个）、宽高比 0.926–1.087、三组对比度、name 不进几何；`tests/e2e/avatar.e2e.js` 在真实宿主里断言内联 SVG、身体组至少一条非空 path 且 bbox 足够大、`aria-hidden` / `focusable`、恶意 name 不进 SVG、hover 只动当前头像与 reduced-motion 退化；`tests/client-build.test.js` 校验产物 banner 的 blobatar 版权行。双向验证：把 shape band 换成单个值，覆盖五种形状的用例变红；把描边系数改回 1，浅色描边对比度用例变红；把 droplet 的并集改回两条 path 求和，5000 个 name 的用例变红（worker-17 的可见半径 32.399）；把组件里的 `avatar.body.map` 改成空数组，e2e 以「身体组至少有一条非空 path」变红。

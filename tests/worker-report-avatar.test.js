@@ -8,19 +8,7 @@ const DARK_BUBBLE = '#2c2c2e'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { _layout } from 'blobatar'
-import { agentAvatarSvg } from '../src/client/worker-report-avatar.js'
-
-function decode(name) {
-  return agentAvatarSvg(name)
-}
-
-function groupMarkup(svg, index) {
-  return [...svg.matchAll(/<g ([^>]*)>(.*?)<\/g>/gs)][index]
-}
-
-function bodyPaths(svg) {
-  return [...groupMarkup(svg, 0)[2].matchAll(/<path d="([^"]+)"\/>/g)].map((match) => match[1])
-}
+import { buildAvatar } from '../src/client/worker-report-avatar.js'
 
 function samplePath(d, steps = 48) {
   const tokens = d.match(/[A-Z]|-?\d*\.?\d+(?:e[-+]?\d+)?/g)
@@ -75,12 +63,11 @@ function samplePath(d, steps = 48) {
 }
 
 /**
- * 独立口径：把解码后的 body path 采样成多边形，用扫描线求可见并集面积。
- * 不调用实现里的面积/凸包函数；droplet 若退回「两条 path 相加」，这里仍算并集，
- * 半径会掉到 32.4 左右。
+ * 独立口径：把生产几何的 body path 采样成多边形，用扫描线求可见并集面积。
+ * 不调用实现里的面积/凸包函数；droplet 若退回「两条 path 相加」，这里仍算并集。
  */
-function scanlineUnionArea(svg, rows = 512) {
-  const polygons = bodyPaths(svg).map((d) => samplePath(d))
+function scanlineUnionArea(avatar, rows = 512) {
+  const polygons = avatar.body.map((d) => samplePath(d))
   let area = 0
   for (let row = 0; row < rows; row++) {
     const y = ((row + 0.5) * 100) / rows
@@ -115,16 +102,20 @@ function scanlineUnionArea(svg, rows = 512) {
   return area
 }
 
+function hexChannels(hex) {
+  return [1, 3, 5].map((index) => parseInt(hex.slice(index, index + 2), 16))
+}
+
 function channels(hex) {
-  return hex.slice(1).match(/[0-9a-f]{2}/gi).map((value) => Number.parseInt(value, 16))
+  return hexChannels(hex).map((value) => value / 255)
 }
 
 function luminance(hex) {
-  const [red, green, blue] = channels(hex).map((value) => {
-    const channel = value / 255
-    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4
+  const linear = channels(hex).map((value) => {
+    if (value <= 0.04045) return value / 12.92
+    return ((value + 0.055) / 1.055) ** 2.4
   })
-  return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+  return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
 }
 
 function contrast(left, right) {
@@ -133,61 +124,62 @@ function contrast(left, right) {
 }
 
 function darkened(hex) {
-  return '#' + channels(hex).map((value) => Math.round(value * 0.62).toString(16).padStart(2, '0')).join('')
+  return '#' + hexChannels(hex).map((value) => Math.round(value * 0.62).toString(16).padStart(2, '0')).join('')
 }
 
-test('同一名字字节一致，不同名字覆盖五种白名单形状', () => {
+test('同一名字生成的头像几何一致，不同名字覆盖五种白名单形状', () => {
   const found = new Map()
   for (let index = 0; found.size < SHAPES.length && index < 2_000; index++) {
     const name = `worker-${index}`
-    const svg = decode(name)
-    assert.equal(svg, decode(name))
-    const shape = /data-shape="([^"]+)"/.exec(svg)?.[1]
-    assert.equal(shape, _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }).shape)
-    assert.equal(SHAPES.includes(shape), true)
-    if (!found.has(shape)) found.set(shape, name)
+    const avatar = buildAvatar(name)
+    assert.deepEqual(avatar, buildAvatar(name))
+    const expected = _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } })
+    assert.equal(avatar.shape, expected.shape)
+    assert.equal(SHAPES.includes(avatar.shape), true)
+    if (!found.has(avatar.shape)) found.set(avatar.shape, name)
   }
   assert.deepEqual([...found.keys()].sort(), [...SHAPES].sort())
 })
 
-test('SVG 只有一组带描边的身体与一组眼睛，name 不进标记', () => {
+test('生产几何只有身体与眼睛路径，name 不进输出且颜色是合法十六进制', () => {
   const name = '<img src=x onerror="alert(1)">'
-  const svg = decode(name)
-  const groups = [...svg.matchAll(/<g ([^>]*)>/g)].map((match) => match[1])
-  assert.equal(groups.length, 2)
-  assert.match(groups[0], /^fill="#[0-9a-f]{6}" stroke="#[0-9a-f]{6}" stroke-width="2\.5" stroke-linejoin="round"$/)
-  assert.equal(groups[1].includes('stroke'), false)
-  assert.match(groups[1], /^class="dsh-leader-agent-agent-bubble__avatar-eye" fill="#[0-9a-f]{6}"$/)
-  assert.equal((svg.match(/data-shape="/g) ?? []).length, 1)
-  assert.equal(svg.includes(name), false)
-  assert.equal(svg.includes('<script'), false)
-  assert.equal(svg.includes('onerror'), false)
-  assert.equal(svg.includes('NaN'), false)
-  assert.equal(svg.includes('undefined'), false)
-  assert.equal(svg.includes('>>'), false)
+  const avatar = buildAvatar(name)
+  assert.ok(avatar.body.length >= 1, '生产几何至少有一条身体 path')
+  assert.ok(avatar.eyes.length >= 1, '生产几何至少有一条眼睛 path')
+  assert.ok(avatar.body.every((d) => d.startsWith('M') && d.length > 20), '身体 path 不能是空串')
+  assert.ok(avatar.eyes.every((d) => d.startsWith('M') && d.length > 5), '眼睛 path 不能是空串')
+  assert.equal(avatar.strokeWidth, 2.5)
+  for (const color of [avatar.head, avatar.stroke, avatar.eye]) assert.match(color, /^#[0-9a-f]{6}$/)
+  const payload = JSON.stringify(avatar)
+  assert.equal(payload.includes(name), false)
+  assert.equal(payload.includes('<script'), false)
+  assert.equal(payload.includes('onerror'), false)
+  assert.equal(payload.includes('NaN'), false)
+  assert.equal(payload.includes('undefined'), false)
+  assert.equal(payload.includes('>>'), false)
+  assert.equal(payload.includes('<'), false, '几何里不应出现 HTML 标记')
 })
 
 test('五种形状按可见并集统一到 34/100，宽高比在 0.926–1.087', () => {
   const seen = new Map()
   for (let index = 0; seen.size < SHAPES.length * 3 && index < 5_000; index++) {
     const name = `worker-${index}`
-    const svg = decode(name)
-    const shape = /data-shape="([^"]+)"/.exec(svg)?.[1]
-    const bucket = seen.get(shape) ?? []
+    const avatar = buildAvatar(name)
+    const bucket = seen.get(avatar.shape) ?? []
     if (bucket.length >= 3) continue
-    bucket.push({ svg, layout: _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }) })
-    seen.set(shape, bucket)
+    bucket.push({ avatar, layout: _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }) })
+    seen.set(avatar.shape, bucket)
   }
   for (const shape of SHAPES) {
-    for (const { svg, layout } of seen.get(shape)) {
-      const radius = Math.sqrt(scanlineUnionArea(svg) / Math.PI)
+    for (const { avatar, layout } of seen.get(shape)) {
+      const radius = Math.sqrt(scanlineUnionArea(avatar) / Math.PI)
       assert.ok(Math.abs(radius - 34) < 0.1, `${shape} 的可见并集半径是 ${radius}`)
       const ratio = layout.body.rx / layout.body.ry
       assert.ok(ratio >= 0.926 && ratio <= 1.087, `${shape} 的宽高比是 ${ratio}`)
-      assert.match(svg, /stroke-width="2\.5"/)
+      assert.equal(avatar.strokeWidth, 2.5)
       if (shape === 'droplet') {
-        assert.equal(bodyPaths(svg).length, 1, 'droplet 的并集应只有一个身体 path，避免内缝描边')
-        const points = bodyPaths(svg).flatMap((d) => samplePath(d))
+        assert.equal(avatar.body.length, 1, 'droplet 的并集应只有一个身体 path，避免内缝描边')
+        const points = avatar.body.flatMap((d) => samplePath(d))
         assert.ok(Math.min(...points.map(([, y]) => y)) - 1.25 >= -0.01, 'droplet 尖顶的描边越过 viewBox 顶边')
         assert.ok(Math.max(...points.map(([, y]) => y)) + 1.25 <= 100.01, 'droplet 底部描边越过 viewBox')
       }
@@ -198,13 +190,13 @@ test('五种形状按可见并集统一到 34/100，宽高比在 0.926–1.087',
 test('5000 个名字里所有 droplet 的可见并集半径都在 34±0.1', () => {
   let droplets = 0
   for (let index = 0; index < 5_000; index++) {
-    const svg = decode(`worker-${index}`)
-    if (!svg.includes('data-shape="droplet"')) continue
+    const avatar = buildAvatar(`worker-${index}`)
+    if (avatar.shape !== 'droplet') continue
     droplets++
-    const radius = Math.sqrt(scanlineUnionArea(svg) / Math.PI)
+    const radius = Math.sqrt(scanlineUnionArea(avatar) / Math.PI)
     assert.ok(Math.abs(radius - 34) < 0.1, `worker-${index} 的可见并集半径是 ${radius}`)
-    assert.equal(bodyPaths(svg).length, 1, 'droplet 的并集应只有一个身体 path，避免内缝描边')
-    const points = bodyPaths(svg).flatMap((d) => samplePath(d))
+    assert.equal(avatar.body.length, 1, 'droplet 的并集应只有一个身体 path，避免内缝描边')
+    const points = avatar.body.flatMap((d) => samplePath(d))
     assert.ok(Math.min(...points.map(([, y]) => y)) - 1.25 >= -0.01, `worker-${index} 的尖顶描边越过 viewBox 顶边`)
     assert.ok(Math.max(...points.map(([, y]) => y)) + 1.25 <= 100.01, `worker-${index} 的底部描边越过 viewBox`)
   }
@@ -213,27 +205,21 @@ test('5000 个名字里所有 droplet 的可见并集半径都在 34±0.1', () =
 
 test('浅色描边、深色身体与眼睛的对比度达标', () => {
   for (let index = 0; index < 300; index++) {
-    const svg = decode(`worker-${index}`)
-    const bodyFill = /<g fill="(#[0-9a-f]{6})" stroke="(#[0-9a-f]{6})"/.exec(svg)
-    const eyeFill = /<g class="dsh-leader-agent-agent-bubble__avatar-eye" fill="(#[0-9a-f]{6})">/.exec(svg.slice(svg.indexOf('</g>') + 4))
-    const body = bodyFill?.[1]
-    const stroke = bodyFill?.[2]
-    const eye = eyeFill?.[1]
-    assert.equal(stroke, darkened(body))
-    assert.ok(contrast(stroke, LIGHT_BUBBLE) >= 3, `${body} 的描边对浅色气泡只有 ${contrast(stroke, LIGHT_BUBBLE)}:1`)
-    assert.ok(contrast(body, DARK_BUBBLE) >= 3, `${body} 对深色气泡只有 ${contrast(body, DARK_BUBBLE)}:1`)
-    assert.ok(contrast(eye, body) >= 4.5, `眼睛对 ${body} 只有 ${contrast(eye, body)}:1`)
+    const avatar = buildAvatar(`worker-${index}`)
+    assert.equal(avatar.stroke, darkened(avatar.head))
+    assert.ok(contrast(avatar.stroke, LIGHT_BUBBLE) >= 3, `${avatar.head} 的描边对浅色气泡只有 ${contrast(avatar.stroke, LIGHT_BUBBLE)}:1`)
+    assert.ok(contrast(avatar.head, DARK_BUBBLE) >= 3, `${avatar.head} 对深色气泡只有 ${contrast(avatar.head, DARK_BUBBLE)}:1`)
+    assert.ok(contrast(avatar.eye, avatar.head) >= 4.5, `眼睛对 ${avatar.head} 只有 ${contrast(avatar.eye, avatar.head)}:1`)
   }
 })
 
 test('身体色只来自 mid / bright 两档 tone', () => {
   for (let index = 0; index < 100; index++) {
     const name = `worker-${index}`
-    const svg = decode(name)
-    const body = /<g fill="(#[0-9a-f]{6})"/.exec(svg)?.[1]
+    const avatar = buildAvatar(name)
     const options = { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }
     const mid = _layout(name, { ...options, traits: { ...options.traits, tone: 0.4 } }).palette.head
     const bright = _layout(name, { ...options, traits: { ...options.traits, tone: 0.8 } }).palette.head
-    assert.equal([mid, bright].includes(body), true)
+    assert.equal([mid, bright].includes(avatar.head), true)
   }
 })

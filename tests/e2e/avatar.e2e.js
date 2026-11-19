@@ -21,6 +21,7 @@ import { startMockProvider } from './mock-llm.mjs'
 import { workerReportSource } from '../../src/shared/worker-report.js'
 
 const SHAPES = ['round', 'organic', 'boxy', 'droplet', 'hexagon']
+const MALICIOUS = '<img src=x onerror="alert(1)">'
 
 /**
  * 从数据根里取第一个会话的 id 与 cwd。
@@ -81,23 +82,29 @@ function appendWorkerReport(home, session) {
   const compressed = readFileSync(path)
   const lines = zstdDecompressSync(compressed).toString('utf8').split('\n').filter(Boolean)
   const maxSeq = Math.max(...lines.map((line) => JSON.parse(line).seq ?? 0))
-  const source = workerReportSource('avatar-worker', 'child-1', '任务「avatar-worker」已结束。', '改完了', 'completed')
-  const event = {
-    type: 'user/message',
-    seq: maxSeq + 1,
-    time: Date.now(),
-    data: {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: [{ type: 'text', text: '任务「avatar-worker」已结束。\n产物摘要：\n改完了' }],
-      source,
-    },
-    surfaceOp: 'append',
-  }
-  const frame = zstdCompressSync(Buffer.from(`${JSON.stringify(event)}\n`), {
-    params: { [constants.ZSTD_c_checksumFlag]: 1 },
+  const reports = [
+    ['avatar-worker', 'child-1', '任务「avatar-worker」已结束。', '改完了'],
+    [MALICIOUS, 'child-2', '任务「恶意 name」已结束。', '第二个头像'],
+  ]
+  const frames = reports.map(([name, childId, report, summary], index) => {
+    const source = workerReportSource(name, childId, report, summary, 'completed')
+    const event = {
+      type: 'user/message',
+      seq: maxSeq + index + 1,
+      time: Date.now(),
+      data: {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: [{ type: 'text', text: `${report}\n产物摘要：\n${summary}` }],
+        source,
+      },
+      surfaceOp: 'append',
+    }
+    return zstdCompressSync(Buffer.from(`${JSON.stringify(event)}\n`), {
+      params: { [constants.ZSTD_c_checksumFlag]: 1 },
+    })
   })
-  writeFileSync(path, Buffer.concat([compressed, frame]))
+  writeFileSync(path, Buffer.concat([compressed, ...frames]))
 }
 
 test('worker 回报气泡的头像内联 SVG 可解析，hover 会眨眼', { timeout: scenarioTimeout() }, async (t) => {
@@ -139,19 +146,43 @@ test('worker 回报气泡的头像内联 SVG 可解析，hover 会眨眼', { tim
     timeoutMs: 15_000,
   })
 
-  const avatar = page.locator('.dsh-leader-agent-agent-bubble__avatar').first()
+  const avatars = page.locator('.dsh-leader-agent-agent-bubble__avatar')
+  await waitForLocator(avatars.nth(1), { description: '同屏第二个 worker 头像', timeoutMs: 10_000 })
+  assert.equal(await avatars.count() >= 2, true)
+
+  const avatar = avatars.first()
   const svg = avatar.locator('svg').first()
   assert.equal(await avatar.locator('img').count(), 0, '头像不应再是 <img>')
+  assert.equal(await avatar.getAttribute('aria-hidden'), 'true')
+  assert.equal(await svg.getAttribute('focusable'), 'false')
   const shape = await svg.getAttribute('data-shape')
   assert.ok(SHAPES.includes(shape), `data-shape 不在白名单：${shape}`)
-  assert.equal(await svg.locator('g').first().getAttribute('stroke-width'), '2.5')
+
+  const body = svg.locator('g').first()
+  assert.equal(await body.getAttribute('stroke-width'), '2.5')
+  assert.ok(await body.locator('path').count() >= 1, '身体组至少有一条非空 path')
+  const box = await body.evaluate((group) => {
+    const bbox = group.getBBox()
+    return { width: bbox.width, height: bbox.height, area: bbox.width * bbox.height }
+  })
+  assert.ok(box.width > 55 && box.height > 55 && box.area > 3_000, `身体组 bbox 过小：${JSON.stringify(box)}`)
   assert.equal((await svg.innerHTML()).includes('avatar-worker'), false)
+
+  const maliciousSvg = avatars.nth(1).locator('svg').first()
+  assert.equal((await maliciousSvg.innerHTML()).includes('onerror'), false, '恶意 name 不应进入 SVG')
+  assert.equal((await maliciousSvg.getAttribute('data-shape')) !== null, true)
 
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await avatar.hover()
   const eye = avatar.locator('.dsh-leader-agent-agent-bubble__avatar-eye').first()
   const animation = await eye.evaluate((element) => getComputedStyle(element).animationName)
   assert.match(animation, /dsh-leader-agent-avatar-blink/)
+  assert.equal(
+    await avatars.nth(1).locator('.dsh-leader-agent-agent-bubble__avatar-eye').first()
+      .evaluate((element) => getComputedStyle(element).animationName),
+    'none',
+    '同屏只有被 hover 的头像应眨眼',
+  )
 
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await avatar.hover()
