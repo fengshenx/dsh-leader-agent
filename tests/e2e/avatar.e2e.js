@@ -1,6 +1,6 @@
 /**
- * worker 回报气泡的头像：真实宿主渲染出的 `<img src>` 必须是可解析的
- * `data:image/svg+xml`，带白名单 `data-shape` 与描边。
+ * worker 回报气泡的头像：真实宿主渲染出内联 SVG，带白名单 `data-shape` 与描边；
+ * hover 时眼睛分组触发眨眼动画，`prefers-reduced-motion` 下不动。
  *
  * 回报由 e2e 直接按宿主会话日志的格式追加（source 用本仓真实的
  * `workerReportSource`），不经过模型；这条用例守的是构建产物与宿主渲染，
@@ -100,7 +100,7 @@ function appendWorkerReport(home, session) {
   writeFileSync(path, Buffer.concat([compressed, frame]))
 }
 
-test('worker 回报气泡的头像是可解析的 blobatar data URI', { timeout: scenarioTimeout() }, async (t) => {
+test('worker 回报气泡的头像内联 SVG 可解析，hover 会眨眼', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-avatar-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -139,13 +139,26 @@ test('worker 回报气泡的头像是可解析的 blobatar data URI', { timeout:
     timeoutMs: 15_000,
   })
 
-  const src = await page.locator('.dsh-leader-agent-agent-bubble__avatar').first().getAttribute('src')
-  assert.equal(typeof src, 'string')
-  assert.equal(src.startsWith('data:image/svg+xml,'), true)
-  const svg = decodeURIComponent(src.slice('data:image/svg+xml,'.length))
-  const shape = /data-shape="([^"]+)"/.exec(svg)?.[1]
+  const avatar = page.locator('.dsh-leader-agent-agent-bubble__avatar').first()
+  const svg = avatar.locator('svg').first()
+  assert.equal(await avatar.locator('img').count(), 0, '头像不应再是 <img>')
+  const shape = await svg.getAttribute('data-shape')
   assert.ok(SHAPES.includes(shape), `data-shape 不在白名单：${shape}`)
-  assert.match(svg, /stroke-width="2\.5"/)
-  assert.equal(svg.includes('avatar-worker'), false)
+  assert.equal(await svg.locator('g').first().getAttribute('stroke-width'), '2.5')
+  assert.equal((await svg.innerHTML()).includes('avatar-worker'), false)
+
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await avatar.hover()
+  const eye = avatar.locator('.dsh-leader-agent-agent-bubble__avatar-eye').first()
+  const animation = await eye.evaluate((element) => getComputedStyle(element).animationName)
+  assert.match(animation, /dsh-leader-agent-avatar-blink/)
+
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await avatar.hover()
+  assert.equal(
+    await eye.evaluate((element) => getComputedStyle(element).animationName),
+    'none',
+    'prefers-reduced-motion 下应关闭眨眼',
+  )
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
 })

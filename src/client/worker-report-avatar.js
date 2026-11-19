@@ -13,8 +13,8 @@
  * 让每个头像在 20px 列表里占同样大的视觉面积。
  *
  * seed 取 worker 的身份名（派工 label）：label 由任务描述派生、随任务变，拿它做
- * seed 同一个 worker 会跨任务换脸。保持 `<img src="data:image/svg+xml,...">`，
- * 不内联 SVG，也不引 blobatar 的 motion / gaze 入口。
+ * seed 同一个 worker 会跨任务换脸。头像以内联 SVG 渲染，眼睛分组留给气泡 CSS
+ * 做 hover 眨眼；不引 blobatar 的 motion / gaze 入口，动效只由本地样式控制。
  *
  * @module dsh-leader-agent/client/worker-report-avatar
  */
@@ -225,12 +225,19 @@ function polygonPath(points, scale, cx, cy, shiftY) {
     .join('L') + 'Z'
 }
 
+/** 眼睛分组在气泡样式里的类名；hover 眨眼由它定位。 */
+export const AVATAR_EYE_CLASS = 'dsh-leader-agent-agent-bubble__avatar-eye'
+
 /**
- * 名字 → SVG data URI（走 `<img src>`，不引入内联 SVG 注入面）。
+ * 名字 → 可直接渲染的 SVG 片段。
+ *
+ * 用内联 SVG 而不是 data URI，眼睛分组才能被气泡 CSS 的 hover 动画选中；名字
+ * 不参与拼接，body / eyes 都是数值路径，不引入 HTML 注入面。
+ *
  * @param {string} name - worker 身份名
- * @returns {string} data URI
+ * @returns {{ shape: string, head: string, stroke: string, eye: string, body: string[], eyes: string[], strokeWidth: number }} 头像几何
  */
-export function agentAvatarDataUri(name) {
+export function buildAvatar(name) {
   const options = { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }
   const layout = _layout(name, options)
   const svg = blobatar(name, options)
@@ -256,12 +263,24 @@ export function agentAvatarDataUri(name) {
     ? 0
     : Math.max(0, padding - Math.min(...union.map(([, y]) => 50 + (y - layout.body.cy) * scale)))
   const body = union === null
-    ? bodyPaths.map((d) => `<path d="${transformPath(d, scale, layout.body.cx, layout.body.cy)}"/>`).join('')
-    : `<path d="${polygonPath(union, scale, layout.body.cx, layout.body.cy, shiftY)}"/>`
-  const eyes = eyePaths.map((d) => `<path d="${transformPath(d, scale, layout.body.cx, layout.body.cy, shiftY)}"/>`).join('')
-  const markup = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-shape="${layout.shape}">`
-    + `<g fill="${head}" stroke="${darken(head)}" stroke-width="${STROKE_WIDTH}" stroke-linejoin="round">${body}</g>`
-    + `<g fill="${eye}">${eyes}</g></svg>`
+    ? bodyPaths.map((d) => transformPath(d, scale, layout.body.cx, layout.body.cy))
+    : [polygonPath(union, scale, layout.body.cx, layout.body.cy, shiftY)]
+  const eyes = eyePaths.map((d) => transformPath(d, scale, layout.body.cx, layout.body.cy, shiftY))
 
-  return `data:image/svg+xml,${encodeURIComponent(markup)}`
+  return { shape: layout.shape, head, stroke: darken(head), eye, body, eyes, strokeWidth: STROKE_WIDTH }
+}
+
+/**
+ * 名字 → 内联 SVG 字符串；单元测试与静态检查用，气泡走 buildAvatar 的 React 树。
+ * @param {string} name - worker 身份名
+ * @returns {string} SVG 片段
+ */
+export function agentAvatarSvg(name) {
+  const avatar = buildAvatar(name)
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-shape="${avatar.shape}">`
+    + `<g fill="${avatar.head}" stroke="${avatar.stroke}" stroke-width="${avatar.strokeWidth}" stroke-linejoin="round">`
+    + avatar.body.map((d) => `<path d="${d}"/>`).join('')
+    + `</g><g class="${AVATAR_EYE_CLASS}" fill="${avatar.eye}">`
+    + avatar.eyes.map((d) => `<path d="${d}"/>`).join('')
+    + '</g></svg>'
 }

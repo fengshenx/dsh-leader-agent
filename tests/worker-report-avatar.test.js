@@ -8,14 +8,10 @@ const DARK_BUBBLE = '#2c2c2e'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { _layout } from 'blobatar'
-import { agentAvatarDataUri } from '../src/client/worker-report-avatar.js'
-
-const URI_PREFIX = 'data:image/svg+xml,'
+import { agentAvatarSvg } from '../src/client/worker-report-avatar.js'
 
 function decode(name) {
-  const uri = agentAvatarDataUri(name)
-  assert.equal(uri.startsWith(URI_PREFIX), true)
-  return decodeURIComponent(uri.slice(URI_PREFIX.length))
+  return agentAvatarSvg(name)
 }
 
 function groupMarkup(svg, index) {
@@ -144,9 +140,8 @@ test('同一名字字节一致，不同名字覆盖五种白名单形状', () =>
   const found = new Map()
   for (let index = 0; found.size < SHAPES.length && index < 2_000; index++) {
     const name = `worker-${index}`
-    const uri = agentAvatarDataUri(name)
-    assert.equal(uri, agentAvatarDataUri(name))
-    const svg = decodeURIComponent(uri.slice(URI_PREFIX.length))
+    const svg = decode(name)
+    assert.equal(svg, decode(name))
     const shape = /data-shape="([^"]+)"/.exec(svg)?.[1]
     assert.equal(shape, _layout(name, { traits: { shape: SHAPE_BANDS, tone: TONE_BANDS } }).shape)
     assert.equal(SHAPES.includes(shape), true)
@@ -162,6 +157,7 @@ test('SVG 只有一组带描边的身体与一组眼睛，name 不进标记', ()
   assert.equal(groups.length, 2)
   assert.match(groups[0], /^fill="#[0-9a-f]{6}" stroke="#[0-9a-f]{6}" stroke-width="2\.5" stroke-linejoin="round"$/)
   assert.equal(groups[1].includes('stroke'), false)
+  assert.match(groups[1], /^class="dsh-leader-agent-agent-bubble__avatar-eye" fill="#[0-9a-f]{6}"$/)
   assert.equal((svg.match(/data-shape="/g) ?? []).length, 1)
   assert.equal(svg.includes(name), false)
   assert.equal(svg.includes('<script'), false)
@@ -219,7 +215,7 @@ test('浅色描边、深色身体与眼睛的对比度达标', () => {
   for (let index = 0; index < 300; index++) {
     const svg = decode(`worker-${index}`)
     const bodyFill = /<g fill="(#[0-9a-f]{6})" stroke="(#[0-9a-f]{6})"/.exec(svg)
-    const eyeFill = /<g fill="(#[0-9a-f]{6})">/.exec(svg.slice(svg.indexOf('</g>') + 4))
+    const eyeFill = /<g class="dsh-leader-agent-agent-bubble__avatar-eye" fill="(#[0-9a-f]{6})">/.exec(svg.slice(svg.indexOf('</g>') + 4))
     const body = bodyFill?.[1]
     const stroke = bodyFill?.[2]
     const eye = eyeFill?.[1]
