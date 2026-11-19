@@ -22,6 +22,15 @@
 >
 > OSS 标准域名对 HTML 会强制下载（`Content-Disposition: attachment`）；下载后用浏览器打开。要在线预览需给 bucket 绑定自定义域名。
 
+### 英文版（GitHub Pages 内嵌）
+
+| 版本 | 视频 / 旁白 | 状态 |
+|---|---|---|
+| en-v2 | [promo-en-1080x1920-v2.mp4](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-en-1080x1920-v2.mp4)、[narration-en-v2.mp3](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-en-v2.mp3) | 当前使用（`site/index.html` 内嵌） |
+| en-v1 | [promo-en-1080x1920-v1.mp4](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-en-1080x1920-v1.mp4)、[narration-en-v1.mp3](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/audio/narration-en-v1.mp3) | 已停用、保留回退：旁白把数量说成 ten 的两倍（与仓内口径冲突） |
+
+源文件 [`source/promo-en.html`](source/promo-en.html)、[`timeline-en.json`](timeline-en.json)、[`text/narration-en.srt`](text/narration-en.srt)；版本组见 [`media.json`](media.json)。
+
 ## v3–v5 变更
 
 - **v4/v5 修正**：v4 固定页面 + 等两帧修大字抖动；v5 去掉无源的 `Session 切换 0`（改 `↓`）与 `20+`（改 `20`），S5B/S6 小字放大到 32px，standalone 重生成。渲染方法见 [`source/render-frames.mjs`](source/render-frames.mjs)。
