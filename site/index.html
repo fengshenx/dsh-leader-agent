@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-leader-agent — one Leader drives a team of coding agents</title>
+<meta name="description" content="A leader/worker orchestration plugin for DeepSeek Harness (dsh): the Leader splits work, dispatches workers, tracks every task to completion and runs review — on a project board you can read at a glance.">
+<link rel="canonical" href="https://fengshenx.github.io/dsh-leader-agent/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="dsh-leader-agent — one Leader drives a team of coding agents">
+<meta property="og:description" content="Leader/worker orchestration for DeepSeek Harness: dispatch, board, review. Run ten features in parallel instead of babysitting each one.">
+<meta property="og:url" content="https://fengshenx.github.io/dsh-leader-agent/">
+<meta property="og:image" content="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png">
+<meta property="og:site_name" content="dsh-leader-agent">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="dsh-leader-agent — one Leader drives a team of coding agents">
+<meta name="twitter:description" content="Leader/worker orchestration for DeepSeek Harness (dsh): dispatch, board, review.">
+<meta name="twitter:image" content="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "dsh-leader-agent",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "macOS, Windows, Linux",
+  "description": "Leader/worker orchestration plugin for DeepSeek Harness (dsh): dispatch, delivery board, and review, so one person can run many features in parallel.",
+  "url": "https://fengshenx.github.io/dsh-leader-agent/",
+  "downloadUrl": "https://www.npmjs.com/package/dsh-leader-agent",
+  "codeRepository": "https://github.com/fengshenx/dsh-leader-agent",
+  "programmingLanguage": "JavaScript",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "softwareRequirements": "DeepSeek Harness (dsh) >=0.2.1-rc.2 <0.3.0",
+  "author": { "@type": "Person", "name": "fengshenx" }
+}
+</script>
+<style>
+  :root {
+    --ink: #16181d;
+    --muted: #5d6470;
+    --line: #e6e4de;
+    --bg: #fbfaf8;
+    --card: #ffffff;
+    --brand: #4b6fff;
+    --brand-ink: #3453d9;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  a { color: var(--brand-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 24px; }
+
+  header.site { border-bottom: 1px solid var(--line); }
+  header.site .wrap {
+    display: flex; align-items: center; gap: 12px;
+    padding-top: 18px; padding-bottom: 18px;
+  }
+  header.site img { height: 30px; width: auto; }
+  header.site .name { font-weight: 650; letter-spacing: -0.01em; }
+  header.site nav { margin-left: auto; display: flex; gap: 18px; font-size: 14px; }
+  header.site nav a { color: var(--muted); }
+  header.site nav a:hover { color: var(--ink); text-decoration: none; }
+
+  .hero { padding: 84px 0 64px; text-align: center; }
+  .hero h1 {
+    font-size: clamp(30px, 5.2vw, 46px);
+    line-height: 1.16; letter-spacing: -0.022em;
+    margin: 0 auto 18px; max-width: 780px; font-weight: 700;
+  }
+  .hero h1 em { font-style: normal; color: var(--brand); }
+  .hero p.lead {
+    color: var(--muted); font-size: 18px; max-width: 640px;
+    margin: 0 auto 30px;
+  }
+  .hero .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-block; padding: 11px 22px; border-radius: 10px;
+    font-size: 15px; font-weight: 600; border: 1px solid transparent;
+  }
+  .btn:hover { text-decoration: none; }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-primary:hover { background: var(--brand-ink); }
+  .btn-ghost { border-color: var(--line); background: var(--card); color: var(--ink); }
+  .btn-ghost:hover { border-color: var(--muted); }
+
+  .band { border-top: 1px solid var(--line); padding: 56px 0; }
+  .band h2 {
+    font-size: 13px; font-weight: 650; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 0 0 28px; text-align: center;
+  }
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 20px 22px;
+  }
+  .card h3 { margin: 0 0 8px; font-size: 16px; letter-spacing: -0.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .card code {
+    font-family: var(--mono); font-size: 13px; background: #f1f0ec;
+    border-radius: 4px; padding: 1px 5px;
+  }
+
+  figure.shot { margin: 0; text-align: center; }
+  figure.shot img {
+    max-width: 100%; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(22, 24, 29, 0.09);
+  }
+  figure.shot figcaption { color: var(--muted); font-size: 14px; margin-top: 14px; }
+
+  .video-row { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 44px; align-items: center; }
+  .video-row video {
+    width: 100%; border-radius: 14px; border: 1px solid var(--line);
+    display: block; background: #000;
+  }
+  .video-row h3 { margin: 0 0 12px; font-size: 22px; letter-spacing: -0.015em; }
+  .video-row ul { margin: 0; padding-left: 20px; color: var(--muted); }
+  .video-row li { margin: 8px 0; }
+  .video-row li strong { color: var(--ink); font-weight: 600; }
+
+  .install { max-width: 720px; margin: 0 auto; }
+  .install h3 { font-size: 18px; margin: 34px 0 10px; text-align: center; }
+  .install h3:first-of-type { margin-top: 0; }
+  .install .note { color: var(--muted); font-size: 14px; text-align: center; margin: 0 0 14px; }
+  .cmd {
+    position: relative; background: #14161b; color: #e8eaf0;
+    border-radius: 10px; padding: 16px 56px 16px 18px;
+    font-family: var(--mono); font-size: 13.5px; line-height: 1.7;
+    overflow-x: auto; white-space: pre;
+  }
+  .cmd .c { color: #7d8698; }
+  .cmd button {
+    position: absolute; top: 12px; right: 12px;
+    background: #232733; color: #aab3c2; border: 1px solid #333947;
+    border-radius: 7px; font-size: 12px; padding: 4px 10px; cursor: pointer;
+    font-family: inherit;
+  }
+  .cmd button:hover { color: #fff; border-color: #4c556a; }
+  .install p.ghost-note { text-align: center; color: var(--muted); font-size: 13.5px; margin-top: 22px; }
+
+  footer.site { border-top: 1px solid var(--line); padding: 34px 0 46px; }
+  footer.site .wrap {
+    display: flex; flex-wrap: wrap; gap: 8px 22px; justify-content: center;
+    color: var(--muted); font-size: 14px;
+  }
+
+  @media (max-width: 860px) {
+    .cards { grid-template-columns: 1fr 1fr; }
+    .video-row { grid-template-columns: 1fr; gap: 24px; }
+    .video-row video { max-width: 320px; margin: 0 auto; }
+  }
+  @media (max-width: 560px) {
+    .cards { grid-template-columns: 1fr; }
+    .hero { padding: 56px 0 44px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent logo" width="132" height="30">
+    <span class="name">dsh-leader-agent</span>
+    <nav>
+      <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
+      <a href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
+      <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">简体中文</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <h1>One Leader drives the work and the review,<br>so you can run <em>ten features in parallel</em> instead of babysitting each one.</h1>
+    <p class="lead">A leader/worker orchestration bundle for DeepSeek Harness (dsh). You state the goal once; the Leader splits work, dispatches workers, tracks every task to completion, checks what comes back and organizes review.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="https://github.com/fengshenx/dsh-leader-agent">View on GitHub</a>
+      <a class="btn btn-ghost" href="#install">Install</a>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>What you get</h2>
+      <div class="cards">
+        <div class="card">
+          <h3>One Leader drives dev and review</h3>
+          <p>The Leader opens cards, dispatches workers, watches each one finish, verifies the deliverable and organizes review. Your attention goes back to <em>what</em> you want.</p>
+        </div>
+        <div class="card">
+          <h3>A board you can read at a glance</h3>
+          <p>One board per project. Each card carries its executor slot and a live status light; click a slot to drill into that agent's session and keep talking.</p>
+        </div>
+        <div class="card">
+          <h3>Behavior lives in two files</h3>
+          <p><code>LEADER.md</code> holds the orchestration rules, <code>SLOTS.md</code> gives each worker role its own rules. Editing a file changes behavior — no session restart.</p>
+        </div>
+        <div class="card">
+          <h3>Many projects, one Leader each</h3>
+          <p>The project tree lists the workers each Leader spawned. Swap in a new Leader and the existing workers plus undelivered reports move over.</p>
+        </div>
+        <div class="card">
+          <h3>Read back what a worker did</h3>
+          <p><code>read_worker_session</code> reads a worker's session log directly — every turn, every tool call, why anything failed — without waking it or triggering a model call.</p>
+        </div>
+        <div class="card">
+          <h3>Quiet workers get flagged</h3>
+          <p>When a dispatched turn produces no report for 15 minutes, a patrol notice arrives with the session id, its card and a copy-pasteable read-back call.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <figure class="shot">
+        <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="dsh-leader-agent: project tree on the left, the Leader's conversation in the middle, the delivery board on the right" width="1200" loading="lazy">
+        <figcaption>Left: projects and their workers. Center: the Leader's session — task, dispatch, worker report, verdict. Right: the delivery board, one card per task, a slot chip per executor.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <h2>Watch it run</h2>
+      <div class="video-row">
+        <video controls preload="metadata" playsinline src="https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-16-leader-agent-promo/video/promo-1080x1920-v5.mp4">
+          Your browser does not support embedded video. <a href="https://github.com/fengshenx/dsh-leader-agent">See the README on GitHub.</a>
+        </video>
+        <div>
+          <h3>One person, one agent team</h3>
+          <ul>
+            <li><strong>You talk to the Leader only.</strong> Splitting, dispatching, tracking and acceptance all happen without you herding agents.</li>
+            <li><strong>Workers are persistent sessions.</strong> Each owns one worktree, settles its own card when a turn ends, and reports back automatically.</li>
+            <li><strong>Facts land on the board.</strong> Goal, scope, acceptance, links and live status — visible the moment you look.</li>
+            <li><strong>You can always reach in.</strong> Drill into any worker's session directly, or read its log without waking it.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <div class="install">
+        <h3>Web</h3>
+        <p class="note">Profile must be named <code>web</code>; requires dsh <code>&gt;=0.2.1-rc.2 &lt;0.3.0</code>.</p>
+        <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># install the plugin, then start the web app</span>
+dsh plugin --profile web add dsh-leader-agent
+dsh web</div>
+
+        <h3>Desktop (DeepSeek Harness Desktop)</h3>
+        <p class="note">GUI: Plugins → Add plugin → type <code>dsh-leader-agent</code>. Or use the CLI bundled with the desktop install (quit the app first):</p>
+        <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># macOS; on Windows / Linux use runtime/cli/bin/dsh inside the install dir</span>
+"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
+  plugin --profile desktop add dsh-leader-agent</div>
+
+        <p class="ghost-note">npm package: <a href="https://www.npmjs.com/package/dsh-leader-agent">dsh-leader-agent</a> · Developer preview. <a href="https://github.com/fengshenx/dsh-leader-agent#readme">Full README →</a></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    <span>MIT License</span>
+    <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
+    <a href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
+    <a href="https://fengshenx.github.io/dsh-leader-agent/">Landing page</a>
+    <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">简体中文</a>
+  </div>
+</footer>
+
+<script>
+  document.querySelectorAll('.cmd button[data-copy]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var clone = btn.parentNode.cloneNode(true);
+      var b = clone.querySelector('button');
+      if (b) b.remove();
+      navigator.clipboard.writeText(clone.textContent.replace(/\n$/, '')).then(function () {
+        btn.textContent = 'Copied';
+        setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+      });
+    });
+  });
+</script>
+</body>
+</html>
