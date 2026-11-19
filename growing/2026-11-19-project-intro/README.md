@@ -2,7 +2,7 @@
 
 **一句话：一个人，带一支 Agent 团队。**
 
-面向第一次听说 `dsh-leader-agent` 的人：8 页、约 3 分钟讲完「它是什么、主要功能、和 Harness Agent Team 模式的差别」。
+面向第一次听说 `dsh-leader-agent` 的人：8 页讲完「它是什么、主要功能、和 Harness Agent Team 模式的差别」。
 
 ![封面](preview.jpg)
 
@@ -10,10 +10,11 @@
 
 | 内容 | 位置 |
 |---|---|
-| 可编辑源 HTML（单文件、无外部依赖） | [`source/deck.html`](source/deck.html) |
+| 成品 HTML（单文件、无外部依赖） | [deck-1600x900-v1.html](https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/html/deck-1600x900-v1.html) |
+| 可编辑源 HTML（与成品同字节） | [`source/deck.html`](source/deck.html) |
 | 封面预览 1600×900 | [`preview.jpg`](preview.jpg) |
 
-打开方式：浏览器直接打开 `source/deck.html`。方向键 / 空格 / PageUp / PageDown 翻页，`F` 全屏，右侧细线可直接跳页；移动端改为纵向自由滚动。
+打开方式：下载成品后用浏览器打开；改版直接改 `source/deck.html`。方向键 / 空格 / PageUp / PageDown 翻页，`F` 全屏，右侧细线可跳页；移动端改为纵向滚动。HTML 在 OSS 上强制下载，原因见 [`../AGENTS.md`](../AGENTS.md)。
 
 ## 叙事
 
@@ -35,4 +36,4 @@
 
 ## 状态
 
-源文件已入库；尚未上传 OSS（`media.json` 的 `versions` 为空）。要发布时按 [`growing/AGENTS.md`](../AGENTS.md) 走上传与检查清单。
+已上传 OSS（`html/deck-1600x900-v1.html`），身份字段见 [`media.json`](media.json)；`source/deck.html` 只是可编辑源。
