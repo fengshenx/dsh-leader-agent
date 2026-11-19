@@ -39,7 +39,7 @@
 
 ### 桌面版安装（DeepSeek Harness Desktop）
 
-桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。
+桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。**交付看板是 `web` profile 的功能**，桌面版装的是插件本体，没有看板。
 
 **图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-agent` 后点「安装」：
 
