@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **部分被 [worker 头像改用 blobatar](2026-11-19-blobatar-avatars.md) 取代**：minidenticons、63 seed 池与「深色轮廓弱」的取舍已不成立；source 标记、节点定义与气泡结构仍以本篇为准。
+
 ## Problem
 
 worker 的完成通知此前是一条普通用户消息，正文带「【worker 回报】」前缀，渲染成右对齐的用户气泡：读起来像用户自己在说话，还混着协议口吻。回报需要以助手侧形态呈现，身份头在气泡上方单独一行，正文里没有前缀。

@@ -116,7 +116,7 @@ test('展开/收起按钮在气泡内，与正文是同一层的两个兄弟', (
 test('leader 任务用右侧用户气泡：无身份头、不折叠、正文与 assistant 同套 Markdown', () => {
   const view = read('src/client/worker-task-view.js')
   // 用户气泡没有头像、名字与折叠开关：这三样都是 agent 气泡的形态。
-  assert.equal(view.includes('agentAvatarDataUri'), false)
+  assert.equal(view.includes('buildAvatar'), false)
   assert.equal(view.includes('AgentBubble'), false)
   assert.equal(view.includes('data-collapsed'), false)
   assert.equal(view.includes('展示更多'), false)

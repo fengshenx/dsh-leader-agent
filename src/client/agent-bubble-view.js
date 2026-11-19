@@ -12,7 +12,7 @@
  */
 
 import { createElement, useLayoutEffect, useRef, useState } from 'react'
-import { agentAvatarDataUri } from './worker-report-avatar.js'
+import { AVATAR_EYE_CLASS, buildAvatar } from './worker-report-avatar.js'
 import { ensureAgentBubbleStyles } from './agent-bubble-styles.js'
 import { formatBubbleClock } from './bubble-clock.js'
 import { Markdown } from './markdown.js'
@@ -72,17 +72,32 @@ export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, for
     setTimeout(() => setCopied(false), 1500)
   }
 
+  const avatar = buildAvatar(avatarSeed)
+
   return createElement(
     'div',
     { className: 'dsh-leader-agent-agent-bubble' },
     createElement(
       'div',
       { className: 'dsh-leader-agent-agent-bubble__identity' },
-      createElement('img', {
-        className: 'dsh-leader-agent-agent-bubble__avatar',
-        src: agentAvatarDataUri(avatarSeed),
-        alt: '',
-      }),
+      createElement(
+        'span',
+        { className: 'dsh-leader-agent-agent-bubble__avatar', 'aria-hidden': 'true' },
+        createElement(
+          'svg',
+          { xmlns: 'http://www.w3.org/2000/svg', viewBox: '0 0 100 100', focusable: 'false', 'data-shape': avatar.shape },
+          createElement(
+            'g',
+            { fill: avatar.head, stroke: avatar.stroke, strokeWidth: avatar.strokeWidth, strokeLinejoin: 'round' },
+            avatar.body.map((d, index) => createElement('path', { key: index, d })),
+          ),
+          createElement(
+            'g',
+            { className: AVATAR_EYE_CLASS, fill: avatar.eye },
+            avatar.eyes.map((d, index) => createElement('path', { key: index, d })),
+          ),
+        ),
+      ),
       createElement(
         'button',
         {

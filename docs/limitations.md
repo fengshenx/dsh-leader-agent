@@ -15,7 +15,7 @@
 - **worker 回报的渲染依赖宿主的会话节点扩展位**。本仓注册一个独立的 Chat node kind 并用 exclusive claim 接管这类消息（见 [worker 回报气泡](../.agents/notes/implemented/feature/2026-10-27-worker-report-bubble.md)）。宿主若改了 claim 或分组语义，这条消息会退化成普通的右对齐用户气泡——内容不会丢。
 - **leader 任务气泡没有身份头**。它按用户消息的形态渲染（右侧、无头像与名字，正文与 assistant 内容同套 Markdown（`MarkdownText` compact），单换行按 Markdown 合并、不复原日志式换行；需要断行用空行或 Markdown 语法），所以不显示 leader 是谁，也不能从气泡跳到 leader 会话；`source.parentSessionId` 仍是来源凭证，没有它的历史消息不认领，退回官方上下文行（不是右侧气泡）。
 - **worker 回报要等父会话空闲才送达**。否则它会像用户自己发的消息一样挂进输入框上方的「消息队列」条（实测 busy 时直接投会显示「2 queued messages」，与人的消息混在一起）。代价是 leader 正忙时回报要多等这一轮（边界见 [笔记](../.agents/notes/implemented/architecture/2026-10-27-worker-report-delivery-boundary.md)，机制见[派工与唤醒](architecture.md#派工与唤醒)）。
-- **worker 头像在深色主题下轮廓弱**（既定取舍）：头像本身仍可辨，但块的外轮廓看不出边界。头像池只有 63 个 seed，worker 多时会撞图（3 个约 4.7%、5 个约 15%），名字在头像旁，不影响身份识别。
+- **worker 头像只开放五种形状**：round / organic / boxy / droplet / hexagon；capsule 在 20px 下是扁条，triangle 偏小且锐利，nub / cloud / sun 的凸起会连成串，因此不进入白名单。颜色只取 mid / bright 两档，pale / ink 会退成灰点或暗块；同屏形状重复比全量十种更多，名字在头像旁，不影响身份识别。头像内联渲染，hover 只做一次眨眼，不提供持续动画或表情切换。
 - **桌面脚本的 `DSH_HOME` 比 CLI 多一次 trim**。`scripts/desktop-plan.mjs` 取值 trim（`home-paths.js` 照抄宿主：判空 trim、取值不 trim），因为它算出的绝对路径要经 `--env DSH_HOME=` 交给应用。代价：`DSH_HOME=' /x '` 在桌面侧得 `/x`、CLI 侧得 `<cwd>/ /x `。
 
 ## worker 的控制面
