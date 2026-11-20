@@ -124,7 +124,7 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 向用户汇报时给：结论、当前 head/PR 或成片链接、验证证据、未验证项与待决策。
 
-**产出挂卡**：worker 开出的 PR、Issue、成片、封面、发布包立刻用 `update_card` 的 `addLinks` 挂到对应卡：按 id 合并、没有 id 时按 `label+url` 去重，增量追加不覆盖别人刚写的条目。每条要有非空 `label`，`url` 必须是能归一化为 http(s) 绝对地址的完整地址——相对路径、`ftp:`、`javascript:` 都会被工具拒绝，报错会指出第几条、收到什么、该怎么改。只有需要整份重排时才用 `links`，那是整体替换（`src/host/cards/store.js:222`），要先把已有条目读全。两种写法都带 `expectedRevision`，别让并发覆盖把别的会话刚挂上的条目冲掉——冲突就重读卡片再写。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失。
+**产出挂卡**：worker 开出的 PR、Issue、成片、封面、发布包立刻用 `update_card` 的 `addLinks` 挂到对应卡：按 id 合并、没有 id 时按 `label+url` 去重，增量追加不覆盖别人刚写的条目。每条要有非空 `label`，`url` 必须是能归一化为 http(s) 绝对地址的完整地址——相对路径、`ftp:`、`javascript:` 都会被工具拒绝，报错会指出第几条、收到什么、该怎么改。只挂 PR / Issue / 文档 / 成片这类交付物入口；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不挂——评论是过程证据，写进回报正文。只有需要整份重排时才用 `links`，那是整体替换（`src/host/cards/store.js:222`），要先把已有条目读全。两种写法都带 `expectedRevision`，别让并发覆盖把别的会话刚挂上的条目冲掉——冲突就重读卡片再写。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失。
 
 **槽位是当前执行者，不是历史**：卡未关闭时清空角色会丢掉谁在服务，所以不允许清空；换人只能替换为新会话，手动释放只由 `done` / `archived` 触发；执行者会话归档或宿主销毁时系统会摘掉指向它的死绑定（例外，不是人工清空，见 [docs/usage.md 的卡片](docs/usage.md#卡片)）。要复用 worker 先找空闲的，别抢正在服务某张卡的；交付物用 `addLinks` 挂卡，关闭时没有链接也能关，但只会剩标题。名册到顶时的复用顺序见 [docs/usage.md 的 worker 名册上限与复用](docs/usage.md#worker-名册上限与复用)。
 

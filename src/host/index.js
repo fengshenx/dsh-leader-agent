@@ -76,6 +76,7 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  *   与 `isWorkerSession` 一起限定 worker 的写卡范围，`read_card` 用它反查默认要读的卡
  * @param {(() => Promise<Map<string, { lastReportAt?: number, runningSince?: number }>>) | undefined} [options.workerFacts] -
  *   会话活性快照；`list_cards` 的槽位行用它渲染最后回报
+ * @param {(message: string) => void} [options.logger] - 评论锚点等软告警出口
  * @returns {object[]} 工具定义
  */
 export function createBundleTools({
@@ -86,6 +87,7 @@ export function createBundleTools({
   isWorkerSession,
   cardBindingsOf,
   workerFacts,
+  logger = () => {},
 } = {}) {
   // 漏传判定会让写卡闸静默失效：工具面照裁，执行时却对所有会话放行。文档门禁走
   // 无参调用（没有 cards），单测直接调工具工厂，都不受这条约束。
@@ -106,6 +108,7 @@ export function createBundleTools({
       resolveProject,
       canWrite: canWriteCards,
       isWorkerSession,
+      logger,
     }),
     createUpdateCardTool({
       store: cards,
@@ -113,6 +116,7 @@ export function createBundleTools({
       canWrite: canWriteCards,
       isWorkerSession,
       cardBindingsOf,
+      logger,
     }),
     createListCardsTool({ store: cards, resolveProject, workerFacts }),
     createReadCardTool({
@@ -259,6 +263,7 @@ export function apply(ctx) {
     isWorkerSession: workerSessions.isWorkerSession,
     cardBindingsOf: (sessionId) => cards.bindingsOf(sessionId),
     workerFacts: () => dispatcher.workerFacts(),
+    logger,
   })) ctx.tools.register(tool)
 
   // 角色槽位注入：会话被卡片绑到某个槽位时，每轮请求组装时求值该槽位在项目

@@ -242,6 +242,33 @@ function normalizeLinks(links, { assignIds = true } = {}) {
   })
 }
 
+/** 评论与行内评论的锚点；命中只告警，不拒绝。 */
+const COMMENT_ANCHOR = /#(?:issuecomment-\d+|discussion_r\d+|pullrequestreview-\d+)/i
+
+/**
+ * 对评论锚点打一条非阻断日志。
+ *
+ * 锚点本身是合法 http(s)，硬拦会误伤「某条评论就是唯一证据」的合法链接；
+ * 这里保留写入，但把卡号与字段名留给运行日志，避免违规完全不可观测。
+ *
+ * @param {(message: string) => void} logger - 日志出口
+ * @param {{ number: number }} card - 已落盘的卡片
+ * @param {'links' | 'addLinks'} field - 写入字段
+ * @param {object[] | undefined} links - 规范化后的链接
+ * @returns {void}
+ */
+function warnCommentAnchors(logger, card, field, links) {
+  if (!Array.isArray(links) || typeof logger !== 'function') return
+  const hits = links.filter((link) => typeof link.url === 'string' && COMMENT_ANCHOR.test(link.url))
+  if (hits.length === 0) return
+  const labels = hits.map((link) => `「${link.label}」`).join('、')
+  try {
+    logger(`dsh-leader-agent: 卡片 #${card.number} 的 ${field} 含评论锚点（${labels}）；链接只挂交付物入口，评论是过程证据，写进回报正文。`)
+  } catch {
+    // warning 只是观测：宿主 logger 抛错不能把已成功的写入变成失败。
+  }
+}
+
 /**
  * 把收到的值描述成一句能放进报错里的话。
  *
@@ -424,9 +451,10 @@ async function assertWorkerCardScope(sessionId, { cardId, slots, status, spec, t
  *   省略时放行，仅供文档取名字与单测构造
  * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
  *   worker 不建卡，建卡与派工是 leader 的一条动作链
+ * @param {(message: string) => void} [options.logger] - 评论锚点告警出口
  * @returns {object} dsh 工具定义
  */
-export function createCreateCardTool({ store, resolveProject, canWrite, isWorkerSession }) {
+export function createCreateCardTool({ store, resolveProject, canWrite, isWorkerSession, logger = () => {} }) {
   return {
     name: 'create_card',
     description:
@@ -446,7 +474,7 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '外部引用条目（MR、Issue、设计文档等）。每条要有非空 label；url 若是 http(s) 绝对地址才会在卡上可点，传错会报错并指出是第几条。',
+          description: '外部引用条目（MR、Issue、设计文档、成片等交付物入口）。每条要有非空 label；url 若是 http(s) 绝对地址才会在卡上可点，传错会报错并指出是第几条。只挂交付物入口；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不要挂——评论是过程证据，写进回报正文。',
         },
         slots: {
           ...slotsSchema(),
@@ -500,6 +528,7 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
         ...project === undefined ? {} : { projectId: project.id },
         ...exec.agent?.id === undefined ? {} : { createdBy: exec.agent.id },
       })
+      warnCommentAnchors(logger, card, 'links', links)
       return { card }
     },
   }
@@ -516,9 +545,10 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
  * @param {(sessionId: string | undefined) => boolean} [options.isWorkerSession] - worker 判定；
  *   与 `cardBindingsOf` 一起构成 worker 的写卡范围闸
  * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话挂着的卡
+ * @param {(message: string) => void} [options.logger] - 评论锚点告警出口
  * @returns {object} dsh 工具定义
  */
-export function createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf }) {
+export function createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf, logger = () => {} }) {
   return {
     name: 'update_card',
     description:
@@ -545,12 +575,12 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。',
+          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。只挂交付物入口；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不要挂——评论是过程证据，写进回报正文。',
         },
         addLinks: {
           type: 'array',
           items: linkSchema(),
-          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。',
+          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。只挂交付物入口；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不要挂——评论是过程证据，写进回报正文。',
         },
         slots: {
           ...slotsSchema(),
@@ -650,6 +680,9 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         ...slots === undefined ? {} : { slots },
         ...sortOrder === undefined ? {} : { sortOrder },
       })
+      warnCommentAnchors(logger, card, 'links', links)
+      warnCommentAnchors(logger, card, 'addLinks', addLinks)
+      // 关闭卡片且没有交付物链接时给软提示；warning 只观测，不另外拒绝。
       const closing = existing?.status === 'active' && input.status === 'done'
       const warnings = closing && (card.links?.length ?? 0) === 0
         ? ['这张卡没有交付物链接，关闭后只剩标题。']
