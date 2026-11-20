@@ -40,9 +40,14 @@ export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, for
   const [overflowing, setOverflowing] = useState(false)
   const bubbleRef = useRef(null)
 
-  // 样式必须在测量之前进 DOM，所以放在 layout 阶段而不是被动 effect：后者晚于
-  // 绘制，首帧的 clamp 规则还没生效，`scrollHeight === clientHeight` 会量成「没
-  // 溢出」，气泡先铺开全文再收起。注入本身幂等，跟着 body 变化重入也无所谓。
+  // 样式必须在测量之前进 DOM：clamp 规则生效后 `scrollHeight` 才反映真实溢出，
+  // 否则会量成「没溢出」，气泡先铺开全文再收起。注入幂等，跟着 body 变化重入也
+  // 无所谓。
+  //
+  // 读尺寸本身不放在 layout 阶段：`ResizeObserver.observe()` 会先投递一次初始
+  // 尺寸，这次回调排在布局之后，读 `scrollHeight` 不会再触发排版。反过来在 layout
+  // effect 里同步读，一次提交挂 N 条气泡就是 N 次强制排版（真机 trace：28 条气泡
+  // 各一次样式重算 + 布局，共 163ms），而观察器那次本来就会把这些量掉。
   //
   // 只有折叠态才量：展开后 `scrollHeight === clientHeight`，一量就会把按钮收掉，
   // 用户也就点不回折叠了。宽度变化（窗口缩放、字体档位）要重算，所以也听 resize。
@@ -51,8 +56,11 @@ export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, for
     const element = bubbleRef.current
     if (element === null || expanded) return undefined
     const measure = () => { setOverflowing(element.scrollHeight > element.clientHeight + 1) }
-    measure()
-    if (typeof ResizeObserver === 'undefined') return undefined
+    if (typeof ResizeObserver === 'undefined') {
+      // 没有观察器的引擎只能同步量一次；桌面与 Web 宿主都是 Chromium，走不到这里。
+      measure()
+      return undefined
+    }
     const observer = new ResizeObserver(measure)
     observer.observe(element)
     return () => observer.disconnect()
