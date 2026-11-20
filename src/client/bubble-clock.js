@@ -4,7 +4,7 @@
  * 两个气泡（leader 任务、worker 回报）共用同一口径：与宿主的
  * `formatMessageClock` 对齐——今天只显示时分；同年往日显示日期；跨年再加年份。
  * 日期模板由 locale 字典给（中文「M月D日」、英文 `M/D`），时分是数字格式，
- * 两种语言一致。
+ * 各语言一致。
  *
  * @module dsh-leader-agent/client/bubble-clock
  */

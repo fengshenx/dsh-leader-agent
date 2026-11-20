@@ -6,6 +6,7 @@
 <title>dsh-leader-agent — one Leader drives a team of coding agents</title>
 <meta name="description" content="A leader/worker orchestration plugin for DeepSeek Harness (dsh): the Leader splits work, dispatches workers, tracks every task to completion and runs review — on a project board you can read at a glance.">
 <link rel="canonical" href="https://fengshenx.github.io/dsh-leader-agent/">
+<meta name="google-site-verification" content="FcUvhwySw-rx0h1J-XdHdZrmvswR99xN1fsygQJMRtg">
 <link rel="icon" type="image/svg+xml" href="logo-mark.svg">
 <meta name="theme-color" content="#06070a">
 <meta property="og:type" content="website">
@@ -841,6 +842,8 @@
     .btn, .bento-card { transition: none; }
   }
 </style>
+<!-- 统计：Umami Cloud 无 cookie；data-domains 只收线上域名，本地预览与镜像站不上报 -->
+<script defer src="https://cloud.umami.is/script.js" data-website-id="4dc525ec-ae51-4ddb-b3b8-53edf9c19456" data-domains="fengshenx.github.io"></script>
 </head>
 <body>
 
@@ -857,9 +860,9 @@
       <a class="hide-sm" href="#demo">Demo</a>
       <a class="hide-sm" href="#install">Install</a>
       <span class="nav-sep" aria-hidden="true"></span>
-      <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
-      <a class="hide-sm" href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
-      <a class="nav-cta" href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">中文</a>
+      <a href="https://github.com/fengshenx/dsh-leader-agent" data-track="outbound-github" data-track-place="nav">GitHub</a>
+      <a class="hide-sm" href="https://www.npmjs.com/package/dsh-leader-agent" data-track="view-npm" data-track-place="nav">npm</a>
+      <a class="nav-cta" href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md" data-track="zh-readme" data-track-place="nav">中文</a>
     </nav>
   </div>
 </header>
@@ -878,7 +881,7 @@
           <span>Install Plugin</span>
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
         </a>
-        <a class="btn btn-ghost" href="https://github.com/fengshenx/dsh-leader-agent">
+        <a class="btn btn-ghost" href="https://github.com/fengshenx/dsh-leader-agent" data-track="outbound-github" data-track-place="hero">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.69-3.88-1.54-3.88-1.54-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11.1 11.1 0 0 1 5.8 0c2.21-1.49 3.18-1.18 3.18-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14 0 1.55-.01 2.8-.01 3.18 0 .31.21.68.8.56A11.51 11.51 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>
           <span>View on GitHub</span>
         </a>
@@ -886,7 +889,7 @@
       <div class="quick-cmd">
         <span class="prompt">$</span>
         <code>dsh plugin --profile web add dsh-leader-agent</code>
-        <button type="button" data-copy-text="dsh plugin --profile web add dsh-leader-agent">Copy</button>
+        <button type="button" data-copy-text="dsh plugin --profile web add dsh-leader-agent" data-track="copy-install" data-track-method="hero">Copy</button>
       </div>
     </section>
 
@@ -1069,16 +1072,16 @@
       <div class="install-shell">
         <div class="install-tabs">
           <div class="tab-group" role="tablist" aria-label="Install method">
-            <button class="tab-btn" type="button" role="tab" aria-selected="true" data-tab="web">Web</button>
-            <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="desktop-gui">Desktop GUI</button>
-            <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="desktop-cli">Desktop CLI</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="true" data-tab="web" data-track="install-tab" data-track-method="web">Web</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="desktop-gui" data-track="install-tab" data-track-method="desktop-gui">Desktop GUI</button>
+            <button class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="desktop-cli" data-track="install-tab" data-track-method="desktop-cli">Desktop CLI</button>
           </div>
           <span class="req-tag">dsh &gt;=0.2.1-rc.2 &lt;0.3.0</span>
         </div>
 
         <div class="install-panel active" id="panel-web" role="tabpanel">
           <p class="install-note">Profile must be named <code>web</code>. Install the bundle and launch DeepSeek Harness Web:</p>
-          <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># install the plugin, then start the web app</span>
+          <div class="cmd"><button type="button" data-copy data-track="copy-install" data-track-method="web">Copy</button><span class="c"># install the plugin, then start the web app</span>
 <span class="p">$ </span>dsh plugin --profile web add dsh-leader-agent
 <span class="p">$ </span>dsh web</div>
         </div>
@@ -1106,14 +1109,14 @@
 
         <div class="install-panel" id="panel-desktop-cli" role="tabpanel">
           <p class="install-note">Quit DeepSeek Harness Desktop completely first, then run the CLI bundled with the app:</p>
-          <div class="cmd"><button type="button" data-copy>Copy</button><span class="c"># macOS; on Windows / Linux use runtime/cli/bin/dsh inside the install dir</span>
+          <div class="cmd"><button type="button" data-copy data-track="copy-install" data-track-method="desktop-cli">Copy</button><span class="c"># macOS; on Windows / Linux use runtime/cli/bin/dsh inside the install dir</span>
 <span class="p">$ </span>"/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
   plugin --profile desktop add dsh-leader-agent</div>
         </div>
       </div>
 
       <p class="install-meta">
-        npm package: <a href="https://www.npmjs.com/package/dsh-leader-agent">dsh-leader-agent</a> · Developer preview · <a href="https://github.com/fengshenx/dsh-leader-agent#readme">Full README →</a>
+        npm package: <a href="https://www.npmjs.com/package/dsh-leader-agent" data-track="view-npm" data-track-place="install">dsh-leader-agent</a> · Developer preview · <a href="https://github.com/fengshenx/dsh-leader-agent#readme" data-track="outbound-github" data-track-place="install">Full README →</a>
       </p>
     </div>
   </section>
@@ -1126,10 +1129,10 @@
       <span>dsh-leader-agent · MIT License</span>
     </div>
     <div class="footer-links">
-      <a href="https://github.com/fengshenx/dsh-leader-agent">GitHub</a>
-      <a href="https://www.npmjs.com/package/dsh-leader-agent">npm</a>
+      <a href="https://github.com/fengshenx/dsh-leader-agent" data-track="outbound-github" data-track-place="footer">GitHub</a>
+      <a href="https://www.npmjs.com/package/dsh-leader-agent" data-track="view-npm" data-track-place="footer">npm</a>
       <a href="https://fengshenx.github.io/dsh-leader-agent/">Landing page</a>
-      <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md">简体中文</a>
+      <a href="https://github.com/fengshenx/dsh-leader-agent/blob/main/README_ZH.md" data-track="zh-readme" data-track-place="footer">简体中文</a>
     </div>
   </div>
 </footer>
@@ -1172,6 +1175,33 @@
       });
     });
   });
+
+  // 埋点：Umami 脚本被拦截或页面在本地预览时静默跳过，不影响任何交互
+  function track(name, data) {
+    var tracker = window.umami;
+    if (!tracker || typeof tracker.track !== 'function') return;
+    try {
+      if (data) tracker.track(name, data); else tracker.track(name);
+    } catch (_) {
+      // 吞掉埋点异常：广告拦截与网络抖动都算预期，不能让它冒泡到点击处理
+    }
+  }
+
+  document.querySelectorAll('[data-track]').forEach(function (el) {
+    el.addEventListener('click', function () {
+      var data = {};
+      ['place', 'method'].forEach(function (key) {
+        var value = el.getAttribute('data-track-' + key);
+        if (value) data[key] = value;
+      });
+      track(el.getAttribute('data-track'), Object.keys(data).length ? data : null);
+    });
+  });
+
+  var promoVideo = document.querySelector('video');
+  if (promoVideo) {
+    promoVideo.addEventListener('play', function () { track('play-video'); }, { once: true });
+  }
 </script>
 </body>
 </html>
