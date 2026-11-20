@@ -82,6 +82,9 @@ test('渲染编号、标题、卡 id、revision、槽位、状态、规格与链
   assert.match(text, /addLinks/)
   assert.match(text, /交付物入口/)
   assert.match(text, /不挂评论/)
+  assert.match(text, /#issuecomment-/)
+  assert.match(text, /#discussion_r/)
+  assert.match(text, /#pullrequestreview-/)
 })
 
 test('规格为空时省略规格节', () => {

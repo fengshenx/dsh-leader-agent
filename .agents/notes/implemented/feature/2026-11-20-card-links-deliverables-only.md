@@ -9,9 +9,15 @@ Status: implemented
 ## Decision
 
 - **在模型写链接的必经点放同一句约束**：`update_card` 的 `links` / `addLinks` 字段描述、`create_card` 的 `links` 字段描述，以及 worker 的卡片事实注入尾句。工具描述每次请求都在上下文里；注入尾句紧挨着链接列表，覆盖写链接那一刻。
-- **口径**：卡片只挂交付物入口（PR / Issue / 文档 / 成片），评论与行内评论的锚点不挂；评论是过程证据，写进回报正文——PR/Issue 本身就能找到它们。
+- **口径**：卡片只挂交付物入口（PR / Issue / 文档 / 成片），评论与行内评论的锚点（`#issuecomment-` / `#discussion_r` / `#pullrequestreview-`）不挂；评论是过程证据，写进回报正文——PR/Issue 本身就能找到它们。
 - **项目文档同口径**：`LEADER.md`、`docs/usage.md` 与两份 README 各补一句，避免人和模型各按一套口径。
 - **不硬拦 URL**：写入侧继续只认 http(s)，内容取舍留给提示词。评论锚点合法且偶尔是唯一证据，硬拦的代价大于收益。
+
+## 与 #169 / #170 的关系
+
+- **#170 A 的槽位约束与空 links 软提示不受本笔记影响**：本笔记只收窄 `links` 的内容口径，不改变「active 卡不能手动清空槽位」「done 后自动释放执行者」「done 且 links 为空时提示」这三条实现。
+- **Issue #169 的根因表按本笔记收窄**：那张表把「审查评论」列为 `links` 的持久证据；本笔记限定为「评论与行内评论写进回报正文」，PR / Issue / 文档 / 成片仍是交付物入口。等 #170 合入后，由 #170 的 Note 或 Issue #169 补取代指针；本 PR 不改 #170 的代码或分支。
+- **存量卡不追溯**：#40 / #41 / #43 / #44 等已经挂了评论锚点的卡保持原样，不自动清理、不批量迁移；本笔记只约束后续写入。
 
 ## Alternatives considered
 
@@ -22,11 +28,11 @@ Status: implemented
 
 ## Consequences
 
-- 提示词是软约束：模型仍可能挂评论链接，或漏挂该挂的 PR；要硬保证得另做写入侧判定，本笔记明确不做。
+- 提示词是软约束：模型仍可能挂评论链接，或漏挂该挂的 PR；要硬保证得另做写入侧判定，本笔记明确不做。命中 `#issuecomment-` / `#discussion_r` / `#pullrequestreview-` 时只打一条带卡号与字段名的非阻断 warning，不拒绝合法链接。
 - 一句话多占几处提示词体积（字段描述每次请求都在上下文里），换来卡面链接保持可扫读。
 - 评论证据仍有去处：回报正文、PR 描述；卡上只留能一眼找到交付物的入口。
 - 收益：看板链接回到「交付物索引」的语义，模型在写链接时能看到同一条口径。
 
 ## Testing
 
-`tests/card-context.test.js` 断言注入尾句含「交付物入口 / 不挂评论」；`tests/cards-tools.test.js` 断言 `update_card` / `create_card` 的链接字段描述带评论锚点禁令。提示词文本只能这样钉；行为本身要看真实模型，未在真机取证。
+`tests/card-context.test.js` 断言注入尾句含「交付物入口 / 不挂评论」；`tests/cards-tools.test.js` 断言 `update_card` / `create_card` 的链接字段描述带三个评论锚点禁令，并覆盖 warning 触发 / 不触发。提示词文本只能这样钉；warning 的触发/不触发有单测，行为本身要看真实模型，未在真机取证。

@@ -66,7 +66,7 @@ export function renderCardContext({ sessionId, cardIndex }) {
     lines.push('')
   }
   lines.push(
-    '卡片是任务事实的真源：新增或修正链接用 `update_card` 的 `addLinks` 追加，不要整份重写；`status` 与 `spec` 由 leader 维护。链接只挂交付物入口（PR / Issue / 文档 / 成片），不挂评论或行内评论的锚点——过程证据写进回报正文。',
+    '卡片是任务事实的真源：新增或修正链接用 `update_card` 的 `addLinks` 追加，不要整份重写；`status` 与 `spec` 由 leader 维护。链接只挂交付物入口（PR / Issue / 文档 / 成片），不挂评论或行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）——过程证据写进回报正文。',
   )
   return lines.join('\n').trim()
 }

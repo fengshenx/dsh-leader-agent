@@ -46,7 +46,7 @@ leader 发起的一轮超过 **15 分钟**没有任何回报时，机制侧会�
 
 两张卡都可选传 `kind`：卡面头部的分类短标签（如「研发」「方案」，最长 24 字符、不能换行），`update_card` 传空串清除。同一项目的卡用同一套分类名，卡面才能扫读；`list_cards` 的每张卡都会显式列出分类（没有时写「无」）。
 
-链接有两种写法：`links` 整体替换，`addLinks` 增量追加（同 `id` 原位更新字段，无 `id` 按 label+url 去重），两者互斥。worker 建出 PR/Issue 后用 `addLinks` 自己挂，不会覆盖 leader 刚写的条目，也不依赖它先读整卡。链接只挂交付物入口（PR / Issue / 文档 / 成片）；评论与行内评论的锚点不挂——评论是过程证据，写进回报正文。
+链接有两种写法：`links` 整体替换，`addLinks` 增量追加（同 `id` 原位更新字段，无 `id` 按 label+url 去重），两者互斥。worker 建出 PR/Issue 后用 `addLinks` 自己挂，不会覆盖 leader 刚写的条目，也不依赖它先读整卡。链接只挂交付物入口（PR / Issue / 文档 / 成片）；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不挂——评论是过程证据，写进回报正文。
 
 每条链接要有非空 `label`；`url` 可选，但给了就必须是 http(s) 绝对地址——写入时按 URL 标准归一化（例如 `https:/example.com` 会存成 `https://example.com/`），卡面只在 http(s) 时渲染成可点链接。传错时工具直接报错并说明是第几条、哪个标签、收到什么值、该怎么改（例如把 `docs/report.md` 改成完整地址，或删掉 `url`），不会落盘半成品。
 
