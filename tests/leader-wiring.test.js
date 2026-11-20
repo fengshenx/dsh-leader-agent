@@ -42,6 +42,7 @@ function createFakeHost(sessionCwds, extraServices = {}) {
     handlers: new Map(),
     provided: new Map(),
     tools: new Map(),
+    logs: [],
   }
   const ctx = {
     skills: {
@@ -90,7 +91,7 @@ function createFakeHost(sessionCwds, extraServices = {}) {
       if (deps.every((name) => ctx.get(name) !== undefined)) callback(ctx)
       return { dispose() {} }
     },
-    logger: { warn() {} },
+    logger: { warn(message) { holder.logs.push(message) } },
   }
   return { ctx, holder }
 }
@@ -343,11 +344,10 @@ test('装配层：宿主销毁会话时摘掉卡片槽位，归档与销毁重�
     const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
     assert.equal(await service.awaitIndex(), true)
     const createCard = holder.tools.get('create_card')
-    const listCards = holder.tools.get('list_cards')
     const disposed = holder.handlers.get('agent/disposed')
     const exec = { agent: { id: 'session-leader' }, signal: undefined }
-    const read = async (cardId) => (await listCards.execute({ cardId }, exec)).cards[0]
     const remote = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY)
+    const read = (cardId) => remote.cards.get(cardId)
 
     const disposedCard = await createCard.execute(
       { title: '销毁清理', slots: { review: { sessionId: 'worker-disposed' } } },
@@ -379,6 +379,100 @@ test('装配层：宿主销毁会话时摘掉卡片槽位，归档与销毁重�
     }), true)
     assert.deepEqual((await read(archivedCard.card.id)).slots, {})
   } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：插件卸载后 agent/disposed 不清卡片槽位', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const previousHome = process.env.DSH_HOME
+  const { ctx, holder } = createFakeHost(new Map())
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      leaderSessionId: 'session-leader',
+    }])
+    apply(ctx)
+    const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
+    assert.equal(await service.awaitIndex(), true)
+    const createCard = holder.tools.get('create_card')
+    const disposed = holder.handlers.get('agent/disposed')
+    const exec = { agent: { id: 'session-leader' }, signal: undefined }
+    const remote = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY)
+    const read = (cardId) => remote.cards.get(cardId)
+
+    const card = await createCard.execute(
+      { title: '卸载不清', slots: { review: { sessionId: 'worker-unload' } } },
+      exec,
+    )
+    holder.handlers.get('dispose')()
+    disposed({ agent: { id: 'worker-unload' } })
+    // 卸载后的 disposed 不能被误当成宿主删会话；给可能的异步清理留出窗口。
+    await new Promise((resolve) => { setTimeout(resolve, 100) })
+    assert.deepEqual((await read(card.card.id)).slots, { review: { sessionId: 'worker-unload' } })
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：detachSession 抛错只记日志，其它卡照常清理', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const previousHome = process.env.DSH_HOME
+  const { ctx, holder } = createFakeHost(new Map())
+  process.env.DSH_HOME = home
+  let restoreDetach
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      leaderSessionId: 'session-leader',
+    }])
+    apply(ctx)
+    const remote = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY)
+    const service = remote.projects
+    assert.equal(await service.awaitIndex(), true)
+    const createCard = holder.tools.get('create_card')
+    const disposed = holder.handlers.get('agent/disposed')
+    const exec = { agent: { id: 'session-leader' }, signal: undefined }
+    const read = (cardId) => remote.cards.get(cardId)
+
+    const failing = await createCard.execute(
+      { title: '摘卡失败', slots: { review: { sessionId: 'worker-boom' } } },
+      exec,
+    )
+    const other = await createCard.execute(
+      { title: '其它卡', slots: { review: { sessionId: 'worker-ok' } } },
+      exec,
+    )
+    const original = remote.cards.detachSession
+    remote.cards.detachSession = async (sessionId) => {
+      if (sessionId === 'worker-boom') throw new Error('摘卡失败')
+      return original.call(remote.cards, sessionId)
+    }
+    restoreDetach = () => { remote.cards.detachSession = original }
+
+    disposed({ agent: { id: 'worker-boom' } })
+    assert.equal(await waitFor(() => holder.logs.some((line) => /worker-boom.*摘卡片槽位失败.*摘卡失败/.test(line))), true)
+    assert.deepEqual((await read(failing.card.id)).slots, { review: { sessionId: 'worker-boom' } })
+
+    disposed({ agent: { id: 'worker-ok' } })
+    assert.equal(await waitFor(async () => (await read(other.card.id)).slots.review === undefined), true)
+  } finally {
+    restoreDetach?.()
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome

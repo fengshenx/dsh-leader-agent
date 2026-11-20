@@ -40,5 +40,7 @@ Status: implemented
 - `node --test tests/cards-tools.test.js tests/slot-index.test.js tests/dispatch.test.js tests/worker-registry.test.js`
 - 双向验证：撤掉 active 移除拦截，新增用例变红；LRU 用例三条同毫秒登记、`lastUsedAt` 为旧→中→新，撤掉 `idle.sort` 中的 `lastUsedAt` 比较后按 id 兜底会变成 mid→new→old，LRU 用例变红；分别还原后全绿。
 - 竞态回归：让 `markUsed` 慢于 `turn/end`，在飞记录仍结算；退回旧顺序（先 `markUsed` 后 `inflight`）该用例变红。
+- 巡查边界：集成用例取 `workerFacts().runningSince`，把 `isStalled` 提前 1ms 的 mutation 能打红。
 - 销毁清理：`agent/disposed` 摘掉 active 卡槽位；归档后再触发 disposed 幂等，不重复报错。
+- 卸载与异常：插件卸载后的 disposed 不清卡；`detachSession` 抛错只记日志，不碰其它卡。
 - 全量 `npm run check`；另覆盖 done 释放、替换、旧表兜底与 500 条按 `registeredAt` 截断。

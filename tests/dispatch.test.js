@@ -2874,16 +2874,17 @@ test('未到 15 分钟不注入巡查提醒', async () => {
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
-  // 取投递前的时刻：派工/投递本身要花几毫秒，若取投递后时刻，在慢机上
-  // 「阈值前 1ms」仍可能晚于记录起点，造成假红。
-  const startedAt = Date.now()
-  await dispatchAndStart(dispatcher, {
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件长活',
     name: '长活',
     signal: new AbortController().signal,
   })
-  assert.equal(await dispatcher.scanStalled(startedAt + 15 * 60 * 1000 - 1), 0)
+  // 用真实的在跑起点而不是投递前后的 Date.now()：这样恰好验证
+  // 「阈值前 1ms 不报警」，提前 1ms 的回归也会在集成层变红。
+  const runningSince = (await dispatcher.workerFacts()).get(record.childId)?.runningSince
+  assert.equal(typeof runningSince, 'number')
+  assert.equal(await dispatcher.scanStalled(runningSince + 15 * 60 * 1000 - 1), 0)
   assert.equal(fixture.delivered.length, 0)
   assert.equal((await store.listPending()).length, 0)
   dispatcher.dispose()
