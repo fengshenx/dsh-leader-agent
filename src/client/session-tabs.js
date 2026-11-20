@@ -518,8 +518,8 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
 
   if (!barVisible) return null
 
-  const listLabel = typeof t === 'function' ? t('tabs.list') : '项目会话标签'
-  const closeLabel = typeof t === 'function' ? t('tabs.close') : '关闭标签'
+  const listLabel = t('tabs.list')
+  const closeLabel = t('tabs.close')
   const openSession = (sessionId) => {
     if (sessionId === view.activeSessionId) return
     const workspace = getUiWorkspace?.()

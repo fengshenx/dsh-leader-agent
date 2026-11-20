@@ -29,9 +29,10 @@ import { productIcon } from './icons.js'
  * @param {string} props.body - 气泡正文
  * @param {'markdown' | 'text'} props.format - 正文渲染方式
  * @param {number} props.time - 消息时间（毫秒）
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
-export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, format, time }) {
+export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, format, time, t }) {
   const [copied, setCopied] = useState(false)
   /** 是否展开全文。默认折叠：一条消息常常一屏，先给摘要。 */
   const [expanded, setExpanded] = useState(false)
@@ -121,7 +122,7 @@ export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, for
           'data-collapsed': expanded ? undefined : 'true',
         },
         format === 'markdown'
-          ? createElement(Markdown, { source: body })
+          ? createElement(Markdown, { source: body, t })
           : createElement('div', { className: 'dsh-leader-agent-agent-bubble__plain' }, body),
       ),
       overflowing
@@ -133,21 +134,21 @@ export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, for
               'aria-expanded': expanded,
               onClick: () => setExpanded((value) => !value),
             },
-            expanded ? '收起' : '展示更多',
+            expanded ? t('common.collapse') : t('bubble.more'),
           )
         : null,
     ),
     createElement(
       'div',
       { className: 'dsh-leader-agent-agent-bubble__meta' },
-      createElement('span', { className: 'dsh-leader-agent-agent-bubble__time' }, formatBubbleClock(time)),
+      createElement('span', { className: 'dsh-leader-agent-agent-bubble__time' }, formatBubbleClock(time, t)),
       createElement(
         'button',
         {
           type: 'button',
           className: 'dsh-leader-agent-agent-bubble__copy',
-          'aria-label': copied ? '已复制' : '复制',
-          title: copied ? '已复制' : '复制',
+          'aria-label': copied ? t('bubble.copied') : t('bubble.copy'),
+          title: copied ? t('bubble.copied') : t('bubble.copy'),
           onClick: () => { void copy() },
         },
         productIcon(copied ? 'check-outline' : 'copy-outline', { size: 14 }),

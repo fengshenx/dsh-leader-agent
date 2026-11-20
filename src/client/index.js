@@ -53,6 +53,10 @@ export function apply(ctx) {
     () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, { zh, en }),
     'dsh-leader-agent 槽位显示名',
   )
+  // 注册期文案（tab 标题、guide 说明、左栏 label）没有 `t` 形参，宿主只在
+  // 取用时重读 thunk；bind 返回的函数同样在调用时读当前语言，语言切换后
+  // 下次投影就是新文案，不需要重新注册。
+  const t = ctx.locale.bind(SLOT_LOCALE_NAMESPACE)
 
   // 注册必须放进 effect：注册表把 effect 挂到调用方 fiber 上，在别的插件的
   // apply 里直接注册会让浏览器启动静默卡住。
@@ -62,14 +66,23 @@ export function apply(ctx) {
     // 右栏按会话存布局：切会话时宿主会卸载非当前会话的栏。看板保留已访问的
     // body（keepMounted），切回来不重挂、不重新拉项目与卡片，避免闪一下。
     keepMounted: true,
-    title: () => '看板',
+    title: () => t('tab.board'),
     guide: [{
       id: 'board',
       order: 10,
-      title: () => '看板',
-      description: () => '项目 leader 与 worker 会话里的任务交付看板',
+      title: () => t('tab.board'),
+      description: () => t('tab.board.description'),
     }],
   }), 'dsh-leader-agent 看板 tab 类型')
+
+  // tab chip 的标题单独占一个席位：宿主在打开 tab 时就把 title thunk 的结果写进
+  // 布局记录，之后切语言不会重读。这里按 definition id 接管自己的标题，让 chip
+  // 跟着当前语言走；不注册时宿主回落到打开那一刻的快照。
+  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
+    name: 'sidebar.right.pane.tab.title',
+    key: PLUGIN_ID,
+    locale: SLOT_LOCALE_NAMESPACE,
+  }, BoardTabTitle)), 'dsh-leader-agent 看板 tab 标题')
 
   // 面板主体挂在 tab 类型 id 上：tab 类型 id 既是实现身份，也是它在
   // `sidebar.right.pane.tab` 座里的注册键。
@@ -118,7 +131,8 @@ export function apply(ctx) {
     name: 'sidebar.footer.action',
     id: 'dsh-leader-agent-projects',
     order: 10,
-    label: '项目',
+    label: () => t('project.label'),
+    locale: SLOT_LOCALE_NAMESPACE,
     inject: () => ({
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
       getUiWorkspace: () => ctx.get('uiWorkspace'),
@@ -185,6 +199,17 @@ export function apply(ctx) {
 }
 
 /**
+ * 看板 tab chip 的标题。
+ *
+ * @param {object} props - 槽位属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
+ * @returns {string} 标题
+ */
+function BoardTabTitle({ t }) {
+  return t('tab.board')
+}
+
+/**
  * 挂载看板监视器：建卡后自动打开（或聚焦）右栏的看板 tab。
  *
  * `sidebarRight` 惰性取：它由官方右栏 bundle 提供，缺服务时监视器不启动，
@@ -235,6 +260,7 @@ function mountMessageBubbles(ctx) {
     ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
       name: 'conversation.chat.node',
       key: bubble.kind,
+      locale: SLOT_LOCALE_NAMESPACE,
       // `uiWorkspace` 只挂在 web-app bundle 上，写进 inject 的服务缺失会让整个插件
       // 挂起——惰性获取，点击名字时才取。
       inject: () => ({

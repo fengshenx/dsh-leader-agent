@@ -282,10 +282,14 @@ export const DONE_PAGE_SIZE = 30
  *
  * @param {readonly object[]} cards - 已排序的 done 卡
  * @param {number} watermark - 用户展开出来的水位（0 表示没展开过）
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {{ rows: object[], hiddenCount: number, expanded: boolean, expandLabel: string }} 视图
  */
-export function foldDoneCards(cards, watermark) {
-  return foldRows(cards, watermark, { pageSize: DONE_PAGE_SIZE, noun: '卡片' })
+export function foldDoneCards(cards, watermark, t) {
+  return foldRows(cards, watermark, {
+    pageSize: DONE_PAGE_SIZE,
+    expandLabel: (hiddenCount) => t('board.fold.expand', { count: hiddenCount }),
+  })
 }
 
 /**

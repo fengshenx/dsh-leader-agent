@@ -16,7 +16,6 @@
 import { createElement, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ModalShell } from './modal-shell.js'
 import {
-  DETAIL_SPEC_EMPTY,
   canDeleteCard,
   canEditCardLinks,
   detailSections,
@@ -39,9 +38,10 @@ import { ensureBoardStyles } from './board-styles.js'
  * @param {(card: object) => void} [props.onUpdated] - 链接保存成功后的新卡片
  * @param {() => void} [props.onDelete] - 请求删除当前卡片（由看板弹二次确认）
  * @param {HTMLElement | null} [props.restoreFocus] - 关闭后焦点落点
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
-export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, restoreFocus = null }) {
+export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, restoreFocus = null, t }) {
   const [editing, setEditing] = useState(false)
   const editButton = useRef(null)
   const wasEditing = useRef(false)
@@ -85,7 +85,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
     open: true,
     onClose,
     title: card?.title ?? '',
-    closeLabel: '关闭',
+    closeLabel: t('common.close'),
     headless: true,
     wide: true,
     restoreFocus,
@@ -101,7 +101,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
           {
             type: 'button',
             className: 'dsh-leader-agent-card-detail-close',
-            'aria-label': '关闭',
+            'aria-label': t('common.close'),
             onClick: onClose,
           },
           productIcon('close-outline', { size: 16 }),
@@ -128,7 +128,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
           {
             className: `dsh-leader-agent-card-detail-status${done ? ' dsh-leader-agent-card-detail-status-done' : ''}`,
           },
-          statusLabel(card?.status),
+          statusLabel(card?.status, t),
         ),
       ),
       createElement(
@@ -138,14 +138,14 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
           ? createElement(
               'section',
               { className: 'dsh-leader-agent-card-detail-section' },
-              createElement('div', { className: 'dsh-leader-agent-card-detail-section-title' }, '说明'),
+              createElement('div', { className: 'dsh-leader-agent-card-detail-section-title' }, t('card.detail.spec')),
               createElement(
                 'div',
                 { className: 'dsh-leader-agent-card-detail-text' },
-                createElement(Markdown, { source: sections.spec }),
+                createElement(Markdown, { source: sections.spec, t }),
               ),
             )
-          : createElement('div', { className: 'dsh-leader-agent-card-detail-muted' }, DETAIL_SPEC_EMPTY),
+          : createElement('div', { className: 'dsh-leader-agent-card-detail-muted' }, t('card.detail.empty')),
         sections.links.length > 0 || editable
           ? createElement(
               'section',
@@ -153,7 +153,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
               createElement(
                 'div',
                 { className: 'dsh-leader-agent-card-detail-section-head' },
-                createElement('div', { className: 'dsh-leader-agent-card-detail-section-title' }, '链接'),
+                createElement('div', { className: 'dsh-leader-agent-card-detail-section-title' }, t('card.detail.links')),
                 editable && !editing
                   ? createElement(
                       'button',
@@ -163,7 +163,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
                         className: 'dsh-leader-agent-card-detail-section-action',
                         onClick: () => { setEditing(true) },
                       },
-                      '编辑链接',
+                      t('card.detail.editLinks'),
                     )
                   : null,
               ),
@@ -172,6 +172,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
                     card,
                     onSave: saveLinks,
                     onCancel: () => { setEditing(false) },
+                    t,
                   })
                 : createElement(
                     'div',
@@ -228,7 +229,7 @@ export function CardDetail({ card, onClose, callRemote, onUpdated, onDelete, res
                 onClick: onDelete,
               },
               productIcon('trash-outline', { size: 14 }),
-              '删除卡片',
+              t('card.detail.delete'),
             ),
           )
         : null,

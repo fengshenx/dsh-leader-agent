@@ -78,9 +78,10 @@ function isSubmitKey(event) {
  * @param {object} props.card - 正在编辑的卡片
  * @param {(links: object[]) => Promise<void>} props.onSave - 保存；失败时抛出
  * @param {() => void} props.onCancel - 取消
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
-export function CardLinksEditor({ card, onSave, onCancel }) {
+export function CardLinksEditor({ card, onSave, onCancel, t }) {
   const [drafts, setDrafts] = useState(() => toDrafts(card?.links))
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -163,7 +164,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
     try {
       await onSave(normalized.links)
     } catch (cause) {
-      setError(`保存链接失败：${cause instanceof Error ? cause.message : String(cause)}`)
+      setError(t('card.links.saveFailed', { message: cause instanceof Error ? cause.message : String(cause) }))
       restoreFocus.current = true
     } finally {
       setSaving(false)
@@ -177,7 +178,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
       ? createElement(
           'p',
           { className: 'dsh-leader-agent-link-editor-empty' },
-          '这张卡还没有挂链接。',
+          t('card.links.empty'),
         )
       : drafts.map((draft, index) => createElement(
           'div',
@@ -189,8 +190,8 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
               type: 'text',
               className: 'dsh-leader-agent-link-editor-label',
               value: draft.label,
-              placeholder: '标签',
-              'aria-label': '链接标签',
+              placeholder: t('card.links.label'),
+              'aria-label': t('card.links.labelAria'),
               ...index === 0 ? { 'data-modal-autofocus': '' } : {},
               disabled: saving,
               onChange: (event) => update(draft.key, 'label', event.target.value),
@@ -203,7 +204,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
               className: 'dsh-leader-agent-link-editor-url',
               value: draft.url,
               placeholder: 'https://…',
-              'aria-label': '链接 URL',
+              'aria-label': t('card.links.urlAria'),
               disabled: saving,
               onChange: (event) => update(draft.key, 'url', event.target.value),
               onKeyDown: (event) => {
@@ -215,8 +216,8 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
               {
                 type: 'button',
                 className: 'dsh-leader-agent-link-editor-remove',
-                title: '移除链接',
-                'aria-label': '移除链接',
+                title: t('card.links.remove'),
+                'aria-label': t('card.links.remove'),
                 disabled: saving,
                 onClick: () => remove(draft.key),
               },
@@ -232,14 +233,14 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
                   disabled: saving,
                   onClick: () => update(draft.key, 'purpose', ''),
                 },
-                '添加用途',
+                t('card.links.addPurpose'),
               )
             : createElement('input', {
                 type: 'text',
                 className: 'dsh-leader-agent-link-editor-purpose',
                 value: draft.purpose,
-                placeholder: '用途（可选）',
-                'aria-label': '链接用途',
+                placeholder: t('card.links.purpose'),
+                'aria-label': t('card.links.purposeAria'),
                 disabled: saving,
                 onChange: (event) => update(draft.key, 'purpose', event.target.value),
                 onKeyDown: (event) => {
@@ -255,7 +256,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
         disabled: saving,
         onClick: add,
       },
-      '+ 添加链接',
+      t('card.links.add'),
     ),
     error === ''
       ? null
@@ -271,7 +272,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
           disabled: saving,
           onClick: onCancel,
         },
-        '取消',
+        t('common.cancel'),
       ),
       createElement(
         'button',
@@ -281,7 +282,7 @@ export function CardLinksEditor({ card, onSave, onCancel }) {
           disabled: saving,
           onClick: () => { void submit() },
         },
-        saving ? '保存中…' : '保存',
+        saving ? t('common.saving') : t('common.save'),
       ),
     ),
   )
