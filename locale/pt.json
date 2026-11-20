@@ -128,6 +128,7 @@
     "tab.board": "Quadro",
     "tab.board.description": "Quadro de entregas das tarefas nas sessões do Leader e dos workers deste projeto",
     "tabs.close": "Fechar aba",
-    "tabs.list": "Abas de sessões do projeto"
+    "tabs.list": "Abas de sessões do projeto",
+    "tabs.more": "Mais"
   }
 }

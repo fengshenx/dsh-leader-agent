@@ -179,6 +179,9 @@ export function apply(ctx) {
       getUiWorkspace: () => ctx.get('uiWorkspace'),
       getLayout: () => ctx.get('layout'),
       getSidebarRight: () => ctx.get('sidebarRight'),
+      // 「更多」菜单走宿主的 contextMenus 服务：标签栏接管按钮本身，菜单项
+      // 仍由宿主与其它插件按 sessionHeader 目标注册，不在本仓复制一份。
+      getContextMenus: () => ctx.get('contextMenus'),
     }),
   }, SessionTabsAnchor)), 'dsh-leader-agent 会话标签栏')
 

@@ -128,6 +128,7 @@
     "tab.board": "Board",
     "tab.board.description": "Delivery board for tasks in this project's Leader and worker sessions",
     "tabs.close": "Close tab",
-    "tabs.list": "Project session tabs"
+    "tabs.list": "Project session tabs",
+    "tabs.more": "More"
   }
 }

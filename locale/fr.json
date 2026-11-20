@@ -128,6 +128,7 @@
     "tab.board": "Tableau",
     "tab.board.description": "Tableau de livraison des tâches des sessions Leader et worker de ce projet",
     "tabs.close": "Fermer l'onglet",
-    "tabs.list": "Onglets des sessions du projet"
+    "tabs.list": "Onglets des sessions du projet",
+    "tabs.more": "Plus"
   }
 }

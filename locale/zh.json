@@ -128,6 +128,7 @@
     "tab.board": "看板",
     "tab.board.description": "项目 leader 与 worker 会话里的任务交付看板",
     "tabs.close": "关闭标签",
-    "tabs.list": "项目会话标签"
+    "tabs.list": "项目会话标签",
+    "tabs.more": "更多"
   }
 }

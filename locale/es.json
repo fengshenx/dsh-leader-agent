@@ -128,6 +128,7 @@
     "tab.board": "Tablero",
     "tab.board.description": "Tablero de entregas para las tareas de las sesiones del Leader y de los workers de este proyecto",
     "tabs.close": "Cerrar pestaña",
-    "tabs.list": "Pestañas de sesiones del proyecto"
+    "tabs.list": "Pestañas de sesiones del proyecto",
+    "tabs.more": "Más"
   }
 }
