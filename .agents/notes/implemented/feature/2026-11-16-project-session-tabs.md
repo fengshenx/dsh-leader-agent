@@ -16,6 +16,7 @@ Status: implemented
 - **键盘可达**：标签用 roving tabindex，只有当前标签 `tabIndex=0`；←/→ 循环、Home/End 到首尾，切换会话与聚焦同步。关闭按钮保留自己的回车/空格语义。
 - **按项目持久化**在 localStorage `dsh-leader-agent.session-tabs.v1`，不进 `$DSH_HOME`：标签是浏览器侧导航快捷方式，不是会话真源，不值得为它加写宿主数据的协议。
 - **状态灯复用宿主 `StateDot` 三档**：运行中、完成未读、空闲，与项目树会话行同一口径。「等你输入」「失败」不在会话快照里，不另造判定。
+  > **已被 [标签栏信号灯改用静态点](2026-11-20-tab-signal-light.md) 部分取代**：三档语义仍然成立；图形部分不再用 `StateDot` 的转圈，改为与看板卡面同一套静态信号点。上面原决定保留作历史。
 - **切 worker 时看板跟着走**：leader 右栏里已经有看板 tab、右栏展开、且看板是 leader 的前台 tab 时，切到 worker 后在 worker 的右栏把它打开——看板按项目组织，内容仍是同一块。宿主右栏按会话存布局，没有跨会话 pin 的入口，所以不是把右栏钉在 leader，而是在目标会话里补开同一个 tab；leader 没开看板、停在其他 tab、或右栏收着时不替用户打开（收起时强行展开会抢焦点）；从 worker 切到另一个 worker 也不跟随——前台记录已经属于那个 worker，带过去等于替它换右栏。
 - **看板访问权有登记表兜底**：项目索引按 leader 指针或会话 cwd 反查，重启后 worker 会话可能还没 materialize、cwd 取不到；`resolveBoardAccess` 在索引查不到时用 `sessionsByProject` + 项目列表补出项目，避免把已登记的 worker 显示成「不属于任何项目」。
 - **切换不闪**：看板 tab 注册 `keepMounted`，已访问的 body 跟着会话保留；不可见时暂停卡片轮询，切回来立刻刷一次。标签栏补开看板时把 `projectId` 放进 navigation params，新 body 先用同一项目的内存快照起步（首帧直接画卡），再 revalidate。补开动作先放在 layout effect，失败再由 effect 兜底，尽量赶在 paint 前把 worker 的右栏从默认 guide 切到看板；目标右栏已经有看板 tab 时只切焦点，不再 `openTab`——`openTab` 对已存在的页走 reveal，宿主会让 pane 闪一下高亮，切一次闪一次。新 worker 第一次打开右栏仍可能有宿主自己的面板展开动画（不是数据骨架），第二次起复用保留的视图。

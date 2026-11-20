@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { SIGNAL_PULSE_ANIMATION, signalStyleText } from '../src/client/signal-styles.js'
 
 // 宿主对 packages/ 有 ui-theme 的样式 scanner（半径字面量、elevation 与中性 border
 // 配对、滚动条档位），仓外插件的 src/client/ 不在那批 scanner 的覆盖范围里。这里
@@ -23,7 +24,13 @@ function readStyleText() {
   const bodyAt = markerAt + marker.length
   const endAt = source.indexOf('`', bodyAt)
   assert.notEqual(endAt, -1, 'STYLE_TEXT 模板字符串没有闭合')
+  // 信号灯 common 样式由共享模块插值进来：先展开再解析，否则插值语句会被当成
+  // CSS 声明，后面的规则表整体错位
   return source.slice(bodyAt, endAt)
+    .split("${signalStyleText('dsh-leader-agent-board-signal')}")
+    .join(signalStyleText('dsh-leader-agent-board-signal'))
+    .split('${SIGNAL_PULSE_ANIMATION}')
+    .join(SIGNAL_PULSE_ANIMATION)
 }
 
 /**

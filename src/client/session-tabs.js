@@ -23,7 +23,6 @@
 
 import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
 import { findColumn, findMainSlot, mainBodyOf } from './main-panel.js'
 import { currentSessionIdOf } from './project-panel-logic.js'
@@ -31,6 +30,7 @@ import { onProjectsChanged } from './project-changes.js'
 import { isProjectRemoteReady, onProjectRemoteReady } from './project-remote.js'
 import { BOARD_TAB_KIND } from './project-board-monitor.js'
 import { createSessionCompletionTracker } from './session-completion.js'
+import { signalStyleText } from './signal-styles.js'
 import {
   addOpenTab,
   emptyTabStore,
@@ -52,6 +52,17 @@ const COLUMN_ATTR = 'data-dsh-leader-agent-tabs-column'
 
 /** 会话体标记：宿主的会话根节点带高度约束，不覆盖会在标签栏下方溢出。 */
 const MAIN_ATTR = 'data-dsh-leader-agent-tabs-main'
+
+/**
+ * 信号灯档位到字典键。
+ *
+ * 与看板卡面共用同一组文案：两处说的是同一档状态，不再各养一套。
+ */
+const SIGNAL_LABEL_KEYS = {
+  running: 'board.state.running',
+  unread: 'board.state.unread',
+  idle: 'board.state.idle',
+}
 
 // client 侧的样式写在模板字符串里，不能出现反引号。
 const STYLE_TEXT = `
@@ -135,6 +146,10 @@ const STYLE_TEXT = `
   width: 12px;
   height: 12px;
 }
+/* 标签要的是信号灯，不是加载态：宿主的 StateDot 运行中画转圈 spinner，这里改成
+   与看板卡面同一套静态点——运行中琥珀色呼吸、完成未读蓝、空闲弱化灰。形状与
+   色相都跟卡面对应，扫描标签时不会把「正在跑」读成「正在加载」。 */
+${signalStyleText('dsh-leader-agent-tab-signal')}
 .dsh-leader-agent-tab-label {
   min-width: 0;
   overflow: hidden;
@@ -553,9 +568,12 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
           : createElement(
               'span',
               { className: 'dsh-leader-agent-tab-dot' },
-              createElement(StateDot, {
-                state: tab.state,
-                size: tab.state === 'ongoing' ? 12 : 8,
+              createElement('span', {
+                className: `dsh-leader-agent-tab-signal dsh-leader-agent-tab-signal-${tab.state}`,
+                'data-signal': tab.state,
+                role: 'img',
+                'aria-label': t(SIGNAL_LABEL_KEYS[tab.state]),
+                title: t(SIGNAL_LABEL_KEYS[tab.state]),
               }),
             ),
         createElement('span', { className: 'dsh-leader-agent-tab-label' }, tab.label),

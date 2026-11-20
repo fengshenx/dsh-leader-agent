@@ -167,16 +167,16 @@ export function removeOpenTab(store, projectId, sessionId) {
 /**
  * worker 标签上的信号灯档位。
  *
- * 与项目树会话行同一口径：运行中盖过「完成未查看」，都没有就是空闲。宿主
- * 会话快照只给这两档；「等你输入」属于卡片信号，不在会话行上，标签栏不另
- * 造一套判定。
+ * 与看板卡面同一套信号名：运行中盖过「完成未读」，都没有就是空闲。宿主会话
+ * 快照只给得出这两档事实；「等你输入」「失败」属于卡片侧的会话状态投影，不
+ * 在会话快照里，标签栏不另造判定。
  *
  * @param {object | undefined} row - 会话行
- * @returns {'ongoing' | 'done' | 'idle'} StateDot 档位
+ * @returns {'running' | 'unread' | 'idle'} 信号档位
  */
 export function workerTabState(row) {
-  if (row?.running === true) return 'ongoing'
-  if (row?.completed === true) return 'done'
+  if (row?.running === true) return 'running'
+  if (row?.completed === true) return 'unread'
   return 'idle'
 }
 
