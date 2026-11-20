@@ -35,7 +35,7 @@ e2e 的判据是「真实宿主 + 真实 chromium 里，可观察行为是否成
 
 操作面（单场景入口、`e2e:report`、负载卫生、已知 flake、超时口径与取证路径）见 [docs/e2e-testing.md 的跑法与失败处理](https://github.com/fengshenx/dsh-leader-agent/blob/main/docs/e2e-testing.md#跑法与失败处理)；本节只讲判据，不重复命令。
 
-1. **先看耗时**：单场景正常 3–8 秒（全量约 10 秒）。跑了一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型：`lib/client.js` 没构建、会话行没渲染），不是机器慢。别用 `grep` / `head` 过滤输出，`TimeoutError` 里的 locator 就是线索。报错头是「等待失败：…」而不是「等待超时」时，先看页面或浏览器是不是已经关掉、崩了——那不是选择器的问题。测试级上限 90 秒（`scenarioTimeout()`，随 `E2E_BUDGET_SCALE` 放大）；清理链上实例与 mock 卡住会变成带名字的失败，浏览器关闭超时只告警并继续。
+1. **先看耗时**：单场景约 10–15 秒，全量按场景数累加。跑了一分钟还没结束，先怀疑某个等待在等不会出现的元素（典型：`lib/client.js` 没构建、会话行没渲染），不是机器慢。别用 `grep` / `head` 过滤输出，`TimeoutError` 里的 locator 就是线索。报错头是「等待失败：…」而不是「等待超时」时，先看页面或浏览器是不是已经关掉、崩了——那不是选择器的问题。测试级上限 90 秒（`scenarioTimeout()`，随 `E2E_BUDGET_SCALE` 放大）；清理链上实例与 mock 卡住会变成带名字的失败，浏览器关闭超时只告警并继续。
 2. 先看 `problems`（pageerror / console.error）。本仓出过「圆点不亮」查不出原因的情况，根因是三处空 `catch`：保留会话失败、订阅就绪失败，全都吞掉，界面上只剩一个空心圈。失败必须报告，且同一目标只报一次。
 3. **构建过了也可能坏**：改过 `src/client/` 里的 CSS 就先跑 `plugin.e2e.js` 冒烟。`STYLE_TEXT` 这类模板字符串里混进反引号会当场截断模板，剩余正文被当成 JS 表达式，产物里留下未定义标识符——插件在 import 期抛错、整页白屏，症状与「没构建」一模一样（每个等待都超时），而 `node --check`、单测与覆盖率门禁全绿，它们都不做模块求值。冒烟只验「插件能不能挂载」，3–6 秒，红了不必等全套跑完；`problems` 里的原文形如 `dsh-leader-agent: import failed: <标识符> is not defined`。
 4. 看 `instance.logs`（子进程 stdout/stderr 全量）与 `mock.requests`：模型请求到底有没有发出来、打到哪个端点、带没带标记。

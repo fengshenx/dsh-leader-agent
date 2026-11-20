@@ -25,13 +25,13 @@ npm run e2e:report     # 构建 + 全量、不中断、最后汇总
 
 `e2e:one` 也接受场景名（`npm run e2e:one board-card-delete`）。三个入口都会先跑 `npm run build:client`：`lib/client.js` 不入库，没构建时插件在界面上什么都不显示，宿主却照常启动、不报错。**直接 `node --test` 不会构建**，新 checkout / worktree 里 `lib/` 为空，症状是每个等待都超时，不是启动失败。**构建了也可能坏**：改过 `src/client/` 里的 CSS，先跑 `plugin.e2e.js` 冒烟——症状与原因见[e2e-scenarios 的失败诊断](../.agents/skills/e2e-scenarios/SKILL.md#失败诊断)。
 
-旧的 `npm run e2e -- <文件>` 仍**不会缩小**要跑的集合：npm 把参数追加到 script 末尾，glob 照旧展开；要单跑用 `e2e:one`。**不加 `--test-force-exit`**：它把漏清理从「挂住/超时变红」变成「绿着通过 + 留下孤儿进程」，挂住应当暴露；已知三处已由有界清理收干净，取舍见[清理上限笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
+`npm run e2e -- <文件>` 现在按用法错误退出（exit 2）：runner 只接受 `--files` 后的场景列表，单跑用 `e2e:one`。**不加 `--test-force-exit`**：它把漏清理从「挂住/超时变红」变成「绿着通过 + 留下孤儿进程」，挂住应当暴露；已知三处已由有界清理收干净，取舍见[清理上限笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-shutdown-bounded.md)。
 
 ### 单场景、全量与报告
 
 | 入口 | 行为 | 用在哪 |
 |---|---|---|
-| `npm run e2e:one <场景>` | 只跑一个文件；退出码就是该场景的退出码；不清理 `.dev/e2e-artifacts/` | 定位、双向验证、看单场景截图 |
+| `npm run e2e:one <场景>` | 只跑一个文件；退出码 0 通过 / 1 失败（含信号与起进程失败）；不清理 `.dev/e2e-artifacts/` | 定位、双向验证、看单场景截图 |
 | `npm run e2e` | 按文件名顺序逐个跑；**第一个失败立刻停**；后续场景不再跑 | CI / 本地全量门禁 |
 | `npm run e2e:report` | 按文件名顺序逐个跑；**每个都跑完**；最后打印 PASS/FAIL 汇总与失败文件；有失败退出 1 | 本地看全量景观、判断是不是多个场景同时坏，不用于 CI |
 | `npm run e2e` / `e2e:report` + `-- --files <场景...>` | 只跑列出的场景，仍按 `--files` 顺序执行；`e2e` 仍 fail-fast，report 仍汇总 | 多 worker 拆分场景、快速验证（错峰执行） |
