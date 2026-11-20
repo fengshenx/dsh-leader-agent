@@ -19,7 +19,9 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
-import { zh } from '../../src/client/locales.js'
+import { LOCALE_UI } from '../../src/client/locales.js'
+
+const zh = LOCALE_UI.zh
 import { startMockProvider } from './mock-llm.mjs'
 
 /** 引导按钮发出去的那句话：直接取产品文案，不在测试里另抄一份。 */

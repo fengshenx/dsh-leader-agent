@@ -22,9 +22,10 @@ import { productIcon } from './icons.js'
  *
  * @param {object} props - 组件属性
  * @param {{ data?: object }} props.node - 会话节点
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object | null} React 元素
  */
-export function WorkerTaskView({ node }) {
+export function WorkerTaskView({ node, t }) {
   const data = node?.data
   const [copied, setCopied] = useState(false)
   // 样式要在首帧绘制前进 DOM，否则气泡先按无样式铺开一帧。
@@ -57,24 +58,24 @@ export function WorkerTaskView({ node }) {
         // 与宿主用户气泡同一标记，便于界面侧把这块内容当消息正文处理。
         'data-message-bubble': '',
         // 形态与用户自己的消息一样，只能靠内容判断来源；这两条只做悬停与读屏提示。
-        title: 'Leader 派发的任务',
-        'aria-label': 'Leader 派发的任务',
+        title: t('bubble.taskTitle'),
+        'aria-label': t('bubble.taskTitle'),
       },
       // 与 assistant 内容同套 Markdown：原文直接交给基线 MarkdownText，不补硬换行、
       // 不做行级改写；单换行按 Markdown 合并。
-      createElement(Markdown, { source: body, variant: 'compact' }),
+      createElement(Markdown, { source: body, variant: 'compact', t }),
     ),
     createElement(
       'div',
       { className: 'dsh-leader-agent-worker-task__meta' },
-      createElement('span', { className: 'dsh-leader-agent-worker-task__time' }, formatBubbleClock(data.time)),
+      createElement('span', { className: 'dsh-leader-agent-worker-task__time' }, formatBubbleClock(data.time, t)),
       createElement(
         'button',
         {
           type: 'button',
           className: 'dsh-leader-agent-worker-task__copy',
-          'aria-label': copied ? '已复制' : '复制',
-          title: copied ? '已复制' : '复制',
+          'aria-label': copied ? t('bubble.copied') : t('bubble.copy'),
+          title: copied ? t('bubble.copied') : t('bubble.copy'),
           onClick: () => { void copy() },
         },
         productIcon(copied ? 'check-outline' : 'copy-outline', { size: 14 }),

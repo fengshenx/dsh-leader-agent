@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { agentAvatarDataUri, agentAvatarSeed } from '../src/client/worker-report-avatar.js'
 import { messageText } from '../src/shared/message-text.js'
 import { WORKER_REPORT_NODE_KIND, workerReportDefinition } from '../src/client/worker-report-definition.js'
 import { buildNotificationText } from '../src/host/dispatch.js'
@@ -132,17 +131,6 @@ test('通知正文不带说话人前缀', () => {
   assert.equal(text.includes('【worker 回报】'), false)
   assert.equal(text.startsWith('任务「前端 worker」已结束。'), true)
   assert.equal(text.includes('产物摘要：\n干完了'), true)
-})
-
-test('头像按名字定种子，同名恒同图', () => {
-  assert.equal(agentAvatarSeed('前端 worker'), agentAvatarSeed('前端 worker'))
-  // 池子只有 63 个 seed，不同名字撞图是正常的；这里只保证分配铺得开。
-  const seeds = new Set(Array.from({ length: 100 }, (_, index) => agentAvatarSeed(`worker-${index}`)))
-  assert.equal(seeds.size > 10, true)
-  const uri = agentAvatarDataUri('前端 worker')
-  assert.equal(uri.startsWith('data:image/svg+xml,'), true)
-  assert.equal(uri.includes(encodeURIComponent('<rect x="-1.5"')), true)
-  assert.equal(uri, agentAvatarDataUri('前端 worker'))
 })
 
 test('节点定义只认带 worker 标记的用户消息', () => {

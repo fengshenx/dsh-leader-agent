@@ -96,7 +96,7 @@ test('任务正文交给 Markdown 渲染，不做行级改写', () => {
   const source = readFileSync(new URL('../src/client/worker-task-view.js', import.meta.url), 'utf8')
   // 断言一：正文原样交给 Markdown 包装（内部是基线 MarkdownText），不补硬换行。
   assert.match(source, /import \{ Markdown \} from '\.\/markdown\.js'/)
-  assert.match(source, /createElement\(Markdown, \{ source: body, variant: 'compact' \}\)/)
+  assert.match(source, /createElement\(Markdown, \{ source: body, variant: 'compact', t \}\)/)
   assert.equal(source.includes('hardBreakMarkdown'), false)
   assert.equal(source.includes('UserTextRun'), false)
   assert.equal(source.includes("from '@deepseek-ai/dsh-client-ui-primitives'"), false)

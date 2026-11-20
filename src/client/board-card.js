@@ -78,9 +78,10 @@ function linkContent(link) {
  * @param {object} props - 组件属性
  * @param {object[]} props.links - 链接列表
  * @param {(anchor: HTMLElement) => void} props.onOpenDetail - 开详情
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
-function BoardLinks({ links, onOpenDetail }) {
+function BoardLinks({ links, onOpenDetail, t }) {
   const row = useRef(null)
   const measure = useRef(null)
   const [visibleCount, setVisibleCount] = useState(links.length)
@@ -181,26 +182,26 @@ function BoardLinks({ links, onOpenDetail }) {
             event.stopPropagation()
             setExpanded((value) => !value)
           },
-        }, expanded ? '收起' : overflow)
+        }, expanded ? t('common.collapse') : overflow)
       : null,
   )
 }
 
 /**
- * 状态档位的中文名。
+ * 状态档位到字典键。
  *
  * 信号灯是纯图形，档位名只出现在 title 里。`unknown` 与 `none` 不是同义：
  * 前者是「读不到这个会话」，后者是「没有会话可读」。
  */
-const STATE_LABELS = {
-  waiting: '等你输入',
-  attention: '需注意',
-  running: '执行中',
-  unread: '未读',
-  idle: '空闲',
-  empty: '未派工',
-  unknown: '状态未知',
-  none: '无信号',
+const STATE_LABEL_KEYS = {
+  waiting: 'board.state.waiting',
+  attention: 'board.state.attention',
+  running: 'board.state.running',
+  unread: 'board.state.unread',
+  idle: 'board.state.idle',
+  empty: 'board.state.empty',
+  unknown: 'board.state.unknown',
+  none: 'board.state.none',
 }
 
 /**
@@ -217,14 +218,15 @@ const STATE_LABELS = {
  * @returns {object} React 元素
  */
 function BoardSlot({ slot, onOpenSession, labels, t }) {
-  const stateLabel = STATE_LABELS[slot.state] ?? slot.state
+  const stateKey = STATE_LABEL_KEYS[slot.state]
+  const stateLabel = stateKey === undefined ? slot.state : t(stateKey)
   const name = slotDisplayName(slot.name, labels, t)
   return createElement(
     'button',
     {
       type: 'button',
       className: 'dsh-leader-agent-board-slot',
-      title: `${name}：${stateLabel}`,
+      title: t('board.slot.title', { name, state: stateLabel }),
       onClick: (event) => {
         event.stopPropagation()
         onOpenSession(slot.sessionId)
@@ -319,13 +321,13 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLab
         { className: 'dsh-leader-agent-board-signal-slot' },
         createElement('span', {
           className: `dsh-leader-agent-board-signal dsh-leader-agent-board-signal-${signal}${hollow ? ' dsh-leader-agent-board-signal-hollow' : ''}`,
-          title: STATE_LABELS[signal] ?? signal,
+          title: STATE_LABEL_KEYS[signal] === undefined ? signal : t(STATE_LABEL_KEYS[signal]),
         }),
       ),
     ),
     createElement('span', { className: 'dsh-leader-agent-board-card-title', title: card.title }, card.title ?? ''),
     links.length > 0
-      ? createElement(BoardLinks, { links, onOpenDetail: (anchor) => onOpenDetail(card, anchor) })
+      ? createElement(BoardLinks, { links, onOpenDetail: (anchor) => onOpenDetail(card, anchor), t })
       : null,
     slots.length > 0
       ? createElement(

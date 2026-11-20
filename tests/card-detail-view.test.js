@@ -1,24 +1,29 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
-  DETAIL_SPEC_EMPTY,
   canDeleteCard,
   canEditCardLinks,
   describeCardRemoval,
   detailSections,
   statusLabel,
 } from '../src/client/card-detail-view.js'
+import { LOCALE_UI } from '../src/client/locales.js'
+
+const zh = LOCALE_UI.zh
+import { translator } from './helpers/locale.js'
+
+const t = translator('zh')
 
 test('卡片没写说明时用统一的占位文案', () => {
-  assert.equal(DETAIL_SPEC_EMPTY, '这张卡还没有写说明。')
+  assert.equal(zh['card.detail.empty'], '这张卡还没有写说明。')
   assert.equal(detailSections({}).spec, null)
 })
 
 test('状态徽章按卡片状态给中文名', () => {
-  assert.equal(statusLabel('done'), '已完成')
-  assert.equal(statusLabel('archived'), '已归档')
-  assert.equal(statusLabel('active'), '进行中')
-  assert.equal(statusLabel(undefined), '进行中')
+  assert.equal(statusLabel('done', t), '已完成')
+  assert.equal(statusLabel('archived', t), '已归档')
+  assert.equal(statusLabel('active', t), '进行中')
+  assert.equal(statusLabel(undefined, t), '进行中')
 })
 
 test('详情分段：说明为空时不出说明段', () => {
@@ -58,8 +63,8 @@ test('详情删除：有 id 才能删，不按状态拦', () => {
 
 test('删除确认说清编号、标题、不可恢复与槽位解除', () => {
   assert.equal(
-    describeCardRemoval({ number: 7, title: '补测试' }),
+    describeCardRemoval({ number: 7, title: '补测试' }, t),
     '将删除卡片 #7「补测试」。删除后不可恢复，编号不会再分配，卡片上的槽位绑定会一并解除。',
   )
-  assert.match(describeCardRemoval({}), /#\?/)
+  assert.match(describeCardRemoval({}, t), /#\?/)
 })

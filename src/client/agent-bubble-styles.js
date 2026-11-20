@@ -26,10 +26,40 @@ const STYLE_TEXT = `
 }
 
 .dsh-leader-agent-agent-bubble__avatar {
+  display: block;
   width: 20px;
   height: 20px;
-  border-radius: 5px;
   flex-shrink: 0;
+}
+
+.dsh-leader-agent-agent-bubble__avatar svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.dsh-leader-agent-agent-bubble__avatar-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* 触屏没有 hover 语义，不要把「点一下」当成悬停。 */
+@media (hover: hover) {
+  .dsh-leader-agent-agent-bubble__avatar:hover .dsh-leader-agent-agent-bubble__avatar-eye {
+    animation: dsh-leader-agent-avatar-blink 520ms ease-in-out;
+  }
+}
+
+@keyframes dsh-leader-agent-avatar-blink {
+  0%, 38%, 100% { transform: scaleY(1); }
+  48%, 58% { transform: scaleY(0.08); }
+}
+
+/* 动效是装饰；宿主或系统要求减少动态时保持睁眼。 */
+@media (prefers-reduced-motion: reduce) {
+  .dsh-leader-agent-agent-bubble__avatar:hover .dsh-leader-agent-agent-bubble__avatar-eye {
+    animation: none;
+  }
 }
 
 .dsh-leader-agent-agent-bubble__name {

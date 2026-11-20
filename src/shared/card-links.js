@@ -63,19 +63,19 @@ export function isHttpUrl(value) {
  * 模型可能给两张链接同一个 id；留着会让编辑态改一行动两行）。
  *
  * @param {unknown} links - 链接草稿
- * @returns {{ links: object[] } | { error: string }} 规范化结果或错误说明
+ * @returns {{ links: object[] } | { error: { code: string, params?: Record<string, string> } }} 规范化结果或错误码
  */
 export function normalizeLinkDrafts(links) {
-  if (!Array.isArray(links)) return { error: '链接必须是数组' }
+  if (!Array.isArray(links)) return { error: { code: 'notArray' } }
   const normalized = []
   const seenIds = new Set()
   for (const entry of links) {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
-      return { error: '链接条目必须是对象' }
+      return { error: { code: 'entryNotObject' } }
     }
     for (const field of ['id', 'label', 'url', 'purpose']) {
       if (entry[field] !== undefined && typeof entry[field] !== 'string') {
-        return { error: `链接条目的 ${field} 必须是字符串` }
+        return { error: { code: 'fieldNotString', params: { field } } }
       }
     }
     const label = (entry.label ?? '').trim()
@@ -83,13 +83,13 @@ export function normalizeLinkDrafts(links) {
     const purpose = (entry.purpose ?? '').trim()
     if (label === '') {
       if (rawUrl === '' && purpose === '') continue
-      return { error: `有一条链接只填了${rawUrl === '' ? '用途' : ' URL'}，标签不能为空` }
+      return { error: { code: rawUrl === '' ? 'labelMissingPurpose' : 'labelMissingUrl' } }
     }
     let url = ''
     if (rawUrl !== '') {
       const normalizedUrl = normalizeHttpUrl(rawUrl)
       if (normalizedUrl === null) {
-        return { error: `「${label}」的链接 URL 必须是 http(s) 绝对地址，例如 https://example.com/…` }
+        return { error: { code: 'invalidUrl', params: { label } } }
       }
       url = normalizedUrl
     }

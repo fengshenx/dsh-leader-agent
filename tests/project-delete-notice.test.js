@@ -6,6 +6,9 @@ import { createProjectService } from '../src/host/projects/service.js'
 import { createProjectRemote } from '../src/host/projects/remote.js'
 import { describeDeletionNotice } from '../src/client/project-panel-logic.js'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
+import { translator } from './helpers/locale.js'
+
+const t = translator('zh')
 
 after(cleanupTempDirs)
 
@@ -69,7 +72,7 @@ test('删除项目只删记录：不碰 dsh 工作区', async () => {
   // 工作区原样留着；删除项目根本没有调用工作区服务。
   assert.equal(registry.list().length, 1)
   assert.equal(workspaces[0].id, 'ws-user')
-  assert.equal(describeDeletionNotice(project, result), '已删除项目「alpha」。')
+  assert.equal(describeDeletionNotice(project, result, t), '已删除项目「alpha」。')
 })
 
 test('旧记录里带着 workspaceId 也不影响删除：工作区仍然不动', async () => {
@@ -95,5 +98,5 @@ test('删不存在的项目：明确返回未删除，客户端按幂等成功�
     notFound: true,
     reason: '项目不存在。',
   })
-  assert.equal(describeDeletionNotice({ name: 'alpha' }, result), '已删除项目「alpha」。')
+  assert.equal(describeDeletionNotice({ name: 'alpha' }, result, t), '已删除项目「alpha」。')
 })

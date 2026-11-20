@@ -17,7 +17,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
-**零运行时依赖的边界**：宿主侧只用 Node 内置模块与 Cordis 注入的 `ctx`，不 peer 依赖任何 dsh 内部包——宿主解析失败会让整个 bundle 加载失败。运行时唯一依赖 `minidenticons`（worker 头像），只用于客户端产物。
+**零运行时依赖的边界**：宿主侧只用 Node 内置模块与 Cordis 注入的 `ctx`，不 peer 依赖任何 dsh 内部包——宿主解析失败会让整个 bundle 加载失败。构建期唯一内联依赖 `blobatar`（worker 头像），只用于客户端产物。
 
 **插件行必须是纯包名**：`cordis.patch.yml` 的插件行写成 `dsh-leader-agent/src/host` 这类子路径时，浏览器侧定位不到包 manifest，宿主便不下发 client bundle。
 

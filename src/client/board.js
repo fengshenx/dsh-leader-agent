@@ -50,6 +50,7 @@ import { ConfirmDialog } from './confirm-dialog.js'
 import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
+import { projectRemoteErrorText } from './project-remote.js'
 
 /**
  * 项目归属与 leader 身份的复核间隔。
@@ -339,10 +340,10 @@ function useSlotStates(cards, getSessions, useSessionStatus, parentSessionId) {
  * @param {object} props - 组件属性
  * @param {boolean} props.allDone - 是否全部完成
  * @param {string} [props.projectName] - 项目名；看板是项目维度的，空态要说清是谁的
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
-function BoardEmpty({ allDone, projectName }) {
-  const whose = projectName === undefined ? '本项目' : `「${projectName}」`
+function BoardEmpty({ allDone, projectName, t }) {
   return createElement(
     'div',
     { className: 'dsh-leader-agent-board-empty' },
@@ -360,12 +361,16 @@ function BoardEmpty({ allDone, projectName }) {
     createElement(
       'div',
       { className: 'dsh-leader-agent-board-empty-title' },
-      allDone ? '全部完成' : '还没有卡片',
+      allDone ? t('board.empty.doneTitle') : t('board.empty.title'),
     ),
     createElement(
       'div',
       { className: 'dsh-leader-agent-board-empty-hint' },
-      allDone ? `${whose}的卡片都已完成` : 'leader 调用 create_card 后，卡片会出现在这里',
+      allDone
+        ? (projectName === undefined
+            ? t('board.empty.doneHintOwn')
+            : t('board.empty.doneHintNamed', { project: projectName }))
+        : t('board.empty.hint'),
     ),
   )
 }
@@ -520,7 +525,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           if (cancelled) return
           // 复核失败只在还没有摘要时才算错误；已有摘要就保留旧值——面板每 30 秒
           // 复核一次，一次 RPC 抖动不该把已显示的看板打回错误页。
-          setProjectError(`读取项目失败：${cause instanceof Error ? cause.message : String(cause)}`)
+          setProjectError(projectRemoteErrorText(cause, t, 'board.error.project'))
         })
     }
     load()
@@ -532,7 +537,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [sessionId, callRemote, visible])
+  }, [sessionId, callRemote, visible, t])
 
   // 卡片取数：挂载时拉一次，之后定时刷新，窗口重新聚焦时立刻刷一次。
   // 定时刷新是必要的——卡片可能由别的会话（worker）建，那边的事件流不在本面板
@@ -566,7 +571,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
         .catch((cause) => {
           if (cancelled) return
           // 轮询失败保留已加载的卡片，只是把错误挂出来，不清空列表。
-          setCardsError(`读取卡片失败：${cause instanceof Error ? cause.message : String(cause)}`)
+          setCardsError(projectRemoteErrorText(cause, t, 'board.error.cards'))
         })
     }
     refresh()
@@ -578,7 +583,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       clearInterval(timer)
       window.removeEventListener('focus', onFocus)
     }
-  }, [project, worker, callRemote, sessionId, visible])
+  }, [project, worker, callRemote, sessionId, visible, t])
 
   // 卡片状态一变就更新内存快照：同一项目的下一个看板 body 直接拿这份数据起步。
   useEffect(() => {
@@ -596,7 +601,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     ),
     done: sortDoneCards(cardList.filter((card) => card.status === 'done')),
   }), [cardList, states])
-  const doneFold = foldDoneCards(done, doneWatermark)
+  const doneFold = foldDoneCards(done, doneWatermark, t)
 
   const openSession = useCallback((targetSessionId) => {
     const uiWorkspace = getUiWorkspace?.()
@@ -638,7 +643,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       setDetail((current) => (current?.card?.id === pendingDelete.id ? null : current))
       setPendingDelete(null)
     } catch (error) {
-      setDeleteError(`删除失败：${error instanceof Error ? error.message : String(error)}`)
+      setDeleteError(projectRemoteErrorText(error, t, 'board.error.delete'))
     } finally {
       setDeleteBusy(false)
     }
@@ -674,12 +679,12 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
             createElement(
               'div',
               { className: 'dsh-leader-agent-board-empty-title' },
-              '当前会话不属于任何项目',
+              t('board.noProject.title'),
             ),
             createElement(
               'div',
               { className: 'dsh-leader-agent-board-empty-hint' },
-              '看板按项目组织：在项目会话（leader 或 worker）里打开它。',
+              t('board.noProject.hint'),
             ),
           )
         : createElement(BoardSkeleton),
@@ -705,14 +710,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
         createElement(
           'div',
           { className: 'dsh-leader-agent-board-empty-title' },
-          leaderDead ? '该项目的 leader 会话已失效' : '看板只在项目会话中打开',
+          leaderDead ? t('board.leaderDead.title') : t('board.notProject.title'),
         ),
         createElement(
           'div',
           { className: 'dsh-leader-agent-board-empty-hint' },
           leaderDead
-            ? '请在左栏项目区块对该项目换新 Leader，再打开看板。'
-            : `这是「${project.name ?? '本项目'}」所在目录里的普通会话；去该项目的 leader 或 worker 会话查看交付看板。`,
+            ? t('board.leaderDead.hint')
+            : t('board.notProject.hint', { project: project.name ?? t('board.thisProject') }),
         ),
       ),
     )
@@ -735,16 +740,16 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     return createElement(
       'div',
       { className: 'dsh-leader-agent-board-list' },
-      createElement(BoardEmpty, { allDone: false, projectName: project.name }),
+      createElement(BoardEmpty, { allDone: false, projectName: project.name, t }),
     )
   }
 
   const deleteDialog = createElement(ConfirmDialog, {
     open: overlays.pendingDelete !== null,
-    title: '删除卡片',
-    description: overlays.pendingDelete === null ? '' : describeCardRemoval(overlays.pendingDelete),
-    confirmLabel: '删除',
-    cancelLabel: '取消',
+    title: t('board.delete.title'),
+    description: overlays.pendingDelete === null ? '' : describeCardRemoval(overlays.pendingDelete, t),
+    confirmLabel: t('common.delete'),
+    cancelLabel: t('common.cancel'),
     danger: true,
     busy: deleteBusy,
     error: deleteError,
@@ -774,7 +779,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
             })),
           )
         : null,
-      active.length === 0 ? createElement(BoardEmpty, { allDone: true, projectName: project.name }) : null,
+      active.length === 0 ? createElement(BoardEmpty, { allDone: true, projectName: project.name, t }) : null,
       done.length > 0
         ? createElement(
             'div',
@@ -796,7 +801,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
                 },
                 productIcon('chevron-right-outline', { size: 14 }),
               ),
-              '已完成',
+              t('board.done'),
               createElement('span', { className: 'dsh-leader-agent-board-done-count' }, String(done.length)),
             ),
             doneOpen
@@ -832,7 +837,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
                             ))
                           },
                         },
-                        doneFold.expanded ? '收起' : doneFold.expandLabel,
+                        doneFold.expanded ? t('common.collapse') : doneFold.expandLabel,
                       ),
                 )
               : null,
@@ -848,6 +853,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           onUpdated: cardUpdated,
           onDelete: requestDelete,
           restoreFocus: overlays.detail.anchor,
+          t,
         }),
     deleteDialog,
   )
