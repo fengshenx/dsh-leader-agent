@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-leader 会话误调 `wait_agent` 等 worker 完成，结果阻塞到超时。根因不是提示词没写：`leader-mode` 与 agent-team 禁令都点名过它；是工具面漏了——`HOST_SUBAGENT_TOOLS` 只列了 `list_agents` / `send_message` / `interrupt_agent` 三件，而 0.2.2 的 `tool-subagent-control` 增加了第四件 `wait_agent`。
+leader 会话误调 `wait_agent` 等 worker 完成，结果阻塞到超时。agent-team 禁令已点名 `wait_agent`，`leader-mode` 本次同步补上；根因仍是工具面漏项——`HOST_SUBAGENT_TOOLS` 只列了 `list_agents` / `send_message` / `interrupt_agent` 三件，而 0.2.2 的 `tool-subagent-control` 增加了第四件 `wait_agent`。
 
 `wait_agent` 的描述是「等下一步输入」，不提 teammate，模型很容易把它当成「等 worker 完成」。但 worker 是普通根会话，完成通知本来就会把 leader 从回合外唤醒；这个工具只会在 leader 回合内阻塞，等到超时或一条与 worker 无关的输入。
 
@@ -16,7 +16,7 @@ agent-team 不受影响：它是另一套编排，宿主默认关闭，团队模
 
 ## Alternatives considered
 
-- **只改提示词**：现有禁令已经点名 `wait_agent`，仍被调用；工具面漏项不补，文案只是建议。
+- **只改提示词**：agent-team 禁令已点名 `wait_agent`，仍被调用；工具面漏项不补，文案只是建议。
 - **把 `team_task_*` 一起 deny、并强制关闭 leader 的 team 模式**：宿主默认就不开团队模式，强制关闭是对会话状态的额外写入；agent-team 要保留给其他会话，不做。
 - **连 `subagent` / `subagent_fork` 一起 deny**：leader 只用它们做只读探索，不拿它们当 worker；保留通用能力，只摘掉对 worker 无效、且会诱导阻塞的入口。
 
@@ -28,4 +28,4 @@ agent-team 不受影响：它是另一套编排，宿主默认关闭，团队模
 
 ## Testing
 
-`tests/tool-gate.test.js` 断言 `HOST_SUBAGENT_TOOLS` 含 `wait_agent`，且 leader 的 deny 列表包含它。双向验证：从 `HOST_SUBAGENT_TOOLS` 删掉 `wait_agent`，对应用例变红；还原后全绿。
+`tests/tool-gate.test.js` 断言 `HOST_SUBAGENT_TOOLS` 含 `wait_agent`、leader 的 deny 列表包含它，并覆盖 rc.2 的「三件在、`wait_agent` 缺」逐件重试路径；普通会话与 worker 另有字面量反向断言。双向验证：从 `HOST_SUBAGENT_TOOLS` 删掉 `wait_agent`，leader 与 mixed 用例变红；把 `wait_agent` 塞进 `PLAIN_SESSION_DENY_TOOLS`，反向断言变红。

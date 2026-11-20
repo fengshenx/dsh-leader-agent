@@ -31,7 +31,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题、分类、排序与槽位）与 `read_card` |
 | 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card` / `read_card`；保留宿主 subagent 四件工具 |
 
-身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
+身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。普通会话保留的宿主 subagent 工具在 0.2.2 起为四件（含 `wait_agent`）；`engines.dsh` 下限 0.2.1-rc.2 只有前三件，`applyToolGate` 的逐件重试会跳过缺失项。
 
 ### 派工与唤醒
 

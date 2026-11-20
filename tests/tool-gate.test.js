@@ -81,6 +81,8 @@ test('worker 看不到派工、全库查询与建卡，但保留改卡', () => {
   // 建卡与派工是 leader 的一条动作链；worker 只在自己的卡上写回状态。
   assert.ok(denied.includes('create_card'))
   assert.ok(!denied.includes('update_card'))
+  // 反向承诺：宿主 subagent 的等待语义对真实 subagent 仍有效，不能随名单扩张被误收。
+  assert.ok(!denied.includes('wait_agent'))
 })
 
 test('普通会话没有派工、全库查询与卡片写入', () => {
@@ -92,6 +94,8 @@ test('普通会话没有派工、全库查询与卡片写入', () => {
   // 卡片是项目里的任务事实：普通会话建的卡没有槽位、没有 leader 认领，只会污染看板。
   assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
   assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
+  // 普通会话可能真的用官方 subagent；把 wait_agent 塞进名单时这条字面量要变红。
+  assert.ok(!denied.includes('wait_agent'))
 })
 
 test('read_card 只给 worker：leader 与普通会话都摘掉，worker 保留', () => {
@@ -207,6 +211,28 @@ test('restrict 抛的不是「未知工具名」时照常抛出，不吞装配�
     }),
     /scoped context/,
   )
+})
+
+test('rc.2 形态：subagent 三件在、wait_agent 缺，逐件 deny 三件而不抛错', () => {
+  // 0.2.1-rc.2 的 tool-subagent-control 只有三件；0.2.2 才加 wait_agent。
+  // 整批 restrict 会因未知 wait_agent 失败，必须走 denyAvailable 的逐件重试。
+  const leader = makeAgent('c', [
+    'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
+    'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
+    'create_card', 'update_card', 'read_card',
+  ])
+  const denied = applyToolGate({
+    agent: leader,
+    isLeaderSession: (id) => id === 'c',
+    isWorkerSession: () => false,
+  })
+  assert.deepEqual(denied, ['list_agents', 'send_message', 'interrupt_agent', 'read_card'])
+  assert.deepEqual(leader.restrictions, [
+    { deny: ['list_agents'] },
+    { deny: ['send_message'] },
+    { deny: ['interrupt_agent'] },
+    { deny: ['read_card'] },
+  ])
 })
 
 test('宿主没装 subagent 控制工具时跳过那四件，不拿未注册的工具名去 restrict', () => {
