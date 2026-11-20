@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" role="img" aria-label="dsh-leader-agent">
+  <title>dsh-leader-agent</title>
+  <defs>
+    <linearGradient id="bg" x1="6" y1="2" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#141B2D"/>
+      <stop offset="100%" stop-color="#090C14"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="8" y1="2" x2="56" y2="62" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="45%" stop-color="#4F6FFF" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="20" cy="32" r="24" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4F6FFF" stop-opacity="0.42"/>
+      <stop offset="100%" stop-color="#4F6FFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="trackTop" x1="35" y1="19.5" x2="51" y2="19.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#4F6FFF"/>
+    </linearGradient>
+    <linearGradient id="trackBot" x1="35" y1="44.5" x2="48" y2="44.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="100%" stop-color="#4F6FFF"/>
+    </linearGradient>
+    <linearGradient id="wireTop" x1="23" y1="32" x2="35.5" y2="19.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="wireBot" x1="23" y1="32" x2="35.5" y2="44.5" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#818CF8" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#bg)"/>
+  <rect x="2.75" y="2.75" width="58.5" height="58.5" rx="15.25" stroke="url(#rim)" stroke-width="1.5"/>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#glow)"/>
+  <!-- Leader fan-out routes -->
+  <path d="M23.5 32 C28.5 32 28.5 19.5 35.5 19.5" stroke="url(#wireTop)" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M23.5 32 H35.5" stroke="#F8FAFC" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M23.5 32 C28.5 32 28.5 44.5 35.5 44.5" stroke="url(#wireBot)" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- Leader keystone diamond -->
+  <path d="M18 24.5 L25.5 32 L18 39.5 L10.5 32 Z" fill="#FFFFFF"/>
+  <!-- Parallel worker tracks -->
+  <rect x="35.5" y="16.5" width="15.5" height="6" rx="3" fill="url(#trackTop)"/>
+  <rect x="35.5" y="29" width="18" height="6" rx="3" fill="#FFFFFF"/>
+  <rect x="35.5" y="41.5" width="13" height="6" rx="3" fill="url(#trackBot)"/>
+</svg>

@@ -1,12 +1,12 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent: a Leader fanning out to several workers, with a project board on the right" width="560">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent: a Leader keystone fanning out into parallel worker tracks" width="460">
   </picture>
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="README_ZH.md">简体中文</a>
+  <strong>English</strong> | <a href="README_ZH.md">简体中文</a> | <a href="https://fengshenx.github.io/dsh-leader-agent/">Website</a>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 
 ### Desktop install (DeepSeek Harness Desktop)
 
-Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`.
+Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`. The **delivery board is a web-profile feature**; the desktop profile loads the plugin without it.
 
 **GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-agent` and click **Install**:
 

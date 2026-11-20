@@ -1,12 +1,12 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-agent：Leader 扇出到多个 worker，右侧是项目看板" width="560">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-agent：Leader 节点扇出三条并行执行轨" width="460">
   </picture>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> | <strong>简体中文</strong>
+  <a href="README.md">English</a> | <strong>简体中文</strong> | <a href="https://fengshenx.github.io/dsh-leader-agent/">官网</a>
 </p>
 
 <p align="center">
@@ -39,7 +39,7 @@
 
 ### 桌面版安装（DeepSeek Harness Desktop）
 
-桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。
+桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通。**交付看板是 `web` profile 的功能**，桌面版装的是插件本体，没有看板。
 
 **图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-agent` 后点「安装」：
 
