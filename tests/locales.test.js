@@ -7,7 +7,8 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { LOCALE_UI } from '../src/client/locales.js'
+import { LOCALE_UI, unknownLocaleCodes } from '../src/client/locales.js'
+import { translator } from './helpers/locale.js'
 
 const en = LOCALE_UI.en
 const zh = LOCALE_UI.zh
@@ -43,4 +44,16 @@ test('重点文案的中英对照', () => {
   assert.equal(en['tab.board'], 'Board')
   assert.equal(zh['project.label'], '项目')
   assert.equal(en['project.label'], 'Projects')
+})
+
+test('只告警宿主目录里没有的 locale code', () => {
+  const host = [{ id: 'zh' }, { id: 'en' }, { id: 'ja' }, 'fr']
+  assert.deepEqual(unknownLocaleCodes({ en: {}, zh: {}, xx: {}, yy: {} }, host).sort(), ['xx', 'yy'])
+  assert.deepEqual(unknownLocaleCodes({ en: {}, zh: {} }, host), [])
+})
+
+test('缺 key 时按宿主行为回退 en', () => {
+  const partialZh = { ...zh }
+  delete partialZh['tab.board']
+  assert.equal(translator('zh', partialZh)('tab.board'), en['tab.board'])
 })

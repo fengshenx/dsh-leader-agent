@@ -16,6 +16,7 @@ import { createElement, useLayoutEffect, useRef, useState } from 'react'
 import { normalizeLinkDrafts } from '../shared/card-links.js'
 import { pickInitialFocus } from './modal-focus.js'
 import { productIcon } from './icons.js'
+import { projectRemoteErrorText } from './project-remote.js'
 
 /** 共享校验错误码到界面文案 key；不拼字符串，门禁才能静态看到每个 key。 */
 const LINK_ERROR_KEYS = Object.freeze({
@@ -174,7 +175,7 @@ export function CardLinksEditor({ card, onSave, onCancel, t }) {
     try {
       await onSave(normalized.links)
     } catch (cause) {
-      setError(t('card.links.saveFailed', { message: cause instanceof Error ? cause.message : String(cause) }))
+      setError(projectRemoteErrorText(cause, t, 'card.links.saveFailed'))
       restoreFocus.current = true
     } finally {
       setSaving(false)

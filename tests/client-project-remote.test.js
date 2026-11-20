@@ -190,7 +190,7 @@ test('通道错误按当前语言映射，宿主原因原样附在句尾', () =>
       t,
       'project.error.read',
     ),
-    'Project channel call failed: list (gateway/internal).',
+    'Failed to read projects: list / gateway/internal',
   )
   assert.equal(
     projectRemoteErrorText(
@@ -198,7 +198,28 @@ test('通道错误按当前语言映射，宿主原因原样附在句尾', () =>
       t,
       'project.error.read',
     ),
-    'Project channel call failed: list (gateway/internal). host detail',
+    'Failed to read projects: host detail (list / gateway/internal)',
+  )
+  assert.equal(
+    projectRemoteErrorText(
+      new ProjectRemoteError('call-failed', { method: 'rename', hostCode: 'invalid' }),
+      t,
+      'project.error.rename',
+    ),
+    'Failed to rename project: rename / invalid',
+  )
+  assert.equal(
+    projectRemoteErrorText(
+      new ProjectRemoteError('call-failed', { method: 'updateCardLinks', hostCode: 'internal', detail: 'host says no' }),
+      t,
+      'card.links.saveFailed',
+    ),
+    'Failed to save links: host says no (updateCardLinks / internal)',
+  )
+  assert.equal(
+    new ProjectRemoteError('call-failed', { method: 'rename', hostCode: 'invalid' }).message,
+    'call-failed (rename / invalid)',
+    'method/code 要留在错误对象里供日志排查',
   )
   assert.equal(
     projectRemoteErrorText(new Error('boom'), t, 'project.error.read'),

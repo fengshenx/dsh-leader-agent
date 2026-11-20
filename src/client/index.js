@@ -20,7 +20,7 @@ import { ProjectPanel } from './project-panel.js'
 import { mountGuideCard } from './guide-card.js'
 import { mountLeaderView } from './leader-view.js'
 import { watchLeaderSessions } from './leader-session-index.js'
-import { LOCALE_UI, SLOT_LOCALE_NAMESPACE } from './locales.js'
+import { LOCALE_UI, SLOT_LOCALE_NAMESPACE, unknownLocaleCodes } from './locales.js'
 import { callProjectRemote, mountProjectRemote } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
@@ -57,6 +57,17 @@ export function apply(ctx) {
   // 取用时重读 thunk；bind 返回的函数同样在调用时读当前语言，语言切换后
   // 下次投影就是新文案，不需要重新注册。
   const t = ctx.locale.bind(SLOT_LOCALE_NAMESPACE)
+  // 语言目录是宿主运行时的：本地多一个 locale 文件不代表宿主认它。只比较并告警，
+  // 不把宿主列表写进构建门禁——宿主加语言时门禁不该跟着漂。
+  const hostLocales = ctx.locale?.getSnapshot?.()?.locales
+  if (Array.isArray(hostLocales)) {
+    for (const code of unknownLocaleCodes(LOCALE_UI, hostLocales)) {
+      const message = `dsh-leader-agent: locale/${code}.json 不在宿主语言目录里，运行时不会被选中`
+      ctx.logger?.warn?.(message)
+      // 浏览器的 client logger 不一定有 exporter；配置错误要能在 DevTools 里看见。
+      console.warn(message)
+    }
+  }
 
   // 注册必须放进 effect：注册表把 effect 挂到调用方 fiber 上，在别的插件的
   // apply 里直接注册会让浏览器启动静默卡住。

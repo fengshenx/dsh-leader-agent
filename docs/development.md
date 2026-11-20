@@ -44,7 +44,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 ## Locale 文案
 
-界面文案的唯一来源是 `locale/<code>.json`：`meta` 只放插件显示名（宿主只读 `title`/`description`），`ui` 是客户端字典。`build/locales.mjs` 把 `ui` 生成到入库的 `src/client/locales.generated.js`。改文案只改 JSON，`npm run check` 的 `--check` 会拦住过期产物。新增语言就加 `locale/<code>.json`：`ui` 键集与占位符须和 `en` 一致；宿主注册 `zh` / `en` / `ja` / `es` / `fr` / `de` / `ru` / `pt`，缺字典时按 `ja → en` 回退。`scripts/verify-locales.mjs` 查空值、未使用 key 与 `src/client/**` 用户可见 CJK 字面量（内部日志按文件 + 原文登记）。
+界面文案的唯一来源是 `locale/<code>.json`：`meta` 只放插件显示名（宿主只读 `title`/`description`），`ui` 是客户端字典。`build/locales.mjs` 把 `ui` 生成到入库的 `src/client/locales.generated.js`。改文案只改 JSON，`npm run check` 的 `--check` 会拦住过期产物。新增语言就加 `locale/<code>.json`：`ui` 键集与占位符须和 `en` 一致；宿主注册 `zh` / `en` / `ja` / `es` / `fr` / `de` / `ru` / `pt`，缺 key/字典沿 active → fallback → `en` 回退（ja 的 fallback 是 en）。`scripts/verify-locales.mjs` 查空值、未使用 key 与 `src/client/**` 用户可见 CJK 字面量（内部日志按文件 + 原文登记）。
 
 ## 发布与打包
 

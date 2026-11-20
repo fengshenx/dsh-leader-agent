@@ -34,6 +34,7 @@ const INTERNAL_CJK = new Set([
   "src/client/index.js\x00dsh-leader-agent 会话标签栏",
   "src/client/index.js\x00dsh-leader-agent: 项目通道挂载失败：",
   "src/client/index.js\x00dsh-leader-agent: 当前宿主没有右栏服务，建卡后不自动打开看板",
+  "src/client/index.js\x00.json 不在宿主语言目录里，运行时不会被选中",
   "src/client/index.js\x00dsh-leader-agent 看板监视器",
   "src/client/index.js\x00leader 任务",
   "src/client/index.js\x00worker 回报",

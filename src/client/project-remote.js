@@ -127,7 +127,8 @@ export class ProjectRemoteError extends Error {
    * @param {{ method?: string, hostCode?: string, detail?: string }} [details] - 调用上下文
    */
   constructor(code, { method, hostCode, detail } = {}) {
-    super(code)
+    const context = [method, hostCode].filter((part) => typeof part === 'string' && part !== '').join(' / ')
+    super(context === '' ? code : `${code} (${context})`)
     this.name = 'ProjectRemoteError'
     this.code = code
     this.method = method
@@ -210,15 +211,22 @@ export async function callProjectRemote(ctx, method, args = []) {
  *
  * @param {unknown} error - 捕获到的错误
  * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
- * @param {string} fallbackKey - 非通道错误的通用文案 key
+ * @param {string} fallbackKey - 调用方的操作文案 key（通道失败时也用它作前缀）
  * @returns {string} 用户可见文案
  */
 export function projectRemoteErrorText(error, t, fallbackKey) {
   if (error instanceof ProjectRemoteError) {
     if (error.code === 'remote-missing') return t('project.remoteNotReady')
     if (error.code === 'namespace-missing') return t('project.error.namespaceMissing')
-    const base = t('project.error.callFailed', { method: error.method, code: error.hostCode })
-    return error.detail === '' ? base : `${base} ${error.detail}`
+    // 前缀必须保留调用方的操作语义（改名/删除/读卡片）；method 与 hostCode 只作为
+    // 括号里的技术细节，宿主 message 原样放在前面。
+    const technical = [error.method, error.hostCode]
+      .filter((part) => typeof part === 'string' && part !== '')
+      .join(' / ')
+    const message = technical === ''
+      ? error.detail
+      : error.detail === '' ? technical : `${error.detail} (${technical})`
+    return t(fallbackKey, { message })
   }
   return t(fallbackKey, { message: error instanceof Error ? error.message : String(error) })
 }

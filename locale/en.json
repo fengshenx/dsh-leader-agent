@@ -93,7 +93,6 @@
     "project.empty": "No projects yet. Add one to create a Leader session in its folder.",
     "project.error.archive": "Failed to archive session: {message}",
     "project.error.archivePartial": "Session archived, but releasing its card slots failed: {message}",
-    "project.error.callFailed": "Project channel call failed: {method} ({code}).",
     "project.error.create": "Failed to create project: {message}",
     "project.error.delete": "Failed to delete project: {message}",
     "project.error.deleteReason": "Failed to delete project.",

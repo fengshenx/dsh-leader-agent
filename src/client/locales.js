@@ -21,6 +21,22 @@ import { LOCALE_UI } from './locales.generated.js'
 
 export { LOCALE_UI }
 
+/**
+ * locale 文件里有、宿主语言目录里没有的 code。
+ *
+ * 生成物可能先于宿主支持列表出现（例如本地刚加了 `locale/xx.json`）；这种语言
+ * 注册进宿主也不会被选中，启动时告警比静默丢失可发现。宿主列表是运行时的，
+ * 这里只比较、不断言——写进构建门禁会在宿主加语言时漂移。
+ *
+ * @param {Record<string, unknown>} localeUi - 生成字典
+ * @param {Array<{ id?: string } | string>} hostLocales - 宿主 `getSnapshot().locales`
+ * @returns {string[]} 宿主目录里缺失的语言码
+ */
+export function unknownLocaleCodes(localeUi, hostLocales) {
+  const known = new Set(hostLocales.map((locale) => (typeof locale === 'string' ? locale : locale?.id)).filter(Boolean))
+  return Object.keys(localeUi).filter((code) => !known.has(code))
+}
+
 /** 本插件的 locale 命名空间。 */
 export const SLOT_LOCALE_NAMESPACE = 'dsh-leader-agent'
 
