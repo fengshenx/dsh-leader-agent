@@ -262,7 +262,11 @@ function warnCommentAnchors(logger, card, field, links) {
   const hits = links.filter((link) => typeof link.url === 'string' && COMMENT_ANCHOR.test(link.url))
   if (hits.length === 0) return
   const labels = hits.map((link) => `「${link.label}」`).join('、')
-  logger(`dsh-leader-agent: 卡片 #${card.number} 的 ${field} 含评论锚点（${labels}）；链接只挂交付物入口，评论是过程证据，写进回报正文。`)
+  try {
+    logger(`dsh-leader-agent: 卡片 #${card.number} 的 ${field} 含评论锚点（${labels}）；链接只挂交付物入口，评论是过程证据，写进回报正文。`)
+  } catch {
+    // warning 只是观测：宿主 logger 抛错不能把已成功的写入变成失败。
+  }
 }
 
 /**

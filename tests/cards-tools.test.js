@@ -324,6 +324,33 @@ test('评论锚点写入只告警不阻断，普通交付物链接不告警', as
   }
 })
 
+test('logger 抛错时评论锚点写入仍成功', async () => {
+  const { home, tools } = await createTools(undefined, undefined, {
+    logger: () => { throw new Error('logger boom') },
+  })
+  try {
+    const created = await tools.create_card.execute({
+      title: '审查',
+      links: [{
+        label: '审查评论',
+        url: 'https://github.com/o/r/pull/1#issuecomment-123',
+      }],
+    }, exec)
+    assert.equal(created.card.number, 1)
+
+    const updated = await tools.update_card.execute({
+      id: created.card.id,
+      addLinks: [{
+        label: '讨论',
+        url: 'https://github.com/o/r/pull/1#discussion_r456',
+      }],
+    }, exec)
+    assert.equal(updated.card.number, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('查卡工具默认只列 active，归档卡要显式要', async () => {
   const { home, tools } = await createTools()
   try {
