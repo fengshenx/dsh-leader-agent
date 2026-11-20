@@ -18,6 +18,7 @@ import { BoardBody } from './board.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
 import { mountGuideCard } from './guide-card.js'
+import { LeaderChangesAnchor } from './leader-changes-anchor.js'
 import { mountLeaderView } from './leader-view.js'
 import { watchLeaderSessions } from './leader-session-index.js'
 import { LOCALE_UI, SLOT_LOCALE_NAMESPACE, unknownLocaleCodes } from './locales.js'
@@ -180,6 +181,17 @@ export function apply(ctx) {
       getSidebarRight: () => ctx.get('sidebarRight'),
     }),
   }, SessionTabsAnchor)), 'dsh-leader-agent 会话标签栏')
+
+  // leader 会话不显示宿主的「已编辑 N 个文件」汇总卡片（`conversation.chat.turnTail`
+  // 里的 deliverables 条目）：宿主的 slot 注册没有按会话过滤的参数，唯一的开关是
+  // 全局偏好，所以走渲染层——在主面板容器上打标记，由本插件的样式表隐藏。
+  // 锚点同样借 `shell.overlay` 的 React 生命周期，不渲染内容。
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'dsh-leader-agent-leader-changes',
+    order: 40,
+    inject: () => ({ getSessions: () => ctx.sessions }),
+  }, LeaderChangesAnchor)), 'dsh-leader-agent leader 改动卡片隐藏')
 
   // leader 视图目标：让 leader 会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调
