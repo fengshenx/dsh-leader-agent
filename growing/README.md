@@ -14,7 +14,7 @@
 ## 看数
 
 - **站点流量与事件**：Umami Cloud → Websites → `fengshenx.github.io`（无 cookie，只收线上域名）。
-- **SEO**：Search Console 的 `https://fengshenx.github.io/dsh-leader-agent/` 前缀属性；sitemap 在 `site/sitemap.xml`。
+- **SEO**：Search Console 前缀 `https://fengshenx.github.io/dsh-leader-agent/`；提交 sitemap `https://fengshenx.github.io/dsh-leader-agent/sitemap.xml`。
 - **仓库**：Insights → Traffic（views / clones / referrers，14 天滚动，过期不补）。
 - **安装**：`https://api.npmjs.org/downloads/point/last-week/dsh-leader-agent`；star 曲线用 star-history。
 
