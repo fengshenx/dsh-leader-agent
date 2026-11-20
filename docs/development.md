@@ -42,6 +42,10 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 浏览器侧产物不入库（`.gitignore` 忽略 `lib/`），发布时由 `prepublishOnly` 重建。构建入口 `build/client.mjs` 是薄壳，配置与原子写在 `build/client-bundle.mjs`：esbuild 先写 `<产物>.<pid>.<随机>.staging`，成功后才 rename 到正式路径——宿主按文件 stat 轮询产物，读到半截文件会替换失败且没有回滚，这条契约由 `tests/client-build.test.js` 守住（banner/footer 外壳、基线模块 external、构建失败保留上一份）。staging 带进程标识，同树的 watch 与手动构建并存时不会共写临时文件；两个进程仍会竞争最终产物，后完成 rename 的赢，但不保证内容新旧顺序。协议层的相对链接完整性由测试守住——搬动文件后链接断裂会直接测试失败。
 
+## Locale 文案
+
+界面文案的唯一来源是 `locale/<code>.json`：`meta` 只放插件显示名（宿主只读 `title`/`description`），`ui` 是客户端字典。`build/locales.mjs` 把 `ui` 生成到入库的 `src/client/locales.generated.js`。改文案只改 JSON，`npm run check` 的 `--check` 会拦住过期产物。新增语言就加 `locale/<code>.json`：`ui` 键集与占位符须和 `en` 一致；宿主注册 `zh` / `en` / `ja` / `es` / `fr` / `de` / `ru` / `pt`，缺 key/字典沿 active → fallback → `en` 回退（ja 的 fallback 是 en）。`scripts/verify-locales.mjs` 查空值、未使用 key 与 `src/client/**` 用户可见 CJK 字面量（内部日志按文件 + 原文登记）。
+
 ## 发布与打包
 
 `release:check = check + build:client + verify:pack`，`prepublishOnly` 挂的就是它：手动 `npm publish` 与 CI 走同一条链路，漏构建产物、漏 skill、混进测试都在上传前失败。顺序不能倒——`verify:pack` 要求 `lib/client.js` 已存在；只从无参发布的理由见[已知限制](limitations.md#发布)。

@@ -10,7 +10,10 @@ import {
   sendIntroPrompt,
   shouldShowGuide,
 } from '../src/client/guide-card-logic.js'
-import { en, zh } from '../src/client/locales.js'
+import { LOCALE_UI } from '../src/client/locales.js'
+
+const zh = LOCALE_UI.zh
+const en = LOCALE_UI.en
 
 /**
  * 造一个够用的存储桩。

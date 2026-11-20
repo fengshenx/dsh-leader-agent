@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   SLOT_LABEL_KEYS,
-  en,
+  LOCALE_UI,
   slotDisplayName,
   slotLabel,
-  zh,
 } from '../src/client/locales.js'
+
+const zh = LOCALE_UI.zh
+const en = LOCALE_UI.en
 
 test('内置槽位按当前语言显示', () => {
   const zhT = (key) => zh[key]

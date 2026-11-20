@@ -29,6 +29,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 | 跑 `npm run e2e`、查车道命令与夹具、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、文件职责、场景模板、mock 标记约定、截图落点、人工取证） |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
 | 增长资产、宣传片沉淀、OSS 媒体 | [growing/AGENTS.md](growing/AGENTS.md)（案例/源文件入库；视频/音频/standalone 与全尺寸封面走 OSS） |
+| 改界面文案、加语言、查 locale 门禁 | [development 的 Locale 文案](docs/development.md#locale-文案) |
 | 发版、发布包内容与 CI | [docs/release.md](docs/release.md)（发版手册；维护者专用，不进包）、[development 的发布与打包一节](docs/development.md#发布与打包)、[2026-11-03-npm-oidc-publishing.md](.agents/notes/implemented/process/2026-11-03-npm-oidc-publishing.md) |
 | 协议层文案（`.agents/skills/`） | 现有 `.agents/skills/leader-mode/` 的行文与结构，保持同一口吻 |
 

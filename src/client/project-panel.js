@@ -50,7 +50,7 @@ import {
   sameProjectList,
   validateProjectName,
 } from './project-panel-logic.js'
-import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteError } from './project-remote.js'
+import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteErrorText } from './project-remote.js'
 import { notifyProjectsChanged } from './project-changes.js'
 import { createSessionCompletionTracker } from './session-completion.js'
 import { showToast } from './toast.js'
@@ -80,10 +80,11 @@ const PROJECT_REFRESH_INTERVAL_MS = 5000
  * @param {() => object | undefined} props.getSessions - 取会话服务
  * @param {() => object | undefined} props.getWorkspaces - 取工作区服务（归档会话走它）
  * @param {(listener: () => void) => (() => void)} [props.onWorkspacesReady] - 订阅工作区服务就绪
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
 export function ProjectPanel(props) {
-  const { wide, callRemote, getUiWorkspace, getSessions, getWorkspaces, onWorkspacesReady } = props
+  const { wide, callRemote, getUiWorkspace, getSessions, getWorkspaces, onWorkspacesReady, t } = props
   const [projects, setProjects] = useState([])
   const [busy, setBusy] = useState(false)
   const [floating, setFloating] = useState(false)
@@ -141,9 +142,9 @@ export function ProjectPanel(props) {
       // 入口都在成功之后调本函数，广播放这里就不会漏。
       notifyProjectsChanged()
     } catch (error) {
-      showToast(`读取项目失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(projectRemoteErrorText(error, t, 'project.error.read'))
     }
-  }, [callRemote])
+  }, [callRemote, t])
 
   /**
    * 重读项目下的会话归属。
@@ -162,9 +163,9 @@ export function ProjectPanel(props) {
       }
       setSessionsByProject(grouped)
     } catch (error) {
-      showToast(`读取项目会话失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(projectRemoteErrorText(error, t, 'project.error.sessions'))
     }
-  }, [callRemote])
+  }, [callRemote, t])
 
   useEffect(() => {
     void refresh()
@@ -372,7 +373,7 @@ export function ProjectPanel(props) {
     setNaming(null)
     const uiWorkspace = getUiWorkspace?.()
     if (uiWorkspace === undefined) {
-      showToast('目录选择器不可用：当前宿主无法选择目录，请换用 web profile 后再试。')
+      showToast(t('project.error.directoryPicker'))
       return
     }
     setBusy(true)
@@ -381,7 +382,7 @@ export function ProjectPanel(props) {
       if (typeof directory !== 'string' || directory === '') return
       // 名字默认取目录名：用户挑完目录就想看到项目建好，再让他填一遍名字、
       // 再点一次确认，都是多余的手续。名字要改随时用行上的「重命名」。
-      const check = defaultProjectName(directory)
+      const check = defaultProjectName(directory, t)
       if (!check.ok) {
         // 目录名当不了项目名，直接提交只会换回一条没有出口的报错——让用户在这里改。
         setNaming({ directory, name: check.name, error: check.error })
@@ -392,11 +393,11 @@ export function ProjectPanel(props) {
       // 新项目行就是唯一回执，列表收着就等于没有回执——建完必须展开给它看。
       setListExpanded(true)
     } catch (error) {
-      showToast(`建项目失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(projectRemoteErrorText(error, t, 'project.error.create'))
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, getUiWorkspace, refresh])
+  }, [busy, callRemote, getUiWorkspace, refresh, t])
 
   /**
    * 提交改名后的建项目请求。
@@ -404,7 +405,7 @@ export function ProjectPanel(props) {
    */
   const confirmNaming = useCallback(async () => {
     if (busy || naming === null) return
-    const check = validateProjectName(naming.name)
+    const check = validateProjectName(naming.name, t)
     if (!check.ok) {
       setNaming({ ...naming, error: check.error })
       return
@@ -417,11 +418,11 @@ export function ProjectPanel(props) {
       await refresh()
       setListExpanded(true)
     } catch (error) {
-      setNaming({ ...naming, error: `建项目失败：${error instanceof Error ? error.message : String(error)}` })
+      setNaming({ ...naming, error: projectRemoteErrorText(error, t, 'project.error.create') })
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, naming, refresh])
+  }, [busy, callRemote, naming, refresh, t])
 
   const cancelNaming = useCallback(() => {
     setNaming(null)
@@ -433,27 +434,28 @@ export function ProjectPanel(props) {
 
   const openProject = useCallback(async (project) => {
     if (!isProjectOpenable(project)) {
-      showToast(`项目「${project.name}」的 leader 会话已被删除，请换新 Leader。`)
+      showToast(t('project.leaderDeleted', { name: project.name }))
       return
     }
     const uiWorkspace = getUiWorkspace?.()
     if (uiWorkspace === undefined) {
-      showToast('导航服务不可用：无法打开会话。')
+      showToast(t('project.error.navigation'))
       return
     }
     // 项目不碰 dsh 工作区：点项目行只是打开那条会话，不给它分组、也不改用户的工作区。
     const result = openLeaderSession({
       project,
       openSession: (sessionId) => uiWorkspace.openSession(sessionId),
+      t,
     })
     if (result.ok !== true) showToast(result.message)
-  }, [getUiWorkspace])
+  }, [getUiWorkspace, t])
 
   const renameProject = useCallback(async (project, name) => {
     if (busy) return
     // 行内提交已经用 planProjectRename 校验过，正常走不到这里；守住绕过行内的
     // 调用方。校验是「输入能改好」的问题，行内会就地显示原因，这里只做兜底。
-    const check = validateProjectName(name)
+    const check = validateProjectName(name, t)
     if (!check.ok) {
       showToast(check.error)
       return
@@ -463,11 +465,11 @@ export function ProjectPanel(props) {
       await callRemote('rename', [project.id, name])
       await refresh()
     } catch (error) {
-      showToast(`改名失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(projectRemoteErrorText(error, t, 'project.error.rename'))
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, refresh])
+  }, [busy, callRemote, refresh, t])
 
   /**
    * 拖拽落地后调整项目顺序。
@@ -489,13 +491,13 @@ export function ProjectPanel(props) {
       try {
         await callRemote('reorder', [projectId, beforeId])
       } catch (error) {
-        showToast(`调整项目顺序失败：${error instanceof Error ? error.message : String(error)}`)
+        showToast(projectRemoteErrorText(error, t, 'project.error.reorder'))
       }
       // 成功时把宿主算出的顺序（leader 状态等派生字段也一并刷新）拉回来；失败时
       // 用同一份快照把本地乐观重排撤销掉。
       if (isLatest()) await refresh()
     })
-  }, [callRemote, refresh, reorderQueue])
+  }, [callRemote, refresh, reorderQueue, t])
 
   /**
    * 换新 leader：建一个新会话并改绑，然后把它打开。
@@ -525,11 +527,11 @@ export function ProjectPanel(props) {
       }
       await refresh()
     } catch (error) {
-      showToast(`换新 Leader 失败：${error instanceof Error ? error.message : String(error)}`)
+      showToast(projectRemoteErrorText(error, t, 'project.error.replaceLeader'))
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, getUiWorkspace, refresh])
+  }, [busy, callRemote, getUiWorkspace, refresh, t])
 
   const requestDelete = useCallback((project) => {
     setDeleteError('')
@@ -549,21 +551,21 @@ export function ProjectPanel(props) {
       const result = await callRemote('deleteProject', [project.id])
       const outcome = classifyDeletionResult(result)
       if (outcome === 'failed') {
-        setDeleteError(result?.reason ?? '删除失败。')
+        setDeleteError(result?.reason ?? t('project.error.deleteReason'))
         await refresh()
         return
       }
       setPendingDelete(null)
       // 项目已经不在了（别人先删了、或重复确认）：目标已达成，按幂等成功收尾。
       // 成功不留提示——项目行消失本身就是回执，只有工作区摘除失败才报。
-      showToast(describeDeletionNotice(project, result))
+      showToast(describeDeletionNotice(project, result, t))
       await refresh()
     } catch (error) {
-      setDeleteError(`删除失败：${error instanceof Error ? error.message : String(error)}`)
+      setDeleteError(projectRemoteErrorText(error, t, 'project.error.delete'))
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, pendingDelete, refresh])
+  }, [busy, callRemote, pendingDelete, refresh, t])
 
   /**
    * 归档一个会话，并摘掉它留在卡片与派工登记表上的痕迹。
@@ -579,7 +581,7 @@ export function ProjectPanel(props) {
   const archiveSession = useCallback(async (sessionId, { stopActivity = false } = {}) => {
     const workspaces = getWorkspaces?.()
     if (workspaces?.archiveSession === undefined) {
-      showToast('工作区服务不可用：无法归档会话。')
+      showToast(t('project.error.workspaces'))
       return
     }
     setBusy(true)
@@ -589,7 +591,7 @@ export function ProjectPanel(props) {
       try {
         await callRemote('detachSession', [sessionId])
       } catch (error) {
-        showToast(`会话已归档，但摘卡失败：${error instanceof Error ? error.message : String(error)}`)
+        showToast(projectRemoteErrorText(error, t, 'project.error.archivePartial'))
       }
       setPendingArchive(null)
       await refreshSessionIndex()
@@ -599,16 +601,15 @@ export function ProjectPanel(props) {
         setPendingArchive({ sessionId })
         return
       }
-      const message = error instanceof Error ? error.message : String(error)
       if (stopActivity) {
-        setArchiveError(`停止并归档失败：${message}`)
+        setArchiveError(projectRemoteErrorText(error, t, 'project.error.stopArchive'))
         return
       }
-      showToast(`归档会话失败：${message}`)
+      showToast(projectRemoteErrorText(error, t, 'project.error.archive'))
     } finally {
       setBusy(false)
     }
-  }, [callRemote, getWorkspaces, refreshSessionIndex])
+  }, [callRemote, getWorkspaces, refreshSessionIndex, t])
 
   const confirmArchive = useCallback(async () => {
     if (busy || pendingArchive === null) return
@@ -621,11 +622,12 @@ export function ProjectPanel(props) {
   }, [])
 
   const body = createElement(ProjectSection, {
+    t,
     projects,
     busy,
     // 通道状态是持续状态，不是一次性消息：放在列表位置，而不是弹一条会自己
     // 消失的提示。就绪后这里变空，列表照常出现。
-    remoteStatus: isProjectRemoteReady() ? '' : `项目通道未就绪。${projectRemoteError()}`,
+    remoteStatus: isProjectRemoteReady() ? '' : t('project.remoteNotReady'),
     onAdd: () => { void startAdd() },
     naming,
     onConfirmNaming: () => { void confirmNaming() },
@@ -650,7 +652,7 @@ export function ProjectPanel(props) {
     onOpenSession: (sessionId) => {
       const uiWorkspace = getUiWorkspace?.()
       if (uiWorkspace === undefined) {
-        showToast('导航服务不可用：无法打开会话。')
+        showToast(t('project.error.navigation'))
         return
       }
       uiWorkspace.openSession(sessionId)
@@ -664,10 +666,10 @@ export function ProjectPanel(props) {
   // 收起时它的子树整个卸载，放在浮层里会让确认框跟着消失。
   const dialog = createElement(ConfirmDialog, {
     open: pendingDelete !== null,
-    title: '删除项目',
-    description: pendingDelete === null ? '' : describeProjectRemoval(pendingDelete),
-    confirmLabel: '删除',
-    cancelLabel: '取消',
+    title: t('project.remove.title'),
+    description: pendingDelete === null ? '' : describeProjectRemoval(pendingDelete, t),
+    confirmLabel: t('common.delete'),
+    cancelLabel: t('common.cancel'),
     danger: true,
     busy,
     error: deleteError,
@@ -677,10 +679,10 @@ export function ProjectPanel(props) {
 
   const archiveDialog = createElement(ConfirmDialog, {
     open: pendingArchive !== null,
-    title: '会话还在执行',
-    description: '这个会话正在跑。归档会先停掉它的任务，再从列表移除并摘掉卡片上绑定的槽位。会话记录保留。',
-    confirmLabel: '停止并归档',
-    cancelLabel: '取消',
+    title: t('project.archive.title'),
+    description: t('project.archive.description'),
+    confirmLabel: t('project.archive.confirm'),
+    cancelLabel: t('common.cancel'),
     danger: true,
     busy,
     error: archiveError,
@@ -698,8 +700,8 @@ export function ProjectPanel(props) {
         'button',
         {
           type: 'button',
-          title: '项目',
-          'aria-label': '项目',
+          title: t('project.label'),
+          'aria-label': t('project.label'),
           onClick: () => setFloating((value) => !value),
           style: {
             width: '100%',

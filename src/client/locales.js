@@ -1,14 +1,14 @@
 /**
- * 本插件界面文案的字典。
+ * 本插件的 locale 命名空间与槽位显示名。
+ *
+ * 界面文案的唯一事实来源是 `locale/<code>.json` 的 `ui`：`build/locales.mjs`
+ * 把它们生成到 `locales.generated.js`，客户端注册时按文件枚举所有语言，不在
+ * 代码里写死 `zh` / `en`。`meta` 只供宿主读插件显示名，不属于客户端字典。
  *
  * 槽位名是机器标识：`SLOTS.md` 的分节名、卡片 `slots` 的 JSON 键、槽位注入的
  * 反查键都用它，形态固定为小写 ASCII（见 `src/host/slots/slot-templates.js`）。
  * 界面上的名字不跟标识走——这里按当前界面语言翻译内置槽位名，卡面 chip 与
  * 提示文案都用翻译后的名字。
- *
- * 槽位名之外的一次性界面文案（引导卡）也挂在同一个命名空间：宿主的
- * `locale/*.json` 只贡献插件显示名（`package-meta.ts` 只读 `title` /
- * `description`），界面字符串走 `ctx.locale.register`。
  *
  * 槽位名部分只放内置槽位的默认显示名。项目在 `SLOTS.md` 每节用 `label:` 声明
  * 自己的名字，优先级高于这份字典（`slotDisplayName`）；两者都没有时显示槽位名
@@ -16,6 +16,26 @@
  *
  * @module dsh-leader-agent/client/locales
  */
+
+import { LOCALE_UI } from './locales.generated.js'
+
+export { LOCALE_UI }
+
+/**
+ * locale 文件里有、宿主语言目录里没有的 code。
+ *
+ * 生成物可能先于宿主支持列表出现（例如本地刚加了 `locale/xx.json`）；这种语言
+ * 注册进宿主也不会被选中，启动时告警比静默丢失可发现。宿主列表是运行时的，
+ * 这里只比较、不断言——写进构建门禁会在宿主加语言时漂移。
+ *
+ * @param {Record<string, unknown>} localeUi - 生成字典
+ * @param {Array<{ id?: string } | string>} hostLocales - 宿主 `getSnapshot().locales`
+ * @returns {string[]} 宿主目录里缺失的语言码
+ */
+export function unknownLocaleCodes(localeUi, hostLocales) {
+  const known = new Set(hostLocales.map((locale) => (typeof locale === 'string' ? locale : locale?.id)).filter(Boolean))
+  return Object.keys(localeUi).filter((code) => !known.has(code))
+}
 
 /** 本插件的 locale 命名空间。 */
 export const SLOT_LOCALE_NAMESPACE = 'dsh-leader-agent'
@@ -32,34 +52,6 @@ export const SLOT_LABEL_KEYS = Object.freeze({
   review: 'slot.review',
 })
 
-/** 简体中文字典（键集的事实来源）。 */
-export const zh = Object.freeze({
-  'slot.discuss': '讨论',
-  'slot.dev': '开发',
-  'slot.review': '审核',
-  'guide.title': '这个目录有一个 Leader 了',
-  'guide.steps': '你可以让它建任务卡、给 Agent 派活，在右栏看板跟进',
-  'guide.action.intro': '了解怎么用',
-  'guide.action.dismiss': '知道了',
-  'guide.intro.prompt': '这个项目还没配置，先讲讲 dsh-leader-agent 怎么用。',
-  'tabs.list': '项目会话标签',
-  'tabs.close': '关闭标签',
-})
-
-/** 英文字典，键与中文字典一致。 */
-export const en = Object.freeze({
-  'slot.discuss': 'Discuss',
-  'slot.dev': 'Dev',
-  'slot.review': 'Review',
-  'guide.title': 'This directory has a Leader',
-  'guide.steps': 'Open task cards, hand work to Agents, track progress in the board',
-  'guide.action.intro': 'Show me how to use it',
-  'guide.action.dismiss': 'Got it',
-  'guide.intro.prompt': "This project isn't set up yet — show me how dsh-leader-agent works.",
-  'tabs.list': 'Project session tabs',
-  'tabs.close': 'Close tab',
-})
-
 /**
  * 槽位名的显示文本。
  *
@@ -67,7 +59,7 @@ export const en = Object.freeze({
  * 看板崩掉。
  *
  * @param {string} name - 槽位名（机器标识）
- * @param {((key: string) => string) | undefined} t - 当前语言的翻译函数
+ * @param {((key: string, params?: Record<string, unknown>) => string) | undefined} t - 当前语言的翻译函数
  * @returns {string} 显示名；没有内置翻译或翻译函数缺失时原样返回槽位名
  */
 export function slotLabel(name, t) {
@@ -85,7 +77,7 @@ export function slotLabel(name, t) {
  *
  * @param {string} name - 槽位名（机器标识）
  * @param {Record<string, string> | undefined} labels - 项目下发的槽位显示名字典
- * @param {((key: string) => string) | undefined} t - 当前语言的翻译函数
+ * @param {((key: string, params?: Record<string, unknown>) => string) | undefined} t - 当前语言的翻译函数
  * @returns {string} 显示名
  */
 export function slotDisplayName(name, labels, t) {

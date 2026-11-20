@@ -65,8 +65,8 @@ test('整行都空的新增行直接丢弃——那是没填完，不是错误',
 
 test('只填了 URL 或用途、漏掉标签时报错，不静默吞掉用户输入', () => {
   // 粘贴 URL 后按回车就保存，静默丢行会让用户以为已经挂上了。
-  assert.match(normalizeLinkDrafts([{ label: ' ', url: 'https://example.com' }]).error, /标签不能为空/)
-  assert.match(normalizeLinkDrafts([{ label: '', purpose: '参考' }]).error, /标签不能为空/)
+  assert.equal(normalizeLinkDrafts([{ label: ' ', url: 'https://example.com' }]).error.code, 'labelMissingUrl')
+  assert.equal(normalizeLinkDrafts([{ label: '', purpose: '参考' }]).error.code, 'labelMissingPurpose')
 })
 
 test('重复的条目 id 只保留第一个，其余交给宿主补新 id', () => {
@@ -85,13 +85,12 @@ test('URL 不是 http(s) 时整批拒绝并点名标签', () => {
   ])
 
   assert.equal(result.links, undefined)
-  assert.match(result.error, /「危险」/)
-  assert.match(result.error, /http\(s\) 绝对地址/)
+  assert.deepEqual(result.error, { code: 'invalidUrl', params: { label: '危险' } })
 })
 
 test('形状不对时报错而不是静默丢字段', () => {
-  assert.match(normalizeLinkDrafts('不是数组').error, /数组/)
-  assert.match(normalizeLinkDrafts([null]).error, /必须是对象/)
-  assert.match(normalizeLinkDrafts([{ label: 1 }]).error, /label 必须是字符串/)
-  assert.match(normalizeLinkDrafts([{ label: 'x', url: 2 }]).error, /url 必须是字符串/)
+  assert.deepEqual(normalizeLinkDrafts('不是数组').error, { code: 'notArray' })
+  assert.deepEqual(normalizeLinkDrafts([null]).error, { code: 'entryNotObject' })
+  assert.deepEqual(normalizeLinkDrafts([{ label: 1 }]).error, { code: 'fieldNotString', params: { field: 'label' } })
+  assert.deepEqual(normalizeLinkDrafts([{ label: 'x', url: 2 }]).error, { code: 'fieldNotString', params: { field: 'url' } })
 })

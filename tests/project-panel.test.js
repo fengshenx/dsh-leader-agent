@@ -29,6 +29,9 @@ import {
   isArchiveActiveRefusal,
   validateProjectName,
 } from '../src/client/project-panel-logic.js'
+import { translator } from './helpers/locale.js'
+
+const t = translator('zh')
 
 // 会话行的选中态没有渲染测试可跑：仓里不引 jsdom，React 组件不硬测。断言只能落在
 // 源码接线与元素属性上——这一层断了，界面上的表现就是「点开 worker 却没有任何标记」。
@@ -58,14 +61,14 @@ test('目录末段在两种分隔符下都能取到', () => {
 })
 
 test('项目名不能为空也不能过长', () => {
-  assert.equal(validateProjectName('alpha').ok, true)
-  assert.equal(validateProjectName('  ').ok, false)
-  assert.equal(validateProjectName('x'.repeat(201)).ok, false)
-  assert.equal(validateProjectName('x'.repeat(200)).ok, true)
+  assert.equal(validateProjectName('alpha', t).ok, true)
+  assert.equal(validateProjectName('  ', t).ok, false)
+  assert.equal(validateProjectName('x'.repeat(201), t).ok, false)
+  assert.equal(validateProjectName('x'.repeat(200), t).ok, true)
 })
 
 test('目录名能当项目名时直接可用', () => {
-  const check = defaultProjectName('/work/alpha')
+  const check = defaultProjectName('/work/alpha', t)
 
   assert.equal(check.ok, true)
   assert.equal(check.name, 'alpha')
@@ -73,11 +76,11 @@ test('目录名能当项目名时直接可用', () => {
 })
 
 test('目录名当不了项目名时给出改名理由', () => {
-  const root = defaultProjectName('/')
+  const root = defaultProjectName('/', t)
   assert.equal(root.ok, false)
   assert.equal(root.error, '项目名不能为空')
 
-  const tooLong = defaultProjectName(`/work/${'x'.repeat(201)}`)
+  const tooLong = defaultProjectName(`/work/${'x'.repeat(201)}`, t)
   assert.equal(tooLong.ok, false)
   assert.equal(tooLong.error, '项目名过长（上限 200 字）')
 })
@@ -326,7 +329,7 @@ test('项目行首改用宿主应用格子字形，不再引用目录字形', ()
   assert.doesNotMatch(source, /productIcon\('folder-open-outline', \{ size: 16 \}\)/)
   assert.match(
     source,
-    /className: 'dsh-leader-agent-project-header-label' \}, '项目'\),\s*\n\s*createElement\(\s*\n\s*'span',\s*\n\s*\{ className: 'dsh-leader-agent-project-lead' \},/,
+    /className: 'dsh-leader-agent-project-header-label' \}, t\('project\.label'\)\),\s*\n\s*createElement\(\s*\n\s*'span',\s*\n\s*\{ className: 'dsh-leader-agent-project-lead' \},/,
   )
   // 字形表里删掉只被分区标题使用的文件夹字形，行首用的字形在表里。
   assert.match(icons, /'apps-add-outline':/)
@@ -460,6 +463,7 @@ test('打开 leader 直接导航到会话，不碰工作区', () => {
   const result = openLeaderSession({
     project: { id: 'p-1', leaderSessionId: 'session-1' },
     openSession: (sessionId) => opened.push(sessionId),
+    t,
   })
   assert.deepEqual(result, { ok: true })
   assert.deepEqual(opened, ['session-1'])
@@ -470,6 +474,7 @@ test('没有 leader 会话时不导航并报出原因', () => {
   const result = openLeaderSession({
     project: { id: 'p-1', name: 'demo', leaderSessionId: '' },
     openSession: (sessionId) => opened.push(sessionId),
+    t,
   })
   assert.equal(result.ok, false)
   assert.match(result.message, /demo/)
@@ -477,7 +482,7 @@ test('没有 leader 会话时不导航并报出原因', () => {
 })
 
 test('项目菜单只有一条删除入口，没有工作区也出现', () => {
-  const items = buildProjectMenuItems({ id: 'p1' }, menuHandlers())
+  const items = buildProjectMenuItems({ id: 'p1' }, menuHandlers(), t)
   const removals = items.filter((item) => item.danger === true)
   assert.equal(removals.length, 1)
   assert.equal(removals[0].id, 'remove')
@@ -488,21 +493,21 @@ test('项目菜单只有一条删除入口，没有工作区也出现', () => {
 })
 
 test('项目菜单不再重复「打开 leader 会话」——点项目行就是打开', () => {
-  const items = buildProjectMenuItems({ id: 'p1' }, menuHandlers())
+  const items = buildProjectMenuItems({ id: 'p1' }, menuHandlers(), t)
   assert.equal(items.some((item) => item.id === 'open'), false)
   assert.deepEqual(items.map((item) => item.id), ['rename', 'replace', 'remove'])
 })
 
 test('删除说明讲清目录、会话与工作区都保留', () => {
-  const text = describeProjectRemoval({ name: 'demo', workspaceId: 'ws-1' })
+  const text = describeProjectRemoval({ name: 'demo', workspaceId: 'ws-1' }, t)
   assert.match(text, /demo/)
   assert.match(text, /文件夹、会话记录与 dsh 工作区都会保留/)
 })
 
 test('删除成功的提示固定一句回执', () => {
-  assert.equal(describeDeletionNotice({ name: 'demo' }, { removed: true }), '已删除项目「demo」。')
+  assert.equal(describeDeletionNotice({ name: 'demo' }, { removed: true }, t), '已删除项目「demo」。')
   assert.equal(
-    describeDeletionNotice({ name: 'demo' }, { notFound: true, reason: '项目不存在。' }),
+    describeDeletionNotice({ name: 'demo' }, { notFound: true, reason: '项目不存在。' }, t),
     '已删除项目「demo」。',
   )
 })
@@ -520,7 +525,7 @@ test('菜单里的删除入口只发请求，不直接执行', () => {
   const items = buildProjectMenuItems({ id: 'p1' }, {
     ...menuHandlers(),
     onRemove: (project) => asked.push(project.id),
-  })
+  }, t)
   items.find((item) => item.id === 'remove').onSelect()
   assert.deepEqual(asked, ['p1'])
 })
@@ -556,14 +561,14 @@ test('通道未就绪时不说「还没有项目」，收起时也不显示空�
 })
 
 test('重命名校验失败时保留输入框并给就地原因', () => {
-  assert.deepEqual(planProjectRename('demo', ''), { action: 'keep', error: '项目名不能为空' })
+  assert.deepEqual(planProjectRename('demo', '', t), { action: 'keep', error: '项目名不能为空' })
   assert.deepEqual(
-    planProjectRename('demo', 'x'.repeat(201)),
+    planProjectRename('demo', 'x'.repeat(201), t),
     { action: 'keep', error: '项目名过长（上限 200 字）' },
   )
   // 名字没改：直接收起，不打扰宿主。
-  assert.deepEqual(planProjectRename('demo', 'demo'), { action: 'close' })
-  assert.deepEqual(planProjectRename('demo', 'renamed'), { action: 'commit', name: 'renamed' })
+  assert.deepEqual(planProjectRename('demo', 'demo', t), { action: 'close' })
+  assert.deepEqual(planProjectRename('demo', 'renamed', t), { action: 'commit', name: 'renamed' })
 })
 
 /**

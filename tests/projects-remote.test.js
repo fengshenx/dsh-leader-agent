@@ -345,7 +345,7 @@ test('改链接拒绝空 id 与非 http(s) 的 URL，不碰卡片库', async () 
   // `<a href>` 上就是可执行的注入面。
   await assert.rejects(
     () => remote.updateCardLinks('c1', [{ label: '恶意', url: 'javascript:alert(1)' }]),
-    /http\(s\) 绝对地址/,
+    /invalidUrl.*恶意/,
   )
   assert.deepEqual(cards.calls, [])
 })

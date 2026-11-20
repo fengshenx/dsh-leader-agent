@@ -11,7 +11,8 @@
  * 把气泡撑成文档页。
  *
  * `labels` 必须是引用稳定的对象：组件按身份判断是否重建流式渲染缓存，每帧新建
- * 一个对象会让缓存失效。故这里是模块级常量。
+ * 一个对象会让缓存失效。按文案内容做一份模块级缓存——同一语言内所有渲染共用同一
+ * 个对象，切换语言后内容变了才换新对象。
  *
  * @module dsh-leader-agent/client/markdown
  */
@@ -19,14 +20,35 @@
 import { createElement } from 'react'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 
-/** 渲染器自带的界面文案（代码块复制按钮）。本仓不做多语言，固定中文。 */
-const MARKDOWN_LABELS = {
-  code: {
-    copyLabel: '复制',
-    copiedLabel: '已复制',
-    toolbarLabels: { codeLabel: '代码', wrapLabel: '换行', unwrapLabel: '取消换行' },
-  },
-  footnotes: '脚注',
+/** 文案内容到 labels 对象的缓存：同一语言内保持引用稳定。 */
+const LABEL_CACHE = new Map()
+
+/**
+ * 取当前语言的渲染器 labels。
+ *
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
+ * @returns {object} 引用稳定的 labels
+ */
+function markdownLabels(t) {
+  const copyLabel = t('markdown.copy')
+  const copiedLabel = t('markdown.copied')
+  const codeLabel = t('markdown.code')
+  const wrapLabel = t('markdown.wrap')
+  const unwrapLabel = t('markdown.unwrap')
+  const footnotes = t('markdown.footnotes')
+  const key = [copyLabel, copiedLabel, codeLabel, wrapLabel, unwrapLabel, footnotes].join('\u0000')
+  const cached = LABEL_CACHE.get(key)
+  if (cached !== undefined) return cached
+  const labels = Object.freeze({
+    code: Object.freeze({
+      copyLabel,
+      copiedLabel,
+      toolbarLabels: Object.freeze({ codeLabel, wrapLabel, unwrapLabel }),
+    }),
+    footnotes,
+  })
+  LABEL_CACHE.set(key, labels)
+  return labels
 }
 
 /**
@@ -35,9 +57,10 @@ const MARKDOWN_LABELS = {
  * @param {object} props - 组件属性
  * @param {string} [props.source] - Markdown 原文
  * @param {'body' | 'compact'} [props.variant] - 排版变体
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object | null} React 元素；原文为空时为 null
  */
-export function Markdown({ source = '', variant = 'compact' }) {
+export function Markdown({ source = '', variant = 'compact', t }) {
   if (typeof source !== 'string' || source === '') return null
-  return createElement(MarkdownText, { text: source, labels: MARKDOWN_LABELS, variant })
+  return createElement(MarkdownText, { text: source, labels: markdownLabels(t), variant })
 }

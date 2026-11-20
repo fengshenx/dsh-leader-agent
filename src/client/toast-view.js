@@ -29,6 +29,7 @@ const STYLE_TEXT = `
   color: var(--dsw-alias-toast-label);
   font-size: 14px;
   line-height: 22px;
+  overflow-wrap: anywhere;
   box-shadow: var(--dsw-shadow-lv3);
   transform: translateX(-50%);
   animation:

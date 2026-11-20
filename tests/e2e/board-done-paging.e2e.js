@@ -25,7 +25,7 @@ import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems }
 
 /** 分页页大小：与 `src/client/board-projection.js` 的 `DONE_PAGE_SIZE` 对齐。 */
 const PAGE_SIZE = 30
-/** 多出的一页：31 张 = 一页 + 1，正好验证「展开其余 1 个卡片」。 */
+/** 多出的一页：31 张 = 一页 + 1，正好验证「展开其余 1 张卡」。 */
 const DONE_TOTAL = PAGE_SIZE + 1
 const PROJECT_ID = 'e2e-board-paging-project'
 const DONE_ROW = '.dsh-leader-agent-board-card-done'
@@ -207,7 +207,7 @@ test('已完成区默认 30 行，展开到 31 行变「收起」，收起回 30
   await waitForLocator(page.locator(MORE_BUTTON), { description: '「展开其余」按钮', timeoutMs: 10_000 })
   const folded = await readDoneSection(page)
   assert.equal(folded.rows, PAGE_SIZE, `默认应渲染 ${PAGE_SIZE} 行`)
-  assert.equal(folded.moreText, '展开其余 1 个卡片')
+  assert.equal(folded.moreText, '展开其余 1 张卡')
   assert.equal(folded.moreExpanded, 'false')
   // 字号是本 PR 的另一半：done 标题与卡号同档（11px），展开前后都不变。
   assert.equal(folded.titleSize, '11px', 'done 标题字号应是 11px')
@@ -236,7 +236,7 @@ test('已完成区默认 30 行，展开到 31 行变「收起」，收起回 30
   await page.locator(MORE_BUTTON).click()
   await waitFor({
     description: '「收起」按钮变回「展开其余」',
-    check: async () => (await readDoneSection(page)).moreText === '展开其余 1 个卡片',
+    check: async () => (await readDoneSection(page)).moreText === '展开其余 1 张卡',
     timeoutMs: 10_000,
   })
   const collapsed = await readDoneSection(page)

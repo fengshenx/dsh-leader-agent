@@ -489,6 +489,7 @@ function ensureStyles() {
  * 项目区块内容。
  *
  * @param {object} props - 组件属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
 export function ProjectSection(props) {
@@ -503,6 +504,7 @@ export function ProjectSection(props) {
     listExpanded, onToggleList,
     currentSessionId,
     onReorder,
+    t,
   } = props
 
   useEffect(() => { ensureStyles() }, [])
@@ -560,10 +562,10 @@ export function ProjectSection(props) {
           type: 'button',
           className: 'dsh-leader-agent-project-header-toggle',
           'aria-expanded': listExpanded,
-          title: listExpanded ? '收起项目列表' : '展开项目列表',
+          title: listExpanded ? t('project.collapseList') : t('project.expandList'),
           onClick: onToggleList,
         },
-        createElement('span', { className: 'dsh-leader-agent-project-header-label' }, '项目'),
+        createElement('span', { className: 'dsh-leader-agent-project-header-label' }, t('project.label')),
         createElement(
           'span',
           { className: 'dsh-leader-agent-project-lead' },
@@ -585,7 +587,7 @@ export function ProjectSection(props) {
           {
             type: 'button',
             className: 'dsh-leader-agent-project-icon-button',
-            title: '加项目：选一个目录',
+            title: t('project.add'),
             disabled: busy,
             onClick: onAdd,
           },
@@ -604,7 +606,7 @@ export function ProjectSection(props) {
       ? createElement(
           'div',
           { className: 'dsh-leader-agent-project-notice' },
-          '还没有项目。加一个即在它的目录里建好 leader 会话。',
+          t('project.empty'),
         )
       : null,
     layout.showList
@@ -631,6 +633,7 @@ export function ProjectSection(props) {
             dragActive: draggingId !== null,
             dragging: draggingId === project.id,
             dropHalf: dropTarget !== null && dropTarget.id === project.id ? dropTarget.half : undefined,
+            t,
             onDragBegin: beginDrag,
             onDragHover: (overId, half) => {
               setDropTarget(projectDropPlan(projectIds, dragIdRef.current, overId, half).indicator)
@@ -663,12 +666,12 @@ export function ProjectSection(props) {
         createElement(
           'button',
           { type: 'button', disabled: busy, className: 'dsh-leader-agent-project-draft-action', onClick: onConfirmNaming },
-          '建项目',
+          t('project.create'),
         ),
         createElement(
           'button',
           { type: 'button', className: 'dsh-leader-agent-project-draft-action', onClick: onCancelNaming },
-          '取消',
+          t('common.cancel'),
         ),
       ),
       naming.error === '' || naming.error === undefined
@@ -695,6 +698,7 @@ function dropHalfOf(event) {
  * 子会话列表里——它的入口就是这一行，重复列出会让入口含糊。
  *
  * @param {object} props - 组件属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
 function ProjectRow(props) {
@@ -703,6 +707,7 @@ function ProjectRow(props) {
     sessions, sessionRows, expanded, onToggleExpand, onOpenSession, onArchiveSession,
     archivedSessionIds, currentSessionId,
     reorderable, dragActive, dragging, dropHalf, onDragBegin, onDragHover, onDropOn, onDragFinish,
+    t,
   } = props
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -728,7 +733,7 @@ function ProjectRow(props) {
   }, [menuOpen])
 
   const commitRename = () => {
-    const plan = planProjectRename(project.name, name)
+    const plan = planProjectRename(project.name, name, t)
     if (plan.action === 'keep') {
       setRenameError(plan.error)
       return
@@ -760,13 +765,13 @@ function ProjectRow(props) {
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
   // 本地（宿主也不持久化它），每个项目各算各的。
   const [watermark, setWatermark] = useState(0)
-  const folded = foldSessions(childSessions, watermark, currentSessionId)
+  const folded = foldSessions(childSessions, watermark, currentSessionId, t)
 
   const menuItems = buildProjectMenuItems(project, {
     onRename: () => setRenaming(true),
     onReplace,
     onRemove,
-  })
+  }, t)
 
   return createElement(
     'div',
@@ -819,7 +824,7 @@ function ProjectRow(props) {
           type: 'button',
           ref: leadRef,
           className: 'dsh-leader-agent-project-lead',
-          'aria-label': expanded ? '收起会话' : '展开会话',
+          'aria-label': expanded ? t('project.collapseSessions') : t('project.expandSessions'),
           'aria-expanded': expanded,
           onClick: (event) => { event.stopPropagation(); onToggleExpand(project.id) },
         },
@@ -875,7 +880,7 @@ function ProjectRow(props) {
               {
                 type: 'button',
                 className: 'dsh-leader-agent-project-icon-button',
-                title: '换新 Leader',
+                title: t('project.replaceLeader'),
                 disabled: busy,
                 onClick: (event) => { event.stopPropagation(); onReplace(project) },
               },
@@ -887,7 +892,7 @@ function ProjectRow(props) {
             type: 'button',
             ref: moreRef,
             className: 'dsh-leader-agent-project-icon-button',
-            title: '更多',
+            title: t('project.more'),
             disabled: busy,
             onClick: (event) => {
               event.stopPropagation()
@@ -925,7 +930,7 @@ function ProjectRow(props) {
             ? createElement(
                 'div',
                 { className: 'dsh-leader-agent-project-notice' },
-                '该项目下还没有会话。',
+                t('project.noSessions'),
               )
             : [
                 ...folded.rows.map((row) => createElement(SessionRow, {
@@ -935,6 +940,7 @@ function ProjectRow(props) {
                   onOpenSession,
                   onArchiveSession,
                   busy,
+                  t,
                 })),
                 folded.hiddenCount === 0 && !folded.expanded
                   ? null
@@ -956,7 +962,7 @@ function ProjectRow(props) {
                           ))
                         },
                       },
-                      folded.expanded ? '收起' : folded.expandLabel,
+                      folded.expanded ? t('common.collapse') : folded.expandLabel,
                     ),
               ],
         )
@@ -1043,10 +1049,11 @@ function ProjectMenu(props) {
  * 动作同位）。
  *
  * @param {object} props - 组件属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
 function SessionRow(props) {
-  const { row, selected, onOpenSession, onArchiveSession, busy } = props
+  const { row, selected, onOpenSession, onArchiveSession, busy, t } = props
   return createElement(
     'div',
     {
@@ -1056,7 +1063,7 @@ function SessionRow(props) {
       'aria-current': selected ? 'page' : undefined,
       onClick: () => onOpenSession(row.id),
       // 行没有官方那套悬停卡，完成状态拼进行标题里当唯一提示。
-      title: `${row.displayTitle ?? row.title ?? row.id}${row.completed === true ? ' · 已完成，待查看' : ''}`,
+      title: `${row.displayTitle ?? row.title ?? row.id}${row.completed === true ? ` · ${t('project.completedUnread')}` : ''}`,
     },
     createElement(
       'span',
@@ -1080,8 +1087,8 @@ function SessionRow(props) {
         {
           type: 'button',
           className: 'dsh-leader-agent-session-archive',
-          title: '归档会话：从列表移除，并摘掉卡片上绑定的槽位',
-          'aria-label': `归档会话 ${row.title ?? row.displayTitle ?? row.id}`,
+          title: t('project.archive'),
+          'aria-label': t('project.archive.aria', { title: row.title ?? row.displayTitle ?? row.id }),
           disabled: busy,
           onClick: (event) => {
             // 归档按钮在行内：不拦下来会连带打开会话。
