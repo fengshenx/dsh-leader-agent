@@ -10,7 +10,7 @@
     "src/client/guide-card.js": "引导卡组件（React.createElement），挂在宿主 conversation.input.dock，只有真实宿主能加载；触发与关闭逻辑已由 tests/guide-card-logic.test.js 覆盖",
     "src/client/icons.js": "图标 SVG 常量，没有逻辑",
     "src/client/index.js": "客户端入口：注册项目树、看板与 sidebar 注入，只能由宿主加载",
-    "src/client/leader-changes-anchor.js": "改动卡片隐藏锚点：依赖宿主 shell.overlay 生命周期与真实主面板 DOM，归 e2e；watchLeaderChanges 的 observer/标记/清理已由 tests/leader-changes.test.js 覆盖",
+    "src/client/leader-changes-anchor.js": "改动卡片隐藏锚点：依赖宿主 shell.overlay 生命周期与真实主面板 DOM，归 e2e；watchLeaderChanges 的 observer/标记/清理、findPanel 为 null 与 class 移除已由 tests/leader-changes.test.js 覆盖",
     "src/client/leader-view.js": "leader 运行态视图组件，归 e2e",
     "src/client/markdown.js": "MarkdownText 适配层，复用宿主基线模块，单测里拿不到那个模块表",
     "src/client/modal-shell.js": "弹层外壳（焦点陷阱与 Escape 处理），归 e2e",

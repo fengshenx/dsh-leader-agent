@@ -35,6 +35,34 @@ function installDocument() {
   return head
 }
 
+/** 造一个观察器夹具，记录 observe 选项与节流回调。 */
+function makeObserverHarness() {
+  const callbacks = []
+  const timers = []
+  const observations = []
+  class FakeObserver {
+    constructor(callback) {
+      callbacks.push(callback)
+    }
+
+    observe(target, options) {
+      observations.push({ target, options })
+    }
+
+    disconnect() {}
+  }
+  return {
+    FakeObserver,
+    callbacks,
+    observations,
+    schedule: (callback) => {
+      timers.push(callback)
+      return timers.length
+    },
+    flush: () => timers.shift()?.(),
+  }
+}
+
 /** 造一个只记录标记的容器桩。 */
 function makeColumn() {
   const attributes = new Map()
@@ -163,5 +191,73 @@ test('不需要隐藏时不创建 observer', () => {
   })
   assert.equal(constructed, 0)
   assert.equal(column.has(HIDE_ATTR), false)
+  cleanup()
+})
+
+test('findPanel 返回 null 时摘掉旧标记', () => {
+  const panel = makeColumn()
+  let present = true
+  const harness = makeObserverHarness()
+  const cleanup = watchLeaderChanges(true, {
+    documentRef: { body: {} },
+    findPanel: () => present ? panel : null,
+    Observer: harness.FakeObserver,
+    schedule: harness.schedule,
+    cancel: () => {},
+  })
+
+  assert.equal(panel.has(HIDE_ATTR), true)
+  present = false
+  harness.callbacks[0]()
+  harness.flush()
+  assert.equal(panel.has(HIDE_ATTR), false, '主面板消失后不能留着隐藏标记')
+  cleanup()
+})
+
+test('宿主移除 mainPanel 类后卡片恢复，恢复 class 后重新隐藏', () => {
+  const panel = makeColumn()
+  let hasMainPanelClass = true
+  const harness = makeObserverHarness()
+  const cleanup = watchLeaderChanges(true, {
+    documentRef: { body: {} },
+    findPanel: () => hasMainPanelClass ? panel : null,
+    Observer: harness.FakeObserver,
+    schedule: harness.schedule,
+    cancel: () => {},
+  })
+
+  assert.equal(panel.has(HIDE_ATTR), true)
+  hasMainPanelClass = false
+  harness.callbacks[0]()
+  harness.flush()
+  assert.equal(panel.has(HIDE_ATTR), false)
+
+  hasMainPanelClass = true
+  harness.callbacks[0]()
+  harness.flush()
+  assert.equal(panel.has(HIDE_ATTR), true, 'class 恢复后应重新加标记')
+  cleanup()
+})
+
+test('observer 订阅 class 属性变化并重新判定', () => {
+  const panel = makeColumn()
+  const harness = makeObserverHarness()
+  const cleanup = watchLeaderChanges(true, {
+    documentRef: { body: {} },
+    findPanel: () => panel,
+    Observer: harness.FakeObserver,
+    schedule: harness.schedule,
+    cancel: () => {},
+  })
+
+  assert.deepEqual(harness.observations[0].options, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class'],
+  })
+  harness.callbacks[0]()
+  harness.flush()
+  assert.equal(panel.has(HIDE_ATTR), true)
   cleanup()
 })

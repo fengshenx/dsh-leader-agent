@@ -18,7 +18,7 @@
  * @module dsh-leader-agent/client/leader-changes
  */
 
-import { findMainSlot } from './main-panel.js'
+import { findMainPanel } from './main-panel.js'
 
 /** 主面板容器上的隐藏标记。 */
 export const HIDE_ATTR = 'data-dsh-leader-agent-hide-changed-files'
@@ -87,7 +87,7 @@ export function applyHideState(column, hide) {
  * @param {boolean} hide - 是否隐藏
  * @param {object} [options] - 依赖注入（单测用）
  * @param {Document} [options.documentRef] - 文档
- * @param {() => Element | null} [options.findPanel] - 找主面板节点
+ * @param {() => Element | null} [options.findPanel] - 找真实主面板节点
  * @param {(column: object | null | undefined, hide: boolean) => void} [options.apply] - 加/摘标记
  * @param {typeof MutationObserver} [options.Observer] - MutationObserver 构造器
  * @param {(callback: () => void) => unknown} [options.schedule] - 节流调度
@@ -96,7 +96,7 @@ export function applyHideState(column, hide) {
  */
 export function watchLeaderChanges(hide, {
   documentRef = typeof document === 'undefined' ? undefined : document,
-  findPanel = findMainSlot,
+  findPanel = findMainPanel,
   apply = applyHideState,
   Observer = typeof MutationObserver === 'undefined' ? undefined : MutationObserver,
   schedule = (callback) => setTimeout(callback, 16),
@@ -110,7 +110,12 @@ export function watchLeaderChanges(hide, {
   const applyNow = () => {
     if (!alive || documentRef === undefined) return
     const next = findPanel()
-    if (next === null) return
+    if (next === null) {
+      // 主面板标记被宿主改掉时也要摘掉旧标记，否则卡片会继续被隐藏。
+      apply(column, false)
+      column = null
+      return
+    }
     if (next !== column) {
       apply(column, false)
       column = next
@@ -129,7 +134,12 @@ export function watchLeaderChanges(hide, {
       })
     })
     : null
-  observer?.observe(documentRef.body, { childList: true, subtree: true })
+  observer?.observe(documentRef.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class'],
+  })
 
   return () => {
     alive = false

@@ -20,10 +20,23 @@
  *
  * @returns {Element | null} 槽位节点
  */
-export function findMainSlot() {
+export function findMainPanel() {
   if (typeof document === 'undefined') return null
   return document.querySelector('#root [class*="mainPanel"]')
     ?? document.querySelector('[class*="mainPanel"]')
+}
+
+/**
+ * 找主面板槽位（含旧版兜底）。
+ *
+ * `data-slot="main"` 只用于标签栏落位；卡片隐藏在 `mainPanel` 消失时必须能
+ * 摘标记，所以隐藏逻辑单独用 {@link findMainPanel}，不落到旧标记上。
+ *
+ * @returns {Element | null} 槽位节点
+ */
+export function findMainSlot() {
+  if (typeof document === 'undefined') return null
+  return findMainPanel()
     ?? document.querySelector('#root [data-slot="main"]')
     ?? document.querySelector('[data-slot="main"]')
 }

@@ -212,14 +212,45 @@ test('leader 会话隐藏宿主的改动文件卡片，普通会话保留', {
 
   // 隐藏用 display:none，浏览器不应把焦点放进不可见卡片；完整 Tab 序回归留待限制说明。
   const focusableInCard = leaderCard.locator('button, a').first()
-  if (await focusableInCard.count() > 0) {
-    await focusableInCard.evaluate((element) => element.focus())
-    assert.equal(
-      await page.evaluate(() => document.activeElement?.closest('[data-changed-files]') !== null),
-      false,
-      '隐藏后焦点不应进入改动文件卡片',
-    )
+  assert.ok(await focusableInCard.count() > 0, '改动文件卡片应有可聚焦节点')
+  await focusableInCard.evaluate((element) => element.focus())
+  assert.equal(
+    await page.evaluate(() => document.activeElement?.closest('[data-changed-files]') !== null),
+    false,
+    '隐藏后焦点不应进入改动文件卡片',
+  )
+
+  // 降级探针：去掉宿主 mainPanel 类后标记必须摘掉、卡片恢复；恢复类后重新隐藏。
+  const panels = await page.locator('[class*="mainPanel"]').elementHandles()
+  assert.ok(panels.length > 0, '宿主应存在 mainPanel 节点')
+  const removedClasses = await Promise.all(panels.map((panel) => panel.evaluate((element) => (
+    Array.from(element.classList).filter((name) => name.includes('mainPanel'))
+  ))))
+  for (const panel of panels) {
+    await panel.evaluate((element) => {
+      for (const name of Array.from(element.classList)) {
+        if (name.includes('mainPanel')) element.classList.remove(name)
+      }
+    })
   }
+  await waitFor({
+    description: '去掉 mainPanel 类后改动文件卡片恢复可见',
+    check: () => leaderCard.isVisible(),
+    timeoutMs: 4_000,
+  })
+  t.diagnostic(`去掉 mainPanel 类后可见：${await leaderCard.isVisible()}`)
+
+  for (let index = 0; index < panels.length; index += 1) {
+    await panels[index].evaluate((element, names) => {
+      for (const name of names) element.classList.add(name)
+    }, removedClasses[index])
+  }
+  await waitFor({
+    description: '恢复 mainPanel 类后改动文件卡片再次隐藏',
+    check: async () => !(await leaderCard.isVisible()),
+    timeoutMs: 4_000,
+  })
+  t.diagnostic(`恢复 mainPanel 类后可见：${await leaderCard.isVisible()}`)
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'leader-changes')
   mkdirSync(artifacts, { recursive: true })

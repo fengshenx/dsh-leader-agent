@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { afterEach, test } from 'node:test'
-import { findColumn, findMainSlot, mainBodyOf } from '../src/client/main-panel.js'
+import { findColumn, findMainPanel, findMainSlot, mainBodyOf } from '../src/client/main-panel.js'
 
 /**
  * 造一个最小元素桩。
@@ -40,6 +40,16 @@ test('主槽位优先按真实 mainPanel 类名找', () => {
   }
   assert.equal(findMainSlot(), target)
   assert.deepEqual(seen, ['#root [class*="mainPanel"]'])
+})
+
+test('隐藏定位不把 data-slot main 当主面板', () => {
+  globalThis.document = {
+    querySelector(selector) {
+      return selector === '#root [data-slot="main"]' ? makeElement() : null
+    },
+  }
+  assert.equal(findMainPanel(), null)
+  assert.notEqual(findMainSlot(), null)
 })
 
 test('没有 mainPanel 时 data-slot 作为兼容兜底', () => {
