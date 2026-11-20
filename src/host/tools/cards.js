@@ -446,7 +446,7 @@ export function createCreateCardTool({ store, resolveProject, canWrite, isWorker
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '外部引用条目（MR、Issue、设计文档等）。每条要有非空 label；url 若是 http(s) 绝对地址才会在卡上可点，传错会报错并指出是第几条。',
+          description: '外部引用条目（MR、Issue、设计文档、成片等交付物入口）。每条要有非空 label；url 若是 http(s) 绝对地址才会在卡上可点，传错会报错并指出是第几条。不要挂评论或行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）——过程证据写进 spec 或回报正文。',
         },
         slots: {
           ...slotsSchema(),
@@ -545,12 +545,12 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         links: {
           type: 'array',
           items: linkSchema(),
-          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。',
+          description: '新的链接条目（整体替换）。每条要有非空 label；url 必须是 http(s) 绝对地址，传错会报错并指出是第几条。只想追加或修正个别链接时用 addLinks。链接只挂交付物入口（PR / Issue / 文档 / 成片），不挂评论锚点。',
         },
         addLinks: {
           type: 'array',
           items: linkSchema(),
-          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。',
+          description: '追加的链接条目：按 id 合并（同 id 原位更新字段），没有 id 时按 label+url 去重；带 url 的条目同样要求 http(s) 绝对地址，传错会报错并指出是第几条。与 links 互斥。worker 建了 PR/Issue 后用这个把链接挂上。只挂 PR / Issue / 文档 / 成片这类交付物入口；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不要挂——评论是过程证据，写进回报正文。',
         },
         slots: {
           ...slotsSchema(),

@@ -254,6 +254,18 @@ test('改卡工具的入参 schema 暴露 addLinks，模型才用得到', async 
   }
 })
 
+test('卡片工具的链接描述只放交付物入口，不挂评论锚点', async () => {
+  const { home, tools } = await createTools()
+  try {
+    assert.match(tools.update_card.parameters.properties.addLinks.description, /交付物入口/)
+    assert.match(tools.update_card.parameters.properties.addLinks.description, /#issuecomment-/)
+    assert.match(tools.update_card.parameters.properties.links.description, /不挂评论锚点/)
+    assert.match(tools.create_card.parameters.properties.links.description, /#issuecomment-/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('查卡工具默认只列 active，归档卡要显式要', async () => {
   const { home, tools } = await createTools()
   try {

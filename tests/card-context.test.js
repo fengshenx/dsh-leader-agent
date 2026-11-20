@@ -80,6 +80,8 @@ test('渲染编号、标题、卡 id、revision、槽位、状态、规格与链
   assert.match(text, /验收：401 时不丢草稿。/)
   assert.match(text, /Issue：https:\/\/example\.test\/issues\/1（需求来源）/)
   assert.match(text, /addLinks/)
+  assert.match(text, /交付物入口/)
+  assert.match(text, /不挂评论/)
 })
 
 test('规格为空时省略规格节', () => {
