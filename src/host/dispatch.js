@@ -58,6 +58,31 @@ const DEFAULT_AUTO_RESUME_LIMIT = 8
  */
 const DEFAULT_ACTIVE_WORKER_LIMIT = 50
 const NOTIFICATION_LIMIT = 4000
+
+/**
+ * worker 最近一次被使用的时刻。
+ *
+ * 旧登记表没有 `lastUsedAt`；读取时注册表会按 `registeredAt` 补值，这里再兜一层，
+ * 让自定义登记表实现也能按同一口径排序。
+ *
+ * @param {object} worker - 登记记录
+ * @returns {number} 最后使用时刻（毫秒）
+ */
+function lastUsedAtOf(worker) {
+  if (typeof worker.lastUsedAt === 'number') return worker.lastUsedAt
+  return typeof worker.registeredAt === 'number' ? worker.registeredAt : 0
+}
+
+/**
+ * 给到顶提示里的候选标出最后使用时刻。
+ *
+ * @param {object} worker - 登记记录
+ * @returns {string} 人可读的一行
+ */
+function candidateLine(worker) {
+  const name = `${worker.childId} ${worker.name ?? worker.label ?? ''}`.trimEnd()
+  return `- ${name}（lastUsedAt=${new Date(lastUsedAtOf(worker)).toISOString()}）`
+}
 /** 空闲检测的轮询间隔（毫秒）。 */
 const IDLE_POLL_MS = 500
 
@@ -488,7 +513,7 @@ export function createDispatcher({
   /**
    * 未归档 worker 的名册概况。
    *
-   * @returns {Promise<{ total: number, idle: object[] } | null>} 名册；拿不到归档集合时 null（此时不限数量）
+   * @returns {Promise<{ total: number, idle: object[], bound: object[], newest: object | undefined } | null>} 名册；拿不到归档集合时 null（此时不限数量）
    */
   async function describeRoster() {
     if (typeof archivedSessionIds !== 'function') return null
@@ -516,9 +541,24 @@ export function createDispatcher({
         bound.push({ ...item, cards })
         continue
       }
-      idle.push(item)
+      idle.push({ ...item, lastUsedAt: lastUsedAtOf(item) })
     }
-    return { total: active.length, idle, bound }
+    // LRU：最久没被 leader 用过的排前面；bound 的顺序不动（它们本来就不能接）。
+    // 同刻使用按登记时间、再按 id 兜底，避免同毫秒读到不确定顺序。
+    idle.sort((left, right) => (
+      lastUsedAtOf(left) - lastUsedAtOf(right)
+      || (left.registeredAt ?? 0) - (right.registeredAt ?? 0)
+      || String(left.childId).localeCompare(String(right.childId))
+    ))
+    // 登记时间同毫秒时按 active 的稳定顺序取后出现的那条；list() 的稳定排序保留
+    // 写入顺序，后出现的才是更新的。不能按 childId 重排，否则「最近新建」会标错。
+    const idleIds = new Set(idle.map((item) => item.childId))
+    const newest = active.reduce((best, item) => {
+      if (!idleIds.has(item.childId)) return best
+      if (best === undefined || (item.registeredAt ?? 0) >= (best.registeredAt ?? 0)) return item
+      return best
+    }, undefined)
+    return { total: active.length, idle, bound, newest }
   }
 
   /**
@@ -657,6 +697,13 @@ export function createDispatcher({
       parentSessionId: parent.id,
       signal,
     })
+    // 投递成功才算一次使用；失败/回滚不动 LRU。落盘失败只影响候选顺序，不能让
+    // 已经投出的消息回头变成失败。
+    try {
+      await workers.markUsed(sessionId, Date.now())
+    } catch (error) {
+      logger(`dsh-leader-agent: worker ${sessionId} 的最后使用时刻落盘失败：${error instanceof Error ? error.message : String(error)}`)
+    }
     // 这一轮由 leader 发起：登记在飞记录，worker 的 `turn/end` 到来时据此结算。
     // 人自己下钻跟 worker 聊的轮次不走这里，也就不会打扰 leader。
     const previous = inflight.get(sessionId)
@@ -787,12 +834,22 @@ export function createDispatcher({
       if (roster !== null && roster.total >= activeWorkerLimit) {
         const candidates = roster.idle.slice(0, 10)
         const bound = roster.bound.slice(0, 10)
-        throw new Error([
+        // 最近新建的那条单独标出来：它可能还带着最近的上下文，优先复用更旧的。
+        // 只标一条，不把最新的一批重新包装成推荐候选。
+        const newest = roster.newest
+        const candidateIds = new Set(candidates.map((item) => item.childId))
+        const recentOutside = newest !== undefined && !candidateIds.has(newest.childId)
+        const lines = [
           `spawn_worker: 未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
           candidates.length === 0
             ? '当前没有可复用的 worker（都在跑，或都挂着未完成的卡）：等它们结算，或关闭手上的卡释放执行者。'
-            : `可复用的 worker（当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
-              candidates.map((item) => `- ${item.childId} ${item.name ?? item.label ?? ''}`.trimEnd()).join('\n')
+            : `推荐复用（最久未用优先；当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
+              candidates.map((item) => {
+                const line = candidateLine(item)
+                return item.childId === newest?.childId
+                  ? `${line}（最近新建，保留上下文；优先复用前面的旧 worker）`
+                  : line
+              }).join('\n')
             }`,
           bound.length === 0
             ? ''
@@ -801,8 +858,14 @@ export function createDispatcher({
                 item.cards.map((card) => `#${card.number} ${card.title}（cardId: ${card.cardId}，槽位 ${card.slot}）`).join('、')
               }`.trimEnd()).join('\n')
             }`,
+          recentOutside
+            ? `最近新建、建议保留上下文的 worker（不要为了腾名额复用）：\n- ${newest.childId} ${newest.name ?? newest.label ?? ''}（registeredAt=${
+              new Date(newest.registeredAt ?? 0).toISOString()
+            }）`.trimEnd()
+            : '',
           '确实要新建：传 force 说明为什么现有 worker 都不适合。',
-        ].filter((line) => line !== '').join('\n'))
+        ]
+        throw new Error(lines.filter((line) => line !== '').join('\n'))
       }
     }
     // worker 的工作目录由项目决定：leader 不能指定 worker 跑在哪，也不该让

@@ -20,6 +20,10 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 
 **人自己下钻跟 worker 聊天不经过这条路径**：那种轮次不会登记在飞记录，因此不会被结算，leader 不会被打扰。派工要求组合里有会话持久化与查询后端（`sessionPersistence` / `sessionQuery`）：缺任一就拒绝派工，而不是悄悄降级成只能跑一轮的一次性 worker。
 
+### 名册上限与复用（LRU）
+
+未归档 worker 上限 50。到顶时 `spawn_worker` 不新建，而是按 `lastUsedAt` 升序列出空闲 worker：最久未用的排前面，每行带 `lastUsedAt`；挂着未完成卡的单列为不可接；最近新建的那条标「保留上下文」。`lastUsedAt` 在 `message_worker` 成功投递和回合结算时更新；旧登记表缺字段时回退 `registeredAt`。`registeredAt` 保留用于 500 条登记文件的容量截断，最近新建的标注也按它、同刻再作稳定兜底。到顶不自动归档，腾不腾名额由人决定；确实要新建传 `force`。
+
 ## 回看 worker 的会话
 
 `read_worker_session`（`sessionId` 必填，`turns` 可选，默认 2、最多 20）直读 worker 的会话日志并按回合给出：投进去的任务、worker 说过的正文、调过哪些工具、失败原因与每轮终态。它**只读**——不唤醒 worker、不产生模型调用，worker 正在跑也能读；最后一轮尚未 `turn/end` 时标「进行中」，按已追加的事件展示。
@@ -49,6 +53,8 @@ leader 发起的一轮超过 **15 分钟**没有任何回报时，机制侧会�
 链接有两种写法：`links` 整体替换，`addLinks` 增量追加（同 `id` 原位更新字段，无 `id` 按 label+url 去重），两者互斥。worker 建出 PR/Issue 后用 `addLinks` 自己挂，不会覆盖 leader 刚写的条目，也不依赖它先读整卡。
 
 每条链接要有非空 `label`；`url` 可选，但给了就必须是 http(s) 绝对地址——写入时按 URL 标准归一化（例如 `https:/example.com` 会存成 `https://example.com/`），卡面只在 http(s) 时渲染成可点链接。传错时工具直接报错并说明是第几条、哪个标签、收到什么值、该怎么改（例如把 `docs/report.md` 改成完整地址，或删掉 `url`），不会落盘半成品。
+
+`update_card` 的 `slots` 整体替换在卡仍 `active` 时不允许把某个角色从「有会话」改成「没有」——会直接报错；要换人请把该角色替换为新会话，释放只由 `done` / `archived` 触发。卡从 `active` 改 `done` 且卡上没有任何 `links` 时，返回软提示「这张卡没有交付物链接，关闭后只剩标题」；只提示，不拒绝关闭。
 
 卡片标 `done` 或归档会自动释放槽位上的执行者（`slots` 清空）：worker 交活后不必手工解绑，leader 把卡关掉它就能接下一张卡。挂着未完成卡的 worker 不能接别的工作，投递只会放行同卡续跑；要复用就先关闭旧卡。同一个会话同时挂多张未完成卡时投递一律被拒——先关卡收敛到一张。重新打开卡片不会恢复绑定。
 

@@ -29,6 +29,24 @@ const REGISTRY_VERSION = 1
 const DEFAULT_MAX_WORKERS = 500
 
 /**
+ * 读旧登记表时补出最后使用时刻。
+ *
+ * `lastUsedAt` 是后加的字段；旧文件里没有它时按 `registeredAt` 兜底，不能让
+ * 老记录在 LRU 排序里落到 0。这里只在读快照上补值，下一次真实写盘时自然落盘。
+ *
+ * @param {object} worker - 登记记录
+ * @returns {object} 带 lastUsedAt 的记录
+ */
+function withLastUsedAt(worker) {
+  if (worker === null || typeof worker !== 'object' || Array.isArray(worker)) return worker
+  if (typeof worker.lastUsedAt === 'number') return worker
+  return {
+    ...worker,
+    lastUsedAt: typeof worker.registeredAt === 'number' ? worker.registeredAt : 0,
+  }
+}
+
+/**
  * 创建 worker 登记表。
  *
  * @param {object} options - 选项
@@ -61,7 +79,7 @@ export function createWorkerRegistry({
       if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.workers)) {
         throw new Error('worker 登记表结构非法：缺少 workers 数组')
       }
-      return { version: REGISTRY_VERSION, workers: parsed.workers }
+      return { version: REGISTRY_VERSION, workers: parsed.workers.map(withLastUsedAt) }
     } catch (error) {
       const backup = `${file}.corrupt-${Date.now()}`
       await rename(file, backup).catch(() => undefined)
@@ -125,6 +143,7 @@ export function createWorkerRegistry({
      * @param {string} worker.childId - 子会话 id
      * @param {string} worker.parentSessionId - 父会话 id
      * @param {string} worker.name - worker 显示名
+     * @param {number} [worker.lastUsedAt] - 最后使用时刻；省略时用登记时刻
      * @returns {Promise<object>} 登记后的记录
      */
     async register(worker) {
@@ -136,7 +155,12 @@ export function createWorkerRegistry({
           Object.assign(existing, worker)
           return existing
         }
-        const record = { ...worker, registeredAt: Date.now() }
+        const now = Date.now()
+        const record = {
+          ...worker,
+          registeredAt: now,
+          lastUsedAt: typeof worker.lastUsedAt === 'number' ? worker.lastUsedAt : now,
+        }
         registry.workers.push(record)
         if (registry.workers.length > maxWorkers) {
           // 按登记时间留最近的一批。`sort` 是稳定的，同毫秒登记时保持原顺序，
@@ -219,11 +243,12 @@ export function createWorkerRegistry({
     },
 
     /**
-     * 记录一次回报时刻。
+     * 记录一次回合结算。
      *
      * 回报时间是执行者的活性事实：巡查按它判断「多久没动静」，`list_cards` 的
-     * 槽位行按它告诉 leader「最后回报在多久前」。只写这一个字段，不动
-     * `registeredAt`（那是登记顺序，不是活跃度）与父会话归属。
+     * 槽位行按它告诉 leader「最后回报在多久前」。结算也是 worker 最近一次被使用，
+     * 所以同时更新 `lastUsedAt`。不碰 `registeredAt`（那是登记顺序，不是活跃度）
+     * 与父会话归属。
      *
      * 没有这条记录时返回 undefined 且不写盘：派工登记失败是另一条路径上的故障，
      * 不在这里补登记（补出来的记录没有父会话，续聊反而会找错人）。
@@ -237,6 +262,28 @@ export function createWorkerRegistry({
         const existing = registry.workers.find((item) => item.childId === childId)
         if (existing === undefined) return undefined
         existing.lastReportAt = at
+        existing.lastUsedAt = at
+        await flush()
+        return existing
+      })
+    },
+
+    /**
+     * 记录一次成功投递。
+     *
+     * LRU 的判据是「最近被 leader 使用」，不是「最近创建」：新会话可能几个月前
+     * 建的、一直没再用；刚投过新简报的会话则显然还热。投递成功后再写，失败投递
+     * 不改变顺序。没有登记记录时返回 undefined 且不写盘。
+     *
+     * @param {string} childId - worker 会话 id
+     * @param {number} [at] - 使用时刻（毫秒）
+     * @returns {Promise<object | undefined>} 更新后的记录；没有这条时 undefined
+     */
+    async markUsed(childId, at = Date.now()) {
+      return serializeDeferredWrite(async (registry, flush) => {
+        const existing = registry.workers.find((item) => item.childId === childId)
+        if (existing === undefined) return undefined
+        existing.lastUsedAt = at
         await flush()
         return existing
       })
