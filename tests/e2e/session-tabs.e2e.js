@@ -536,6 +536,23 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     menuCount: await contextMenu.count(),
   })}`)
 
+  // 极窄窗且两个标签：滚动容器真的溢出时，更多仍可点、菜单能开能关。
+  await page.setViewportSize({ width: 300, height: 900 })
+  const tabScroll = bar.locator('.dsh-leader-agent-tabs-scroll')
+  const overflow = await tabScroll.evaluate((element) => element.scrollWidth > element.clientWidth)
+  assert.equal(overflow, true, '300px 窄窗下标签滚动区应溢出')
+  await moreButton.click()
+  await waitForLocator(contextMenu, { description: '300px 窄窗打开更多菜单', timeoutMs: 10_000 })
+  await page.keyboard.press('Escape')
+  await waitFor({
+    description: '300px 窄窗 Escape 关闭更多菜单',
+    check: async () => (await contextMenu.count()) === 0
+      && (await moreButton.getAttribute('aria-expanded')) === 'false',
+    timeoutMs: 10_000,
+  })
+  t.diagnostic('NARROW_300 overflow=true menu=open-close')
+  await page.setViewportSize({ width: 1440, height: 900 })
+
   // 普通会话：同一工作区里新建，不属于项目，整条栏与 flex 标记都消失。
   const ordinaryWorkspaceRow = page.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
   await waitForLocator(ordinaryWorkspaceRow, { description: '第二段默认工作区行', timeoutMs: 20_000 })
