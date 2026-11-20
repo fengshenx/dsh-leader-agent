@@ -46,8 +46,9 @@ export function AgentBubble({ name, avatarSeed, openTitle, onOpenName, body, for
   //
   // 读尺寸本身不放在 layout 阶段：`ResizeObserver.observe()` 会先投递一次初始
   // 尺寸，这次回调排在布局之后，读 `scrollHeight` 不会再触发排版。反过来在 layout
-  // effect 里同步读，一次提交挂 N 条气泡就是 N 次强制排版（真机 trace：28 条气泡
-  // 各一次样式重算 + 布局，共 163ms），而观察器那次本来就会把这些量掉。
+  // effect 里同步读，宿主在气泡之间写样式时每条读都会撞上脏布局（真实会话快照
+  // A/B：21 条气泡，LayoutCount 15 → 8、RecalcStyleCount 30 → 24；把状态更新批量
+  // 成一次渲染不改变布局数，是读的位置）。
   //
   // 只有折叠态才量：展开后 `scrollHeight === clientHeight`，一量就会把按钮收掉，
   // 用户也就点不回折叠了。宽度变化（窗口缩放、字体档位）要重算，所以也听 resize。
