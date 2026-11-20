@@ -50,7 +50,7 @@ import {
   sameProjectList,
   validateProjectName,
 } from './project-panel-logic.js'
-import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteError } from './project-remote.js'
+import { isProjectRemoteReady, onProjectRemoteReady, projectRemoteErrorText } from './project-remote.js'
 import { notifyProjectsChanged } from './project-changes.js'
 import { createSessionCompletionTracker } from './session-completion.js'
 import { showToast } from './toast.js'
@@ -142,7 +142,7 @@ export function ProjectPanel(props) {
       // 入口都在成功之后调本函数，广播放这里就不会漏。
       notifyProjectsChanged()
     } catch (error) {
-      showToast(t('project.error.read', { message: error instanceof Error ? error.message : String(error) }))
+      showToast(projectRemoteErrorText(error, t, 'project.error.read'))
     }
   }, [callRemote, t])
 
@@ -163,7 +163,7 @@ export function ProjectPanel(props) {
       }
       setSessionsByProject(grouped)
     } catch (error) {
-      showToast(t('project.error.sessions', { message: error instanceof Error ? error.message : String(error) }))
+      showToast(projectRemoteErrorText(error, t, 'project.error.sessions'))
     }
   }, [callRemote, t])
 
@@ -393,7 +393,7 @@ export function ProjectPanel(props) {
       // 新项目行就是唯一回执，列表收着就等于没有回执——建完必须展开给它看。
       setListExpanded(true)
     } catch (error) {
-      showToast(t('project.error.create', { message: error instanceof Error ? error.message : String(error) }))
+      showToast(projectRemoteErrorText(error, t, 'project.error.create'))
     } finally {
       setBusy(false)
     }
@@ -418,7 +418,7 @@ export function ProjectPanel(props) {
       await refresh()
       setListExpanded(true)
     } catch (error) {
-      setNaming({ ...naming, error: t('project.error.create', { message: error instanceof Error ? error.message : String(error) }) })
+      setNaming({ ...naming, error: projectRemoteErrorText(error, t, 'project.error.create') })
     } finally {
       setBusy(false)
     }
@@ -465,7 +465,7 @@ export function ProjectPanel(props) {
       await callRemote('rename', [project.id, name])
       await refresh()
     } catch (error) {
-      showToast(t('project.error.rename', { message: error instanceof Error ? error.message : String(error) }))
+      showToast(projectRemoteErrorText(error, t, 'project.error.rename'))
     } finally {
       setBusy(false)
     }
@@ -491,7 +491,7 @@ export function ProjectPanel(props) {
       try {
         await callRemote('reorder', [projectId, beforeId])
       } catch (error) {
-        showToast(t('project.error.reorder', { message: error instanceof Error ? error.message : String(error) }))
+        showToast(projectRemoteErrorText(error, t, 'project.error.reorder'))
       }
       // 成功时把宿主算出的顺序（leader 状态等派生字段也一并刷新）拉回来；失败时
       // 用同一份快照把本地乐观重排撤销掉。
@@ -527,7 +527,7 @@ export function ProjectPanel(props) {
       }
       await refresh()
     } catch (error) {
-      showToast(t('project.error.replaceLeader', { message: error instanceof Error ? error.message : String(error) }))
+      showToast(projectRemoteErrorText(error, t, 'project.error.replaceLeader'))
     } finally {
       setBusy(false)
     }
@@ -561,7 +561,7 @@ export function ProjectPanel(props) {
       showToast(describeDeletionNotice(project, result, t))
       await refresh()
     } catch (error) {
-      setDeleteError(t('project.error.delete', { message: error instanceof Error ? error.message : String(error) }))
+      setDeleteError(projectRemoteErrorText(error, t, 'project.error.delete'))
     } finally {
       setBusy(false)
     }
@@ -591,7 +591,7 @@ export function ProjectPanel(props) {
       try {
         await callRemote('detachSession', [sessionId])
       } catch (error) {
-        showToast(t('project.error.archivePartial', { message: error instanceof Error ? error.message : String(error) }))
+        showToast(projectRemoteErrorText(error, t, 'project.error.archivePartial'))
       }
       setPendingArchive(null)
       await refreshSessionIndex()
@@ -601,12 +601,11 @@ export function ProjectPanel(props) {
         setPendingArchive({ sessionId })
         return
       }
-      const message = error instanceof Error ? error.message : String(error)
       if (stopActivity) {
-        setArchiveError(t('project.error.stopArchive', { message }))
+        setArchiveError(projectRemoteErrorText(error, t, 'project.error.stopArchive'))
         return
       }
-      showToast(t('project.error.archive', { message }))
+      showToast(projectRemoteErrorText(error, t, 'project.error.archive'))
     } finally {
       setBusy(false)
     }
@@ -628,7 +627,7 @@ export function ProjectPanel(props) {
     busy,
     // 通道状态是持续状态，不是一次性消息：放在列表位置，而不是弹一条会自己
     // 消失的提示。就绪后这里变空，列表照常出现。
-    remoteStatus: isProjectRemoteReady() ? '' : `${t('project.remoteNotReady')}${projectRemoteError()}`,
+    remoteStatus: isProjectRemoteReady() ? '' : t('project.remoteNotReady'),
     onAdd: () => { void startAdd() },
     naming,
     onConfirmNaming: () => { void confirmNaming() },

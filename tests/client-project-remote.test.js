@@ -4,12 +4,13 @@ import {
   PROJECT_REMOTE_CONTRIBUTION,
   callProjectRemote,
   codecFor,
+  ProjectRemoteError,
   isProjectRemoteReady,
   mountProjectRemote,
   onProjectRemoteReady,
-  projectRemoteError,
-  reportProjectRemoteError,
+  projectRemoteErrorText,
 } from '../src/client/project-remote.js'
+import { translator } from './helpers/locale.js'
 import {
   PROJECT_REMOTE_METHODS,
   PROJECT_REMOTE_NAMESPACE,
@@ -75,7 +76,10 @@ test('挂载把贡献交给宿主远程服务', async () => {
 })
 
 test('宿主没有远程通道时报错', async () => {
-  await assert.rejects(() => mountProjectRemote({ get: () => undefined }), /宿主未提供远程调用通道/)
+  await assert.rejects(
+    () => mountProjectRemote({ get: () => undefined }),
+    (error) => error instanceof ProjectRemoteError && error.code === 'remote-missing',
+  )
 })
 
 test('调用把成功结果原样返回', async () => {
@@ -97,7 +101,14 @@ test('调用把业务失败变成异常', async () => {
     },
   }
 
-  await assert.rejects(() => callProjectRemote(ctx, 'list', []), /gateway\/internal/)
+  await assert.rejects(
+    () => callProjectRemote(ctx, 'list', []),
+    (error) => error instanceof ProjectRemoteError
+      && error.code === 'call-failed'
+      && error.method === 'list'
+      && error.hostCode === 'gateway/internal'
+      && error.detail === '',
+  )
 })
 
 test('业务失败带上宿主给的原因，用户能照着处理', async () => {
@@ -119,14 +130,18 @@ test('业务失败带上宿主给的原因，用户能照着处理', async () =>
   await assert.rejects(
     () => callProjectRemote(ctx, 'updateCardLinks', ['c1', []]),
     (error) => {
-      assert.match(error.message, /已归档/)
+      assert.equal(error.code, 'call-failed')
+      assert.equal(error.detail, '卡片 c1 已归档，归档是终态，不可再改')
       return true
     },
   )
 })
 
 test('通道没挂上时报项目通道不可用', async () => {
-  await assert.rejects(() => callProjectRemote({ get: () => undefined }, 'list', []), /项目通道不可用/)
+  await assert.rejects(
+    () => callProjectRemote({ get: () => undefined }, 'list', []),
+    (error) => error instanceof ProjectRemoteError && error.code === 'namespace-missing',
+  )
 })
 
 test('通道已挂好时订阅就绪事件会立刻补一次通知', async () => {
@@ -157,18 +172,36 @@ test('挂载成功后通道读数变为就绪', async () => {
   }
   await mountProjectRemote(ctx)
   assert.equal(isProjectRemoteReady(), true)
-  assert.equal(projectRemoteError(), '')
 })
 
-test('报告挂载失败后能读回原因，并通知订阅者刷新界面', async () => {
-  let notified = 0
-  const unsubscribe = onProjectRemoteReady(() => { notified += 1 })
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  const baseline = notified
-
-  reportProjectRemoteError('$mount 被拒：缺严格 codec')
-  assert.equal(projectRemoteError(), '$mount 被拒：缺严格 codec')
-  assert.equal(notified, baseline + 1)
-
-  unsubscribe()
+test('通道错误按当前语言映射，宿主原因原样附在句尾', () => {
+  const t = translator('en')
+  assert.equal(
+    projectRemoteErrorText(new ProjectRemoteError('remote-missing'), t, 'project.error.read'),
+    'Project channel not ready.',
+  )
+  assert.equal(
+    projectRemoteErrorText(new ProjectRemoteError('namespace-missing'), t, 'project.error.read'),
+    'The project channel is unavailable.',
+  )
+  assert.equal(
+    projectRemoteErrorText(
+      new ProjectRemoteError('call-failed', { method: 'list', hostCode: 'gateway/internal' }),
+      t,
+      'project.error.read',
+    ),
+    'Project channel call failed: list (gateway/internal).',
+  )
+  assert.equal(
+    projectRemoteErrorText(
+      new ProjectRemoteError('call-failed', { method: 'list', hostCode: 'gateway/internal', detail: 'host detail' }),
+      t,
+      'project.error.read',
+    ),
+    'Project channel call failed: list (gateway/internal). host detail',
+  )
+  assert.equal(
+    projectRemoteErrorText(new Error('boom'), t, 'project.error.read'),
+    'Failed to read projects: boom',
+  )
 })

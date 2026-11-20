@@ -38,7 +38,7 @@
     "e2e": "npm run build:client && for f in tests/e2e/*.e2e.js; do node --test \"$f\" || exit 1; done",
     "e2e:install": "playwright install chromium",
     "lint": "oxlint --deny-warnings index.js src tests scripts build .agents/skills",
-    "check": "npm run lint && node scripts/verify-agent-note-format.mjs && node scripts/verify-doc-tool-names.mjs && node scripts/verify-doc-budgets.mjs && node scripts/check-syntax.mjs && node scripts/third-party-license.mjs --check && node scripts/verify-coverage.mjs",
+    "check": "npm run lint && node build/locales.mjs --check && node scripts/verify-locales.mjs && node scripts/verify-agent-note-format.mjs && node scripts/verify-doc-tool-names.mjs && node scripts/verify-doc-budgets.mjs && node scripts/check-syntax.mjs && node scripts/third-party-license.mjs --check && node scripts/verify-coverage.mjs",
     "build:client": "node build/client.mjs",
     "dev": "node scripts/dev.mjs",
     "desktop": "node scripts/desktop.mjs",

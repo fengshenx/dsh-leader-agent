@@ -20,8 +20,8 @@ import { ProjectPanel } from './project-panel.js'
 import { mountGuideCard } from './guide-card.js'
 import { mountLeaderView } from './leader-view.js'
 import { watchLeaderSessions } from './leader-session-index.js'
-import { SLOT_LOCALE_NAMESPACE, en, zh } from './locales.js'
-import { callProjectRemote, mountProjectRemote, reportProjectRemoteError } from './project-remote.js'
+import { LOCALE_UI, SLOT_LOCALE_NAMESPACE } from './locales.js'
+import { callProjectRemote, mountProjectRemote } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
 import { SessionTabsAnchor } from './session-tabs.js'
@@ -50,7 +50,7 @@ export function apply(ctx) {
   // 槽位显示名字典：槽位名本身是 ASCII 机器标识，卡面按当前界面语言翻译。
   // 字典晚于 UI 挂载也能生效（locale 服务会推 revision），不必等挂载顺序。
   ctx.effect(
-    () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, { zh, en }),
+    () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, LOCALE_UI),
     'dsh-leader-agent 槽位显示名',
   )
   // 注册期文案（tab 标题、guide 说明、左栏 label）没有 `t` 形参，宿主只在
@@ -188,7 +188,6 @@ export function apply(ctx) {
   ctx.inject(['remote'], function mountProjectChannel(remoteCtx) {
     void mountProjectRemote(remoteCtx).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
-      reportProjectRemoteError(message)
       remoteCtx.logger?.warn?.(`dsh-leader-agent: 项目通道挂载失败：${message}`)
     })
     // leader 会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。

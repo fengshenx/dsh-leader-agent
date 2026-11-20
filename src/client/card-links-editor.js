@@ -17,6 +17,16 @@ import { normalizeLinkDrafts } from '../shared/card-links.js'
 import { pickInitialFocus } from './modal-focus.js'
 import { productIcon } from './icons.js'
 
+/** 共享校验错误码到界面文案 key；不拼字符串，门禁才能静态看到每个 key。 */
+const LINK_ERROR_KEYS = Object.freeze({
+  notArray: 'card.links.error.notArray',
+  entryNotObject: 'card.links.error.entryNotObject',
+  fieldNotString: 'card.links.error.fieldNotString',
+  labelMissingUrl: 'card.links.error.labelMissingUrl',
+  labelMissingPurpose: 'card.links.error.labelMissingPurpose',
+  invalidUrl: 'card.links.error.invalidUrl',
+})
+
 /** 新增草稿的本地 key 序号。只在编辑器内部当渲染 key，不落盘。 */
 let draftSequence = 0
 
@@ -153,7 +163,7 @@ export function CardLinksEditor({ card, onSave, onCancel, t }) {
     if (saving) return
     const normalized = normalizeLinkDrafts(drafts.map(({ key: _key, ...draft }) => draft))
     if (normalized.error !== undefined) {
-      setError(normalized.error)
+      setError(t(LINK_ERROR_KEYS[normalized.error.code], normalized.error.params))
       return
     }
     setError('')

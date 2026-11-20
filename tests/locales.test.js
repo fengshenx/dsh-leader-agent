@@ -7,7 +7,10 @@
 
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { en, zh } from '../src/client/locales.js'
+import { LOCALE_UI } from '../src/client/locales.js'
+
+const en = LOCALE_UI.en
+const zh = LOCALE_UI.zh
 
 /**
  * 取出模板里的 `{name}` 占位符。

@@ -7,7 +7,9 @@ import {
   detailSections,
   statusLabel,
 } from '../src/client/card-detail-view.js'
-import { zh } from '../src/client/locales.js'
+import { LOCALE_UI } from '../src/client/locales.js'
+
+const zh = LOCALE_UI.zh
 import { translator } from './helpers/locale.js'
 
 const t = translator('zh')

@@ -233,7 +233,10 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     async updateCardLinks(id, links) {
       if (typeof id !== 'string' || id === '') throw new Error('updateCardLinks: id 不能为空')
       const normalized = normalizeLinkDrafts(links)
-      if (normalized.error !== undefined) throw new Error(`updateCardLinks: ${normalized.error}`)
+      if (normalized.error !== undefined) {
+        const { code, params } = normalized.error
+        throw new Error(`updateCardLinks: ${code}${params === undefined ? '' : ` ${JSON.stringify(params)}`}`)
+      }
       // 缺 id 的条目在这里补：卡片链接的 id 是稳定标识，看板按它做 React key，
       // 缺了就只能退回「标签 + 序号」，标签一改就换节点。
       const prepared = normalized.links.map((link) => (

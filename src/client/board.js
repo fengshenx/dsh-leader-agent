@@ -50,6 +50,7 @@ import { ConfirmDialog } from './confirm-dialog.js'
 import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
+import { projectRemoteErrorText } from './project-remote.js'
 
 /**
  * 项目归属与 leader 身份的复核间隔。
@@ -524,7 +525,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           if (cancelled) return
           // 复核失败只在还没有摘要时才算错误；已有摘要就保留旧值——面板每 30 秒
           // 复核一次，一次 RPC 抖动不该把已显示的看板打回错误页。
-          setProjectError(t('board.error.project', { message: cause instanceof Error ? cause.message : String(cause) }))
+          setProjectError(projectRemoteErrorText(cause, t, 'board.error.project'))
         })
     }
     load()
@@ -570,7 +571,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
         .catch((cause) => {
           if (cancelled) return
           // 轮询失败保留已加载的卡片，只是把错误挂出来，不清空列表。
-          setCardsError(t('board.error.cards', { message: cause instanceof Error ? cause.message : String(cause) }))
+          setCardsError(projectRemoteErrorText(cause, t, 'board.error.cards'))
         })
     }
     refresh()
@@ -642,7 +643,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
       setDetail((current) => (current?.card?.id === pendingDelete.id ? null : current))
       setPendingDelete(null)
     } catch (error) {
-      setDeleteError(t('board.error.delete', { message: error instanceof Error ? error.message : String(error) }))
+      setDeleteError(projectRemoteErrorText(error, t, 'board.error.delete'))
     } finally {
       setDeleteBusy(false)
     }
