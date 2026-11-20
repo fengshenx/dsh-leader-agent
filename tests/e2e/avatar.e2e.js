@@ -82,8 +82,8 @@ function appendWorkerReport(home, session) {
   const compressed = readFileSync(path)
   const lines = zstdDecompressSync(compressed).toString('utf8').split('\n').filter(Boolean)
   const maxSeq = Math.max(...lines.map((line) => JSON.parse(line).seq ?? 0))
-  // 第三条故意写长：正文超过两行才会出现「展示更多」，折叠水位由气泡自己量，
-  // 没有观察器的引擎才在 layout effect 里同步读。
+  // 第三条故意写长：正文超过两行才会出现「展示更多」；折叠水位由气泡在 layout
+  // effect 里同步量一次，之后的宽度变化由 ResizeObserver 重算。
   const longSummary = '改动与验证读数：' + '单测 12 条、e2e 1 条、双向验证通过。'.repeat(8)
   const reports = [
     ['avatar-worker', 'child-1', '任务「avatar-worker」已结束。', '改完了'],
@@ -176,7 +176,7 @@ test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', 
   assert.equal((await maliciousSvg.innerHTML()).includes('onerror'), false, '恶意 name 不应进入 SVG')
   assert.equal((await maliciousSvg.getAttribute('data-shape')) !== null, true)
 
-  // 折叠水位是异步量出来的：长正文首帧就该是两行，并带「展示更多」。
+  // 折叠水位在首次测量时得出：长正文首帧就该是两行，并带「展示更多」。
   const longBubble = page.locator('.dsh-leader-agent-agent-bubble').nth(2)
   const longToggle = longBubble.locator('.dsh-leader-agent-agent-bubble__toggle')
   await waitForLocator(longToggle, { description: '长回报给「展示更多」', timeoutMs: 10_000 })
