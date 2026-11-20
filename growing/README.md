@@ -11,6 +11,15 @@
 | 2026-11-16 | 我同时开发 20 个需求的经验 | 竖屏 1080×1920 / 102.9s / 60fps + 9:16 & 3:4 封面 | [案例](2026-11-16-leader-agent-promo/README.md) |
 | 2026-11-19 | 项目介绍 HTML deck | 8 页 16:9 网页幻灯片 | [案例](2026-11-19-project-intro/README.md) |
 
+## 看数
+
+- **站点流量与事件**：Umami Cloud → Websites → `fengshenx.github.io`（无 cookie，只收线上域名）。
+- **SEO**：Search Console 前缀 `https://fengshenx.github.io/dsh-leader-agent/`；提交 sitemap `https://fengshenx.github.io/dsh-leader-agent/sitemap.xml`。
+- **仓库**：Insights → Traffic（views / clones / referrers，14 天滚动，过期不补）。
+- **安装**：`https://api.npmjs.org/downloads/point/last-week/dsh-leader-agent`；star 曲线用 star-history。
+
+漏斗：曝光（GSC）→ 访问（Umami）→ `outbound-github` / `copy-install` → star / clone → npm 周下载。口径与取舍见[笔记](../.agents/notes/implemented/process/2026-11-20-site-analytics.md)。
+
 ## 目录
 
 ```text
