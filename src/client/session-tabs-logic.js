@@ -368,3 +368,16 @@ export function tabAfterClose(view, closingId) {
   if (view.activeSessionId !== closingId) return null
   return view.leaderId
 }
+
+/**
+ * 宿主是否提供 contextMenus 服务。
+ *
+ * 缺失时标签栏不接管会话「更多」：不渲染按钮、也不打隐藏宿主原按钮的标记；
+ * 宿主自己的菜单入口继续可用。
+ *
+ * @param {object | null | undefined} contextMenus - `ctx.get('contextMenus')` 的结果
+ * @returns {boolean} 是否由标签栏接管
+ */
+export function hasSessionMenu(contextMenus) {
+  return contextMenus !== null && contextMenus !== undefined
+}

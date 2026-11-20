@@ -127,6 +127,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "Board für Aufgaben aus den Leader- und Worker-Sitzungen dieses Projekts",
     "tabs.close": "Tab schließen",
     "tabs.list": "Sitzungs-Tabs des Projekts",
+    "tabs.more": "Mehr",
   }),
   "en": Object.freeze({
     "board.delete.title": "Delete card",
@@ -254,6 +255,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "Delivery board for tasks in this project's Leader and worker sessions",
     "tabs.close": "Close tab",
     "tabs.list": "Project session tabs",
+    "tabs.more": "More",
   }),
   "es": Object.freeze({
     "board.delete.title": "Eliminar tarjeta",
@@ -381,6 +383,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "Tablero de entregas para las tareas de las sesiones del Leader y de los workers de este proyecto",
     "tabs.close": "Cerrar pestaña",
     "tabs.list": "Pestañas de sesiones del proyecto",
+    "tabs.more": "Más",
   }),
   "fr": Object.freeze({
     "board.delete.title": "Supprimer la carte",
@@ -508,6 +511,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "Tableau de livraison des tâches des sessions Leader et worker de ce projet",
     "tabs.close": "Fermer l'onglet",
     "tabs.list": "Onglets des sessions du projet",
+    "tabs.more": "Plus",
   }),
   "ja": Object.freeze({
     "board.delete.title": "カードを削除",
@@ -635,6 +639,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "このプロジェクトの Leader とワーカーのセッションにあるタスクのボード",
     "tabs.close": "タブを閉じる",
     "tabs.list": "プロジェクトのセッションタブ",
+    "tabs.more": "その他",
   }),
   "pt": Object.freeze({
     "board.delete.title": "Excluir cartão",
@@ -762,6 +767,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "Quadro de entregas das tarefas nas sessões do Leader e dos workers deste projeto",
     "tabs.close": "Fechar aba",
     "tabs.list": "Abas de sessões do projeto",
+    "tabs.more": "Mais",
   }),
   "ru": Object.freeze({
     "board.delete.title": "Удалить карточку",
@@ -889,6 +895,7 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "Доска результатов для задач в сеансах Leader и воркеров этого проекта",
     "tabs.close": "Закрыть вкладку",
     "tabs.list": "Вкладки сеансов проекта",
+    "tabs.more": "Ещё",
   }),
   "zh": Object.freeze({
     "board.delete.title": "删除卡片",
@@ -1016,5 +1023,6 @@ export const LOCALE_UI = Object.freeze({
     "tab.board.description": "项目 leader 与 worker 会话里的任务交付看板",
     "tabs.close": "关闭标签",
     "tabs.list": "项目会话标签",
+    "tabs.more": "更多",
   }),
 })

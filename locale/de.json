@@ -128,6 +128,7 @@
     "tab.board": "Board",
     "tab.board.description": "Board für Aufgaben aus den Leader- und Worker-Sitzungen dieses Projekts",
     "tabs.close": "Tab schließen",
-    "tabs.list": "Sitzungs-Tabs des Projekts"
+    "tabs.list": "Sitzungs-Tabs des Projekts",
+    "tabs.more": "Mehr"
   }
 }

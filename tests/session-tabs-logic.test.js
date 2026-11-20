@@ -4,6 +4,7 @@ import {
   addOpenTab,
   emptyTabStore,
   hasOpenTab,
+  hasSessionMenu,
   MAX_OPEN_TABS_PER_PROJECT,
   openTabIds,
   parseTabStore,
@@ -275,4 +276,10 @@ test('tabIdForKey：当前标签不在列表里时从第一个算，其它键不
   assert.equal(tabIdForKey(tabs, 'leader', 'Enter'), undefined)
   assert.equal(tabIdForKey([], 'leader', 'ArrowRight'), undefined)
   assert.equal(tabIdForKey(undefined, 'leader', 'ArrowRight'), undefined)
+})
+
+test('contextMenus 缺失时标签栏不接管会话更多', () => {
+  assert.equal(hasSessionMenu(null), false)
+  assert.equal(hasSessionMenu(undefined), false)
+  assert.equal(hasSessionMenu({ open() {}, close() {} }), true)
 })

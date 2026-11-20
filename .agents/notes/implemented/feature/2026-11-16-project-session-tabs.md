@@ -21,6 +21,10 @@ Status: implemented
 - **看板访问权有登记表兜底**：项目索引按 leader 指针或会话 cwd 反查，重启后 worker 会话可能还没 materialize、cwd 取不到；`resolveBoardAccess` 在索引查不到时用 `sessionsByProject` + 项目列表补出项目，避免把已登记的 worker 显示成「不属于任何项目」。
 - **切换不闪**：看板 tab 注册 `keepMounted`，已访问的 body 跟着会话保留；不可见时暂停卡片轮询，切回来立刻刷一次。标签栏补开看板时把 `projectId` 放进 navigation params，新 body 先用同一项目的内存快照起步（首帧直接画卡），再 revalidate。补开动作先放在 layout effect，失败再由 effect 兜底，尽量赶在 paint 前把 worker 的右栏从默认 guide 切到看板；目标右栏已经有看板 tab 时只切焦点，不再 `openTab`——`openTab` 对已存在的页走 reveal，宿主会让 pane 闪一下高亮，切一次闪一次。新 worker 第一次打开右栏仍可能有宿主自己的面板展开动画（不是数据骨架），第二次起复用保留的视图。
 - **挂载**：在 `shell.overlay` 注册不占布局的锚，effect 里把宿主节点插到 `[data-slot="main"]` 父列的第一个子节点，portal 渲染标签栏；栏可见时才给主面板与会话体加 flex 收缩标记，栏隐藏即摘掉，普通会话不受影响。主槽定位与这部分标记参考 `dsh-session-tabs` 0.1.6（MIT），未复制其产物。宿主换掉主面板时用 `MutationObserver` 插回；找不到主槽只隐藏标签栏，不影响会话。
+- **顶行承接会话控制**：「更多」与右栏开关原本在会话头标题行。标签栏占住顶部 38px 后，收起右栏时开关在标签栏下一行，展开后宿主的收起按钮却画在面板顶行——同一个开关上下跳。现在右栏开关用 `position: fixed` 钉到标签栏这一行，与面板顶条的收起按钮同坐标；「更多」由标签栏自己渲染，走宿主 `contextMenus` 的 `sessionHeader` 目标，标题行原按钮在栏出现时隐藏。会话根带 `overflow: hidden`，普通绝对定位会被裁掉，所以开关用 fixed 而不是跟着会话头做负偏移。
+- **切会话主动收菜单**：程序化 `openSession` 不经过标签点击的 pointerdown，宿主菜单不会自己关。`currentSessionId` 变化时若 `contextMenus.active` 仍是旧会话的 `sessionHeader`，主动 `menus.close()`；否则会出现按钮 `aria-expanded=false`、菜单却还挂在旧目标上的分裂状态。
+- **缺服务时降级**：rc.2 没有 `contextMenus` 时 `hasSessionMenu` 为 false——标签栏不渲染「更多」、不加 `data-dsh-leader-agent-tabs-menu`，宿主原按钮因此不被 CSS 隐藏；`hasSessionMenu` 纯函数有单测；当前宿主固定提供 `contextMenus`，组件分支（不渲染、不加 `data-dsh-leader-agent-tabs-menu`）未在 e2e 覆盖，条件判断处静态可读。
+- **宿主类名耦合**：隐藏宿主标题行原「更多」依赖 `headerMenuButton` 类名；宿主改这个 CSS module 类名时原按钮会继续显示，出现两个入口，标签栏这枚仍可用，记入 limitations。
 - **不 retain 后台会话**：标签只是 `openSession` 的快捷方式，保留策略仍归宿主。看板、设置这类全局面板打开时标签栏让位。
 - **许可与测试基线**：新增脚本生成 `THIRD_PARTY_LICENSE`（内联的 minidenticons、参考实现、构建/测试工具分节，参考实现的 MIT 全文随仓库保存），`npm run check` 校验不过期。e2e 夹具把 profile 钉死为 `web`：`dsh web` 不读 `DSH_PROFILE` 而派生路径会读，在 agent shell 里照抄 `desktop` 会让插件静默不挂。
 
@@ -34,6 +38,7 @@ Status: implemented
 - **标签拖拽重排 / 后台 retain**：拖拽要另做排序持久化与指针操作（方向键已能做顺序切换）；retain 会把标签栏变成第二套会话视图，改变宿主保留计数。两者都不做。
 - **把右栏钉在 leader**：宿主右栏的布局与 tab 都按会话存在各自的 store 里，公开面没有跨会话 pin；能做的只是把同一个看板 tab 开进目标会话的右栏。
 - **只 keepMounted 不缓存**：第一次切到新 worker 仍会先闪一次骨架；**只缓存不保留 body**：每次切回都会重挂并重新拉项目与卡片。两者一起用才覆盖首次与往返两种切换。
+- **把会话头尾部控件用绝对定位提到标签栏**：桌面坐标看起来对了，但会话根的 `overflow: hidden` 把按钮裁掉，点击落到标签栏；把整条栏插进会话根又会在切会话时随根重挂，键盘切换后的焦点抢不回来。
 
 ## Consequences
 
@@ -47,6 +52,7 @@ Status: implemented
 ## Testing
 
 - 纯逻辑由 `tests/session-tabs-logic.test.js` 钉住（解析容错、增删上限、归属与标签顺序、关闭回退）；组件归 `tests/e2e/session-tabs.e2e.js`，在真实宿主里验证项目标签、点 worker 出标签、状态灯、关标签后会话行仍在、重开回来、普通会话整条栏消失；右栏打开 leader 看板后切 worker，断言看板空态仍是项目看板（不是「不属于任何项目」）。
+- 同一场景断言右栏开关与「更多」的几何都落在 38px 标签栏内；展开后宿主 `[data-sidebar-right-toggle]` 的中心与展开前 `[data-sidebar-right-expand]` 的中心相差不超过 1px（开关不跳行），并且「更多」能打开宿主的 `[data-context-menu]`、`aria-expanded` 跟随 Escape / 点外部关闭。删除 class 的降级探针保留；新增程序化切会话后 `menuCount=0 + aria-expanded=false` 的断言、900px 窄窗下两按钮同排不重叠，以及 300px 两标签溢出时「更多」仍可开关。
 - 看板访问权的登记表兜底由 `tests/project-board-data.test.js` 覆盖（索引查不到、退役 leader、登记表无此会话、项目列表读不到）。
 - 切换前挂 `MutationObserver`，e2e 断言第一次切 worker、切回 leader、重开 worker 都没有重新插入 `.dsh-leader-agent-board-skeleton`；同一场景还覆盖方向键/Home/End 切换、右栏收起时不跟随、隐藏时浮层随会话切换卸载，以及普通会话不残留 flex 标记。浮层那条用程序化 click 走「切会话」状态路径：真实交互被遮罩挡指针，`session.new` 快捷键又被宿主的 `aria-modal` modal 规则挡下，触发路径本身不可达（见[已知限制](../../../../docs/limitations.md#客户端与宿主耦合)）。
 - 手动双向验证：往 `THIRD_PARTY_LICENSE` 追加一行后 `npm run licenses:check` 失败，重新生成后通过；标签 e2e 在带 `DSH_PROFILE=desktop` 的 shell 里跑通，证明夹具的 profile 钉死有效。
