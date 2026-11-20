@@ -27,9 +27,9 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 | 身份 | 判定 | 工具面 |
 |---|---|---|
-| leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` / `read_card` |
+| leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` / `read_card` |
 | worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题、分类、排序与槽位）与 `read_card` |
-| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card` / `read_card`；保留宿主 subagent 三件工具 |
+| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card` / `read_card`；保留宿主 subagent 四件工具 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
 
@@ -49,7 +49,7 @@ worker 长时间没有回报时另一条链路会说话：一个 60s 的**巡查
 
 工具面按角色在**会话创建时**裁剪，落在 `agent/created` 上：
 
-- leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；也没有 `read_card`：它的单卡读走 `list_cards`（传 `cardId`），不必有两个等价入口；
+- leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent`——前三件对 worker 无效；`wait_agent` 只会阻塞空等，而 worker 跑完会自己唤醒 leader。也没有 `read_card`：它的单卡读走 `list_cards`（传 `cardId`），不必有两个等价入口；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；普通会话也没有 `read_card`；
 - `create_card` 只给 leader：建卡与派工是 leader 的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、leader 建卡（普通会话为什么一并收掉见[已知限制](limitations.md#看板与卡片)）。
 - `read_card` 只给 worker：读本项目的任意卡（读放开、写收窄），不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩、注入失效或冷恢复后找回任务的入口；多张绑定直接报错列候选，不替调用方猜。规格按 2000 字符分页，`specOffset` 续读到全文；长规格本身就是压缩对象，一次灌进上下文会挤掉真正的工作内容。
