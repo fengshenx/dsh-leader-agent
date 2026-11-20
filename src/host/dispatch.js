@@ -49,11 +49,12 @@ import {
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
- * 未归档 worker 的数量上限。
+ * 每个项目未归档 worker 的数量上限。
  *
  * worker 是常驻根会话，不 dispose 就一直活着，所以名册按登记表算：它是续聊的
  * 唯一入口，也是「这个项目还留着多少条工」的唯一真源（宿主的 `sessions.list()`
- * 只反映进程内活着的会话，重启后归零）。到顶后先劝复用（`message_worker` 冷恢复），
+ * 只反映进程内活着的会话，重启后归零）。上限按项目计：同一台机器上并行几个项目
+ * 时，一个项目攒满不该把另一个项目也卡死。到顶后先劝复用（`message_worker` 冷恢复），
  * 不是硬性禁止。
  */
 const DEFAULT_ACTIVE_WORKER_LIMIT = 50
@@ -147,7 +148,7 @@ export function buildWorkerReport(outcome) {
  * @param {object} options.workerSessions - worker 会话管理器（见 `worker-sessions.js`）
  * @param {object} options.leaderIndex - 项目注册表（提供 `awaitIndex` 与 `isLeaderSession`）
  * @param {number} [options.autoResumeLimit] - 连续自动续行上限
- * @param {number} [options.activeWorkerLimit] - 未归档 worker 数量上限
+ * @param {number} [options.activeWorkerLimit] - 每个项目未归档 worker 数量上限
  * @param {(parentSessionId: string) => string | undefined} [options.resolveWorkerCwd] - 取 worker 的工作目录
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
@@ -511,14 +512,41 @@ export function createDispatcher({
   }
 
   /**
-   * 未归档 worker 的名册概况。
+   * 本项目 leader 与退役 leader 的会话 id 集合。
    *
+   * worker 只由 leader 派（派工前过 `assertLeader`），登记表记的是父会话 id；换
+   * leader 时 `reassignParent` 把原班 worker 改绑到新会话，旧会话记进项目记录的
+   * `retiredLeaderSessionIds`。所以「父会话 id 在本集合里」就是 worker 的项目归属，
+   * 不必逐条反查会话库。
+   *
+   * 拿不到项目时返回 undefined：没有 `resolveProject`（卡片能力缺失的组合）或
+   * 项目索引里还查不出这条会话。调用方退回全局口径，与改动前一致。
+   *
+   * @param {string} sessionId - 调用方会话 id
+   * @returns {Promise<Set<string> | undefined>} leader 会话 id 集合
+   */
+  async function leaderSessionsOfProject(sessionId) {
+    if (typeof resolveProject !== 'function') return undefined
+    const project = await resolveProject(sessionId)
+    if (project?.id === undefined) return undefined
+    const ids = [project.leaderSessionId, ...(project.retiredLeaderSessionIds ?? [])]
+      .filter((id) => typeof id === 'string' && id !== '')
+    // 项目记录里一条 leader 指针都没有：分不出归属，退回全局口径比「一条都不算」安全。
+    return ids.length === 0 ? undefined : new Set(ids)
+  }
+
+  /**
+   * 未归档 worker 的名册概况，只算调用方会话所属项目。
+   *
+   * @param {string} scopeSessionId - 调用方会话 id（派工的 leader）
    * @returns {Promise<{ total: number, idle: object[], bound: object[], newest: object | undefined } | null>} 名册；拿不到归档集合时 null（此时不限数量）
    */
-  async function describeRoster() {
+  async function describeRoster(scopeSessionId) {
     if (typeof archivedSessionIds !== 'function') return null
     const archived = new Set(archivedSessionIds())
-    const active = (await workers.list()).filter((item) => !archived.has(item.childId))
+    const leaders = await leaderSessionsOfProject(scopeSessionId)
+    const active = (await workers.list()).filter((item) => !archived.has(item.childId)
+      && (leaders === undefined || leaders.has(item.parentSessionId)))
     // 绑定一次读盘取全量再分组：逐 worker 读 `cards.json` 会让一次派工付 O(N × 文件体积)。
     // 两个提供方都没有时不做分类，与投递门禁的降级口径一致。
     let bindingsFor
@@ -830,11 +858,11 @@ export function createDispatcher({
     // 绑卡前先校验归属与状态：跨项目写会污染对方的看板与上下文，已关闭的卡绑上去
     // 会绕过投递门禁。校验放在建会话之前，被拒时磁盘上连会话都不会留下。
     if (cardId !== undefined) await assertCardAssignable(cardId, parent)
-    // 名册上限：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
+    // 名册上限按项目算：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
     // 一条干净上下文时才值得。`force` 非空是明确的逃逸声明，理由随工具调用进
     // 会话历史，可审计。
     if (typeof force !== 'string' || force.trim() === '') {
-      const roster = await describeRoster()
+      const roster = await describeRoster(parent.id)
       if (roster !== null && roster.total >= activeWorkerLimit) {
         const candidates = roster.idle.slice(0, 10)
         const bound = roster.bound.slice(0, 10)
@@ -844,7 +872,7 @@ export function createDispatcher({
         const candidateIds = new Set(candidates.map((item) => item.childId))
         const recentOutside = newest !== undefined && !candidateIds.has(newest.childId)
         const lines = [
-          `spawn_worker: 未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
+          `spawn_worker: 本项目未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
           candidates.length === 0
             ? '当前没有可复用的 worker（都在跑，或都挂着未完成的卡）：等它们结算，或关闭手上的卡释放执行者。'
             : `推荐复用（最久未用优先；当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${

@@ -2201,6 +2201,112 @@ test('名册已归档的记录不占名额', async () => {
   assert.equal(fixture.spawned.length, 1)
 })
 
+test('名册上限按项目算：别的项目攒满不占本项目名额', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 全局名册已经到上限，但都属于另一个项目；本项目一条工都没有。
+  await fixture.workers.register({ childId: 'child-b-1', parentSessionId: 'leader-b', name: 'B 工 1' })
+  await fixture.workers.register({ childId: 'child-b-2', parentSessionId: 'leader-b', name: 'B 工 2' })
+  const projects = new Map([
+    ['leader-a', { id: 'project-a', leaderSessionId: 'leader-a', retiredLeaderSessionIds: [] }],
+    ['leader-b', { id: 'project-b', leaderSessionId: 'leader-b', retiredLeaderSessionIds: [] }],
+  ])
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 2,
+    archivedSessionIds: () => [],
+    resolveProject: async (sessionId) => projects.get(sessionId),
+    getCard: async () => undefined,
+  })
+
+  const record = await dispatcher.dispatch({
+    parent: createParent('leader-a', fixture.delivered),
+    name: '新工',
+    signal: new AbortController().signal,
+  })
+  assert.equal(record.name, '新工')
+  assert.equal(fixture.spawned.length, 1)
+})
+
+test('名册到顶的提示只列本项目的候选', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-a', parentSessionId: 'leader-a', name: 'A 工' })
+  await fixture.workers.register({ childId: 'child-b', parentSessionId: 'leader-b', name: 'B 工' })
+  const projects = new Map([
+    ['leader-a', { id: 'project-a', leaderSessionId: 'leader-a', retiredLeaderSessionIds: [] }],
+    ['leader-b', { id: 'project-b', leaderSessionId: 'leader-b', retiredLeaderSessionIds: [] }],
+  ])
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 1,
+    archivedSessionIds: () => [],
+    resolveProject: async (sessionId) => projects.get(sessionId),
+    getCard: async () => undefined,
+  })
+
+  await assert.rejects(
+    () => dispatcher.dispatch({
+      parent: createParent('leader-a', fixture.delivered),
+      name: '新工',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assert.match(error.message, /本项目未归档的 worker 已达上限 1/)
+      // 另一个项目的 worker 既不能占名额，也不能出现在可复用候选里。
+      assert.match(error.message, /child-a A 工/)
+      assert.doesNotMatch(error.message, /child-b/)
+      return true
+    },
+  )
+  assert.equal(fixture.spawned.length, 0)
+})
+
+test('退役 leader 派的 worker 仍算本项目名额，别的项目不占', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 换 leader 后 worker 会改绑到新会话；即使改绑没跑完（父会话还是退役那条），
+  // 它仍属于这个项目、仍占名额。
+  await fixture.workers.register({ childId: 'child-old', parentSessionId: 'leader-old', name: '旧工' })
+  // 同一条名册里再放一个别的项目的 worker：它不能占本项目名额，也不能进候选。
+  await fixture.workers.register({ childId: 'child-b', parentSessionId: 'leader-b', name: 'B 工' })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 1,
+    archivedSessionIds: () => [],
+    resolveProject: async () => ({
+      id: 'project-a',
+      leaderSessionId: 'leader-a',
+      retiredLeaderSessionIds: ['leader-old'],
+    }),
+    getCard: async () => undefined,
+  })
+
+  await assert.rejects(
+    () => dispatcher.dispatch({
+      parent: createParent('leader-a', fixture.delivered),
+      name: '新工',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assert.match(error.message, /已达上限 1/)
+      assert.match(error.message, /child-old 旧工/)
+      // 去掉项目过滤后，child-b 会同时进计数与候选，这条断言就会红。
+      assert.doesNotMatch(error.message, /child-b/)
+      return true
+    },
+  )
+})
+
 test('force 非空时越过名册上限', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')

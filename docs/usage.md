@@ -22,7 +22,7 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 
 ### worker 名册上限与复用
 
-未归档 worker 上限 50。到顶时 `spawn_worker` 不新建，而是按 `lastUsedAt` 升序列出空闲 worker：最久未用的排前面，每行带 `lastUsedAt`；挂着未完成卡的单列为不可接；最近新建的那条标「保留上下文」。`lastUsedAt` 在 `message_worker` 成功投递和回合结算时更新；旧登记表缺字段时回退 `registeredAt`。`registeredAt` 保留用于 500 条登记文件的容量截断，最近新建的标注也按它、同刻再作稳定兜底。到顶不自动归档，腾不腾名额由人决定；确实要新建传 `force`。
+每个项目未归档 worker 上限 50（按项目算，别的项目攒满不占本项目的名额）。到顶时 `spawn_worker` 不新建，而是按 `lastUsedAt` 升序列出本项目的空闲 worker：最久未用的排前面，每行带 `lastUsedAt`；挂着未完成卡的单列为不可接；最近新建的那条标「保留上下文」。`lastUsedAt` 在 `message_worker` 成功投递和回合结算时更新；旧登记表缺字段时回退 `registeredAt`。`registeredAt` 保留用于 500 条登记文件的容量截断，最近新建的标注也按它、同刻再作稳定兜底。到顶不自动归档，腾不腾名额由人决定；确实要新建传 `force`。
 
 ## 回看 worker 的会话
 

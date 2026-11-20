@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **部分已被 [worker 名册上限按项目计](../bug-fix/2026-11-21-per-project-worker-cap.md) 取代**：50 条上限现在是每个项目各算各的，不再把全局登记表算进同一个 `total`；本文的 LRU 排序、`lastUsedAt`、到顶提示的三类候选与 `registeredAt` 的容量语义仍然有效。
+
 ## Problem
 
 同一天两次出现同一种丢记录：审查交付后，leader 为了复用 worker 手动清空了卡上的 review 槽位，卡上再也找不到「谁审过」；把槽位补绑回旧会话又制造了假的「审核中」。靠 `LEADER.md` 约定先挂 `links` 没有拦住，约束必须内置。同一时期 `spawn_worker` 到顶只按 `registeredAt` 推荐最新创建的 worker，与「越久没用越该复用」相反。
