@@ -155,12 +155,49 @@ test('没有可改绑的记录时不写盘', async () => {
   assert.equal((await createWorkerRegistry({ home }).get('child-1')).parentSessionId, 'leader-b')
 })
 
-test('记录回报时刻：只动 lastReportAt，不动登记顺序与归属', async () => {
+test('记录成功投递只更新 lastUsedAt，不动登记顺序与父会话归属', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  const registered = await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
+  const updated = await registry.markUsed('child-1', 1_700_000_000_000)
+  assert.equal(updated.lastUsedAt, 1_700_000_000_000)
+  assert.equal(updated.registeredAt, registered.registeredAt)
+  assert.equal(updated.parentSessionId, 'parent-1')
+  assert.equal(updated.lastReportAt, undefined)
+  // 跨实例读得到：投递后进程重启，LRU 顺序不能退回登记时间。
+  const reloaded = await createWorkerRegistry({ home }).get('child-1')
+  assert.equal(reloaded.lastUsedAt, 1_700_000_000_000)
+  assert.equal(await registry.markUsed('missing', 1), undefined)
+})
+
+test('旧登记表缺 lastUsedAt 时按 registeredAt 兜底', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const directory = `${home}/dsh-leader-agent`
+  const { mkdir, writeFile } = await import('node:fs/promises')
+  await mkdir(directory, { recursive: true })
+  await writeFile(`${directory}/workers.json`, JSON.stringify({
+    version: 1,
+    workers: [
+      { childId: 'old-1', parentSessionId: 'parent-1', name: '旧一', registeredAt: 1_700_000_000_000 },
+      { childId: 'old-2', parentSessionId: 'parent-1', name: '旧二', registeredAt: 1_700_000_001_000 },
+    ],
+  }), 'utf8')
+  const registry = createWorkerRegistry({ home })
+  assert.equal((await registry.get('old-1')).lastUsedAt, 1_700_000_000_000)
+  assert.deepEqual((await registry.list()).map((item) => item.lastUsedAt), [1_700_000_001_000, 1_700_000_000_000])
+  // 下一次真实写盘把兜底值落盘，但仍不动 registeredAt。
+  const used = await registry.markUsed('old-1', 1_700_000_002_000)
+  assert.equal(used.registeredAt, 1_700_000_000_000)
+  assert.equal((await createWorkerRegistry({ home }).get('old-1')).lastUsedAt, 1_700_000_002_000)
+})
+
+test('记录回报时刻：同时更新 lastUsedAt，不动登记顺序与归属', async () => {
   const home = await makeTempDir('dsh-leader-agent-registry-')
   const registry = createWorkerRegistry({ home })
   const registered = await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
   const updated = await registry.markReported('child-1', 1_700_000_000_000)
   assert.equal(updated.lastReportAt, 1_700_000_000_000)
+  assert.equal(updated.lastUsedAt, 1_700_000_000_000)
   assert.equal(updated.registeredAt, registered.registeredAt)
   assert.equal(updated.parentSessionId, 'parent-1')
   assert.equal(updated.name, '工')

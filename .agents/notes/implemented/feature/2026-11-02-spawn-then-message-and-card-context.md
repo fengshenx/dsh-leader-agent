@@ -17,7 +17,7 @@ Status: implemented
 - **卡片事实走运行时上下文**：注册 `systemPrompt.context` provider（排在角色槽位之后），渲染编号、标题、状态、槽位、revision、spec 全文与链接，不拼进任务消息（那会冻结成派工那一刻的快照）。宿主每轮求值、文本变化才追加一条 user 消息，所以没变的轮次不重复注入。
 - **索引同一条重建路径**：`cardIndex` 与 `slotIndex` 在建卡、改卡、摘绑定、启动 `loadIndexes` 时一起维护，provider 才能在同步的提示词组装里读到。槽位索引一个会话一个槽位、后绑的卡胜出；卡片事实索引保留**全部**绑定，多卡照实渲染并提示先确认服务哪一张。
 - **`addLinks` 增量合并**：`update_card` 新增 `addLinks`，在写链内按 id 合并（无 id 按 `label + url` 去重），与整体替换的 `links` 互斥。不放开 `list_cards`（会扩大读取面与工具语义），增量合并把冲突消掉，并发追加由写链串行化。两条路径共用链接校验与归一化（`normalizeHttpUrl`、按 WHATWG URL 落盘规范形式），增量路径不补 id，非法 URL 报同样的「第几条、哪个标签」错误。
-- **挂卡门禁**：挂着 `active` 卡的 worker 只放行同卡续跑，别的 `cardId`（或干脆不带）都拒——一个会话同时服务两张卡会让产物落错卡。名册到顶时把这类 worker 从 `idle` 放进 `bound`，报错分两段列「可复用的候选」与「先关闭再复用」清单；候选必须过滤，否则提示与实际能力自相矛盾。
+- **挂卡门禁**：挂着 `active` 卡的 worker 只放行同卡续跑，别的 `cardId`（或干脆不带）都拒——一个会话同时服务两张卡会让产物落错卡。名册到顶时把这类 worker 从 `idle` 放进 `bound`，报错把「推荐复用（最久未用优先）」「挂着未完成卡」「最近新建（保留上下文）」分开列；候选必须过滤，否则提示与实际能力自相矛盾。名册 LRU 口径见[按最近使用复用](2026-11-20-slot-release-evidence-and-worker-lru.md)。
 - **名册一次读盘**：`describeRoster` 用 `cardBindingsBySession` 取全量绑定再分组，不逐 worker 读 `cards.json`（O(N × 文件体积)），也不查启动时可能未就绪的同步 `cardIndex`——查不到绑定会让门禁 fail-open。
 - **同时挂多张 `active` 卡直接拒绝**：那种会话在并行服务多条工作线，产物无从归属，而角色注入只按一张卡算；该状态只有整卡替换 `slots` 才造得出来，正常派工与关闭释放都不会。
 - **关闭卡片自动释放执行者**：状态变 `done`/`archived` 时 store 把 `slots` 一并清空，绑定、槽位索引、卡片事实一起失效；`update_card` 拒绝「关闭卡片 + 同次绑定槽位」而非静默忽略；只在 `slots` 非空时才写空对象（否则 `isSameContent` 判变化、无谓 bump `expectedRevision`）；重新打开不恢复绑定——那是新的指派。

@@ -561,13 +561,21 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
       required: ['id'],
     },
     output: {
-      schema: { type: 'object', properties: { card: cardSchema() }, required: ['card'] },
+      schema: {
+        type: 'object',
+        properties: {
+          card: cardSchema(),
+          warnings: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['card'],
+      },
       render(args, value) {
-        const card = /** @type {{ card: { number: number, title: string, status: string } }} */ (value).card
+        const { card, warnings = [] } = /** @type {{ card: { number: number, title: string, status: string }, warnings?: string[] }} */ (value)
+        const text = `已更新卡片 #${card.number}「${card.title}」，状态 ${card.status}。`
         return [
           {
             type: 'text',
-            text: `已更新卡片 #${card.number}「${card.title}」，状态 ${card.status}。`,
+            text: warnings.length === 0 ? text : `${text}\n提醒：${warnings.join('\n')}`,
           },
         ]
       },
@@ -642,7 +650,11 @@ export function createUpdateCardTool({ store, resolveProject, canWrite, isWorker
         ...slots === undefined ? {} : { slots },
         ...sortOrder === undefined ? {} : { sortOrder },
       })
-      return { card }
+      const closing = existing?.status === 'active' && input.status === 'done'
+      const warnings = closing && (card.links?.length ?? 0) === 0
+        ? ['这张卡没有交付物链接，关闭后只剩标题。']
+        : []
+      return warnings.length === 0 ? { card } : { card, warnings }
     },
   }
 }

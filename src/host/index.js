@@ -344,6 +344,14 @@ export function apply(ctx) {
   ctx.on('agent/disposed', ({ agent }) => {
     dispatcher.markDisposed(agent.id)
     workerSessions.forget(agent.id)
+    // 宿主自己销毁会话（会话管理删除、外部归档）时，卡片上的槽位就是死引用；
+    // 浏览器归档路径已经调过 detachSession，这里可能重复触发，而它是幂等的。
+    // 插件卸载时的 disposeAll 也会发这个事件——那不是宿主删会话，不能清卡。
+    if (!disposed) {
+      void cards.detachSession(agent.id).catch((error) => {
+        logger(`dsh-leader-agent: 会话 ${agent.id} 销毁后摘卡片槽位失败：${error instanceof Error ? error.message : String(error)}`)
+      })
+    }
   })
 
   // 外部输入抵达即重置该会话的自动续行计数——人工介入后护栏应重新开始计数。
