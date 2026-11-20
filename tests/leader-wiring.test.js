@@ -11,6 +11,22 @@ import {
 import { PROJECT_REMOTE_SERVICE_KEY } from '../src/shared/projects.js'
 
 /**
+ * 等异步副作用落地；销毁事件是 fire-and-forget，测试要等卡片写入完成。
+ *
+ * @param {() => Promise<boolean> | boolean} predicate - 条件
+ * @param {number} [timeoutMs] - 超时
+ * @returns {Promise<boolean>} 是否等到
+ */
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await predicate()) return true
+    await new Promise((resolve) => { setTimeout(resolve, 10) })
+  }
+  return await predicate()
+}
+
+/**
  * 建一个假的服务上下文，只给装配期真正会碰到的宿主 API 面。
  *
  * `get()` 只提供 `sessions`（`agent/created` 之外唯一被读路径用到的服务）：`cwd`
@@ -301,6 +317,67 @@ test('装配层：真实换 leader 之后，退役会话写卡被拒、新会话
       { agent: { id: next }, signal: undefined },
     )
     assert.equal(after.card.title, '新 leader 改的标题')
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：宿主销毁会话时摘掉卡片槽位，归档与销毁重复触发幂等', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const previousHome = process.env.DSH_HOME
+  const { ctx, holder } = createFakeHost(new Map())
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      leaderSessionId: 'session-leader',
+    }])
+    apply(ctx)
+    const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
+    assert.equal(await service.awaitIndex(), true)
+    const createCard = holder.tools.get('create_card')
+    const listCards = holder.tools.get('list_cards')
+    const disposed = holder.handlers.get('agent/disposed')
+    const exec = { agent: { id: 'session-leader' }, signal: undefined }
+    const read = async (cardId) => (await listCards.execute({ cardId }, exec)).cards[0]
+    const remote = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY)
+
+    const disposedCard = await createCard.execute(
+      { title: '销毁清理', slots: { review: { sessionId: 'worker-disposed' } } },
+      exec,
+    )
+    disposed({ agent: { id: 'worker-disposed' } })
+    assert.equal(await waitFor(async () => {
+      const card = await read(disposedCard.card.id)
+      return card.slots.review === undefined
+    }), true)
+    const afterDispose = await read(disposedCard.card.id)
+    assert.equal(afterDispose.status, 'active')
+    assert.deepEqual(afterDispose.slots, {})
+
+    // 浏览器归档路径先摘一次，宿主随后再发 disposed：两次都应是空操作。
+    const archivedCard = await createCard.execute(
+      { title: '归档后重复触发', slots: { review: { sessionId: 'worker-archived' } } },
+      exec,
+    )
+    const archived = await remote.detachSession('worker-archived')
+    assert.equal(archived.slots, 1)
+    const archivedAgain = await remote.detachSession('worker-archived')
+    assert.equal(archivedAgain.slots, 0)
+    disposed({ agent: { id: 'worker-archived' } })
+    disposed({ agent: { id: 'worker-archived' } })
+    assert.equal(await waitFor(async () => {
+      const card = await read(archivedCard.card.id)
+      return card.slots.review === undefined
+    }), true)
+    assert.deepEqual((await read(archivedCard.card.id)).slots, {})
   } finally {
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME

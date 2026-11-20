@@ -2009,19 +2009,20 @@ test('名册到顶时 idle 按 lastUsedAt 升序，候选最久未用优先', as
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
-  // registeredAt 与 lastUsedAt 刻意反向：删掉 lastUsedAt 比较后，单靠
-  // registeredAt 排序会得到 new→mid→old，不能碰巧仍是旧→中→新。
+  // 三条同毫秒登记，只有 lastUsedAt 不同：删掉 lastUsedAt 比较后按 id 兜底
+  // 会得到 mid→new→old，不能碰巧仍是旧→中→新。
+  const registeredAt = 1_700_000_000_000
   await fixture.workers.register({
     childId: 'child-lru-old', parentSessionId: 'parent-1', name: '最久未用',
-    registeredAt: 1_700_000_002_000, lastUsedAt: 1_700_000_000_000,
+    registeredAt, lastUsedAt: 1_700_000_000_000,
   })
   await fixture.workers.register({
     childId: 'child-lru-mid', parentSessionId: 'parent-1', name: '中间使用',
-    registeredAt: 1_700_000_001_000, lastUsedAt: 1_700_000_001_000,
+    registeredAt, lastUsedAt: 1_700_000_001_000,
   })
   await fixture.workers.register({
     childId: 'child-lru-new', parentSessionId: 'parent-1', name: '最近新建',
-    registeredAt: 1_700_000_000_000, lastUsedAt: 1_700_000_002_000,
+    registeredAt, lastUsedAt: 1_700_000_002_000,
   })
   const dispatcher = makeDispatcher({
     ctx: fixture.ctx,
