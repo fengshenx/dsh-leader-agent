@@ -116,9 +116,9 @@ test('hasOpenTab 与 openTabIds 同口径', () => {
   assert.equal(hasOpenTab(store, 'p1', 'w2'), false)
 })
 
-test('workerTabState：运行中盖过完成未查看', () => {
-  assert.equal(workerTabState({ running: true, completed: true }), 'ongoing')
-  assert.equal(workerTabState({ running: false, completed: true }), 'done')
+test('workerTabState：运行中盖过完成未读', () => {
+  assert.equal(workerTabState({ running: true, completed: true }), 'running')
+  assert.equal(workerTabState({ running: false, completed: true }), 'unread')
   assert.equal(workerTabState({ running: false, completed: false }), 'idle')
   assert.equal(workerTabState(undefined), 'idle')
 })
@@ -160,7 +160,7 @@ test('resolveTabView：leader 在项目里，标签按登记表顺序只列已�
   assert.deepEqual(view.tabs[1], { id: 'w2', kind: 'worker', label: '后端', state: 'idle' })
 })
 
-test('resolveTabView：打开 worker 后它成为当前标签，状态灯跟会话行', () => {
+test('resolveTabView：打开 worker 后它成为当前标签，信号灯跟会话行', () => {
   const store = { version: 1, projects: { p1: ['w1'] } }
   const rows = {
     w1: row({ displayTitle: '前端', running: true }),
@@ -170,9 +170,9 @@ test('resolveTabView：打开 worker 后它成为当前标签，状态灯跟会�
   assert.equal(view.isWorkerCurrent, true)
   assert.equal(view.isLeaderCurrent, false)
   assert.equal(view.activeSessionId, 'w1')
-  assert.equal(view.tabs[1].state, 'ongoing')
+  assert.equal(view.tabs[1].state, 'running')
   const done = resolveTabView(input({ store: { version: 1, projects: { p1: ['w2'] } }, rows, currentSessionId: 'w2' }))
-  assert.equal(done.tabs[1].state, 'done')
+  assert.equal(done.tabs[1].state, 'unread')
 })
 
 test('resolveTabView：当前 worker 还没记进标签库时先不出标签', () => {

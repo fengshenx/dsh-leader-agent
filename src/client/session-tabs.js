@@ -23,7 +23,6 @@
 
 import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
 import { currentSessionIdOf } from './project-panel-logic.js'
 import { onProjectsChanged } from './project-changes.js'
@@ -51,6 +50,17 @@ const COLUMN_ATTR = 'data-dsh-leader-agent-tabs-column'
 
 /** 会话体标记：宿主的会话根节点带高度约束，不覆盖会在标签栏下方溢出。 */
 const MAIN_ATTR = 'data-dsh-leader-agent-tabs-main'
+
+/**
+ * 信号灯档位到字典键。
+ *
+ * 与看板卡面共用同一组文案：两处说的是同一档状态，不再各养一套。
+ */
+const SIGNAL_LABEL_KEYS = {
+  running: 'board.state.running',
+  unread: 'board.state.unread',
+  idle: 'board.state.idle',
+}
 
 // client 侧的样式写在模板字符串里，不能出现反引号。
 const STYLE_TEXT = `
@@ -134,6 +144,37 @@ const STYLE_TEXT = `
   width: 12px;
   height: 12px;
 }
+/* 标签要的是信号灯，不是加载态：宿主的 StateDot 运行中画转圈 spinner，这里改成
+   与看板卡面同一套静态点——运行中琥珀色呼吸、完成未读蓝、空闲弱化灰。形状与
+   色相都跟卡面对应，扫描标签时不会把「正在跑」读成「正在加载」。 */
+.dsh-leader-agent-tab-signal {
+  display: inline-block;
+  box-sizing: border-box;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  corner-shape: round;
+  --dsh-leader-agent-tab-signal-tone: var(--dsw-alias-label-tertiary);
+  background: var(--dsh-leader-agent-tab-signal-tone);
+  opacity: 0.4;
+}
+.dsh-leader-agent-tab-signal-running {
+  --dsh-leader-agent-tab-signal-tone: var(--dsw-alias-state-warn-primary);
+  opacity: 1;
+  animation: dsh-leader-agent-tab-signal-pulse 1.6s ease-in-out infinite;
+}
+.dsh-leader-agent-tab-signal-unread {
+  --dsh-leader-agent-tab-signal-tone: var(--dsw-static-blue-500);
+  opacity: 1;
+}
+.dsh-leader-agent-tab-signal-idle {
+  --dsh-leader-agent-tab-signal-tone: var(--dsw-alias-label-tertiary);
+  opacity: 0.55;
+}
+@keyframes dsh-leader-agent-tab-signal-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
 .dsh-leader-agent-tab-label {
   min-width: 0;
   overflow: hidden;
@@ -170,6 +211,7 @@ const STYLE_TEXT = `
 }
 @media (prefers-reduced-motion: reduce) {
   .dsh-leader-agent-tab-close { transition: none; }
+  .dsh-leader-agent-tab-signal-running { animation: none; }
 }
 `
 
@@ -594,9 +636,12 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
           : createElement(
               'span',
               { className: 'dsh-leader-agent-tab-dot' },
-              createElement(StateDot, {
-                state: tab.state,
-                size: tab.state === 'ongoing' ? 12 : 8,
+              createElement('span', {
+                className: `dsh-leader-agent-tab-signal dsh-leader-agent-tab-signal-${tab.state}`,
+                'data-signal': tab.state,
+                role: 'img',
+                'aria-label': t(SIGNAL_LABEL_KEYS[tab.state]),
+                title: t(SIGNAL_LABEL_KEYS[tab.state]),
               }),
             ),
         createElement('span', { className: 'dsh-leader-agent-tab-label' }, tab.label),

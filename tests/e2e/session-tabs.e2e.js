@@ -308,9 +308,12 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   const tabLabel = (await w1Tab.locator('.dsh-leader-agent-tab-label').innerText()).trim()
   assert.ok(tabLabel.length > 0, 'worker 标签不能是空文字')
   assert.ok(rowTitle.startsWith(tabLabel) || tabLabel.startsWith(rowTitle), `标签文字应跟着会话标题：tab=${tabLabel} row=${rowTitle}`)
-  const dot = w1Tab.locator('.dsh-leader-agent-tab-dot [data-state]')
-  assert.equal(await dot.count(), 1, 'worker 标签应有一个状态灯')
-  assert.ok(['ongoing', 'done', 'idle'].includes(await dot.getAttribute('data-state')), '状态灯档位应在宿主 StateDot 的三档里')
+  const dot = w1Tab.locator('.dsh-leader-agent-tab-dot [data-signal]')
+  assert.equal(await dot.count(), 1, 'worker 标签应有一个信号灯')
+  const signal = await dot.getAttribute('data-signal')
+  assert.ok(['running', 'unread', 'idle'].includes(signal), `信号灯档位应是运行中/完成未读/空闲，实际 ${signal}`)
+  assert.ok((await dot.getAttribute('class')).includes(`dsh-leader-agent-tab-signal-${signal}`), '信号灯 class 要带上档位')
+  assert.equal(await w1Tab.locator('.dsh-leader-agent-tab-dot [data-state]').count(), 0, '标签不应再用宿主 StateDot 的转圈 spinner')
   await page.screenshot({ path: join(artifacts, 'worker-tab.png') })
 
   // 点项目标签回到 leader：保留的看板 body 不应重挂骨架。
