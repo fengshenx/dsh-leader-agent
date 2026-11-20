@@ -2268,13 +2268,15 @@ test('名册到顶的提示只列本项目的候选', async () => {
   assert.equal(fixture.spawned.length, 0)
 })
 
-test('退役 leader 派的 worker 仍算本项目名额', async () => {
+test('退役 leader 派的 worker 仍算本项目名额，别的项目不占', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
   // 换 leader 后 worker 会改绑到新会话；即使改绑没跑完（父会话还是退役那条），
   // 它仍属于这个项目、仍占名额。
   await fixture.workers.register({ childId: 'child-old', parentSessionId: 'leader-old', name: '旧工' })
+  // 同一条名册里再放一个别的项目的 worker：它不能占本项目名额，也不能进候选。
+  await fixture.workers.register({ childId: 'child-b', parentSessionId: 'leader-b', name: 'B 工' })
   const dispatcher = makeDispatcher({
     ctx: fixture.ctx,
     store,
@@ -2298,6 +2300,8 @@ test('退役 leader 派的 worker 仍算本项目名额', async () => {
     (error) => {
       assert.match(error.message, /已达上限 1/)
       assert.match(error.message, /child-old 旧工/)
+      // 去掉项目过滤后，child-b 会同时进计数与候选，这条断言就会红。
+      assert.doesNotMatch(error.message, /child-b/)
       return true
     },
   )
