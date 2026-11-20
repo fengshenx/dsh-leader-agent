@@ -1,8 +1,8 @@
 /**
- * 界面字典的完整性：中英键集一致、占位符一致、没有空文案。
+ * 界面字典的完整性：宿主 8 种语言的键集一致、占位符一致、没有空文案。
  *
- * 文案散落在各个组件里时，漏翻一个键只会让英文界面突然冒出一句中文；这里把
- * 「字典本身对得上」变成门禁，组件只负责在正确的时机调用 `t`。
+ * 文案散落在各个组件里时，漏翻一个键只会让对应语言的界面突然冒出一句英文；
+ * 这里把「字典本身对得上」变成门禁，组件只负责在正确的时机调用 `t`。
  */
 
 import assert from 'node:assert/strict'
@@ -12,6 +12,8 @@ import { translator } from './helpers/locale.js'
 
 const en = LOCALE_UI.en
 const zh = LOCALE_UI.zh
+/** 宿主当前注册的语言；插件随包提供同一组字典。 */
+const HOST_CODES = ['zh', 'en', 'ja', 'es', 'fr', 'de', 'ru', 'pt']
 
 /**
  * 取出模板里的 `{name}` 占位符。
@@ -22,19 +24,27 @@ function placeholdersOf(template) {
   return [...template.matchAll(/\{(\w+)\}/g)].map((match) => match[1]).sort()
 }
 
-test('中英字典键集一致', () => {
-  assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort())
+test('随包字典覆盖宿主注册的 8 种语言', () => {
+  assert.deepEqual(Object.keys(LOCALE_UI).sort(), [...HOST_CODES].sort())
 })
 
-test('每条文案都非空，且两种语言的占位符一致', () => {
-  for (const key of Object.keys(zh)) {
-    assert.notEqual(zh[key].trim(), '', `zh.${key} 为空`)
-    assert.notEqual(en[key].trim(), '', `en.${key} 为空`)
-    assert.deepEqual(
-      placeholdersOf(en[key]),
-      placeholdersOf(zh[key]),
-      `zh.${key} 与 en.${key} 的占位符不一致`,
-    )
+test('各语言字典键集一致', () => {
+  for (const code of HOST_CODES) {
+    assert.deepEqual(Object.keys(LOCALE_UI[code]).sort(), Object.keys(en).sort(), `${code} 的键集与 en 不一致`)
+  }
+})
+
+test('每条文案都非空，且各语言的占位符一致', () => {
+  for (const code of HOST_CODES) {
+    const dict = LOCALE_UI[code]
+    for (const key of Object.keys(en)) {
+      assert.notEqual(dict[key].trim(), '', `${code}.${key} 为空`)
+      assert.deepEqual(
+        placeholdersOf(dict[key]),
+        placeholdersOf(en[key]),
+        `${code}.${key} 与 en.${key} 的占位符不一致`,
+      )
+    }
   }
 })
 

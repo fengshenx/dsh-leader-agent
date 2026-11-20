@@ -3,8 +3,8 @@
  *
  * `locale: 'en-US'` 只能证明「首次加载读对了语言」；注册期 thunk、slot 的 `t`
  * 与 `useLocaleRevision` 这条重渲染链只有在不刷新页面、切一次语言之后才真正
- * 被证明。这里同时验证宿主支持的 8 种语言清单，以及插件缺 ja 字典时按宿主
- * 回退链落到英文，而不是显示 key 或中文。
+ * 被证明。这里同时验证宿主支持的 8 种语言清单，以及随包提供的 ja 字典在
+ * 运行时被选中（四处标签逐字等于 ja 字典，证明没有沿回退链落到英文）。
  */
 
 import assert from 'node:assert/strict'
@@ -22,8 +22,6 @@ import { workerReportSource } from '../../src/shared/worker-report.js'
 import { LOCALE_UI } from '../../src/client/locales.js'
 
 const PROJECT_ID = 'e2e-i18n-switch-project'
-const zh = LOCALE_UI.zh
-const en = LOCALE_UI.en
 const CJK = /[\u4e00-\u9fff]/
 /** 宿主 locale 服务实际注册的语言；顺序随 catalog，断言只比集合。 */
 const HOST_LANGUAGES = ['中文', 'English', '日本語', 'Español', 'Français', 'Deutsch', 'Русский', 'Português']
@@ -133,11 +131,14 @@ async function labelsOf(page) {
   }
 }
 
-/** 断言四类标签都切到目标语言。 */
-async function expectLabels(page, locale, { fallbackEnglish = false } = {}) {
-  const expected = fallbackEnglish ? en : locale
+/** 断言四类标签与 `<html lang>` 都切到目标语言。 */
+async function expectLabels(page, code) {
+  const expected = LOCALE_UI[code]
+  const expectedLang = code === 'zh' ? 'zh-CN' : code
+  // 宿主文档语言与插件渲染是两条订阅链，高负载下可能先后到达；并进同一个
+  // 等待条件，避免在切换瞬间读到旧 lang 造成假红。
   await waitFor({
-    description: `四处文案切到 ${fallbackEnglish ? 'en（ja 回退）' : expected === en ? 'en' : 'zh'}`,
+    description: `四处文案与 <html lang> 切到 ${code}`,
     check: async () => {
       const labels = await labelsOf(page).catch(() => null)
       return labels !== null
@@ -145,18 +146,20 @@ async function expectLabels(page, locale, { fallbackEnglish = false } = {}) {
         && labels.tab === expected['tab.board']
         && labels.empty === expected['board.empty.title']
         && labels.copy === expected['bubble.copy']
+        && labels.lang === expectedLang
     },
     timeoutMs: 15_000,
   })
   const labels = await labelsOf(page)
-  assert.equal(labels.projects, expected['project.label'], `项目标题不是目标语言：${labels.projects}`)
-  assert.equal(labels.tab, expected['tab.board'], `tab 标题不是目标语言：${labels.tab}`)
-  assert.equal(labels.empty, expected['board.empty.title'], `空看板标题不是目标语言：${labels.empty}`)
-  assert.equal(labels.copy, expected['bubble.copy'], `复制按钮不是目标语言：${labels.copy}`)
+  assert.equal(labels.projects, expected['project.label'], `${code}: 项目标题不是目标语言：${labels.projects}`)
+  assert.equal(labels.tab, expected['tab.board'], `${code}: tab 标题不是目标语言：${labels.tab}`)
+  assert.equal(labels.empty, expected['board.empty.title'], `${code}: 空看板标题不是目标语言：${labels.empty}`)
+  assert.equal(labels.copy, expected['bubble.copy'], `${code}: 复制按钮不是目标语言：${labels.copy}`)
+  assert.equal(labels.lang, expectedLang, `${code}: <html lang> 不是目标语言：${labels.lang}`)
   return labels
 }
 
-test('运行时切换语言：zh → en → ja（回退英文）→ zh', { timeout: scenarioTimeout() }, async (t) => {
+test('运行时切换语言：zh → en → ja → zh', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-i18n-switch-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -241,8 +244,7 @@ test('运行时切换语言：zh → en → ja（回退英文）→ zh', { timeo
     description: '空看板标题', timeoutMs: 15_000,
   })
 
-  const initial = await expectLabels(page, zh)
-  assert.equal(initial.lang, 'zh-CN', `中文界面 <html lang> 不对：${initial.lang}`)
+  await expectLabels(page, 'zh')
 
   const dialog = await openSettings(page)
   await languageSelector(dialog, '语言').click()
@@ -255,8 +257,7 @@ test('运行时切换语言：zh → en → ja（回退英文）→ zh', { timeo
 
   // zh → en
   await selectLanguage(page, dialog, '语言', 'English', 'Language')
-  await expectLabels(page, en)
-  assert.equal((await labelsOf(page)).lang, 'en', '切到英文后 <html lang> 不是 en')
+  await expectLabels(page, 'en')
   for (const target of [
     page.locator('.dsh-leader-agent-project-section'),
     page.locator('.dsh-leader-agent-board-list'),
@@ -266,18 +267,16 @@ test('运行时切换语言：zh → en → ja（回退英文）→ zh', { timeo
     assert.equal(CJK.test(text), false, `英文界面出现中文：${text}`)
   }
 
-  // en → ja：插件没有 ja 字典，宿主按 ja → en 回退；四个标签都应是英文。
+  // en → ja：插件随包提供 ja 字典，四处标签都应逐字等于日文，而不是走 en 回退。
+  // 日文本身含汉字，不能用 CJK 判据；逐字比对才能证明选中的是 ja 字典。
   await selectLanguage(page, dialog, 'Language', '日本語', '言語')
-  const fallback = await expectLabels(page, en, { fallbackEnglish: true })
-  assert.equal(fallback.lang, 'ja', '切到日文后 <html lang> 不是 ja')
-  assert.equal(CJK.test(JSON.stringify(fallback)), false, `ja 回退里出现中文：${JSON.stringify(fallback)}`)
+  await expectLabels(page, 'ja')
   const boardText = await page.locator('.dsh-leader-agent-board-list').innerText()
-  assert.equal(CJK.test(boardText), false, `ja 回退的看板出现中文：${boardText}`)
+  assert.ok(boardText.includes(LOCALE_UI.ja['board.empty.title']), `日文看板没有显示 ja 字典文案：${boardText}`)
 
   // ja → zh：恢复中文，证明反向切换也重渲染。
   await selectLanguage(page, dialog, '言語', '中文', '语言')
-  await expectLabels(page, zh)
-  assert.equal((await labelsOf(page)).lang, 'zh-CN', '切回中文后 <html lang> 不是 zh-CN')
+  await expectLabels(page, 'zh')
 
   await page.keyboard.press('Escape')
   await waitFor({

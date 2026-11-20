@@ -12,8 +12,11 @@ Status: implemented
 
 - **单一来源**：`locale/<code>.json` 同时放 `meta` 与 `ui`。`meta` 只有 `title` / `description`，宿主 `package-meta.ts` 读 `locale/en.json` 后扫同目录全部 JSON、用文件名小写作为语言 id，只取 `meta`；`ui` 由本插件消费。界面字典不再写在 `src/client/locales.js`。
 - **构建期生成、生成物入库**：`build/locales.mjs` 扫 `locale/*.json` 生成 `src/client/locales.generated.js`；`index.js` 用 `LOCALE_UI` 枚举注册，不出现具体语言名。选择入库 + `--check` 而不是打包时生成：生成物随 `src/**` 发布，安装后不依赖额外构建步骤，字典变化也能在 diff 里审查；`npm run check` 的 `--check` 会拦住过期文件。
-- **与宿主语言对齐**：客户端注册键直接用宿主 locale id（`zh` / `en`），不是浏览器标签 `zh-CN` / `en-US`。生成器只接受小写 BCP 47 风格文件名；`en` 必须存在，因为宿主缺 key 时回退英文。
+- **与宿主语言对齐**：客户端注册键直接用宿主 locale id（如 `zh` / `en`），不是浏览器标签 `zh-CN` / `en-US`。生成器只接受小写 BCP 47 风格文件名；`en` 必须存在，因为宿主缺 key 时回退英文。
 - **宿主契约实测结论**：宿主内建 `zh` / `en`，另注册 `ja` / `es` / `fr` / `de` / `ru` / `pt`，共 8 种；`getSnapshot().locales` 是可查询的列表（设置里的语言菜单就是它）。浏览器标签先精确匹配 id，再匹配主语言子标签，所以 `zh-CN` → `zh`、`en-US` → `en`。缺 key 时沿 active → fallback → `en` 查找，仍缺才显示 key；实测在 ja 下插件没有 ja 字典，四个断言点全部显示英文而不是中文或 key。没有另钉 `locale/index.json`，清单以宿主 `locales` 为准。
+
+> **部分已被 [随包补齐宿主全部语言](2026-11-20-host-locale-parity.md) 取代**：ja / es / fr / de / ru / pt 六种字典已随包提供，ja 回退英文只保留为当时宿主回退链的实测证据；缺 key 仍按同一链路回退。
+
 - **组件统一用宿主注入的 `t`**：凡是能声明 `locale: SLOT_LOCALE_NAMESPACE` 的 slot 注册都声明；`ProjectPanel`、会话节点气泡、看板面板与卡片详情由此拿到当前语言的 `t`，切换语言时重新渲染。
 - **注册期文案用 `ctx.locale.bind`**：tab 类型定义、guide 条目的 `title` / `description`、左栏 footer 的 `label` 都是 thunk，宿主每次投影重读；`bind` 返回的函数在调用时读当前语言，切语言后不必重新注册。
 - **tab chip 单独接一个标题席位**：宿主在打开 tab 时把 `title` thunk 的结果写进布局记录，只靠 thunk 的话切语言仍停在打开时的快照。插件在 `sidebar.right.pane.tab.title` 按 definition id 注册自己的标题组件，让常驻标签跟着语言走。
@@ -21,7 +24,7 @@ Status: implemented
 - **项目通道错误只留 code**：`ProjectRemoteError` 带 `remote-missing` / `namespace-missing` / `call-failed`；`call-failed` 的界面文案用调用方的操作 key（rename/remove/update 等）作前缀，method 与 hostCode 进错误 message 和括号里的技术 detail，不再统一显示「Project channel call failed」。`ProjectPanel` / `Board` 与链接编辑器都走 `projectRemoteErrorText`；左栏未就绪状态只显示 `project.remoteNotReady`，详情进日志。宿主 `result.error.message` 原样放在 `detail` 并附在句尾——它是宿主文案，不在客户端翻译。
 - **共享链接校验只留 code**：`normalizeLinkDrafts` 返回 `{ code, params }`，编辑器用 `LINK_ERROR_KEYS` 映射到 `card.links.error.*`；宿主写通道只把 code/params 拼进自己的错误，不再产出中文界面文案。
 - **门禁**：`scripts/verify-locales.mjs` 检查各语言 `ui` 键集完全一致、占位符一致、无空值、无未使用 key、生成物最新，并扫描 `src/client/**` 的字符串字面量：用户可见 CJK 必须为 0；内部日志/effect 名/开发期异常按「文件 + 原文」登记，新增一条必须显式加进清单。`src/client/locales.generated.js` 与注释/测试不在扫描内。
-- **`en` 是 reference**：`scripts/verify-locales.mjs` 以 en 的 `ui` 键集为基准，zh/en 双向对齐；`tests/locales.test.js` 也从生成字典取键。缺 `en` 生成器直接报错。
+- **`en` 是 reference**：`scripts/verify-locales.mjs` 以 en 的 `ui` 键集为基准，所有语言双向对齐；`tests/locales.test.js` 也从生成字典取键。缺 `en` 生成器直接报错。
 - **运行时目录告警**：`apply` 比较生成字典的 code 与宿主 `getSnapshot().locales`，对宿主目录里没有的 code 走 `ctx.logger.warn` 并补一条 `console.warn`（浏览器里的 client logger 不一定有 exporter）；只告警，不把运行时列表写成构建门禁。
 
 ## Alternatives considered

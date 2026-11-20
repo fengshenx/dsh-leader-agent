@@ -44,10 +44,11 @@ test('显示名优先级：项目 label → locale → 原名', () => {
   assert.equal(slotDisplayName('dev', undefined, undefined), 'dev')
 })
 
-test('中英文字典键集一致，且覆盖全部内置槽位键', () => {
-  assert.deepEqual(Object.keys(en).sort(), Object.keys(zh).sort())
-  for (const key of Object.values(SLOT_LABEL_KEYS)) {
-    assert.ok(key in zh, key)
-    assert.ok(key in en, key)
+test('各语言字典键集一致，且覆盖全部内置槽位键', () => {
+  for (const [code, dict] of Object.entries(LOCALE_UI)) {
+    assert.deepEqual(Object.keys(dict).sort(), Object.keys(en).sort(), `${code} 的键集与 en 不一致`)
+    for (const key of Object.values(SLOT_LABEL_KEYS)) {
+      assert.ok(key in dict, `${code}.${key}`)
+    }
   }
 })
