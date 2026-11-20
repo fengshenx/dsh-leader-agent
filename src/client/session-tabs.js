@@ -25,6 +25,7 @@ import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef
 import { createPortal } from 'react-dom'
 import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
+import { findColumn, findMainSlot, mainBodyOf } from './main-panel.js'
 import { currentSessionIdOf } from './project-panel-logic.js'
 import { onProjectsChanged } from './project-changes.js'
 import { isProjectRemoteReady, onProjectRemoteReady } from './project-remote.js'
@@ -181,48 +182,6 @@ function ensureStyles() {
   style.id = STYLE_ID
   style.textContent = STYLE_TEXT
   document.head.append(style)
-}
-
-/**
- * 找主面板槽位。
- *
- * 宿主在 web-app 的壳层给主区域标了 `data-slot="main"`；`[class*="mainPanel"]`
- * 是宿主改掉槽位标记时的兜底（CSS module 的类名保留了 `mainPanel` 词干）。
- *
- * @returns {Element | null} 槽位节点
- */
-function findMainSlot() {
-  if (typeof document === 'undefined') return null
-  return document.querySelector('#root [data-slot="main"]')
-    ?? document.querySelector('[data-slot="main"]')
-    ?? document.querySelector('[class*="mainPanel"]')
-}
-
-/**
- * 找标签栏要插入的列。
- *
- * 槽位外面可能还套着带 `data-slot` 的包装；往上走到最后一个带槽位标记的节点。
- * 走到主面板为止——主面板自己是 `display:flex; flex-direction:column` 的
- * 容器，标签栏作为它的第一个子节点即可。
- *
- * @param {Element} slot - 主槽位
- * @returns {Element} 插入列
- */
-function findColumn(slot) {
-  let column = slot.parentElement
-  while (column !== null && column.hasAttribute('data-slot') && column.parentElement !== null) {
-    column = column.parentElement
-  }
-  return column ?? slot
-}
-
-/** 跳过 `display:contents` 包装，取真正占布局的会话体。 */
-function mainBodyOf(slot) {
-  let body = slot.firstElementChild
-  while (body !== null && typeof window !== 'undefined' && window.getComputedStyle(body).display === 'contents') {
-    body = body.firstElementChild
-  }
-  return body
 }
 
 /**
