@@ -2009,9 +2009,11 @@ test('名册到顶时 idle 按 lastUsedAt 升序，候选最久未用优先', as
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
+  // registeredAt 与 lastUsedAt 刻意反向：删掉 lastUsedAt 比较后，单靠
+  // registeredAt 排序会得到 new→mid→old，不能碰巧仍是旧→中→新。
   await fixture.workers.register({
     childId: 'child-lru-old', parentSessionId: 'parent-1', name: '最久未用',
-    registeredAt: 1_700_000_000_000, lastUsedAt: 1_700_000_000_000,
+    registeredAt: 1_700_000_002_000, lastUsedAt: 1_700_000_000_000,
   })
   await fixture.workers.register({
     childId: 'child-lru-mid', parentSessionId: 'parent-1', name: '中间使用',
@@ -2019,7 +2021,7 @@ test('名册到顶时 idle 按 lastUsedAt 升序，候选最久未用优先', as
   })
   await fixture.workers.register({
     childId: 'child-lru-new', parentSessionId: 'parent-1', name: '最近新建',
-    registeredAt: 1_700_000_002_000, lastUsedAt: 1_700_000_002_000,
+    registeredAt: 1_700_000_000_000, lastUsedAt: 1_700_000_002_000,
   })
   const dispatcher = makeDispatcher({
     ctx: fixture.ctx,
@@ -2817,6 +2819,51 @@ test('message_worker 成功投递会记录 lastUsedAt', async () => {
   })
   assert.ok(used >= 1)
   assert.equal(typeof (await fixture.workers.get(fixture.spawned.at(-1).sessionId)).lastUsedAt, 'number')
+})
+
+test('markUsed 落盘慢于 turn/end 时仍在飞记录结算', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  let releaseMarkUsed
+  const markUsedGate = new Promise((resolve) => { releaseMarkUsed = resolve })
+  let markUsedStarted
+  const started = new Promise((resolve) => { markUsedStarted = resolve })
+  const workers = {
+    ...fixture.workers,
+    async markUsed(childId, at) {
+      markUsedStarted()
+      await markUsedGate
+      return fixture.workers.markUsed(childId, at)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  try {
+    const record = await dispatcher.dispatch({
+      parent,
+      name: '竞态工',
+      signal: new AbortController().signal,
+    })
+    const sending = dispatcher.message({
+      parent,
+      sessionId: record.childId,
+      message: '做一件事',
+      signal: new AbortController().signal,
+    })
+    // markUsed 已经进入落盘等待；此时让 worker 结束，旧顺序会因 inflight 未登记
+    // 而结算失败。turn/end 不能被落盘窗口挡住。
+    await started
+    const settled = await fixture.finishTurn(record.childId, { text: '竞态产物' })
+    releaseMarkUsed()
+    await sending
+    assert.equal(settled, true)
+    await waitFor(() => fixture.delivered.length === 1)
+    assert.match(fixture.delivered[0].content[0].text, /竞态产物/)
+  } finally {
+    releaseMarkUsed()
+  }
 })
 
 test('未到 15 分钟不注入巡查提醒', async () => {

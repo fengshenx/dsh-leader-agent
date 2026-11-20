@@ -8,9 +8,11 @@ Status: implemented
 
 ## Decision
 
-- 在卡片写入层硬拒「active 卡移除某个角色绑定」：`slots` 把角色从有会话改成没有就直接报错；要换人只能把该角色替换为新会话。释放只由 `done` / `archived` 状态变更触发，关闭时自动清空 `slots`。
+- 在卡片写入层硬拒「active 卡移除某个角色绑定」：`slots` 把角色从有会话改成没有就直接报错；要换人只能把该角色替换为新会话。手动释放只由 `done` / `archived` 状态变更触发，关闭时自动清空 `slots`。
+- 例外是执行者会话归档：`detachSession` 会摘掉所有卡片（含 active 卡）上指向该会话的槽位，这是死引用清理；`docs/usage.md` 与 `LEADER.md` 都明确写了这个例外，避免与「只由状态变更触发」冲突。
 - 卡从 `active` 改 `done` 且 `links` 为空时，`update_card` 返回软提示「这张卡没有交付物链接，关闭后只剩标题」，不拒绝关闭。`LEADER.md` 只写原因与操作建议，不再承担拦截职责。
 - `worker-registry` 新增 `lastUsedAt`：`message_worker` 成功投递后 `markUsed`，回合结算时 `markReported` 同步更新；新记录初始化为 `registeredAt`；旧表缺字段读取时按 `registeredAt` 兜底。
+- `message` 先把这一轮登记进 `inflight`，再等 `markUsed` 落盘：`send()` 对活会话是同步 `agent.steer`，否则 `turn/end` 可能落在写 `workers.json` 的窗口里，找不到在飞记录而不结算。
 - `describeRoster()` 的 `idle` 按 `lastUsedAt` 升序，`bound` 不动。到顶提示把最久未用排前面并带 `lastUsedAt`，挂未完成卡的单列，最近新建的标为保留上下文；不自动归档。上限仍为 50；`registeredAt` 保留用于 500 条登记文件截断、最近新建标注与同刻兜底。
 
 ## Alternatives considered
@@ -25,6 +27,7 @@ Status: implemented
 ## Consequences
 
 - 以前手动清空 active 卡槽位的调用现在会报错；换人要显式替换会话或先关闭卡。存量卡片数据不变。
+- 归档链路保留 `detachSession` 的清理行为；这是文档写明的唯一例外，不经过 `update_card` 的硬拦截。
 - 关闭且 `links` 为空的提示只是提示，仍可关闭；这类卡关闭后只剩标题，是已知代价。
 - `lastUsedAt` 只在成功投递与回合结算时更新；人自己下钻聊天不改变 LRU，顺序以 leader 派工为准。
 - 到顶提示变长（带时间与三类），但候选顺序可解释；没有自动清理，名册仍需人维护。
@@ -35,5 +38,6 @@ Status: implemented
 ## Testing
 
 - `node --test tests/cards-tools.test.js tests/slot-index.test.js tests/dispatch.test.js tests/worker-registry.test.js`
-- 双向验证：撤掉 active 移除拦截，新增用例变红；撤掉 `idle.sort` 中的 `lastUsedAt` 比较，LRU 用例变红；分别还原后全绿。
+- 双向验证：撤掉 active 移除拦截，新增用例变红；用例的 `registeredAt` 与 `lastUsedAt` 刻意反向，撤掉 `idle.sort` 中的 `lastUsedAt` 比较后按 `registeredAt` 排会变成新→中→旧，LRU 用例变红；分别还原后全绿。
+- 竞态回归：让 `markUsed` 慢于 `turn/end`，在飞记录仍结算；退回旧顺序（先 `markUsed` 后 `inflight`）该用例变红。
 - 全量 `npm run check`；另覆盖 done 释放、替换、旧表兜底与 500 条按 `registeredAt` 截断。

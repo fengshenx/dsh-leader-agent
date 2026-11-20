@@ -697,15 +697,12 @@ export function createDispatcher({
       parentSessionId: parent.id,
       signal,
     })
-    // 投递成功才算一次使用；失败/回滚不动 LRU。落盘失败只影响候选顺序，不能让
-    // 已经投出的消息回头变成失败。
-    try {
-      await workers.markUsed(sessionId, Date.now())
-    } catch (error) {
-      logger(`dsh-leader-agent: worker ${sessionId} 的最后使用时刻落盘失败：${error instanceof Error ? error.message : String(error)}`)
-    }
     // 这一轮由 leader 发起：登记在飞记录，worker 的 `turn/end` 到来时据此结算。
     // 人自己下钻跟 worker 聊的轮次不走这里，也就不会打扰 leader。
+    //
+    // 必须在任何落盘 await 之前登记：`workerSessions.send()` 对活会话是同步
+    // `agent.steer`，worker 可能在 `markUsed` 写 workers.json 的窗口里就结束
+    // 一轮；先等落盘会让 `turn/end` 找不到在飞记录，消息发出去了却不结算。
     const previous = inflight.get(sessionId)
     const record = {
       childId: sessionId,
@@ -719,6 +716,13 @@ export function createDispatcher({
     // 那一轮已结束、正在结算，新消息属于下一轮，不能继承旧产物。
     if (previous?.summary === undefined && previous?.text !== undefined) record.text = previous.text
     inflight.set(sessionId, record)
+    // 投递成功才算一次使用；失败/回滚不动 LRU。落盘失败只影响候选顺序，不能让
+    // 已经投出的消息回头变成失败。
+    try {
+      await workers.markUsed(sessionId, Date.now())
+    } catch (error) {
+      logger(`dsh-leader-agent: worker ${sessionId} 的最后使用时刻落盘失败：${error instanceof Error ? error.message : String(error)}`)
+    }
     if (name !== undefined) {
       try {
         await workers.rename(sessionId, name)
