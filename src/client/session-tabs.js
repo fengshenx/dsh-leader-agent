@@ -29,6 +29,7 @@ import { onProjectsChanged } from './project-changes.js'
 import { isProjectRemoteReady, onProjectRemoteReady } from './project-remote.js'
 import { BOARD_TAB_KIND } from './project-board-monitor.js'
 import { createSessionCompletionTracker } from './session-completion.js'
+import { signalStyleText } from './signal-styles.js'
 import {
   addOpenTab,
   emptyTabStore,
@@ -147,34 +148,7 @@ const STYLE_TEXT = `
 /* 标签要的是信号灯，不是加载态：宿主的 StateDot 运行中画转圈 spinner，这里改成
    与看板卡面同一套静态点——运行中琥珀色呼吸、完成未读蓝、空闲弱化灰。形状与
    色相都跟卡面对应，扫描标签时不会把「正在跑」读成「正在加载」。 */
-.dsh-leader-agent-tab-signal {
-  display: inline-block;
-  box-sizing: border-box;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  corner-shape: round;
-  --dsh-leader-agent-tab-signal-tone: var(--dsw-alias-label-tertiary);
-  background: var(--dsh-leader-agent-tab-signal-tone);
-  opacity: 0.4;
-}
-.dsh-leader-agent-tab-signal-running {
-  --dsh-leader-agent-tab-signal-tone: var(--dsw-alias-state-warn-primary);
-  opacity: 1;
-  animation: dsh-leader-agent-tab-signal-pulse 1.6s ease-in-out infinite;
-}
-.dsh-leader-agent-tab-signal-unread {
-  --dsh-leader-agent-tab-signal-tone: var(--dsw-static-blue-500);
-  opacity: 1;
-}
-.dsh-leader-agent-tab-signal-idle {
-  --dsh-leader-agent-tab-signal-tone: var(--dsw-alias-label-tertiary);
-  opacity: 0.55;
-}
-@keyframes dsh-leader-agent-tab-signal-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
-}
+${signalStyleText('dsh-leader-agent-tab-signal')}
 .dsh-leader-agent-tab-label {
   min-width: 0;
   overflow: hidden;
@@ -211,7 +185,6 @@ const STYLE_TEXT = `
 }
 @media (prefers-reduced-motion: reduce) {
   .dsh-leader-agent-tab-close { transition: none; }
-  .dsh-leader-agent-tab-signal-running { animation: none; }
 }
 `
 

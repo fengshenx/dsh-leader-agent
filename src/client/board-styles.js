@@ -16,6 +16,8 @@
  * @module dsh-leader-agent/client/board-styles
  */
 
+import { SIGNAL_PULSE_ANIMATION, signalStyleText } from './signal-styles.js'
+
 /** 样式表 id，同一页面只注入一次。 */
 const STYLE_ID = 'dsh-leader-agent-board'
 
@@ -113,52 +115,26 @@ const STYLE_TEXT = `
 /* 图形点的弱化沿用 alpha：这里没有「比 tertiary 更浅」的 token 档，而点要的是
    面积上的退让而不是色相的语义。文字类弱化一律换档不叠 alpha（编号/时间用
    label-caption、折叠开关用 label-secondary），两条界线互不越界。
-   --dsh-leader-agent-signal-tone 同时供实心与空心使用：空心灯只把填充换成
+   --dsh-leader-agent-board-signal-tone 同时供实心与空心使用：空心灯只把填充换成
    1px 描边，色相不动——停滞是形状变化，不是另一档状态色 */
-.dsh-leader-agent-board-signal {
-  display: inline-block;
-  box-sizing: border-box;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  corner-shape: round;
-  --dsh-leader-agent-signal-tone: var(--dsw-alias-label-tertiary);
-  background: var(--dsh-leader-agent-signal-tone);
-  opacity: 0.4;
-}
+${signalStyleText('dsh-leader-agent-board-signal')}
 
 /* 等你输入与未读同色不同动效：都在等你动作，但「有人在等」与「有结果没看」不同 */
 .dsh-leader-agent-board-signal-waiting {
-  --dsh-leader-agent-signal-tone: var(--dsw-static-blue-500);
+  --dsh-leader-agent-board-signal-tone: var(--dsw-static-blue-500);
   opacity: 1;
-  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
-}
-
-.dsh-leader-agent-board-signal-unread {
-  --dsh-leader-agent-signal-tone: var(--dsw-static-blue-500);
-  opacity: 1;
-}
-
-.dsh-leader-agent-board-signal-running {
-  --dsh-leader-agent-signal-tone: var(--dsw-alias-state-warn-primary);
-  opacity: 1;
-  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
+  animation: ${SIGNAL_PULSE_ANIMATION} 1.6s ease-in-out infinite;
 }
 
 .dsh-leader-agent-board-signal-attention {
-  --dsh-leader-agent-signal-tone: var(--dsw-alias-state-error-primary);
+  --dsh-leader-agent-board-signal-tone: var(--dsw-alias-state-error-primary);
   opacity: 1;
-}
-
-.dsh-leader-agent-board-signal-idle {
-  --dsh-leader-agent-signal-tone: var(--dsw-alias-label-tertiary);
-  opacity: 0.55;
 }
 
 /* 未派工与状态未知共用虚线圈：两者都不谎称空闲，形状上与实心档区分 */
 .dsh-leader-agent-board-signal-unknown,
 .dsh-leader-agent-board-signal-none {
-  --dsh-leader-agent-signal-tone: var(--dsw-alias-label-tertiary);
+  --dsh-leader-agent-board-signal-tone: var(--dsw-alias-label-tertiary);
   background: transparent;
   border: 1px dashed var(--dsw-alias-label-tertiary);
   opacity: 0.55;
@@ -168,16 +144,10 @@ const STYLE_TEXT = `
    信息；与 unknown/none 的虚线区分开——停滞是确定的空闲，不是不可知 */
 .dsh-leader-agent-board-signal-hollow {
   background: transparent;
-  border: 1px solid var(--dsh-leader-agent-signal-tone);
-}
-
-@keyframes dsh-leader-agent-board-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  border: 1px solid var(--dsh-leader-agent-board-signal-tone);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dsh-leader-agent-board-signal-running,
   .dsh-leader-agent-board-signal-waiting { animation: none; }
 }
 
@@ -421,7 +391,7 @@ const STYLE_TEXT = `
 .dsh-leader-agent-board-slot-dot-waiting {
   background: var(--dsw-static-blue-500);
   opacity: 1;
-  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
+  animation: ${SIGNAL_PULSE_ANIMATION} 1.6s ease-in-out infinite;
 }
 
 .dsh-leader-agent-board-slot-dot-unread {
@@ -432,7 +402,7 @@ const STYLE_TEXT = `
 .dsh-leader-agent-board-slot-dot-running {
   background: var(--dsw-alias-state-warn-primary);
   opacity: 1;
-  animation: dsh-leader-agent-board-pulse 1.6s ease-in-out infinite;
+  animation: ${SIGNAL_PULSE_ANIMATION} 1.6s ease-in-out infinite;
 }
 
 .dsh-leader-agent-board-slot-dot-attention {

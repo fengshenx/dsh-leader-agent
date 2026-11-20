@@ -19,6 +19,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
+import { LOCALE_UI } from '../../src/client/locales.js'
 import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
 const M = {
@@ -313,6 +314,11 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   const signal = await dot.getAttribute('data-signal')
   assert.ok(['running', 'unread', 'idle'].includes(signal), `信号灯档位应是运行中/完成未读/空闲，实际 ${signal}`)
   assert.ok((await dot.getAttribute('class')).includes(`dsh-leader-agent-tab-signal-${signal}`), '信号灯 class 要带上档位')
+  // class 与语义分开写，两者同时写错时只查 class 仍会绿；aria-label 钉住「档位 → 文案」这条映射
+  const uiLang = (await page.evaluate(() => document.documentElement.lang)).split('-')[0]
+  const dict = LOCALE_UI[uiLang] ?? LOCALE_UI.en
+  assert.equal(await dot.getAttribute('role'), 'img', '信号灯用 img 角色承载状态语义')
+  assert.equal(await dot.getAttribute('aria-label'), dict[`board.state.${signal}`], `档位 ${signal} 的 aria-label 要取 board.state.*`)
   assert.equal(await w1Tab.locator('.dsh-leader-agent-tab-dot [data-state]').count(), 0, '标签不应再用宿主 StateDot 的转圈 spinner')
   await page.screenshot({ path: join(artifacts, 'worker-tab.png') })
 
