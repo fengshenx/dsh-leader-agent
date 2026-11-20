@@ -82,9 +82,13 @@ function appendWorkerReport(home, session) {
   const compressed = readFileSync(path)
   const lines = zstdDecompressSync(compressed).toString('utf8').split('\n').filter(Boolean)
   const maxSeq = Math.max(...lines.map((line) => JSON.parse(line).seq ?? 0))
+  // 第三条故意写长：正文超过两行才会出现「展示更多」，折叠水位由气泡自己量，
+  // 没有观察器的引擎才在 layout effect 里同步读。
+  const longSummary = '改动与验证读数：' + '单测 12 条、e2e 1 条、双向验证通过。'.repeat(8)
   const reports = [
     ['avatar-worker', 'child-1', '任务「avatar-worker」已结束。', '改完了'],
     [MALICIOUS, 'child-2', '任务「恶意 name」已结束。', '第二个头像'],
+    ['long-worker', 'child-3', '任务「long-worker」已结束。', longSummary],
   ]
   const frames = reports.map(([name, childId, report, summary], index) => {
     const source = workerReportSource(name, childId, report, summary, 'completed')
@@ -107,7 +111,7 @@ function appendWorkerReport(home, session) {
   writeFileSync(path, Buffer.concat([compressed, ...frames]))
 }
 
-test('worker 回报气泡的头像内联 SVG 可解析，hover 会眨眼', { timeout: scenarioTimeout() }, async (t) => {
+test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-avatar-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -171,6 +175,32 @@ test('worker 回报气泡的头像内联 SVG 可解析，hover 会眨眼', { tim
   const maliciousSvg = avatars.nth(1).locator('svg').first()
   assert.equal((await maliciousSvg.innerHTML()).includes('onerror'), false, '恶意 name 不应进入 SVG')
   assert.equal((await maliciousSvg.getAttribute('data-shape')) !== null, true)
+
+  // 折叠水位是异步量出来的：长正文首帧就该是两行，并带「展示更多」。
+  const longBubble = page.locator('.dsh-leader-agent-agent-bubble').nth(2)
+  const longToggle = longBubble.locator('.dsh-leader-agent-agent-bubble__toggle')
+  await waitForLocator(longToggle, { description: '长回报给「展示更多」', timeoutMs: 10_000 })
+  const longContent = longBubble.locator('.dsh-leader-agent-agent-bubble__content')
+  assert.equal(await longContent.getAttribute('data-collapsed'), 'true')
+  const collapsedHeight = await longContent.evaluate((element) => element.getBoundingClientRect().height)
+  await longToggle.click()
+  await waitFor({
+    description: '正文展开（data-collapsed 移除）',
+    check: async () => (await longContent.getAttribute('data-collapsed')) === null,
+    timeoutMs: 5_000,
+  })
+  assert.equal(await longToggle.getAttribute('aria-expanded'), 'true')
+  const expandedHeight = await longContent.evaluate((element) => element.getBoundingClientRect().height)
+  assert.ok(
+    expandedHeight > collapsedHeight + 20,
+    `展开后正文应长高：collapsed=${collapsedHeight} expanded=${expandedHeight}`,
+  )
+  await longToggle.click()
+  await waitFor({
+    description: '正文收回（data-collapsed 回来）',
+    check: async () => (await longContent.getAttribute('data-collapsed')) === 'true',
+    timeoutMs: 5_000,
+  })
 
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await avatar.hover()
