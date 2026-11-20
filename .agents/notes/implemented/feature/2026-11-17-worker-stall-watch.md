@@ -8,7 +8,7 @@ leader 看不到 worker「已经连续跑了多久」：完成通知只在 `turn
 
 ## Decision
 
-**回报时间落登记表。** `settleTurn` 在每轮结算（`turn/end` 的任一种终态）后把时刻写进 `workers.json` 的 `lastReportAt`（`markReported`）。只写这一个字段，不动 `registeredAt`（登记顺序不是活跃度）与父会话归属，也不写 session meta（理由见备选）；写失败只记日志——通知已经落盘，不能因为活性事实没写进去就把一次成功的结算回滚成失败。只认 leader 发起、在飞表里有记录的轮次；人下钻跟 worker 聊的轮次不结算，也不写回报时间。
+**回报时间落登记表。** `settleTurn` 在每轮结算（`turn/end` 的任一种终态）后把时刻写进 `workers.json` 的 `lastReportAt`（`markReported`），同时更新 `lastUsedAt` 供名册 LRU（见[槽位只在关闭时释放与 worker LRU](2026-11-20-slot-release-evidence-and-worker-lru.md)）；不碰 `registeredAt`（登记顺序不是活跃度）与父会话归属，也不写 session meta（理由见备选）。写失败只记日志——通知已经落盘，不能因为活性事实没写进去就把一次成功的结算回滚成失败。只认 leader 发起、在飞表里有记录的轮次；人下钻跟 worker 聊的轮次不结算，也不写回报时间。
 
 **单节拍巡查。** 进程内一个 60s interval 扫 `inflight` 里尚未结算的轮次，基线取 `max(本轮起点, 最后回报, 上次提醒)` 与 15 分钟比较。run 起点防上一轮的旧回报把新一轮一开跑就判超时；`lastAlertAt` 实现「注入即重置计时」，同一段停滞每 15 分钟至多一条；结算即移出在飞表，自动退出巡查。
 

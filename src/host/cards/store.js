@@ -235,6 +235,25 @@ export function createCardStore({ home, io = defaultIo, clock = Date.now } = {})
         if (status !== undefined && !CARD_STATUSES.includes(status)) {
           throw new Error(`卡片状态非法：${String(status)}`)
         }
+        // 释放只由状态变更触发：卡仍 active 时清掉某个角色会丢掉「谁在服务」，
+        // 而这张卡之后还要靠槽位找回执行者；换人只能把该角色替换成新会话。
+        // 同次把状态改成 done / archived 是关闭卡片，下面的自动释放照常生效。
+        const nextStatus = typeof status === 'string' ? status : card.status
+        if (nextStatus === 'active'
+          && slots !== undefined
+          && slots !== null
+          && typeof slots === 'object'
+          && !Array.isArray(slots)) {
+          const currentSlots = card.slots !== null && typeof card.slots === 'object' && !Array.isArray(card.slots)
+            ? card.slots
+            : {}
+          const removed = Object.keys(currentSlots).filter((name) => !Object.hasOwn(slots, name))
+          if (removed.length > 0) {
+            throw new Error(
+              `卡片 #${card.number} 仍是 active：卡未关闭时槽位不能清空（移除 ${removed.join('、')}）；要换人请把该角色替换为新会话，done / archived 会自动释放执行者`,
+            )
+          }
+        }
         // 写 slots 的另一条路径：done 卡整卡替换 slots 同样会绕过投递门禁。
         // 同次把状态改回 active 是合法的重新指派，放行。
         if (slots !== undefined && Object.keys(slots).length > 0) {
@@ -364,9 +383,10 @@ export function createCardStore({ home, io = defaultIo, clock = Date.now } = {})
     /**
      * 摘掉所有卡片上指向某个会话的槽位绑定。
      *
-     * 会话归档后它的绑定就是死引用：卡片还在看板上挂着「执行者」，点开却没有去处；
+     * 会话归档或宿主销毁后它的绑定就是死引用：卡片还在看板上挂着「执行者」，点开却没有去处；
      * 槽位索引也仍会把这个会话的角色注入下一轮 turn。归档是「这个会话收工了」的
-     * 声明，绑定理应一起失效。
+     * 声明，绑定理应一起失效。这是唯一允许在 active 卡上摘槽位的路径——它不是
+     * 人工释放，`update_card` 的 active 移除拦截不覆盖归档清理。
      *
      * 已归档的卡片一起摘：它们不再出现在看板上，槽位索引却不区分卡片状态，留着
      * 就是留一条继续注入的残留。

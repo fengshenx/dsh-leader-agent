@@ -26,7 +26,7 @@
 
 worker 是常驻根会话，人可以在项目树里打开它直接下钻对话。**人自己聊的那几轮你要当没发生**：它不会唤醒你，也不会给你完成通知；除非用户回来让你接着推进，否则不要凭猜测去追问它在聊什么。
 
-worker 的一切交互只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session` 三个入口。宿主的 `list_agents` / `send_message` / `interrupt_agent` 只认宿主 subagent 体系：我们的 worker 是普通根会话，不在它们的子会话名录里，传话与中止都落不到它身上（这三件已从你的工具面摘掉）。worker 跑偏时用 `message_worker` 把纠偏指令 steer 进当前轮次（正在跑就插进下一步）；没有中止手段，真卡死了才请人去那个会话里处理。宿主另有同伴模型的一套同名工具，按成员名寻址，与本流程的 worker 不是同一批，同样不要混用。
+worker 的一切交互只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session` 三个入口。宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 只认宿主 subagent 体系：我们的 worker 是普通根会话，不在它们的子会话名录里，传话、中止与等待都落不到它身上（这四件已从你的工具面摘掉）。worker 跑偏时用 `message_worker` 把纠偏指令 steer 进当前轮次（正在跑就插进下一步）；没有中止手段，真卡死了才请人去那个会话里处理。宿主另有同伴模型的一套同名工具，按成员名寻址，与本流程的 worker 不是同一批，同样不要混用。
 
 worker 连续 15 分钟没有任何回报时，机制侧会注入一条带 **`【后台巡查】`** 前缀的例行检查提醒（与完成通知同一条通道，但正文自带前缀与会话 id，不是 worker 的回报；不一定是卡住，也不代表任务失败）。收到后先 `read_worker_session` 回看它最近几轮卡在哪一步，再决定继续等待、用 `message_worker` 纠偏，还是请人在它的会话里处理；不要因为收到提醒就重复追问或重派同一件活。提醒每 15 分钟至多一条，本流程仍没有中止手段。
 

@@ -129,9 +129,9 @@ export function createBundleTools({
 }
 
 /**
- * 文档里可以引用的工具名：本 bundle 注册的，加上宿主 subagent 组合提供的三件。
+ * 文档里可以引用的工具名：本 bundle 注册的，加上宿主 subagent 组合提供的四件。
  *
- * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主三件不进本 bundle 的
+ * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主四件不进本 bundle 的
  * 注册面，但文档会写它们——所以从 `HOST_SUBAGENT_TOOLS` 这个语义来源取，而不是
  * 借用 deny 名单：那份名单的变化理由是「leader 能不能用」，与「文档能不能写」不同。
  *
@@ -349,6 +349,14 @@ export function apply(ctx) {
   ctx.on('agent/disposed', ({ agent }) => {
     dispatcher.markDisposed(agent.id)
     workerSessions.forget(agent.id)
+    // 宿主自己销毁会话（会话管理删除、外部归档）时，卡片上的槽位就是死引用；
+    // 浏览器归档路径已经调过 detachSession，这里可能重复触发，而它是幂等的。
+    // 插件卸载时的 disposeAll 也会发这个事件——那不是宿主删会话，不能清卡。
+    if (!disposed) {
+      void cards.detachSession(agent.id).catch((error) => {
+        logger(`dsh-leader-agent: 会话 ${agent.id} 销毁后摘卡片槽位失败：${error instanceof Error ? error.message : String(error)}`)
+      })
+    }
   })
 
   // 外部输入抵达即重置该会话的自动续行计数——人工介入后护栏应重新开始计数。

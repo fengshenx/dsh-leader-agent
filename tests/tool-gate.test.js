@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   CARD_WRITE_TOOLS,
+  HOST_SUBAGENT_TOOLS,
   LEADER_DENY_TOOLS,
   LEADER_ONLY_TOOLS,
   LEADER_UNUSABLE_TOOLS,
@@ -22,11 +23,11 @@ import {
  * `agent/created` 上，会让每个会话创建都失败。
  *
  * @param {string} id - 会话 id
- * @param {string[]} [registered] - 该作用域里已注册的全局工具名，默认包含三件宿主工具
+ * @param {string[]} [registered] - 该作用域里已注册的全局工具名，默认包含四件宿主工具
  * @returns {object} agent
  */
 function makeAgent(id, registered = [
-  'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
+  'list_agents', 'send_message', 'interrupt_agent', 'wait_agent', 'read', 'write',
   'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
   'create_card', 'update_card', 'read_card',
 ]) {
@@ -53,16 +54,20 @@ function makeAgent(id, registered = [
   }
 }
 
-test('leader 拿不到收作业的工具，也拿不到对 worker 无效的三件宿主工具', () => {
+test('leader 拿不到收作业的工具，也拿不到对 worker 无效的四件宿主工具', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('leader-1'),
     isLeaderSession: (id) => id === 'leader-1',
     isWorkerSession: () => false,
   })
-  // 三件宿主 subagent 工具对根会话 worker 全部无效，其中一个还返回假成功回执，
+  // 四件宿主 subagent 工具对根会话 worker 全部无效，其中一个还返回假成功回执；
+  // wait_agent 则把「等 worker 完成」引向阻塞轮询，而完成通知本来就会唤醒 leader。
   // 从工具面直接摘掉比只在文档里叮嘱可靠。worker 专属的 read_card 也一并摘掉：
   // leader 的单卡读走 list_cards（传 cardId），不必有两个等价入口。
   assert.deepEqual(denied, [...LEADER_DENY_TOOLS])
+  // 字面量断言：名单推导的断言会跟着名单一起缩，钉不住「leader 不该看见它」这条承诺。
+  assert.deepEqual(HOST_SUBAGENT_TOOLS, ['list_agents', 'send_message', 'interrupt_agent', 'wait_agent'])
+  assert.ok(denied.includes('wait_agent'))
   assert.ok(denied.includes('read_card'))
 })
 
@@ -76,6 +81,8 @@ test('worker 看不到派工、全库查询与建卡，但保留改卡', () => {
   // 建卡与派工是 leader 的一条动作链；worker 只在自己的卡上写回状态。
   assert.ok(denied.includes('create_card'))
   assert.ok(!denied.includes('update_card'))
+  // 反向承诺：宿主 subagent 的等待语义对真实 subagent 仍有效，不能随名单扩张被误收。
+  assert.ok(!denied.includes('wait_agent'))
 })
 
 test('普通会话没有派工、全库查询与卡片写入', () => {
@@ -87,6 +94,8 @@ test('普通会话没有派工、全库查询与卡片写入', () => {
   // 卡片是项目里的任务事实：普通会话建的卡没有槽位、没有 leader 认领，只会污染看板。
   assert.deepEqual(denied, [...PLAIN_SESSION_DENY_TOOLS])
   assert.deepEqual(denied.filter((name) => CARD_WRITE_TOOLS.includes(name)), [...CARD_WRITE_TOOLS])
+  // 普通会话可能真的用官方 subagent；把 wait_agent 塞进名单时这条字面量要变红。
+  assert.ok(!denied.includes('wait_agent'))
 })
 
 test('read_card 只给 worker：leader 与普通会话都摘掉，worker 保留', () => {
@@ -172,8 +181,8 @@ test('applyToolGate 只对受限角色调 restrict，并在作用域上留下限
   assert.deepEqual(plainDenied, [...PLAIN_SESSION_DENY_TOOLS])
 })
 
-test('三件宿主工具改由 preset 子树注册时仍然被 deny', () => {
-  // `get(name)` 省略 scope 只看全局层；web-app 把这三件在宿主平面 disabled，
+test('四件宿主工具改由 preset 子树注册时仍然被 deny', () => {
+  // `get(name)` 省略 scope 只看全局层；web-app 把这四件在宿主平面 disabled，
   // 改由 preset 子树注册——用 get 探测会把它们全判成「不存在」，限制失效。
   const leader = makeAgent('c')
   leader.ctx.tools.get = () => undefined
@@ -204,8 +213,30 @@ test('restrict 抛的不是「未知工具名」时照常抛出，不吞装配�
   )
 })
 
-test('宿主没装 subagent 控制工具时跳过那三件，不拿未注册的工具名去 restrict', () => {
-  // `restrict()` 对没注册过的全局工具名直接报错，而这三件来自可被禁用的宿主组合。
+test('rc.2 形态：subagent 三件在、wait_agent 缺，逐件 deny 三件而不抛错', () => {
+  // 0.2.1-rc.2 的 tool-subagent-control 只有三件；0.2.2 才加 wait_agent。
+  // 整批 restrict 会因未知 wait_agent 失败，必须走 denyAvailable 的逐件重试。
+  const leader = makeAgent('c', [
+    'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
+    'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
+    'create_card', 'update_card', 'read_card',
+  ])
+  const denied = applyToolGate({
+    agent: leader,
+    isLeaderSession: (id) => id === 'c',
+    isWorkerSession: () => false,
+  })
+  assert.deepEqual(denied, ['list_agents', 'send_message', 'interrupt_agent', 'read_card'])
+  assert.deepEqual(leader.restrictions, [
+    { deny: ['list_agents'] },
+    { deny: ['send_message'] },
+    { deny: ['interrupt_agent'] },
+    { deny: ['read_card'] },
+  ])
+})
+
+test('宿主没装 subagent 控制工具时跳过那四件，不拿未注册的工具名去 restrict', () => {
+  // `restrict()` 对没注册过的全局工具名直接报错，而这四件来自可被禁用的宿主组合。
   const leader = makeAgent('c', ['read', 'write', 'spawn_worker', 'message_worker', 'list_cards'])
   const denied = applyToolGate({
     agent: leader,

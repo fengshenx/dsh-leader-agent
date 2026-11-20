@@ -7,7 +7,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 - 注释、文档、日志用中文，保留专业术语；Agent Note **文件名用英文**（`YYYY-MM-DD-<english-title>.md`），正文中文
 - **宿主 API 按 `engines.dsh` 下限挑**（现在是 `>=0.2.1-rc.2`），不按本机最新版。只在更新版本才有的方法会在下限版本上抛 `TypeError`，而这类调用多半落在 `agent/created` 上——等于每个会话创建都失败。不确定某 API 何时引入就查宿主仓库的 tag
 - **不改宿主仓库、不 import 宿主内部包、不 peer 依赖 dsh 包**：宿主产物与版本会漂移，带内部依赖的 bundle 会周期性失效（理由见 `src/host/message.js` 头注释）
-- **worker 是本 bundle 用 `ctx.agents.create` 建的常驻根会话**，不走宿主 subagent 机制；宿主的 `list_agents` / `send_message` / `interrupt_agent` 对它们无效（`interrupt_agent` 还会返回假成功回执）
+- **worker 是本 bundle 用 `ctx.agents.create` 建的常驻根会话**，不走宿主 subagent 机制；宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 对它们无效（`interrupt_agent` 还会返回假成功回执）
 - **禁止直接修改主 checkout**：改动落在 `.worktrees/<任务名>`，主 checkout 保持干净
 - **改 `src/client/` 必须重建再验证**：`lib/client.js` 不入库，宿主下发的是构建产物
 - 不引 React / jsdom 等宿主平台依赖：client 侧用 `React.createElement`（无 JSX），hooks 与 React 实例都来自宿主的模块表

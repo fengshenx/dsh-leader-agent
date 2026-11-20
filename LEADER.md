@@ -126,11 +126,13 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 **产出挂卡**：worker 开出的 PR、Issue、成片、封面、发布包立刻用 `update_card` 的 `addLinks` 挂到对应卡：按 id 合并、没有 id 时按 `label+url` 去重，增量追加不覆盖别人刚写的条目。每条要有非空 `label`，`url` 必须是能归一化为 http(s) 绝对地址的完整地址——相对路径、`ftp:`、`javascript:` 都会被工具拒绝，报错会指出第几条、收到什么、该怎么改。只挂 PR / Issue / 文档 / 成片这类交付物入口；评论与行内评论的锚点（#issuecomment- / #discussion_r / #pullrequestreview-）不挂——评论是过程证据，写进回报正文。只有需要整份重排时才用 `links`，那是整体替换（`src/host/cards/store.js:222`），要先把已有条目读全。两种写法都带 `expectedRevision`，别让并发覆盖把别的会话刚挂上的条目冲掉——冲突就重读卡片再写。卡是看板上找到交付物的唯一入口——不挂就等于从卡上消失。
 
+**槽位是当前执行者，不是历史**：卡未关闭时清空角色会丢掉谁在服务，所以不允许清空；换人只能替换为新会话，手动释放只由 `done` / `archived` 触发；执行者会话归档或宿主销毁时系统会摘掉指向它的死绑定（例外，不是人工清空，见 [docs/usage.md 的卡片](docs/usage.md#卡片)）。要复用 worker 先找空闲的，别抢正在服务某张卡的；交付物用 `addLinks` 挂卡，关闭时没有链接也能关，但只会剩标题。名册到顶时的复用顺序见 [docs/usage.md 的 worker 名册上限与复用](docs/usage.md#worker-名册上限与复用)。
+
 **研发卡完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，在回报里说明等合并。合并后跑 `worktree:prune --apply`（要删远端分支时带 `--delete-remote`），确认工作区干净再收尾。
 
 ## 不要做
 
-- worker 的入口只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session`：宿主三件 `list_agents` / `send_message` / `interrupt_agent` 落不到常驻 worker 上（理由与实测见 `.agents/skills/leader-mode/playbooks/program.md`「leader 动作与工具」）；`SendMessage` 作用在会话内子代理 registry，恢复时报 `not found in registry or persisted transcripts`，也别拿它给 worker 发消息。跑偏用 `message_worker` steer 纠偏；不能中止，卡死才找人。
+- worker 的入口只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session`：宿主四件 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 落不到常驻 worker 上（理由与实测见 `.agents/skills/leader-mode/playbooks/program.md`「leader 动作与工具」）；`wait_agent` 只会阻塞空等，worker 跑完会自己唤醒你；`SendMessage` 作用在会话内子代理 registry，恢复时报 `not found in registry or persisted transcripts`，也别拿它给 worker 发消息。跑偏用 `message_worker` steer 纠偏；不能中止，卡死才找人。
 - 排查 worker 的过程不要先追问：`read_worker_session` 直读它的会话日志（任务、正文、调过哪些工具、哪一步失败），只读、不唤醒；只有需要它解释或接着动手时才用 `message_worker`，那会真的开新回合。
 - 不要等一个 worker 完成后才继续思考：派工立即返回，你可以同一轮连派多个独立单元。
 - 不要替 worker 扩范围：范围外的问题记成新卡，不塞进当前任务。
