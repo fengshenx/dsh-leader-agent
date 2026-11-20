@@ -35,6 +35,7 @@ import {
   addOpenTab,
   emptyTabStore,
   hasOpenTab,
+  hasSessionMenu,
   parseTabStore,
   removeOpenTab,
   resolveTabView,
@@ -362,6 +363,7 @@ export function SessionTabsAnchor(props) {
 function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, getSidebarRight, getContextMenus, reportVisible }) {
   const sessions = getSessions?.()
   const menus = getContextMenus?.() ?? null
+  const hasMenu = hasSessionMenu(menus)
   const [snapshot, setSnapshot] = useState(() => sessions?.list?.getSnapshot?.() ?? {
     phase: 'pending',
     ids: [],
@@ -438,6 +440,19 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     }
     sync()
     return active.subscribe(sync)
+  }, [menus, currentSessionId])
+
+  // 程序化切会话不会经过标签点击的 pointerdown，宿主菜单不会自己关；旧会话的
+  // sessionHeader 菜单必须在这时收掉，否则按钮报 false、菜单却还在旧目标上。
+  useEffect(() => {
+    const active = menus?.active
+    if (active === undefined || typeof active.getSnapshot !== 'function' || typeof menus.close !== 'function') return
+    const target = active.getSnapshot()
+    if (target?.kind === 'sessionHeader'
+      && typeof target.value?.sessionId === 'string'
+      && target.value.sessionId !== currentSessionId) {
+      menus.close()
+    }
   }, [menus, currentSessionId])
 
   useEffect(() => {
@@ -560,7 +575,7 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   const closeLabel = t('tabs.close')
   const moreLabel = t('tabs.more')
   const openSessionMenu = (event) => {
-    if (menus === null || currentSessionId === undefined) return
+    if (!hasMenu || currentSessionId === undefined) return
     if (menuOpen) {
       menus.close()
       return
@@ -595,7 +610,7 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     {
       className: 'dsh-leader-agent-tabs',
       'data-dsh-leader-agent-session-tabs-bar': '',
-      ...(menus === null ? {} : { 'data-dsh-leader-agent-tabs-menu': '' }),
+      ...(hasMenu ? { 'data-dsh-leader-agent-tabs-menu': '' } : {}),
     },
     createElement(
       'div',
@@ -672,7 +687,7 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
           : null,
       )),
     ),
-    menus === null
+    !hasMenu
       ? null
       : createElement(
           'button',
