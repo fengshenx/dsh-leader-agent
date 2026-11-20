@@ -5,6 +5,7 @@ import {
   ensureLeaderChangesStyles,
   HIDE_ATTR,
   isLeaderSession,
+  watchLeaderChanges,
 } from '../src/client/leader-changes.js'
 
 /**
@@ -90,4 +91,77 @@ test('样式表把标记作用域下的改动卡片藏掉，且只注入一次',
 test('没有 document 时样式注入直接返回', () => {
   delete globalThis.document
   assert.doesNotThrow(() => ensureLeaderChangesStyles())
+})
+
+test('切换主面板后旧 column 摘标记，卸载时 observer 断开', () => {
+  const first = makeColumn()
+  const second = makeColumn()
+  let slot = first
+  const callbacks = []
+  const timers = []
+  let observed = 0
+  let disconnected = 0
+  let cancelled = 0
+
+  class FakeObserver {
+    constructor(callback) {
+      callbacks.push(callback)
+    }
+
+    observe() {
+      observed += 1
+    }
+
+    disconnect() {
+      disconnected += 1
+    }
+  }
+
+  const cleanup = watchLeaderChanges(true, {
+    documentRef: { body: {} },
+    findPanel: () => slot,
+    Observer: FakeObserver,
+    schedule: (callback) => {
+      timers.push(callback)
+      return timers.length
+    },
+    cancel: () => { cancelled += 1 },
+  })
+
+  assert.equal(first.has(HIDE_ATTR), true)
+  assert.equal(second.has(HIDE_ATTR), false)
+  assert.equal(observed, 1)
+
+  slot = second
+  callbacks[0]()
+  assert.equal(timers.length, 1)
+  timers[0]()
+  assert.equal(first.has(HIDE_ATTR), false, '旧主面板不能留着跨会话的隐藏标记')
+  assert.equal(second.has(HIDE_ATTR), true)
+
+  callbacks[0]()
+  cleanup()
+  assert.equal(disconnected, 1)
+  assert.equal(cancelled, 1, '清理时必须取消未执行的节流任务')
+  assert.equal(second.has(HIDE_ATTR), false)
+})
+
+test('不需要隐藏时不创建 observer', () => {
+  let constructed = 0
+  class FakeObserver {
+    constructor() { constructed += 1 }
+    observe() {}
+    disconnect() {}
+  }
+  const column = makeColumn()
+  const cleanup = watchLeaderChanges(false, {
+    documentRef: { body: {} },
+    findPanel: () => column,
+    Observer: FakeObserver,
+    schedule: () => 1,
+    cancel: () => {},
+  })
+  assert.equal(constructed, 0)
+  assert.equal(column.has(HIDE_ATTR), false)
+  cleanup()
 })

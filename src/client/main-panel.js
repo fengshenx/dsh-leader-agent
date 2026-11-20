@@ -14,22 +14,25 @@
 /**
  * 找主面板槽位。
  *
- * 宿主在 web-app 的壳层给主区域标了 `data-slot="main"`；`[class*="mainPanel"]`
- * 是宿主改掉槽位标记时的兜底（CSS module 的类名保留了 `mainPanel` 词干）。
+ * 当前宿主（app.asar 实测）用 class 名含 `mainPanel` 的节点作主面板；
+ * `data-slot="main"` 是旧版 / 兼容兜底（当前宿主精确搜索 0 命中）。改版时优先
+ * 跟着真实的 `mainPanel` 走，旧标记只负责兼容。
  *
  * @returns {Element | null} 槽位节点
  */
 export function findMainSlot() {
   if (typeof document === 'undefined') return null
-  return document.querySelector('#root [data-slot="main"]')
-    ?? document.querySelector('[data-slot="main"]')
+  return document.querySelector('#root [class*="mainPanel"]')
     ?? document.querySelector('[class*="mainPanel"]')
+    ?? document.querySelector('#root [data-slot="main"]')
+    ?? document.querySelector('[data-slot="main"]')
 }
 
 /**
  * 找主面板的容器。
  *
  * 槽位外面可能还套着带 `data-slot` 的包装；往上走到最后一个带槽位标记的节点。
+ * 标签栏需要父列来插栏，不能直接用 `mainPanel` 本身。
  *
  * @param {Element} slot - 主槽位
  * @returns {Element} 容器

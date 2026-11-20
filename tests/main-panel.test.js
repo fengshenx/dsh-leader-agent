@@ -29,30 +29,37 @@ test('没有 document 时找不到主槽位', () => {
   assert.equal(findMainSlot(), null)
 })
 
-test('主槽位优先按 data-slot 标记找，找不到再退回 mainPanel 类名', () => {
+test('主槽位优先按真实 mainPanel 类名找', () => {
   const target = makeElement()
   const seen = []
   globalThis.document = {
     querySelector(selector) {
       seen.push(selector)
-      if (selector === '#root [data-slot="main"]') return null
-      if (selector === '[data-slot="main"]') return target
-      return 'fallback'
+      return selector === '#root [class*="mainPanel"]' ? target : null
     },
   }
   assert.equal(findMainSlot(), target)
-  assert.deepEqual(seen, ['#root [data-slot="main"]', '[data-slot="main"]'])
+  assert.deepEqual(seen, ['#root [class*="mainPanel"]'])
 })
 
-test('两处槽位标记都缺失时退回 mainPanel 类名', () => {
-  const fallback = makeElement()
+test('没有 mainPanel 时 data-slot 作为兼容兜底', () => {
+  const target = makeElement()
+  const seen = []
   globalThis.document = {
     querySelector(selector) {
-      return selector === '[class*="mainPanel"]' ? fallback : null
+      seen.push(selector)
+      if (selector === '#root [data-slot="main"]') return target
+      return null
     },
   }
-  assert.equal(findMainSlot(), fallback)
+  assert.equal(findMainSlot(), target)
+  assert.deepEqual(seen, [
+    '#root [class*="mainPanel"]',
+    '[class*="mainPanel"]',
+    '#root [data-slot="main"]',
+  ])
 })
+
 
 test('容器是主槽位外侧最后一个带槽位标记的节点', () => {
   const outer = makeElement({ slot: true })

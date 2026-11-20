@@ -197,11 +197,30 @@ test('leader 会话隐藏宿主的改动文件卡片，普通会话保留', {
   // 卡片必须先挂上，再判隐藏——「没渲染」不能冒充「隐藏生效」。
   assert.equal(await page.locator('[data-changed-files]').count() >= 1, true, 'leader 会话应渲染改动文件卡片节点')
   assert.equal(await leaderCard.isVisible(), false, 'leader 会话的改动文件卡片应不可见')
+  const markedPanels = page.locator('[data-dsh-leader-agent-hide-changed-files]')
+  assert.equal(await markedPanels.count(), 1, 'leader 会话的主面板应带隐藏标记')
+  const marker = await markedPanels.first().evaluate((element) => ({
+    tag: element.tagName,
+    className: typeof element.className === 'string' ? element.className : '',
+    onMainPanel: element.matches('[class*="mainPanel"]'),
+  }))
   assert.equal(
-    await page.locator('[data-dsh-leader-agent-hide-changed-files]').count(),
-    1,
-    'leader 会话的主面板容器应带隐藏标记',
+    marker.onMainPanel,
+    true,
+    `隐藏标记应落在 mainPanel 节点，而不是父 frame：${JSON.stringify(marker)}`,
   )
+
+  // 隐藏用 display:none，浏览器不应把焦点放进不可见卡片；完整 Tab 序回归留待限制说明。
+  const focusableInCard = leaderCard.locator('button, a').first()
+  if (await focusableInCard.count() > 0) {
+    await focusableInCard.evaluate((element) => element.focus())
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.closest('[data-changed-files]') !== null),
+      false,
+      '隐藏后焦点不应进入改动文件卡片',
+    )
+  }
+
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'leader-changes')
   mkdirSync(artifacts, { recursive: true })
   await page.screenshot({ path: join(artifacts, 'leader-hidden.png') })

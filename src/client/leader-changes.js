@@ -18,6 +18,8 @@
  * @module dsh-leader-agent/client/leader-changes
  */
 
+import { findMainSlot } from './main-panel.js'
+
 /** 主面板容器上的隐藏标记。 */
 export const HIDE_ATTR = 'data-dsh-leader-agent-hide-changed-files'
 
@@ -73,4 +75,66 @@ export function applyHideState(column, hide) {
   if (column === null || column === undefined) return
   if (hide) column.setAttribute(HIDE_ATTR, '')
   else column.removeAttribute(HIDE_ATTR)
+}
+
+/**
+ * 观察主面板并维护隐藏标记。
+ *
+ * 切换会话时主面板节点可能被宿主替换：先对新节点加标记，再摘掉旧节点的标记，
+ * 避免旧 column 上留下跨会话的 `display:none`。卸载时断开 observer、清掉节流
+ * timer，并摘掉当前标记。
+ *
+ * @param {boolean} hide - 是否隐藏
+ * @param {object} [options] - 依赖注入（单测用）
+ * @param {Document} [options.documentRef] - 文档
+ * @param {() => Element | null} [options.findPanel] - 找主面板节点
+ * @param {(column: object | null | undefined, hide: boolean) => void} [options.apply] - 加/摘标记
+ * @param {typeof MutationObserver} [options.Observer] - MutationObserver 构造器
+ * @param {(callback: () => void) => unknown} [options.schedule] - 节流调度
+ * @param {(timer: unknown) => void} [options.cancel] - 取消节流
+ * @returns {() => void} 清理函数
+ */
+export function watchLeaderChanges(hide, {
+  documentRef = typeof document === 'undefined' ? undefined : document,
+  findPanel = findMainSlot,
+  apply = applyHideState,
+  Observer = typeof MutationObserver === 'undefined' ? undefined : MutationObserver,
+  schedule = (callback) => setTimeout(callback, 16),
+  cancel = (timer) => clearTimeout(timer),
+} = {}) {
+  let column = null
+  let scheduled = false
+  let timer = null
+  let alive = true
+
+  const applyNow = () => {
+    if (!alive || documentRef === undefined) return
+    const next = findPanel()
+    if (next === null) return
+    if (next !== column) {
+      apply(column, false)
+      column = next
+    }
+    apply(column, hide)
+  }
+  applyNow()
+
+  const observer = hide && documentRef?.body !== undefined && Observer !== undefined
+    ? new Observer(() => {
+      if (scheduled) return
+      scheduled = true
+      timer = schedule(() => {
+        scheduled = false
+        applyNow()
+      })
+    })
+    : null
+  observer?.observe(documentRef.body, { childList: true, subtree: true })
+
+  return () => {
+    alive = false
+    observer?.disconnect()
+    if (timer !== null) cancel(timer)
+    apply(column, false)
+  }
 }

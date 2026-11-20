@@ -9,14 +9,8 @@
  */
 
 import { useEffect, useState } from 'react'
-import {
-  applyHideState,
-  ensureLeaderChangesStyles,
-  HIDE_ATTR,
-  isLeaderSession,
-} from './leader-changes.js'
+import { ensureLeaderChangesStyles, isLeaderSession, watchLeaderChanges } from './leader-changes.js'
 import { leaderSessionIndex } from './leader-session-index.js'
-import { findColumn, findMainSlot } from './main-panel.js'
 import { currentSessionIdOf } from './project-panel-logic.js'
 
 /**
@@ -50,43 +44,7 @@ export function LeaderChangesAnchor({ getSessions }) {
 
   useEffect(() => {
     ensureLeaderChangesStyles()
-    let column = null
-    let scheduled = false
-    let timer = null
-    let alive = true
-
-    const apply = () => {
-      if (!alive) return
-      const slot = findMainSlot()
-      if (slot === null) return
-      const next = findColumn(slot)
-      if (next !== column) {
-        column?.removeAttribute(HIDE_ATTR)
-        column = next
-      }
-      applyHideState(column, hide)
-    }
-    apply()
-
-    // 宿主换掉主面板节点后标记会丢；只有隐藏状态成立时才值得持续观察。
-    const observer = hide && typeof document !== 'undefined' && document.body !== null
-      ? new MutationObserver(() => {
-        if (scheduled) return
-        scheduled = true
-        timer = setTimeout(() => {
-          scheduled = false
-          apply()
-        }, 16)
-      })
-      : null
-    observer?.observe(document.body, { childList: true, subtree: true })
-
-    return () => {
-      alive = false
-      observer?.disconnect()
-      if (timer !== null) clearTimeout(timer)
-      column?.removeAttribute(HIDE_ATTR)
-    }
+    return watchLeaderChanges(hide)
   }, [hide])
 
   return null
