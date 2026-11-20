@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **部分被 [leader 工具面补上 wait_agent](../bug-fix/2026-11-20-leader-wait-agent-deny.md) 取代**：宿主 subagent 清单已从三件扩为四件，文中「三件」是当时口径；门禁机制本身不变。
+
 ## Problem
 
 `SLOTS.md` 曾要求挂 `dev` 槽位的 worker 调用已删除的 `worker_done`：删工具时文档只同步了 README 与 `skills/`，注入给会话的文档与 `tools.register` 之间没有任何机械约束。另一处是注释用已被推翻的理由解释「项目会话为什么归属工作区」，那个理由后来随[项目与 dsh 工作区解耦](../architecture/2026-11-03-project-workspace-decoupled.md)整体删除。

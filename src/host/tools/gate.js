@@ -12,7 +12,7 @@
  *   （会话由 `agents.create` 建，会话头没有 `origin` 标记，只能按登记判）；
  * - **普通会话**：其余会话。
  *
- * leader 拿到除宿主 subagent 三件与 worker 专属读卡外的全部工具；普通会话与
+ * leader 拿到除宿主 subagent 四件与 worker 专属读卡外的全部工具；普通会话与
  * worker 都没有 worker 编排与全库查询，普通会话再少掉卡片写入——它不在项目编排
  * 里，没有卡可写。worker 的完成回报不占工具面：由 `dispatch.js` 订阅会话事件自动
  * 结算。
@@ -70,36 +70,41 @@ export const WORKER_DENY_TOOLS = Object.freeze([
 ])
 
 /**
- * 宿主 subagent 组合提供的三件工具：它们只作用在 subagent 体系上。
+ * 宿主 subagent 组合提供的四件工具：它们只作用在 subagent 体系上。
  *
  * 单独导出是为了给「宿主侧有哪些工具名」一个语义正确的来源，文档允许集
  * （`src/host/index.js` 的 `documentedToolNames()`）取自这里。`LEADER_UNUSABLE_TOOLS`
  * 是同一份数据的另一种用法——工具面裁剪。两者共享数据、语义不同：前者的变化理由是
  * 「宿主提供什么」，后者是「leader 能不能用」；文档侧只能走 `documentedToolNames()`。
+ *
+ * `wait_agent` 容易漏：它的描述是「等下一步输入」，不提 teammate；但对 leader 来说
+ * 它只是阻塞等 inbox，而 worker 跑完本来就会唤醒 leader，留着只会空等或超时。
  */
 export const HOST_SUBAGENT_TOOLS = Object.freeze([
   'list_agents',
   'send_message',
   'interrupt_agent',
+  'wait_agent',
 ])
 
 /**
- * leader 不该看到的三件宿主工具：它们只作用在 subagent 体系上。
+ * leader 不该看到的四件宿主工具：它们只作用在 subagent 体系上。
  *
- * leader 的 worker 由本 bundle 用 `agents.create` 建成普通根会话，因此在宿主那三
+ * leader 的 worker 由本 bundle 用 `agents.create` 建成普通根会话，因此在宿主那四
  * 件工具里都不是合法目标——`list_agents` 列不到、`send_message` 过不了血统校验、
- * `interrupt_agent` 找不到目标却仍返回成功。留着它们只会让模型照描述去用，拿到
- * 一个假回执（中止尤其危险：以为停了，其实还在跑）。协议层也写了不要用，这里是
- * 从工具面结构上消除诱因。
+ * `interrupt_agent` 找不到目标却仍返回成功。`wait_agent` 则把「等 worker 完成」
+ * 引向阻塞轮询；完成通知本来就会把 leader 从回合外唤醒，不需要谁去等。留着它们
+ * 只会让模型照描述去用，拿到一个假回执（中止尤其危险：以为停了，其实还在跑）。
+ * 协议层也写了不要用，这里是从工具面结构上消除诱因。
  *
- * 只裁 leader：普通会话可能真的用官方 subagent，那时这三件是有效的。
+ * 只裁 leader：普通会话可能真的用官方 subagent，那时这四件是有效的。
  *
  * 它是 `HOST_SUBAGENT_TOOLS` 的别名、不是另一份名单：要改集合请改那份。
  */
 export const LEADER_UNUSABLE_TOOLS = HOST_SUBAGENT_TOOLS
 
 /**
- * leader 实际要禁掉的：宿主 subagent 三件，加上只给 worker 的读卡。
+ * leader 实际要禁掉的：宿主 subagent 四件，加上只给 worker 的读卡。
  *
  * 两者理由不同，所以分成两段再拼起来：前者是「宿主工具对 leader 无效」，后者是
  * 「这件工具只属于 worker」。`LEADER_UNUSABLE_TOOLS` 保持为 `HOST_SUBAGENT_TOOLS`
@@ -158,12 +163,12 @@ export async function canWriteCardsFor({ sessionId, isLeaderSession, isWorkerSes
  * 所以整批失败时逐件重试，缺的那件跳过。
  *
  * 不能用 `get(name)` 做存在性探测：省略 scope 等于**全局视图**，而 web-app 把
- * 这三件在宿主平面 `disabled: true`、改由 preset 子树注册（`cordis.patch.yml`
- * 的 tool-subagent* 行）——全局视图里没有它们，探测会把三件全部误判成「不存在」，
+ * 这四件在宿主平面 `disabled: true`、改由 preset 子树注册（`cordis.patch.yml`
+ * 的 tool-subagent* 行）——全局视图里没有它们，探测会把四件全部误判成「不存在」，
  * 限制就悄悄失效了。`definitions()` 是 0.2.2-alpha.2 才加的方法，`engines.dsh`
  * 下限 0.2.1-rc.2 上没有它，别在裁剪路径上引入。
  *
- * 顺带记一笔：摘掉这三件后，preset 提供的 `subagent` / `subagent_fork` 仍在，
+ * 顺带记一笔：摘掉这四件后，preset 提供的 `subagent` / `subagent_fork` 仍在，
  * leader 于是「能派不能跟」。这两个是通用能力（只读探索也用得上），暂时留着；
  * 协议层的立场是 leader 不拿它们当 worker 用。
  *

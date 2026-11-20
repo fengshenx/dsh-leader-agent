@@ -122,14 +122,14 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 13. 两套同名工具：父子模型与同伴模型
 
-**实测**：dsh 有两处 `send_message` / `interrupt_agent` / `list_agents`：
+**实测**：父子与同伴两套组合里分布着这些同名/近名工具：
 
 | 来源 | 模型 | 寻址 | 作用域 |
 |---|---|---|---|
 | `@deepseek-ai/dsh-tool-subagent-control`（base bundle 默认启用） | 父子 | `agent_id` 即子会话 id | 调用者派出的子会话 |
 | `@deepseek-ai/dsh-tool-agent-team`（experimental，base bundle 未启用） | 同伴 | teammate 名字 | team 成员 |
 
-**影响**：本流程两者都不用。worker 是本 bundle 用 `ctx.agents.create` 建的普通根会话，不在任何 subagent 目录里：`list_agents` 列不到它；`send_message` 的 `authorizeLineage` 要求子会话头的 `parentSession`（根会话没有），走不通；`interrupt_agent` 对非 resident 目标静默 `return`，工具却仍报成功。worker 的所有交互只经本 bundle 的 `spawn_worker` / `message_worker`，leader 的工具面也把这三件 deny 掉了（普通会话保留：它可能真的用官方 subagent）——leader 因此只能经 `message_worker` 的 `steer` 纠偏，没有中止手段（见[已知限制的 worker 控制面](limitations.md#worker-的控制面)）。早期方案文档按 team 工具写过映射表，同样不适用于本流程。
+**影响**：本流程两者都不用。worker 是本 bundle 用 `ctx.agents.create` 建的普通根会话，不在任何 subagent 目录里：`list_agents` 列不到它；`send_message` 的 `authorizeLineage` 要求子会话头的 `parentSession`（根会话没有），走不通；`interrupt_agent` 对非 resident 目标静默 `return`，工具却仍报成功；`wait_agent` 等的是调用者自己的 inbox，worker 的完成通知不会让它有结果，只会阻塞到超时。worker 的所有交互只经本 bundle 的 `spawn_worker` / `message_worker`，leader 的工具面也把这四件 deny 掉了（普通会话保留：它可能真的用官方 subagent）——leader 因此只能经 `message_worker` 的 `steer` 纠偏，没有中止手段（见[已知限制的 worker 控制面](limitations.md#worker-的控制面)）。早期方案文档按 team 工具写过映射表，同样不适用于本流程。
 
 ### 14. 工具的结构化结果不进事件流 content，只在 `presentationMeta` 投影的 `meta` 里
 
