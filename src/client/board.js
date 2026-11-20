@@ -701,6 +701,8 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   // 替换但绑定没改）时指路去左栏换新 leader，不把人指向一个打不开的会话。
   if (view === 'leader-dead' || view === 'not-viewable') {
     const leaderDead = view === 'leader-dead'
+    // 没有项目名时不能把它塞进「某项目名 + 介词」的提示：ru/de 的格会错。
+    const projectName = project?.name
     return createElement(
       'div',
       { className: 'dsh-leader-agent-board-list' },
@@ -717,7 +719,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
           { className: 'dsh-leader-agent-board-empty-hint' },
           leaderDead
             ? t('board.leaderDead.hint')
-            : t('board.notProject.hint', { project: project.name ?? t('board.thisProject') }),
+            : projectName ? t('board.notProject.hint', { project: projectName }) : t('board.notProject.unknown'),
         ),
       ),
     )
