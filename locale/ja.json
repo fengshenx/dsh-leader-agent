@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Leader Agent",
-    "description": "あなたは決めるだけ。Leader がタスクを分解して割り当て、完了まで見届け、レビューを回します。すべてのタスクはプロジェクトボードに残ります。"
+    "description": "あなたは決めるだけ。Leader がタスクを分解して割り当て、完了まで見届け、レビューを回します。すべてのタスクはプロジェクトのボードに残ります。"
   },
   "ui": {
     "board.delete.title": "カードを削除",
@@ -19,10 +19,11 @@
     "board.leaderDead.title": "このプロジェクトの Leader セッションは利用できません",
     "board.noProject.hint": "ボードはプロジェクト単位です。プロジェクトのセッション（Leader またはワーカー）から開いてください。",
     "board.noProject.title": "このセッションはどのプロジェクトにも属していません",
-    "board.notProject.hint": "これは「{project}」のフォルダーにある通常のセッションです。プロジェクトの Leader またはワーカーのセッションでデリバリーボードを確認してください。",
+    "board.notProject.hint": "これは「{project}」のフォルダーにある通常のセッションです。プロジェクトの Leader またはワーカーのセッションでボードを確認してください。",
     "board.notProject.title": "ボードはプロジェクトのセッションでのみ開けます",
+    "board.notProject.unknown": "このセッションはプロジェクトに属していません。プロジェクトの Leader またはワーカーのセッションでボードを確認してください。",
     "board.slot.title": "{name}：{state}",
-    "board.state.attention": "要確認",
+    "board.state.attention": "要注意",
     "board.state.empty": "未割り当て",
     "board.state.idle": "待機中",
     "board.state.none": "シグナルなし",
@@ -30,7 +31,6 @@
     "board.state.unknown": "状態不明",
     "board.state.unread": "未読",
     "board.state.waiting": "入力待ち",
-    "board.thisProject": "このプロジェクト",
     "bubble.clock.day": "{month}月{day}日",
     "bubble.clock.dayYear": "{year}年{month}月{day}日",
     "bubble.copied": "コピーしました",
@@ -126,7 +126,7 @@
     "slot.discuss": "ディスカッション",
     "slot.review": "レビュー",
     "tab.board": "ボード",
-    "tab.board.description": "このプロジェクトの Leader とワーカーのセッションにあるタスクのデリバリーボード",
+    "tab.board.description": "このプロジェクトの Leader とワーカーのセッションにあるタスクのボード",
     "tabs.close": "タブを閉じる",
     "tabs.list": "プロジェクトのセッションタブ"
   }

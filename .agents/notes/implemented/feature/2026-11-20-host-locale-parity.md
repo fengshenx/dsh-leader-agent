@@ -9,9 +9,12 @@ Status: implemented
 ## Decision
 
 - 按宿主 catalog 补齐 `ja` / `es` / `fr` / `de` / `ru` / `pt` 六份 `locale/<code>.json`：`meta` 只翻描述、标题保留品牌名，`ui` 的 125 个键与 `en` 一一对应，占位符不变。
+- **复数选择 (a)：改写成语数无关的句子**。带数字的 `board.fold.expand` / `session.fold.expand` 不再写成「Noch {count} Karten」这类数词直接修饰名词的句子；数字只放在括号里，名词用不随数变化的类别复数（de / fr / es / pt / ru）。没有引入 `one` / `other` 分支：ru 还要 `few` / `many` 等档，`t()` 与生成器都要扩，维护成本高于收益。
+- **没有项目名时不再套「某项目名 + 介词」**：`board.notProject.hint` 只接收真实项目名；`project.name` 缺失时走新键 `board.notProject.unknown` 的自包含句子，避免 ru / de 的格变错。`board.thisProject` 因此删除。
+- **ja 术语统一为「ボード」**：tab、看板说明、无项目提示都用「ボード」，`meta.description` 用「プロジェクトのボード」，不再混用「デリバリーボード / プロジェクトボード」。
 - 生成物 `src/client/locales.generated.js` 由 `build/locales.mjs` 重新生成；客户端注册代码本来按文件枚举，不需要改动。
-- 术语跟宿主 common 字典对齐（Copy / Copied、Cancel、Close、Delete、Save、Footnotes 等直接复用宿主译法）；插件概念在每种语言内各保持一种译法，board 统一为 ボード / tablero / tableau / Board / доска / quadro。
-- `tests/locales.test.js` 从「中英对照」改成遍历宿主 8 种语言，并新增「随包字典覆盖宿主注册的 8 种语言」；`tests/slot-labels.test.js` 也遍历全部语言，防止新增语言漏掉内置槽位键。
+- 术语跟宿主 common 字典对齐（Copy / Copied、Cancel、Close、Delete、Save、Footnotes 等直接复用宿主译法；es 的 Footnotes 已改为宿主的「Notas a pie de página」）；插件概念在每种语言内各保持一种译法，board 统一为 ボード / tablero / tableau / Board / доска / quadro。
+- `tests/locales.test.js` 从「中英对照」改成遍历宿主 8 种语言，并新增「随包字典覆盖宿主注册的 8 种语言」；它还直接读 `locale/*.json`，校验源文件集合与生成字典一致，避免只有生成物过期时才红。`tests/slot-labels.test.js` 也遍历全部语言，防止新增语言漏掉内置槽位键。
 - e2e 的 ja 断言从「回退英文」改成「逐字等于 ja 字典」：ja 现在有字典，CJK 判据不再适用（日文含汉字），四处标签逐字比对才能证明没有走回退。
 - 回退链不变：未来宿主新增语言而本仓尚未提供字典时，仍按 active → fallback → `en` 显示。
 
@@ -33,7 +36,8 @@ Status: implemented
 
 ## Testing
 
-- `tests/locales.test.js`：8 种语言键集/占位符/非空，覆盖集与宿主 8 种一致。
+- `tests/locales.test.js`：8 种语言键集/占位符/非空，覆盖集与宿主 8 种一致；直接读 `locale/*.json` 与生成字典比对。
 - `tests/slot-labels.test.js`：每种语言都覆盖内置槽位键。
 - `tests/e2e/i18n-switch.e2e.js`：真实宿主 zh → en → ja → zh，ja 四处标签逐字等于 ja 字典；`<html lang>` 与四处标签并进同一个等待条件，避免切换瞬间读到旧值。
-- 双向验证：临时删 `locale/ja.json` 的一个 key，`tests/locales.test.js` 与 locale 门禁变红；还原后全绿。
+- 双向验证：临时删 `locale/ja.json` 的一个 key（不重建），`tests/locales.test.js` 因源文件与生成字典不一致变红；重建后键集门禁与单测也红。还原后全绿。
+- 复数三档手工渲染：六种语言各输出 `count = 0 / 1 / 2` 的 `board.fold.expand` 与 `session.fold.expand`，数字不再直接修饰名词；输出见 PR 证据。

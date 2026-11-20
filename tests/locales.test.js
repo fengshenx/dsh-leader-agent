@@ -6,6 +6,7 @@
  */
 
 import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
 import { test } from 'node:test'
 import { LOCALE_UI, unknownLocaleCodes } from '../src/client/locales.js'
 import { translator } from './helpers/locale.js'
@@ -14,6 +15,12 @@ const en = LOCALE_UI.en
 const zh = LOCALE_UI.zh
 /** 宿主当前注册的语言；插件随包提供同一组字典。 */
 const HOST_CODES = ['zh', 'en', 'ja', 'es', 'fr', 'de', 'ru', 'pt']
+const LOCALE_DIR = new URL('../locale/', import.meta.url)
+/** 直接读 JSON 源文件：生成物过期时单测也要能红，不能只测生成物。 */
+const SOURCE_UI = Object.fromEntries(HOST_CODES.map((code) => [
+  code,
+  JSON.parse(readFileSync(new URL(`${code}.json`, LOCALE_DIR), 'utf8')).ui,
+]))
 
 /**
  * 取出模板里的 `{name}` 占位符。
@@ -26,6 +33,17 @@ function placeholdersOf(template) {
 
 test('随包字典覆盖宿主注册的 8 种语言', () => {
   assert.deepEqual(Object.keys(LOCALE_UI).sort(), [...HOST_CODES].sort())
+})
+
+test('locale/*.json 源文件覆盖 8 种语言，且与生成字典一致', () => {
+  const files = readdirSync(LOCALE_DIR)
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => name.slice(0, -'.json'.length))
+    .sort()
+  assert.deepEqual(files, [...HOST_CODES].sort())
+  for (const code of HOST_CODES) {
+    assert.deepEqual(SOURCE_UI[code], LOCALE_UI[code], `locale/${code}.json 与生成字典不一致；运行 node build/locales.mjs`)
+  }
 })
 
 test('各语言字典键集一致', () => {
