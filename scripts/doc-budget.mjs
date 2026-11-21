@@ -12,8 +12,11 @@ const CJK_PATTERN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/gu
 /** 天花板超过当前值的这个倍数，说明余量已经大到不再约束体量，报 `loose`。 */
 export const LOOSE_RATIO = 1.12
 
-/** 重设天花板时按当前值留的余量：至少 5%，避免改一次就撞线。 */
-const HEADROOM_RATIO = 1.05
+/** 天花板低于当前值的这个倍数，说明余量不足 5%，报 `tight`。 */
+export const FLOOR_RATIO = 1.05
+
+/** 9 个单位以下时 5% 与 12% 之间没有整数天花板，下界不参与判定。 */
+const FLOOR_MIN_UNITS = 9
 
 /**
  * 数一份文档的体量。
@@ -38,19 +41,35 @@ export function countDocUnits(text) {
  * @returns {number} 建议天花板（正整数）
  */
 function recommendedCeiling(units) {
-  const target = Math.ceil(units * HEADROOM_RATIO)
+  const target = Math.ceil(units * FLOOR_RATIO)
   const upper = Math.floor(units * LOOSE_RATIO)
   return Math.min(target, upper)
 }
 
 /**
- * 判定清单里每一项是否落在天花板内，并检查余量是否过大。
+ * 当前天花板下还能保留多少单位，才不算贴线；无解时返回 null。
+ *
+ * 压缩目标要同时满足 5% 下界与 12% 上限；9 个单位附近会只剩抬天花板一条路。
+ *
+ * @param {number} units - 当前体量单位数
+ * @param {number} ceiling - 当前天花板
+ * @returns {number | null} 可压缩到的最大单位数；无整数解时为 null
+ */
+function compactionTarget(units, ceiling) {
+  if (units < FLOOR_MIN_UNITS) return null
+  const maxUnits = Math.floor(ceiling / FLOOR_RATIO)
+  return maxUnits > 0 && ceiling / maxUnits <= LOOSE_RATIO ? maxUnits : null
+}
+
+/**
+ * 判定清单里每一项是否落在天花板内，并检查余量是否过大或过小。
  *
  * 状态优先级：`bad-ceiling` / `missing` 是结构性错误，先报；`over` 是超限；
- * 然后是 `loose`——天花板仍高于当前值，但超过 12% 说明它已经不约束体量。
+ * `loose` 是余量超过 12%；`tight` 是余量低于 5%。`loose` 与 `tight` 互斥。
+ * 9 个单位以下没有整数天花板能同时满足 5% 与 12%，不判 `tight`。
  *
  * @param {Array<{ path: string, ceiling: number, units: number | null }>} entries - 待判定项，`units` 为 null 表示文件不存在
- * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose', suggestedCeiling?: number }>} 判定结果
+ * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose' | 'tight', suggestedCeiling?: number, maxUnits?: number }>} 判定结果
  */
 export function checkBudgets(entries) {
   return entries.map(({ path, ceiling, units }) => {
@@ -63,6 +82,17 @@ export function checkBudgets(entries) {
     if (units === 0) return { path, ceiling, units, status: 'ok' }
     if (ceiling / units > LOOSE_RATIO) {
       return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units) }
+    }
+    if (units >= FLOOR_MIN_UNITS && ceiling / units < FLOOR_RATIO) {
+      const maxUnits = compactionTarget(units, ceiling)
+      return {
+        path,
+        ceiling,
+        units,
+        status: 'tight',
+        suggestedCeiling: recommendedCeiling(units),
+        ...(maxUnits === null ? {} : { maxUnits }),
+      }
     }
     return { path, ceiling, units, status: 'ok' }
   })
@@ -86,14 +116,30 @@ export function findUnregisteredDocs(registered, discovered) {
 }
 
 /**
+ * 余量百分比，保留两位小数。
+ * @param {number} units - 当前体量单位数
+ * @param {number} ceiling - 当前天花板
+ * @returns {string} 例如 `4.00`
+ */
+export function headroomPercent(units, ceiling) {
+  return ((ceiling / units - 1) * 100).toFixed(2)
+}
+
+/**
  * 渲染判定结果的一行。
  *
- * @param {{ path: string, ceiling: number, units: number | null, status: string, suggestedCeiling?: number }} result - 单项判定结果
+ * @param {{ path: string, ceiling: number, units: number | null, status: string, suggestedCeiling?: number, maxUnits?: number }} result - 单项判定结果
  * @returns {string} 对齐后的单行输出
  */
 export function formatBudgetRow(result) {
-  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE' }[result.status]
+  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE', tight: 'TIGHT' }[result.status]
   const units = result.units === null ? '—' : String(result.units)
-  const suggestion = result.status === 'loose' ? `  → 建议 ${result.suggestedCeiling}` : ''
+  let suggestion = ''
+  if (result.status === 'loose') {
+    suggestion = `  → 建议 ${result.suggestedCeiling}`
+  } else if (result.status === 'tight') {
+    const compress = result.maxUnits === undefined ? '' : `压到 ${result.maxUnits} 或`
+    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling)}%，${compress}抬到 ${result.suggestedCeiling}`
+  }
   return `${label}  ${units.padStart(6)} / ${String(result.ceiling).padEnd(6)} ${result.path}${suggestion}`
 }
