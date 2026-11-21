@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>dsh-leader-agent — one Leader drives a team of coding agents</title>
-<meta name="description" content="A leader/worker orchestration plugin for DeepSeek Harness (dsh): the Leader splits work, dispatches workers, tracks every task to completion and runs review — on a project board you can read at a glance.">
+<title>dsh-leader-agent — a dsh leader agent that drives a team of coding agents</title>
+<meta name="description" content="dsh-leader-agent is a dsh leader agent for DeepSeek Harness (dsh): the Leader splits work, dispatches persistent workers, tracks every task to completion and runs review — on a project board you can read at a glance.">
 <link rel="canonical" href="https://fengshenx.github.io/dsh-leader-agent/">
 <meta name="google-site-verification" content="FcUvhwySw-rx0h1J-XdHdZrmvswR99xN1fsygQJMRtg">
 <link rel="icon" type="image/svg+xml" href="logo-mark.svg">
 <meta name="theme-color" content="#06070a">
 <meta property="og:type" content="website">
-<meta property="og:title" content="dsh-leader-agent — one Leader drives a team of coding agents">
+<meta property="og:title" content="dsh-leader-agent — a dsh leader agent that drives a team of coding agents">
 <meta property="og:description" content="Leader/worker orchestration for DeepSeek Harness: dispatch, board, review. Run ten features in parallel instead of babysitting each one.">
 <meta property="og:url" content="https://fengshenx.github.io/dsh-leader-agent/">
 <meta property="og:image" content="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board-og.png">
@@ -20,7 +20,7 @@
 <meta property="og:image:alt" content="dsh-leader-agent: project tree, the Leader's conversation, and the delivery board">
 <meta property="og:site_name" content="dsh-leader-agent">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="dsh-leader-agent — one Leader drives a team of coding agents">
+<meta name="twitter:title" content="dsh-leader-agent — a dsh leader agent that drives a team of coding agents">
 <meta name="twitter:description" content="Leader/worker orchestration for DeepSeek Harness: dispatch, board, review.">
 <meta name="twitter:image" content="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board-og.png">
 <meta name="twitter:image:alt" content="dsh-leader-agent: project tree, the Leader's conversation, and the delivery board">
@@ -29,6 +29,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "dsh-leader-agent",
+  "alternateName": "dsh leader agent",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "macOS, Windows, Linux",
   "description": "Leader/worker orchestration plugin for DeepSeek Harness (dsh): dispatch, delivery board, and review, so one person can run many features in parallel.",
@@ -41,6 +42,38 @@
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
   "softwareRequirements": "DeepSeek Harness (dsh) >=0.2.1-rc.2 <0.3.0",
   "author": { "@type": "Person", "name": "fengshenx" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Is dsh-leader-agent the same as DeepSeek's Super-agent?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Super-agent is DeepSeek Harness's own research prototype, built around one repository and event-driven sessions. dsh-leader-agent is a third-party plugin for a different job: one person running many features at once on a delivery board."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Super-agent vs. leader/worker orchestration: what is the difference?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Super-agent keeps a long-lived agent that reacts to repository events and spawns isolated sessions. dsh-leader-agent keeps a Leader you talk to: it splits work into cards, dispatches persistent workers, and reports on a delivery board. Use the prototype when your unit of work is one repository with many events; use the board when it is ten features and one person."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can dsh-leader-agent and Super-agent run together?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "In separate profiles, yes. Both own session lifecycle and react to the same host events, so running them in one profile makes dispatch behaviour unpredictable."
+      }
+    }
+  ]
 }
 </script>
 <style>
@@ -433,6 +466,8 @@
   .section {
     position: relative;
     padding: 96px 0;
+    /* 锚点跳转时给吸顶 header 让位，否则 h2 会被压在导航下面 */
+    scroll-margin-top: 80px;
   }
   .section::before {
     content: "";
@@ -643,6 +678,39 @@
     font-size: 14px;
     color: var(--ink-soft);
     line-height: 1.55;
+  }
+
+  /* FAQ：承接 Super-agent 的对比意图，把最常问的边界与官方出处写清楚 */
+  .faq-list {
+    max-width: 760px;
+    margin: 0 auto;
+    display: grid;
+    gap: 14px;
+  }
+  .faq-item {
+    padding: 22px 24px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .faq-item h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+  }
+  .faq-item p {
+    margin: 0;
+    font-size: 14.2px;
+    line-height: 1.65;
+    color: var(--ink-soft);
+  }
+  .faq-item a {
+    color: var(--accent-cyan);
+  }
+  .faq-item a:hover {
+    color: var(--ink);
   }
 
   /* Install terminal */
@@ -858,6 +926,7 @@
       <a class="hide-sm" href="#workflow">Workflow</a>
       <a class="hide-sm" href="#features">Features</a>
       <a class="hide-sm" href="#demo">Demo</a>
+      <a class="hide-sm" href="#faq">FAQ</a>
       <a class="hide-sm" href="#install">Install</a>
       <span class="nav-sep" aria-hidden="true"></span>
       <a href="https://github.com/fengshenx/dsh-leader-agent" data-track="outbound-github" data-track-place="nav">GitHub</a>
@@ -875,7 +944,7 @@
         <span>DeepSeek Harness Plugin · Open Source (MIT)</span>
       </div>
       <h1>One Leader drives the work and review.<br>Run <em>ten features in parallel</em>.</h1>
-      <p class="lead">State the goal once. The Leader splits cards, dispatches persistent workers, tracks every turn to completion, verifies deliverables, and organizes review — on a live project board you can read at a glance.</p>
+      <p class="lead">dsh-leader-agent is a dsh leader agent for DeepSeek Harness. State the goal once: the Leader splits cards, dispatches persistent workers, tracks every turn to completion, verifies deliverables, and organizes review — on a live project board you can read at a glance.</p>
       <div class="hero-actions">
         <a class="btn btn-primary" href="#install">
           <span>Install Plugin</span>
@@ -1056,6 +1125,30 @@
               </div>
             </li>
           </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="faq">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="section-kicker">FAQ</span>
+        <h2>Is this DeepSeek's Super-agent?</h2>
+        <p>No. Super-agent is DeepSeek Harness's own research prototype, built around one repository and event-driven sessions. dsh-leader-agent is a third-party plugin for a different job: one person running many features at once.</p>
+      </div>
+      <div class="faq-list">
+        <div class="faq-item">
+          <h3>Super-agent vs. leader/worker orchestration</h3>
+          <p>Super-agent keeps a long-lived agent that reacts to repository events and spawns isolated sessions. dsh-leader-agent keeps a Leader you talk to: it splits work into cards, dispatches persistent workers, and reports on a delivery board. If your unit of work is one repository with many events, use the prototype; if it is ten features and one person, use the board.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Can I run both?</h3>
+          <p>In separate profiles, yes. Both own session lifecycle and react to the same host events, so running them in one profile makes dispatch behaviour unpredictable.</p>
+        </div>
+        <div class="faq-item">
+          <h3>Where is the official Super-agent?</h3>
+          <p>At <a href="https://github.com/deepseek-ai/dsh-superagent-prototype">deepseek-ai/dsh-superagent-prototype</a> (MIT). This page is not affiliated with it.</p>
         </div>
       </div>
     </div>

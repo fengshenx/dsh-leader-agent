@@ -104,7 +104,7 @@ Three mechanisms make this more than "a smarter prompt":
 
 ## Design trade-offs
 
-- This project does not aim to rebuild dsh's own super agent. It solves one concrete problem: letting one person manage 20+ sessions.
+- This project does not aim to rebuild [dsh's own Super-agent prototype](https://github.com/deepseek-ai/dsh-superagent-prototype), which watches one repository and runs event-driven sessions. It solves a different problem: letting one person manage 20+ sessions, with a Leader, a board and parallel tasks ([FAQ](https://fengshenx.github.io/dsh-leader-agent/#faq)).
 - Today's agents are not reliable enough to run unattended, so the design assumes you can interrupt or push any worker at any point.
 - The routing layer runs a full-size model. In practice, holding the global picture, it often connects several PRs in one thought and resolves what a single worker cannot see.
 - Agent orchestration generalizes. A card describes the task itself, so it works outside coding and composes with any skill.
