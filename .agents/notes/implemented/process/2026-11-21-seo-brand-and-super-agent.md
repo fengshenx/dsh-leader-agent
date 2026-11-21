@@ -9,7 +9,7 @@ Status: implemented
 ## Decision
 
 - **品牌词写准**：title / og:title / twitter:title 与 hero 首段出现不带连字符的 `dsh leader agent`；JSON-LD 用 `alternateName` 记录同一产品的另一种写法。h1 不动——主张与视觉都不换。
-- **Super-agent 只进内容层**：落地页加 `#faq`（一个 h2 问题 + 三条 Q&A + FAQPage JSON-LD），其中一条是 `Super-agent vs. leader/worker orchestration` 的对比；研究原型的链接与「不是 DeepSeek 官方产品」的声明写在 FAQ 里。title / `alternateName` / npm keywords 一律不写 Super-agent。
+- **Super-agent 只进内容层**：落地页加 `#faq`（一个 h2 问题 + 三条 Q&A + FAQPage JSON-LD，结构化数据覆盖全部四条可见问答），其中一条是 `Super-agent vs. leader/worker orchestration` 的对比；研究原型的链接与「不是 DeepSeek 官方产品」的声明写在 FAQ 里。title / `alternateName` / npm keywords 一律不写 Super-agent。
 - **README 的设计取舍一条改成带链接的对比**：仓库页权重高于落地页，先让它吃到词，锚文本指到 `#faq`。
 - 不写 `<meta name="keywords">`：Google 不读，Bing 当垃圾信号。
 - 顺手给 `.section` 加 `scroll-margin-top: 80px`：新的 `#faq` 导航跳转时 h2 会被吸顶 header 压住，原有锚点本来也有同样问题。
@@ -31,4 +31,4 @@ Status: implemented
 
 ## Testing
 
-本地 chromium（1440 / 390）：0 console error / 0 pageerror、无横向溢出；两段 JSON-LD 都能解析且 FAQPage 答案与可见文本一致（覆盖 h2 问 + 前两条 `.faq-item`，第三条只在可见层）；`alternateName` 为 `dsh leader agent`；点导航 `#faq` 后 `document.activeElement` 是 `#faq`，kicker 与 h2 都不被吸顶 header 遮挡；title 73 字符，首屏仍能看到 `dsh leader agent`。`npm run check` 全绿。
+本地 chromium（1440 / 390）：0 console error / 0 pageerror、无横向溢出；两段 JSON-LD 都能解析且 FAQPage 四条答案与可见文本逐字一致；`alternateName` 为 `dsh leader agent`；点导航 `#faq` 后 `document.activeElement` 是 `#faq`，kicker 与 h2 都不被吸顶 header 遮挡；title 73 字符，首屏仍能看到 `dsh leader agent`。`npm run check` 全绿。
