@@ -220,6 +220,15 @@ test('输出行：small 标出 <9 单位下界豁免', () => {
   assert.match(row, /<9 单位，下界豁免/)
 })
 
+test('输出行：small 空文档不打印百分比', () => {
+  const [result] = checkBudgets([{ path: 'docs/empty.md', ceiling: 5, units: 0 }])
+  assert.equal(result.status, 'small')
+  const row = formatBudgetRow(result)
+  assert.match(row, /^SMALL\s+0 \/ 5/)
+  assert.match(row, /<9 单位，下界豁免/)
+  assert.doesNotMatch(row, /余量/)
+})
+
 test('输出行：4.999% 不显示成 5.00%', () => {
   const [result] = checkBudgets([{ path: 'docs/a.md', ceiling: 104999, units: 100000 }])
   assert.equal(result.status, 'tight')
@@ -248,14 +257,18 @@ test('真实清单：声明的文件都在，且读数都是正整数', () => {
   }
 })
 
-test('真实清单：当前读数都在 5–12% 余量内', () => {
+test('真实清单：除 small 外都在 5–12% 余量内', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
   const entries = Object.entries(manifest).map(([path, ceiling]) => {
     const abs = join(root, path)
     return { path, ceiling, units: existsSync(abs) ? countDocUnits(readFileSync(abs, 'utf8')) : null }
   })
+  // 8 单位临时文档：过滤必须放行 small，否则未来登记小文档会让这条真实清单测试假红。
+  entries.push({ path: 'docs/__small-fixture.md', ceiling: 8, units: countDocUnits('one two three four five six seven eight') })
+  const results = checkBudgets(entries)
+  assert.equal(results.find((result) => result.path === 'docs/__small-fixture.md')?.status, 'small')
   assert.deepEqual(
-    checkBudgets(entries).filter((result) => result.status !== 'ok'),
+    results.filter((result) => result.status !== 'ok' && result.status !== 'small'),
     [],
   )
 })
@@ -350,4 +363,16 @@ test('门禁：失败时也列出 small 豁免项', () => {
   assert.equal(result.status, 1)
   assert.match(result.stdout, /^SMALL/m)
   assert.match(result.stderr, /另有 1 篇 <9 单位小文档豁免下界：docs\/b\.md/)
+})
+
+test('门禁：4.999% 的 CLI 输出不出现 5.00%', () => {
+  const content = Array.from({ length: 100000 }, (_, index) => `w${index % 10}`).join(' ')
+  const result = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': 104999 }),
+    'docs/a.md': content,
+  })
+  assert.equal(result.status, 1, result.stderr)
+  assert.match(result.stdout, /余量 4\.99%/)
+  assert.doesNotMatch(result.stdout, /5\.00%/)
+  assert.match(result.stderr, /余量 4\.99% 低于 5%/)
 })
