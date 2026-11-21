@@ -51,12 +51,10 @@ function recommendedCeiling(units) {
  *
  * 压缩目标要同时满足 5% 下界与 12% 上限；9 个单位附近会只剩抬天花板一条路。
  *
- * @param {number} units - 当前体量单位数
  * @param {number} ceiling - 当前天花板
  * @returns {number | null} 可压缩到的最大单位数；无整数解时为 null
  */
-function compactionTarget(units, ceiling) {
-  if (units < FLOOR_MIN_UNITS) return null
+function compactionTarget(ceiling) {
   const maxUnits = Math.floor(ceiling / FLOOR_RATIO)
   return maxUnits > 0 && ceiling / maxUnits <= LOOSE_RATIO ? maxUnits : null
 }
@@ -65,11 +63,11 @@ function compactionTarget(units, ceiling) {
  * 判定清单里每一项是否落在天花板内，并检查余量是否过大或过小。
  *
  * 状态优先级：`bad-ceiling` / `missing` 是结构性错误，先报；`over` 是超限；
- * `loose` 是余量超过 12%；`tight` 是余量低于 5%。`loose` 与 `tight` 互斥。
- * 9 个单位以下没有整数天花板能同时满足 5% 与 12%，不判 `tight`。
+ * `loose` 是余量超过 12%；`units < 9` 的非 loose 文档判 `small`（下界豁免）；
+ * `tight` 是余量低于 5%。`loose` / `tight` / `small` 互斥。
  *
  * @param {Array<{ path: string, ceiling: number, units: number | null }>} entries - 待判定项，`units` 为 null 表示文件不存在
- * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose' | 'tight', suggestedCeiling?: number, maxUnits?: number }>} 判定结果
+ * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose' | 'tight' | 'small', suggestedCeiling?: number, maxUnits?: number }>} 判定结果
  */
 export function checkBudgets(entries) {
   return entries.map(({ path, ceiling, units }) => {
@@ -78,13 +76,14 @@ export function checkBudgets(entries) {
     }
     if (units === null) return { path, ceiling, units: null, status: 'missing' }
     if (units > ceiling) return { path, ceiling, units, status: 'over' }
-    // 空文档不占预算，也不会囤配额：判 ok，避免建议值永远不收敛。
-    if (units === 0) return { path, ceiling, units, status: 'ok' }
+    // 空文档与 9 单位以下的小文档没有可判的下界，标 small 让豁免可见。
+    if (units === 0) return { path, ceiling, units, status: 'small' }
     if (ceiling / units > LOOSE_RATIO) {
       return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units) }
     }
-    if (units >= FLOOR_MIN_UNITS && ceiling / units < FLOOR_RATIO) {
-      const maxUnits = compactionTarget(units, ceiling)
+    if (units < FLOOR_MIN_UNITS) return { path, ceiling, units, status: 'small' }
+    if (ceiling / units < FLOOR_RATIO) {
+      const maxUnits = compactionTarget(ceiling)
       return {
         path,
         ceiling,
@@ -117,12 +116,17 @@ export function findUnregisteredDocs(registered, discovered) {
 
 /**
  * 余量百分比，保留两位小数。
+ *
+ * 4.999% 四舍五入会显示成 5.00%，与 `tight` 自相矛盾；命中 5 时改为向下取整。
+ *
  * @param {number} units - 当前体量单位数
  * @param {number} ceiling - 当前天花板
  * @returns {string} 例如 `4.00`
  */
 export function headroomPercent(units, ceiling) {
-  return ((ceiling / units - 1) * 100).toFixed(2)
+  const percent = (ceiling / units - 1) * 100
+  const rounded = Math.round(percent * 100) / 100
+  return (rounded >= 5 ? Math.floor(percent * 100) / 100 : rounded).toFixed(2)
 }
 
 /**
@@ -132,7 +136,7 @@ export function headroomPercent(units, ceiling) {
  * @returns {string} 对齐后的单行输出
  */
 export function formatBudgetRow(result) {
-  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE', tight: 'TIGHT' }[result.status]
+  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE', tight: 'TIGHT', small: 'SMALL' }[result.status]
   const units = result.units === null ? '—' : String(result.units)
   let suggestion = ''
   if (result.status === 'loose') {
@@ -140,6 +144,9 @@ export function formatBudgetRow(result) {
   } else if (result.status === 'tight') {
     const compress = result.maxUnits === undefined ? '' : `压到 ${result.maxUnits} 或`
     suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling)}%，${compress}抬到 ${result.suggestedCeiling}`
+  } else if (result.status === 'small') {
+    const percent = result.units === 0 ? '' : `余量 ${headroomPercent(result.units, result.ceiling)}%，`
+    suggestion = `  → ${percent}<9 单位，下界豁免`
   }
   return `${label}  ${units.padStart(6)} / ${String(result.ceiling).padEnd(6)} ${result.path}${suggestion}`
 }

@@ -80,9 +80,14 @@ for (const path of unregistered) console.log(`UNREG  ${'—'.padStart(6)} / ${'�
 
 if (listOnly) process.exit(0)
 
-const failures = results.filter((result) => result.status !== 'ok')
+const small = results.filter((result) => result.status === 'small')
+const failures = results.filter((result) => result.status !== 'ok' && result.status !== 'small')
 if (failures.length === 0 && unregistered.length === 0) {
-  console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在 5–12% 余量内`)
+  if (small.length === 0) {
+    console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在 5–12% 余量内`)
+  } else {
+    console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 通过；${small.length} 篇 <9 单位豁免下界，其余在 5–12% 余量内`)
+  }
   process.exit(0)
 }
 
@@ -105,5 +110,8 @@ for (const failure of failures) {
   } else {
     console.error(`  ${failure.path}: 天花板必须是正整数，当前是 ${failure.ceiling}`)
   }
+}
+if (small.length > 0) {
+  console.error(`  另有 ${small.length} 篇 <9 单位小文档豁免下界：${small.map((result) => result.path).join('、')}`)
 }
 process.exit(1)
