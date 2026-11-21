@@ -1,5 +1,5 @@
 {
-  "AGENTS.md": 4660,
+  "AGENTS.md": 4674,
   "README.md": 3530,
   "README_ZH.md": 5270,
   "LEADER.md": 3800,
@@ -8,9 +8,9 @@
   "SECURITY.md": 410,
   "docs/architecture.md": 6320,
   "docs/limitations.md": 9000,
-  "docs/development.md": 3000,
+  "docs/development.md": 3008,
   "docs/capability-gaps.md": 18171,
-  "docs/usage.md": 7400,
+  "docs/usage.md": 7402,
   "docs/getting-started.md": 2165,
   "docs/e2e-testing.md": 4160,
   "docs/release.md": 1542,
