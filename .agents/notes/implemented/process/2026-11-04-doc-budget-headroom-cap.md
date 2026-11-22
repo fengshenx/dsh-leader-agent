@@ -9,7 +9,7 @@ standing docs 的体量门禁只判 `units <= ceiling`，天花板只升不降�
 ## Decision
 
 - **超过 12% 余量报 `loose`**：`ceiling / units > 1.12` 即报红、CLI 以 1 退出。状态优先级是 `bad-ceiling` / `missing` → `over` → `loose` → `ok`：前两者是清单结构错误，`over` 已说明天花板不够，不再重复报余量过大。
-- **建议值按 5% 余量、并被 12% 上限夹住**：`recommendedCeiling(units)` 取 `min(ceil(units × 1.05), floor(units × 1.12))`，通常就是当前值 + 5%；`units` 小于 9 时两个约束之间没有整数解，取能落地的较小值。`units` 为 0 的文档直接判 `ok`——空文档既不占预算也不会囤配额，判 `loose` 则建议值永远不收敛。失败文案与 `--list` 行都带建议值。
+- **建议值按 5% 余量、并被 12% 上限夹住**：`recommendedCeiling(units)` 取 `min(ceil(units × 1.05), floor(units × 1.12))`，通常就是当前值 + 5%；`units` 小于 9 时两个约束之间没有整数解，取能落地的较小值。`units` 为 0 的文档判 `small`（非失败，下界豁免；下界规则见 [文档预算门禁的 5% 下界](2026-11-21-doc-budget-floor.md)）——空文档既不占预算也不会囤配额，判 `loose` 则建议值永远不收敛。失败文案与 `--list` 行都带建议值。
 - **旧天花板按当前值重设**：这是「重设天花板」不是「压缩文档」，正文只顺带改指向新技能的链接说明；`AGENTS.md` 按每个任务都要改的那档惯例同步重算。
 
 ## Alternatives considered
