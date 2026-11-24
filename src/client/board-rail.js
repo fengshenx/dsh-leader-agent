@@ -205,22 +205,37 @@ function drawRail(svg, options = {}) {
 export function BoardRail({ railKey, orthogonal, theme }) {
   const ref = useRef(null)
   const reduced = usePrefersReducedMotion()
+  // 最近一次真正画上去的签名。隐藏/显示只改可见性，不改内容与几何；用它把
+  // 「右栏重新可见」的 0 → N 尺寸变化挡在重画之外——重画会重建 SVG，SMIL
+  // 光点跟着从头起跑。
+  const drawnKey = useRef('')
 
   useLayoutEffect(() => {
     const svg = ref.current
     if (svg === null) return undefined
     const stage = svg.parentElement
-    drawRail(svg, { orthogonal, theme, reduced })
-    if (stage === null || typeof ResizeObserver === 'undefined') return undefined
-    let frame = 0
+    if (stage === null) return undefined
+    let timer = 0
+    const draw = () => {
+      // 宿主用 display:none 隐藏非当前会话的右栏：尺寸归零不是布局变化
+      if (stage.clientWidth === 0 || stage.clientHeight === 0) return
+      // 宽度决定卡片换行与行高，是线路几何的唯一外部变量；宽度没变、内容签名
+      // 没变时，重画的结果与现在这层 SVG 相同，不必重建动画节点。
+      const key = `${railKey}|${orthogonal}|${theme}|${reduced}|${stage.clientWidth}`
+      if (key === drawnKey.current) return
+      drawnKey.current = key
+      drawRail(svg, { orthogonal, theme, reduced })
+    }
+    draw()
+    if (typeof ResizeObserver === 'undefined') return undefined
     const observer = new ResizeObserver(() => {
-      // 观测回调里直接改 DOM 会打断布局；推到下一帧再量
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => { drawRail(svg, { orthogonal, theme, reduced }) })
+      // 面板过渡期间尺寸可能连续变化：等稳定后只画一次，避免每帧重建
+      clearTimeout(timer)
+      timer = setTimeout(draw, 80)
     })
     observer.observe(stage)
     return () => {
-      cancelAnimationFrame(frame)
+      clearTimeout(timer)
       observer.disconnect()
     }
   }, [railKey, orthogonal, theme, reduced])
