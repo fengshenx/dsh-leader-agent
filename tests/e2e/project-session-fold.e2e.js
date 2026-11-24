@@ -9,7 +9,7 @@
  */
 
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -22,6 +22,8 @@ import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems }
 /** 默认水位一页的条数，与 `SESSION_WATERMARK_BASE` 一致。 */
 const PAGE_SIZE = 5
 const WORKERS_PER_PROJECT = 6
+
+const WORKSPACE_FIXTURE_HINT = '宿主未接受 workspace fixture（workspace 域格式可能已升级）'
 
 const WORKSPACE_IDS = [
   '11111111-1111-4111-8111-111111111111',
@@ -70,8 +72,9 @@ function sessionCwd(home, sessionId) {
 /**
  * 先种两个工作区，第一段实例才能把 leader 与 worker 建进各自的目录。
  *
- * 工作区选择器走系统目录选择，无头 Chromium 驱动不了；这里直接写宿主
- * workspace 域的落盘格式（version 2），宿主升级该域时要跟着改。
+ * 仅测试夹具：生产代码不读写 `home/storages/workspace.json`。工作区选择器走
+ * 系统目录选择，无头 Chromium 驱动不了；这里直接写宿主 workspace 域的落盘格式
+ * （version 2），写完立即回读校验，宿主升级该域时要在显式断言上失败。
  */
 function seedWorkspaces(root, dirs) {
   mkdirSync(join(root, 'home', 'storages'), { recursive: true })
@@ -88,7 +91,8 @@ function seedWorkspaces(root, dirs) {
       updatedAt: now,
     }
   })
-  writeFileSync(join(root, 'home', 'storages', 'workspace.json'), `${JSON.stringify({
+  const storagePath = join(root, 'home', 'storages', 'workspace.json')
+  writeFileSync(storagePath, `${JSON.stringify({
     unit: { name: 'workspace', version: 2 },
     global: {
       initialized: true,
@@ -99,6 +103,23 @@ function seedWorkspaces(root, dirs) {
     },
     tables: { workspaces: tables },
   }, null, 2)}\n`)
+
+  const stored = JSON.parse(readFileSync(storagePath, 'utf8'))
+  assert.equal(
+    stored.unit?.version,
+    2,
+    'workspace fixture 的域版本应为 2——宿主升级 workspace 域时这里要同步',
+  )
+  assert.deepEqual(stored.global?.workspaceIds, WORKSPACE_IDS, 'workspace fixture 应登记两个工作区')
+  PROJECTS.forEach((project, index) => {
+    const record = stored.tables?.workspaces?.[WORKSPACE_IDS[index]]
+    assert.ok(record, `workspace fixture 缺少 ${project.workspace} 的记录`)
+    assert.equal(
+      record.path,
+      realpathSync(dirs[project.id]),
+      `${project.workspace} 的路径应写入 fixture`,
+    )
+  })
 }
 
 /** 写项目与 worker 登记表：项目按目录归组，worker 按登记表认身份。 */
@@ -212,7 +233,7 @@ test('收起项目再展开回到默认 5 条，且不影响其它项目', { tim
 
   const workspaceRows = new Map(PROJECTS.map((project) => [project.id, workspaceRow(bootstrap, project.workspace)]))
   for (const project of PROJECTS) {
-    await waitForLocator(workspaceRows.get(project.id), { description: `${project.workspace} 行`, timeoutMs: 20_000 })
+    await waitForLocator(workspaceRows.get(project.id), { description: `${WORKSPACE_FIXTURE_HINT}：等待 ${project.workspace} 行`, timeoutMs: 20_000 })
   }
   await dismissWelcome(bootstrap)
 
