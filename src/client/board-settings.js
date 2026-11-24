@@ -44,7 +44,8 @@ const MODE_KEYS = Object.freeze({
  * 模式选项的小预览图。
  *
  * 只是示意：用两个 SVG 画出「主干 + 节点」与「三行列表」，让用户在点之前就能
- * 分辨两个模式。图形颜色走 currentColor，跟随宿主主题。
+ * 分辨两个模式。图形颜色走 currentColor，执行者圆点取宿主强调色（不写死琥珀：
+ * 浅色宿主的 accent 是蓝的，固定琥珀会与看板实际配色对不上），一起跟随主题。
  *
  * @param {boolean} cinema - 是否画线路图
  * @returns {object} React 元素
@@ -59,7 +60,7 @@ function ModePreview({ cinema }) {
       createElement('circle', { cx: 10, cy: 9, r: 2, fill: 'currentColor' }),
       createElement('circle', { cx: 10, cy: 18, r: 2, fill: 'currentColor' }),
       createElement('circle', { cx: 10, cy: 26, r: 2, fill: 'currentColor' }),
-      createElement('circle', { cx: 36, cy: 9, r: 2.6, fill: 'var(--dsw-static-amber-400)' }),
+      createElement('circle', { cx: 36, cy: 9, r: 2.6, className: 'dsh-leader-agent-settings-preview-dot' }),
     )
   }
   return createElement(

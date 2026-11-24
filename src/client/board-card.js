@@ -248,7 +248,8 @@ function BoardSlot({ slot, onOpenSession, labels, t }) {
  * 线路图模式下的执行者圆点。
  *
  * 窄栏里放不下「状态点 + 角色名 + 箭头」，只留一个首字圆点；完整名字与状态在
- * `title` 里，点击仍然打开该会话。它不是另一套语义，只是同一个入口的紧凑形态。
+ * `title` 里，同时并进 `aria-label`——状态不能只挂在 `title` 上，读屏用户拿不到
+ * 悬停提示。点击仍然打开该会话。它不是另一套语义，只是同一个入口的紧凑形态。
  *
  * @param {object} props - 组件属性
  * @param {object} props.slot - 槽位视图（已绑定会话）
@@ -261,6 +262,7 @@ function BoardRailSlot({ slot, onOpenSession, labels, t }) {
   const stateKey = STATE_LABEL_KEYS[slot.state]
   const stateLabel = stateKey === undefined ? slot.state : t(stateKey)
   const name = slotDisplayName(slot.name, labels, t)
+  const label = t('board.slot.title', { name, state: stateLabel })
   return createElement(
     'button',
     {
@@ -268,8 +270,8 @@ function BoardRailSlot({ slot, onOpenSession, labels, t }) {
       className: `dsh-leader-agent-board-rail-slot dsh-leader-agent-board-rail-slot-${slot.state}`,
       'data-rail-slot': '',
       'data-rail-state': slot.state,
-      title: t('board.slot.title', { name, state: stateLabel }),
-      'aria-label': name,
+      title: label,
+      'aria-label': label,
       onClick: (event) => {
         event.stopPropagation()
         onOpenSession(slot.sessionId)

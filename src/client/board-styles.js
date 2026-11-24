@@ -1498,6 +1498,12 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   color: var(--dsw-alias-label-secondary);
 }
 
+/* 预览里的执行者圆点取宿主强调色：浅色皮的实际 accent 是蓝的，固定琥珀会
+   让预览和看板各说一套；强调色本身跟主题走，深色皮自然变亮 */
+.dsh-leader-agent-settings-preview-dot {
+  fill: var(--dsw-alias-state-business-primary);
+}
+
 .dsh-leader-agent-settings-copy {
   display: flex;
   flex-direction: column;

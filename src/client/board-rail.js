@@ -11,8 +11,9 @@
  * @module dsh-leader-agent/client/board-rail
  */
 
-import { createElement, useLayoutEffect, useRef } from 'react'
+import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { planRailLanes, railNodeState, RAIL_LANE_HOT, RAIL_LANE_WARN } from './board-rail-plan.js'
+import { prefersReducedMotion, watchReducedMotion } from './motion-preference.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -48,16 +49,17 @@ function pathNode(d, className) {
 }
 
 /**
- * 是否要求减少动态效果。
+ * 跟随系统的「减少动态效果」偏好。
  *
- * @returns {boolean} 减少时为 true
+ * SMIL 光点不受 CSS 媒体查询管：偏好如果在看板打开后才切到 reduce，已经挂上的
+ * comet 会继续跑。订阅变化后重画，绘制层才能把光点摘掉。
+ *
+ * @returns {boolean} 当前是否要求减少动态效果
  */
-function prefersReducedMotion() {
-  try {
-    return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true
-  } catch {
-    return false
-  }
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(prefersReducedMotion)
+  useEffect(() => watchReducedMotion(globalThis, setReduced), [])
+  return reduced
 }
 
 /**
@@ -106,7 +108,7 @@ function measure(element, base) {
  * 重画整张线路图。
  *
  * @param {object} svg - 覆盖层
- * @param {{ orthogonal?: boolean, theme?: string }} options - 走线方式与主题
+ * @param {{ orthogonal?: boolean, theme?: string, reduced?: boolean }} options - 走线方式、主题与动效偏好
  * @returns {void}
  */
 function drawRail(svg, options = {}) {
@@ -162,7 +164,7 @@ function drawRail(svg, options = {}) {
     }
   })
 
-  const reduced = prefersReducedMotion()
+  const reduced = options.reduced === true
   let animated = 0
   planRailLanes({ trunkX, leaderY: leader.cy, rows, orthogonal: options.orthogonal }).forEach((lane, index) => {
     if (lane.kind === RAIL_LANE_HOT) {
@@ -202,25 +204,26 @@ function drawRail(svg, options = {}) {
  */
 export function BoardRail({ railKey, orthogonal, theme }) {
   const ref = useRef(null)
+  const reduced = usePrefersReducedMotion()
 
   useLayoutEffect(() => {
     const svg = ref.current
     if (svg === null) return undefined
     const stage = svg.parentElement
-    drawRail(svg, { orthogonal, theme })
+    drawRail(svg, { orthogonal, theme, reduced })
     if (stage === null || typeof ResizeObserver === 'undefined') return undefined
     let frame = 0
     const observer = new ResizeObserver(() => {
       // 观测回调里直接改 DOM 会打断布局；推到下一帧再量
       cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => { drawRail(svg, { orthogonal, theme }) })
+      frame = requestAnimationFrame(() => { drawRail(svg, { orthogonal, theme, reduced }) })
     })
     observer.observe(stage)
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [railKey, orthogonal, theme])
+  }, [railKey, orthogonal, theme, reduced])
 
   return createElement('svg', {
     ref,

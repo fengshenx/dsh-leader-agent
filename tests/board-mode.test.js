@@ -11,6 +11,7 @@ import {
   cacheBoardDefault,
   normalizeBoardMode,
   readBoardMode,
+  readBoardModeSnapshot,
   setBoardMode,
   subscribeBoardMode,
   writeBoardMode,
@@ -52,6 +53,29 @@ test('没写过时读默认模式', () => {
   assert.equal(readBoardMode(createStorage()), BOARD_MODE_CINEMA)
 })
 
+test('没有任何偏好时快照标记未就绪：首帧不能把内置炫酷当成用户选择', () => {
+  assert.deepEqual(readBoardModeSnapshot(createStorage()), { mode: BOARD_MODE_CINEMA, resolved: false })
+  assert.deepEqual(readBoardModeSnapshot(undefined), { mode: BOARD_MODE_CINEMA, resolved: false })
+})
+
+test('显式选择与宿主默认缓存都算已就绪', () => {
+  assert.deepEqual(
+    readBoardModeSnapshot(createStorage({ [BOARD_MODE_KEY]: BOARD_MODE_WORK })),
+    { mode: BOARD_MODE_WORK, resolved: true },
+  )
+  assert.deepEqual(
+    readBoardModeSnapshot(createStorage({ [BOARD_DEFAULT_KEY]: BOARD_MODE_WORK })),
+    { mode: BOARD_MODE_WORK, resolved: true },
+  )
+})
+
+test('存储读不出来时同样是未就绪，而不是内置默认', () => {
+  const throwing = {
+    getItem: () => { throw new Error('privacy mode') },
+  }
+  assert.deepEqual(readBoardModeSnapshot(throwing), { mode: BOARD_MODE_CINEMA, resolved: false })
+})
+
 test('没有显式选择时用宿主缓存的默认值', () => {
   const storage = createStorage({ [BOARD_DEFAULT_KEY]: BOARD_MODE_WORK })
   assert.equal(readBoardMode(storage), BOARD_MODE_WORK)
@@ -77,7 +101,7 @@ test('缓存宿主默认：只在没有显式选择时写，同值不重复写',
   assert.deepEqual(explicit.writes, [])
 })
 
-test('存储抛错时读与缓存都退回内置默认', () => {
+test('存储抛错时读回退默认，缓存写失败仍让默认值本次生效', () => {
   const throwing = {
     getItem: () => {
       throw new Error('privacy mode')
@@ -87,7 +111,8 @@ test('存储抛错时读与缓存都退回内置默认', () => {
     },
   }
   assert.equal(readBoardMode(throwing), BOARD_MODE_CINEMA)
-  assert.equal(cacheBoardDefault(throwing, BOARD_MODE_WORK), undefined)
+  // 写不进缓存也要广播给订阅者，否则看板会永远停在「偏好未就绪」
+  assert.equal(cacheBoardDefault(throwing, BOARD_MODE_WORK), BOARD_MODE_WORK)
 })
 
 test('写进去的值读得回来', () => {

@@ -13,7 +13,7 @@
 /** 主线在跑：金色。 */
 export const RAIL_LANE_HOT = 'hot'
 
-/** 需要人介入：红色，不流动。 */
+/** 需要人介入：红色，不流动（只看呼吸提示，不加光流）。 */
 export const RAIL_LANE_WARN = 'warn'
 
 /** 静态绑定：灰色。 */

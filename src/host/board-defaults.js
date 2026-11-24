@@ -68,11 +68,17 @@ export async function resolveBoardDefaults({ home = resolveDshHome() } = {}) {
     readList(join(directory, CARDS_FILE), 'cards'),
   ])
   const legacy = isLegacyUser({ projects, cards })
-  await mkdir(directory, { recursive: true })
-  await writeFile(
-    markerFile,
-    `${JSON.stringify({ version: MARKER_VERSION, legacy, capturedAt: new Date().toISOString() }, null, 2)}\n`,
-    'utf8',
-  )
+  // 标记只是缓存：数据目录只读或磁盘满时写不进去，不能因此让默认判定失败——
+  // 老用户会退回新装的炫酷。下次启动重算即可。
+  try {
+    await mkdir(directory, { recursive: true })
+    await writeFile(
+      markerFile,
+      `${JSON.stringify({ version: MARKER_VERSION, legacy, capturedAt: new Date().toISOString() }, null, 2)}\n`,
+      'utf8',
+    )
+  } catch {
+    // 原因见上：写不进标记不影响本次返回值
+  }
   return { defaultMode: legacy ? 'work' : 'cinema', legacy }
 }

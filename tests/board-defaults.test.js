@@ -95,6 +95,18 @@ test('标记损坏时按数据重算并写回', async () => {
   }
 })
 
+test('标记写不进去也返回按数据算出的默认值', async () => {
+  const home = await makeHome()
+  try {
+    await writeStore(home, 'projects.json', { version: 1, projects: [{ id: 'p1' }] })
+    // 把标记路径占成目录：读与写都会失败，模拟数据目录只读/磁盘满
+    await mkdir(join(home, 'dsh-leader-agent', 'board-default.json'), { recursive: true })
+    assert.deepEqual(await resolveBoardDefaults({ home }), { defaultMode: 'work', legacy: true })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('isLegacyUser 只看有没有项目或卡片', () => {
   assert.equal(isLegacyUser(), false)
   assert.equal(isLegacyUser({ projects: [], cards: [] }), false)

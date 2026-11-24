@@ -49,32 +49,49 @@ export function normalizeBoardMode(value) {
 }
 
 /**
+ * 从存储口读模式与「默认值是否已就绪」。
+ *
+ * 没写过任何偏好时返回 `resolved: false`：此时 `mode` 只是内置兜底，不能拿它当
+ * 用户偏好渲染——老用户升级后的首帧会先画成炫酷，等宿主判定的工作默认值到了
+ * 再切。`resolved` 让看板在默认值落地前不画线路图。
+ *
+ * @param {{ getItem?: (key: string) => string | null } | undefined} storage - 存储口
+ * @returns {{ mode: string, resolved: boolean }} 合法模式与是否已有偏好依据
+ */
+export function readBoardModeSnapshot(storage) {
+  try {
+    const explicit = storage?.getItem?.(BOARD_MODE_KEY)
+    if (explicit !== null && explicit !== undefined) return { mode: normalizeBoardMode(explicit), resolved: true }
+    const fallback = storage?.getItem?.(BOARD_DEFAULT_KEY)
+    if (fallback !== null && fallback !== undefined) return { mode: normalizeBoardMode(fallback), resolved: true }
+  } catch {
+    // 隐私模式读存储会抛：连显式选择都读不到，只能按内置默认走
+    return { mode: BOARD_MODE_DEFAULT, resolved: false }
+  }
+  return { mode: BOARD_MODE_DEFAULT, resolved: false }
+}
+
+/**
  * 从存储口读模式。
  *
  * @param {{ getItem?: (key: string) => string | null } | undefined} storage - 存储口
  * @returns {string} 合法模式
  */
 export function readBoardMode(storage) {
-  try {
-    const explicit = storage?.getItem?.(BOARD_MODE_KEY)
-    if (explicit !== null && explicit !== undefined) return normalizeBoardMode(explicit)
-    const fallback = storage?.getItem?.(BOARD_DEFAULT_KEY)
-    if (fallback !== null && fallback !== undefined) return normalizeBoardMode(fallback)
-  } catch {
-    // 隐私模式读存储会抛：连显式选择都读不到，只能按内置默认走
-    return BOARD_MODE_DEFAULT
-  }
-  return BOARD_MODE_DEFAULT
+  return readBoardModeSnapshot(storage).mode
 }
 
 /**
  * 缓存宿主判定的默认模式。
  *
- * 只在没有显式选择时写；写成功返回实际生效的模式，否则返回 undefined。
+ * 只在没有显式选择时写；写成功返回实际生效的模式。写失败也返回该模式——默认值
+ * 仍要在本次运行时生效，否则隐私模式下老用户会一直停在内置炫酷。同值或已有
+ * 显式选择时返回 undefined：那种情况下存储里本来就有可读依据，订阅者不必再
+ * 被通知一次。
  *
  * @param {{ getItem?: (key: string) => string | null, setItem?: (key: string, value: string) => void } | undefined} storage - 存储口
  * @param {unknown} mode - 宿主给出的默认模式
- * @returns {string | undefined} 写入的模式
+ * @returns {string | undefined} 本次生效的模式
  */
 export function cacheBoardDefault(storage, mode) {
   const next = normalizeBoardMode(mode)
@@ -85,8 +102,8 @@ export function cacheBoardDefault(storage, mode) {
     storage?.setItem?.(BOARD_DEFAULT_KEY, next)
     return next
   } catch {
-    // 隐私模式/配额满：默认值退回内置的炫酷，不阻断看板
-    return undefined
+    // 隐私模式/配额满：缓存写不进去，但默认值仍要在本次会话生效
+    return next
   }
 }
 
