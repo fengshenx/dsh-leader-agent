@@ -161,6 +161,8 @@ export function apply(ctx) {
       getSessions: () => ctx.sessions,
       // 归档走宿主的工作区服务：它是既有能力，别处归档的会话这里也要跟着消失。
       getWorkspaces: () => ctx.get('workspaces'),
+      // 面板页是否接管主区域：宿主会话树据此不选中任何行，项目区块要同一个口径。
+      getLayout: () => ctx.get('layout'),
       onWorkspacesReady: (listener) => workspacesReady.subscribe(listener),
     }),
   }, ProjectPanel)), 'dsh-leader-agent 左栏项目区块')
