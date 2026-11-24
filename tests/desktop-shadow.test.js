@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync,
-  statSync, writeFileSync,
+  statSync, unlinkSync, writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -201,7 +201,9 @@ test('known 项被换成实体目录时挪到旁边保留，不跟随 rmSync 删
   const fixture = makeFixture(t)
   sync(fixture)
   const sessions = join(fixture.shadowPaths.home, 'sessions')
-  rmSync(sessions, { force: true })
+  // Linux 的 rmSync 会把目录链接当目录报 EISDIR；只摘链接用 unlink。
+  if (lstatSync(sessions).isSymbolicLink()) unlinkSync(sessions)
+  else rmSync(sessions, { recursive: true })
   mkdirSync(sessions)
   writeFileSync(join(sessions, 'new-dev.json'), '{"keep":true}\n')
 
