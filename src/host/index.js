@@ -368,11 +368,18 @@ export function apply(ctx) {
     // 浏览器归档路径已经调过 detachSession，这里可能重复触发，而它是幂等的。
     //
     // 但「agent 被销毁」不等于「会话被删除」：宿主重启时也会逐个销毁活 agent，
-    // 此时会话记录还在，清卡会把重启变成一次数据丢失。只在会话记录确实不在了
-    // 时才摘；会话库不可用或报错时保留槽位（宁可留死引用，也不误删）。
-    // 插件卸载时的 disposeAll 同样不算删会话，由 disposed 短路。
+    // 此时会话记录还在，清卡会把重启变成一次数据丢失。只在会话确实不能服务时
+    // 才摘——已归档，或会话记录已经不在。会话库不可用或报错时保留槽位（宁可留
+    // 死引用，也不误删）。插件卸载时的 disposeAll 同样不算删会话，由 disposed 短路。
     if (disposed) return
     void (async () => {
+      // 归档只往工作区注册表里加 id，不删会话记录：单看「记录还在」会把归档会话
+      // 当成活会话，把一个不能服务的执行者永久留在卡上。
+      const archived = ctx.get('workspaceRegistry')?.archivedSessionIds
+      if (Array.isArray(archived) && archived.includes(agent.id)) {
+        await cards.detachSession(agent.id)
+        return
+      }
       let exists
       try {
         exists = await sessionExistsWithCtx(ctx, agent.id)

@@ -10,7 +10,8 @@ Status: implemented
 
 ## Decision
 
-- `agent/disposed` 里先查会话记录是否还在（`sessionExistsWithCtx`），只有返回 `false`（记录确实删了）才 `detachSession`；`true`（重启窗口，记录还在）跳过；`undefined`（会话库缺失）也跳过——宁可留死引用，也不在重启时误删。
+- `agent/disposed` 里先查归档集合（`workspaceRegistry.archivedSessionIds`），命中就 `detachSession`：宿主归档只往注册表加 id、不删会话记录，只看「记录还在」会把归档会话当成活会话，留下一个不能服务的执行者。
+- 未归档时再查会话记录是否还在（`sessionExistsWithCtx`），只有返回 `false`（记录确实删了）才摘；`true`（重启窗口，记录还在）跳过；`undefined`（会话库缺失）也跳过——宁可留死引用，也不在重启时误删。
 - 判断本身抛错只记日志并保留槽位；摘卡失败沿用原来的告警。
 - `disposed` 短路保留：插件卸载时 `workerSessions.disposeAll()` 也会发这个事件，那不是删会话。
 - 不做启动期对账：它能清掉外部删除留下的死引用，但**不能阻止重启时丢绑定**；本次先把丢数据这条路径堵住。
@@ -25,11 +26,15 @@ Status: implemented
 ## Consequences
 
 - 重启后卡片槽位保留，worker 会话记录也在；下次 `message_worker` 按原绑定找会话，会话恢复与否由宿主负责。
-- 外部删除会话时，若记录已从会话库删掉，仍会摘卡；若删除与销毁的顺序反了（先销毁、后删记录），槽位会留到用户手动清或下次删除——这是用「宁可留死引用」换数据安全。
+- 外部删除会话时，若记录已从会话库删掉，仍会摘卡；若删除与销毁的顺序反了（先销毁、后删记录），槽位会一直留在卡上，直到换绑新会话或关闭卡片——active 卡不允许人工清空槽位，而记录删掉后也不会再有该会话的 `agent/disposed`。这是用「宁可留死引用」换数据安全。
 - 会话库在重启窗口不可用（返回 `undefined` 或抛错）时同样保留绑定；代价是可能留下死引用。
 - 已经丢掉的绑定不会自动恢复：本次只防再丢，用户需要时按 `workers.json` 里还活着的 worker 重新绑槽位。
 
+收益：重启不再丢槽位绑定，归档会话也不会被当成可服务的执行者留在卡上。
+
 ## Testing
 
-- `tests/leader-wiring.test.js` 新增「宿主重启销毁活 agent 时不清卡片槽位」：会话仍在 → 等 100ms 后槽位原样；把实现临时改回无条件 `detachSession`，该用例变红，还原后全绿。
+- `tests/leader-wiring.test.js` 新增「宿主重启销毁活 agent 时不清卡片槽位」：会话仍在 → 槽位原样。撤掉修复（退回无条件 `detachSession`）时它变红，还原后全绿。
+- 同文件新增「归档会话被销毁时摘掉卡片槽位」：归档集合命中 + 会话记录仍在 → 槽位被摘；去掉归档判断时该用例变红。
+- 同文件新增「会话库缺失时保留槽位」：不提供 `sessionQuery` 的装配层路径不再只靠 helper 单测兜底。
 - 既有「宿主销毁会话时摘槽位」「插件卸载后不清」「detach 抛错只记日志」继续覆盖删除、卸载与错误路径；假件的 `sessionQuery` 用会话 id 集合模拟真实宿主 `listSessions` 的返回形状。
