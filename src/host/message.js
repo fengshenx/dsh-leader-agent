@@ -17,13 +17,17 @@ import { randomUUID } from 'node:crypto'
  * `source` 默认是真人输入；worker 回报走自己的 source kind，客户端据此换渲染
  * 形态（见 `shared/worker-report.js`）。
  *
+ * `id` 可以由调用方预生成：投递方要在消息进入 worker 之前就把它记在在飞表里，
+ * 结算才能按「这一轮消费的到底是哪条消息」判归属。
+ *
  * @param {Array<{ type: string, [key: string]: unknown }>} content - 模型可见内容块
  * @param {{ kind: string, [key: string]: unknown }} [source] - 消息来源
+ * @param {string} [id] - 预生成的消息 id；缺省随机 UUID
  * @returns {{ id: string, role: 'user', content: unknown[], source: { kind: string } }} 消息
  */
-export function createUserMessage(content, source = { kind: 'user' }) {
+export function createUserMessage(content, source = { kind: 'user' }, id = randomUUID()) {
   return Object.freeze({
-    id: randomUUID(),
+    id,
     role: 'user',
     content,
     source,

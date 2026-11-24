@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **部分已被 [用户下钻聊出来的回合不再当成派工轮结算](../bug-fix/2026-11-17-user-turn-not-settled.md) 取代**：结算判据改为回合归属、文本按回合攒；本文「按会话判归属」「只给在飞会话攒文本」两条不再成立。订阅 `session/event`、`turn/end` 折叠、摘要冻结与幂等仍然有效。
+
 ## Problem
 
 派工上线时给 worker 一个 `worker_done` 工具，让它收尾时自己交 `{ summary, outcome }`，理由是「根会话没有终态 promise，宿主也没留读最后一轮产出的稳定 API」。这条理由不成立：`session/event` 是公开事件、`turn/end` 带终态 `reason.kind`，宿主自己的 subagent 也这么取产出。代价还很大——工具式回报把「协调者能不能收到汇报」押在模型记得调工具上，而在飞记录没有超时，漏调一次协调者就干等。
