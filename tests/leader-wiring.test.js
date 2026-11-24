@@ -29,7 +29,7 @@ async function waitFor(predicate, timeoutMs = 3000) {
 /**
  * 建一个假的服务上下文，只给装配期真正会碰到的宿主 API 面。
  *
- * `get()` 只提供 `sessions`（`agent/created` 之外唯一被读路径用到的服务）：`cwd`
+ * `get()` 提供 `sessions`（会话 cwd）与 `sessionQuery`（会话是否还在）：`cwd`
  * 故意与项目目录不同，用来暴露「按会话 cwd 取手册」这类错位判据。
  *
  * @param {Map<string, string>} sessionCwds - 会话 id → 会话 cwd
@@ -67,6 +67,13 @@ function createFakeHost(sessionCwds, extraServices = {}) {
     },
     get(name) {
       if (name in extraServices) return extraServices[name]
+      if (name === 'sessionQuery') {
+        return {
+          async listSessions() {
+            return [...sessionCwds.keys()].map((id) => ({ header: { id } }))
+          },
+        }
+      }
       if (name !== 'sessions') return undefined
       return {
         get(sessionId) {
@@ -378,6 +385,46 @@ test('装配层：宿主销毁会话时摘掉卡片槽位，归档与销毁重�
       return card.slots.review === undefined
     }), true)
     assert.deepEqual((await read(archivedCard.card.id)).slots, {})
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：宿主重启销毁活 agent 时不清卡片槽位', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const previousHome = process.env.DSH_HOME
+  // 重启时 agent 被销毁，但会话记录还在：这正是不能清卡的窗口。
+  const { ctx, holder } = createFakeHost(new Map([['worker-alive', projectDirectory]]))
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      leaderSessionId: 'session-leader',
+    }])
+    apply(ctx)
+    const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
+    assert.equal(await service.awaitIndex(), true)
+    const createCard = holder.tools.get('create_card')
+    const disposed = holder.handlers.get('agent/disposed')
+    const exec = { agent: { id: 'session-leader' }, signal: undefined }
+    const remote = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY)
+    const read = (cardId) => remote.cards.get(cardId)
+
+    const card = await createCard.execute(
+      { title: '重启不清', slots: { review: { sessionId: 'worker-alive' } } },
+      exec,
+    )
+    disposed({ agent: { id: 'worker-alive' } })
+    // 会话还在 → 不该摘；给异步判断留出窗口，确认它确实没写卡。
+    await new Promise((resolve) => { setTimeout(resolve, 100) })
+    assert.deepEqual((await read(card.card.id)).slots, { review: { sessionId: 'worker-alive' } })
   } finally {
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME

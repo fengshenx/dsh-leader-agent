@@ -27,7 +27,7 @@ import { createWorkerSessions } from './worker-sessions.js'
 import { createCardStore } from './cards/store.js'
 import { applyCardContext } from './cards/card-context.js'
 import { createProjectStore } from './projects/store.js'
-import { createProjectService } from './projects/service.js'
+import { createProjectService, sessionExistsWithCtx } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
 import { resolveBoardDefaults } from './board-defaults.js'
 import { createDispatcher } from './dispatch.js'
@@ -366,12 +366,25 @@ export function apply(ctx) {
     workerSessions.forget(agent.id)
     // 宿主自己销毁会话（会话管理删除、外部归档）时，卡片上的槽位就是死引用；
     // 浏览器归档路径已经调过 detachSession，这里可能重复触发，而它是幂等的。
-    // 插件卸载时的 disposeAll 也会发这个事件——那不是宿主删会话，不能清卡。
-    if (!disposed) {
-      void cards.detachSession(agent.id).catch((error) => {
-        logger(`dsh-leader-agent: 会话 ${agent.id} 销毁后摘卡片槽位失败：${error instanceof Error ? error.message : String(error)}`)
-      })
-    }
+    //
+    // 但「agent 被销毁」不等于「会话被删除」：宿主重启时也会逐个销毁活 agent，
+    // 此时会话记录还在，清卡会把重启变成一次数据丢失。只在会话记录确实不在了
+    // 时才摘；会话库不可用或报错时保留槽位（宁可留死引用，也不误删）。
+    // 插件卸载时的 disposeAll 同样不算删会话，由 disposed 短路。
+    if (disposed) return
+    void (async () => {
+      let exists
+      try {
+        exists = await sessionExistsWithCtx(ctx, agent.id)
+      } catch (error) {
+        logger(`dsh-leader-agent: 判断会话 ${agent.id} 是否还在时失败，保留卡片槽位：${error instanceof Error ? error.message : String(error)}`)
+        return
+      }
+      if (exists !== false) return
+      await cards.detachSession(agent.id)
+    })().catch((error) => {
+      logger(`dsh-leader-agent: 会话 ${agent.id} 销毁后摘卡片槽位失败：${error instanceof Error ? error.message : String(error)}`)
+    })
   })
 
   // 外部输入抵达即重置该会话的自动续行计数——人工介入后护栏应重新开始计数。
