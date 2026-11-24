@@ -36,8 +36,6 @@ const STYLE_TEXT = `
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* 与上方 Tab 栏的分割线放在共用类上：工作/炫酷两种模式、空态与骨架态都有 */
-  border-top: 0.5px solid var(--dsw-alias-border-l3);
   padding: 10px 12px 24px;
   /* 滚动条档位不在这里重绑：看板所在的宿主 paneBody/floatBody 已按浮起面绑成
      l2，本层再绑一次只是同值重复；写 body 的基础档反而会在浮起面上读成脏印 */
