@@ -14,6 +14,7 @@
 import { createElement, useState } from 'react'
 import {
   BOARD_MODE_CINEMA,
+  BOARD_MODE_WORK,
   BOARD_MODES,
   readBoardMode,
   setBoardMode,
