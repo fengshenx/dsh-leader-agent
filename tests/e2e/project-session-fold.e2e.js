@@ -1,14 +1,15 @@
 /**
  * 项目树会话列表的水位：默认露 5 条，展开其余后收起项目、再展开回到 5 条。
  *
- * 两段起实例（同 `projects.json` / `workers.json` 的惯例）：第一段让宿主里真实
- * 建出 leader 与 6 个 worker 会话并各跑一轮 mock，停掉后把会话登记进项目；第二段
- * 验证「展开 → 收起项目 → 再展开」之后水位回到默认一页，而不是保留上次展开的
- * 6 条。断言只落在插件自己的 DOM（会话行数与「展开其余」按钮文案）上。
+ * 两个项目各自有一份水位：展开 A 到 6 条、收起 B 时 A 不受影响，B 回到 5；
+ * 再收起 A 后重开也回到 5。两段起实例（同 `projects.json` / `workers.json` 的
+ * 惯例）：第一段在两个工作区里各建一个 leader 与 6 个 worker，停掉后登记进两个
+ * 项目；第二段验证隔离与回落。断言只落在插件自己的 DOM（会话行数与「展开其余」
+ * 按钮文案）上。
  */
 
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -18,30 +19,112 @@ import { startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
 import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
-const M = {
-  leader: 'MOCK-FOLD-LEADER',
-  workers: ['MOCK-FOLD-W1', 'MOCK-FOLD-W2', 'MOCK-FOLD-W3', 'MOCK-FOLD-W4', 'MOCK-FOLD-W5', 'MOCK-FOLD-W6'],
-}
-
-const LEADER_REPLY = '折叠场景：leader 已就位。'
-const WORKER_REPLIES = M.workers.map((_, index) => `折叠场景：worker ${index + 1} 回执。`)
-
 /** 默认水位一页的条数，与 `SESSION_WATERMARK_BASE` 一致。 */
 const PAGE_SIZE = 5
+const WORKERS_PER_PROJECT = 6
 
-/** 从数据根里取宿主启动时建的第一个会话。 */
-function firstSession(home) {
+const WORKSPACE_IDS = [
+  '11111111-1111-4111-8111-111111111111',
+  '22222222-2222-4222-8222-222222222222',
+]
+
+const PROJECTS = [
+  {
+    id: 'fold-a',
+    name: '折叠项目 A',
+    workspace: '项目 A 工作区',
+    directory: 'project-a',
+    leaderMarker: 'MOCK-FOLD-LEADER-A',
+    leaderReply: '折叠场景：leader A 已就位。',
+    workerMarker: (index) => `MOCK-FOLD-A-${index + 1}`,
+    workerReply: (index) => `折叠场景：A worker ${index + 1} 回执。`,
+  },
+  {
+    id: 'fold-b',
+    name: '折叠项目 B',
+    workspace: '项目 B 工作区',
+    directory: 'project-b',
+    leaderMarker: 'MOCK-FOLD-LEADER-B',
+    leaderReply: '折叠场景：leader B 已就位。',
+    workerMarker: (index) => `MOCK-FOLD-B-${index + 1}`,
+    workerReply: (index) => `折叠场景：B worker ${index + 1} 回执。`,
+  },
+]
+
+/** 读某个会话落盘的第一条 session 事件，用来核对 leader 落在对应工作区。 */
+function sessionCwd(home, sessionId) {
   for (const text of readSessionLogs(home)) {
-    const line = text.split('\n').find((item) => item !== '')
-    if (line === undefined) continue
-    try {
-      const event = JSON.parse(line)
-      if (event.type === 'session' && typeof event.id === 'string' && typeof event.cwd === 'string') {
-        return { id: event.id, cwd: event.cwd }
-      }
-    } catch { continue }
+    for (const line of text.split('\n')) {
+      if (line === '') continue
+      try {
+        const event = JSON.parse(line)
+        if (event.type === 'session' && event.id === sessionId && typeof event.cwd === 'string') {
+          return event.cwd
+        }
+      } catch { continue }
+    }
   }
   return null
+}
+
+/**
+ * 先种两个工作区，第一段实例才能把 leader 与 worker 建进各自的目录。
+ *
+ * 工作区选择器走系统目录选择，无头 Chromium 驱动不了；这里直接写宿主
+ * workspace 域的落盘格式（version 2），宿主升级该域时要跟着改。
+ */
+function seedWorkspaces(root, dirs) {
+  mkdirSync(join(root, 'home', 'storages'), { recursive: true })
+  const now = new Date().toISOString()
+  const tables = {}
+  PROJECTS.forEach((project, index) => {
+    const directory = dirs[project.id]
+    mkdirSync(directory, { recursive: true })
+    tables[WORKSPACE_IDS[index]] = {
+      path: realpathSync(directory),
+      title: project.workspace,
+      sessionIds: [],
+      createdAt: now,
+      updatedAt: now,
+    }
+  })
+  writeFileSync(join(root, 'home', 'storages', 'workspace.json'), `${JSON.stringify({
+    unit: { name: 'workspace', version: 2 },
+    global: {
+      initialized: true,
+      defaultWorkspaceId: WORKSPACE_IDS[0],
+      workspaceIds: WORKSPACE_IDS,
+      archivedSessionIds: [],
+      pinnedSessionIds: [],
+    },
+    tables: { workspaces: tables },
+  }, null, 2)}\n`)
+}
+
+/** 写项目与 worker 登记表：项目按目录归组，worker 按登记表认身份。 */
+function seedProjects(home, dirs, leaders, workers) {
+  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
+  const now = Date.now()
+  writeFileSync(join(home, 'dsh-leader-agent', 'projects.json'), `${JSON.stringify({
+    version: 1,
+    projects: PROJECTS.map((project) => ({
+      id: project.id,
+      name: project.name,
+      directory: dirs[project.id],
+      leaderSessionId: leaders.get(project.id),
+      createdAt: now,
+      updatedAt: now,
+    })),
+  }, null, 2)}\n`)
+  writeFileSync(join(home, 'dsh-leader-agent', 'workers.json'), `${JSON.stringify({
+    version: 1,
+    workers: workers.map((worker) => ({
+      childId: worker.id,
+      parentSessionId: leaders.get(worker.projectId),
+      name: worker.name,
+      registeredAt: now,
+    })),
+  }, null, 2)}\n`)
 }
 
 /** 读页面上当前被选中的宿主会话 id。 */
@@ -58,46 +141,67 @@ async function dismissWelcome(page) {
   try { await button.click({ timeout: 4000 }) } catch { /* 没弹窗就继续 */ }
 }
 
-/** 写项目与 worker 登记表：项目树只列登记过的 worker。 */
-function seed(home, leader, workers) {
-  mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
-  const now = Date.now()
-  writeFileSync(join(home, 'dsh-leader-agent', 'projects.json'), `${JSON.stringify({
-    version: 1,
-    projects: [{
-      id: 'fold-project',
-      name: '折叠项目',
-      directory: leader.cwd,
-      leaderSessionId: leader.id,
-      createdAt: now,
-      updatedAt: now,
-    }],
-  }, null, 2)}\n`)
-  writeFileSync(join(home, 'dsh-leader-agent', 'workers.json'), `${JSON.stringify({
-    version: 1,
-    workers: workers.map((worker) => ({
-      childId: worker.id,
-      parentSessionId: leader.id,
-      name: worker.name,
-      registeredAt: now,
-    })),
-  }, null, 2)}\n`)
+function workspaceRow(page, title) {
+  return page.locator('[data-row-key^="workspace:"]').filter({ hasText: title }).first()
 }
 
-test('收起项目再展开，会话列表回到默认 5 条', { timeout: scenarioTimeout(180_000) }, async (t) => {
+function projectBlock(page, name) {
+  return page.locator('.dsh-leader-agent-project-block').filter({
+    has: page.locator('.dsh-leader-agent-project-title', { hasText: name }),
+  })
+}
+
+/** 在指定工作区点「新建会话」，等到当前会话换成一个没见过的 id。 */
+async function openSession(page, row, known, description, mustChange = true) {
+  await row.hover()
+  await row.locator('button[aria-label*="新建会话"]').first().click({ force: true })
+  return waitFor({
+    description,
+    check: async () => {
+      const sessionId = await currentSessionId(page)
+      if (typeof sessionId !== 'string' || sessionId === '') return null
+      if (mustChange && known.has(sessionId)) return null
+      return sessionId
+    },
+    timeoutMs: 15_000,
+  })
+}
+
+async function say(page, marker, reply, description) {
+  const composer = page.locator('div[role="textbox"][contenteditable="true"]').first()
+  await waitForLocator(composer, { description: `${description} 的输入框` })
+  await composer.click()
+  await composer.fill(marker)
+  await composer.press('Enter')
+  await waitForLocator(page.getByText(reply).first(), { description: `${description} 的回复上屏` })
+}
+
+/** 等插件自己的会话行数到指定值：断的是真实可见行，不是节点存在。 */
+async function waitForCount(locator, count, description) {
+  await waitFor({ description, check: async () => (await locator.count()) === count })
+}
+
+test('收起项目再展开回到默认 5 条，且不影响其它项目', { timeout: scenarioTimeout(180_000) }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-project-fold-'))
-  const problems = []
-  const scripts = {
-    [M.leader]: [{ text: LEADER_REPLY }],
-    ...Object.fromEntries(M.workers.map((marker, index) => [marker, [{ text: WORKER_REPLIES[index] }]])),
+  const dirs = Object.fromEntries(PROJECTS.map((project) => [project.id, join(root, project.directory)]))
+  seedWorkspaces(root, dirs)
+
+  const scripts = {}
+  for (const project of PROJECTS) {
+    scripts[project.leaderMarker] = [{ text: project.leaderReply }]
+    for (let index = 0; index < WORKERS_PER_PROJECT; index += 1) {
+      scripts[project.workerMarker(index)] = [{ text: project.workerReply(index) }]
+    }
   }
+  const problems = []
   const mock = await startMockProvider({ scripts })
   let browser = null
   let instance = null
 
   t.after(() => stopScenario({ browser, instance, mock, root }))
 
-  // 第一段：建 leader + 6 个 worker 会话（超过一页才看得出水位有没有被带回来）。
+  // 第一段：两个工作区各建一个 leader 与 6 个 worker。水位超过一页才看得出
+  // 有没有把上次展开的条数带回来。
   const first = await startInstanceIn({ root, baseUrl: mock.url })
   instance = first
   browser = await chromium.launch()
@@ -105,53 +209,65 @@ test('收起项目再展开，会话列表回到默认 5 条', { timeout: scenar
   const bootstrap = await bootstrapContext.newPage()
   watchProblems(bootstrap, problems)
   await bootstrap.goto(first.url, { waitUntil: 'domcontentloaded' })
-  const composer = bootstrap.locator('div[role="textbox"][contenteditable="true"]').first()
-  await waitForLocator(composer, { description: '第一段输入框', timeoutMs: 20_000 })
-  await dismissWelcome(bootstrap)
-  const leader = await waitFor({
-    description: '宿主启动后落盘一个会话',
-    check: () => firstSession(first.home),
-    timeoutMs: 5_000,
-  })
-  await composer.click()
-  await composer.fill(`${M.leader} 安排一下折叠场景。`)
-  await composer.press('Enter')
-  await waitForLocator(bootstrap.getByText(LEADER_REPLY).first(), { description: 'leader 回复上屏' })
 
-  const workspaceRow = bootstrap.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
-  await waitForLocator(workspaceRow, { description: '默认工作区行', timeoutMs: 20_000 })
+  const workspaceRows = new Map(PROJECTS.map((project) => [project.id, workspaceRow(bootstrap, project.workspace)]))
+  for (const project of PROJECTS) {
+    await waitForLocator(workspaceRows.get(project.id), { description: `${project.workspace} 行`, timeoutMs: 20_000 })
+  }
+  await dismissWelcome(bootstrap)
+
+  const known = new Set()
+  const leaders = new Map()
+  for (const [index, project] of PROJECTS.entries()) {
+    const sessionId = await openSession(
+      bootstrap,
+      workspaceRows.get(project.id),
+      known,
+      `${project.name} 的 leader 会话`,
+      index !== 0,
+    )
+    leaders.set(project.id, sessionId)
+    known.add(sessionId)
+    await say(bootstrap, project.leaderMarker, project.leaderReply, `${project.name} 的 leader`)
+    const cwd = await waitFor({
+      description: `${project.name} 的 leader 会话目录`,
+      check: () => sessionCwd(first.home, sessionId),
+      timeoutMs: 5_000,
+    })
+    assert.equal(
+      realpathSync(cwd),
+      realpathSync(dirs[project.id]),
+      `${project.name} 的 leader 应落在对应工作区目录`,
+    )
+  }
+
   const workers = []
-  for (let index = 0; index < M.workers.length; index += 1) {
-    const marker = M.workers[index]
-    // 宿主的「新建会话」会复用同工作区里的空白草稿；上一条已经跑过一轮，
-    // 这里才会真的建出新会话。
-    await workspaceRow.hover()
-    await workspaceRow.locator('button[aria-label*="新建会话"]').first().click({ force: true })
-    const id = await waitFor({
-      description: `新建第 ${index + 1} 个 worker 会话`,
-      check: async () => {
-        const current = await currentSessionId(bootstrap)
-        return typeof current === 'string' && current !== leader.id && !workers.some((item) => item.id === current)
-          ? current
-          : null
-      },
-      timeoutMs: 15_000,
-    })
-    await composer.click()
-    await composer.fill(`${marker} 收工即可`)
-    await composer.press('Enter')
-    await waitForLocator(bootstrap.getByText(WORKER_REPLIES[index]).first(), {
-      description: `第 ${index + 1} 个 worker 的回复上屏`,
-    })
-    workers.push({ id, name: `worker-${index + 1}` })
+  for (const project of PROJECTS) {
+    for (let index = 0; index < WORKERS_PER_PROJECT; index += 1) {
+      const sessionId = await openSession(
+        bootstrap,
+        workspaceRows.get(project.id),
+        known,
+        `${project.name} 第 ${index + 1} 个 worker 会话`,
+      )
+      known.add(sessionId)
+      await say(
+        bootstrap,
+        project.workerMarker(index),
+        project.workerReply(index),
+        `${project.name} 第 ${index + 1} 个 worker`,
+      )
+      workers.push({ projectId: project.id, id: sessionId, name: `${project.id}-worker-${index + 1}` })
+    }
   }
   await bootstrapContext.close()
   await first.stop({ keepRoot: true })
   instance = null
 
-  seed(first.home, leader, workers)
+  seedProjects(first.home, dirs, leaders, workers)
 
-  // 第二段：展开 → 展开其余 → 收起项目 → 再展开，水位应回到默认一页。
+  // 第二段：A、B 各自展开到 6 条；收起 B 时 A 不能被拉回 5；再收起/重开 A、B
+  // 都回到默认一页，且互不影响。
   const second = await startInstanceIn({ root, baseUrl: mock.url })
   instance = second
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
@@ -164,61 +280,78 @@ test('收起项目再展开，会话列表回到默认 5 条', { timeout: scenar
   })
   await dismissWelcome(page)
 
-  const projectRow = page.locator('.dsh-leader-agent-project-row').first()
-  await waitForLocator(projectRow, { description: '项目行', timeoutMs: 20_000 })
-  // 当前会话参与水位：若宿主把第 6 个 worker 恢复成当前会话，基线本来就会
-  // 露出 6 条，断言就失去意义。先把当前会话切到 leader（它不在子会话列表里）。
-  await projectRow.click()
+  const blocks = new Map(PROJECTS.map((project) => [project.id, projectBlock(page, project.name)]))
+  const rows = new Map()
+  const sessions = new Map()
+  const overflows = new Map()
+  for (const project of PROJECTS) {
+    const block = blocks.get(project.id)
+    rows.set(project.id, block.locator('.dsh-leader-agent-project-row').first())
+    sessions.set(project.id, block.locator('.dsh-leader-agent-session-row'))
+    overflows.set(project.id, block.locator('.dsh-leader-agent-session-overflow'))
+    await waitForLocator(rows.get(project.id), { description: `${project.name} 的项目行`, timeoutMs: 20_000 })
+  }
+  const [projectA, projectB] = PROJECTS
+  const rowA = rows.get(projectA.id)
+  const rowB = rows.get(projectB.id)
+  const sessionsA = sessions.get(projectA.id)
+  const sessionsB = sessions.get(projectB.id)
+  const overflowA = overflows.get(projectA.id)
+  const overflowB = overflows.get(projectB.id)
+
+  // 当前会话切到 A 的 leader，排除「当前会话参与水位」把某一页撑大。
+  await rowA.click()
   await waitFor({
-    description: '项目行进入选中态（当前会话已切到 leader）',
-    check: async () => (await projectRow.getAttribute('data-selected')) === 'true',
+    description: '当前会话切到 A 的 leader',
+    check: async () => (await rowA.getAttribute('data-selected')) === 'true',
   })
 
-  const sessionRows = page.locator('.dsh-leader-agent-session-row')
-  const overflow = page.locator('.dsh-leader-agent-session-overflow')
+  await rowA.locator('button[aria-label="展开会话"]').click()
+  await waitForLocator(sessionsA.first(), { description: 'A 展开后的第一条 worker 会话行' })
+  await waitForCount(sessionsA, PAGE_SIZE, 'A 默认只露 5 条会话')
+  assert.equal(await overflowA.innerText(), '展开其余 1 个会话', 'A 默认视图应只藏 1 条')
 
-  await projectRow.locator('button[aria-label="展开会话"]').click()
-  await waitForLocator(sessionRows.first(), { description: '展开后的第一条 worker 会话行' })
+  await overflowA.click()
+  await waitForCount(sessionsA, WORKERS_PER_PROJECT, 'A 展开其余后 6 条全可见')
+  assert.equal(await overflowA.innerText(), '收起', 'A 全部放完后按钮应变成收起')
+
+  await rowB.locator('button[aria-label="展开会话"]').click()
+  await waitForLocator(sessionsB.first(), { description: 'B 展开后的第一条 worker 会话行' })
+  await waitForCount(sessionsB, PAGE_SIZE, 'B 默认只露 5 条会话')
+  assert.equal(await overflowB.innerText(), '展开其余 1 个会话', 'B 默认视图应只藏 1 条')
+
+  await overflowB.click()
+  await waitForCount(sessionsB, WORKERS_PER_PROJECT, 'B 展开其余后 6 条全可见')
+  assert.equal(await overflowB.innerText(), '收起', 'B 全部放完后按钮应变成收起')
+  await waitForCount(sessionsA, WORKERS_PER_PROJECT, 'B 展开后 A 仍是 6 条')
+
+  // 切到 B 的 leader，再收起 B：B 的水位回到 0，A 的水位不能被跨项目共享。
+  await rowB.click()
   await waitFor({
-    description: `默认只露 ${PAGE_SIZE} 条会话`,
-    check: async () => (await sessionRows.count()) === PAGE_SIZE,
+    description: '当前会话切到 B 的 leader',
+    check: async () => (await rowB.getAttribute('data-selected')) === 'true',
   })
-  assert.equal(await overflow.innerText(), `展开其余 1 个会话`, '默认视图应只藏 1 条，按钮给出剩余条数')
+  await rowB.locator('button[aria-label="收起会话"]').click()
+  await waitForCount(sessionsB, 0, '收起 B 后 B 的会话行全部消失')
+  await waitForCount(sessionsA, WORKERS_PER_PROJECT, '收起 B 后 A 仍保持 6 条')
+  assert.equal(await overflowA.innerText(), '收起', 'A 的水位不应被 B 的收起重置')
 
-  // 展开其余：6 条全可见，按钮变成「收起」。
-  await overflow.click()
-  await waitFor({
-    description: '展开其余后 6 条全可见',
-    check: async () => (await sessionRows.count()) === workers.length,
-  })
-  assert.equal(await overflow.innerText(), '收起', '全部放完后按钮应变成收起')
+  await rowB.locator('button[aria-label="展开会话"]').click()
+  await waitForLocator(sessionsB.first(), { description: 'B 重新展开后的第一条 worker 会话行' })
+  await waitForCount(sessionsB, PAGE_SIZE, 'B 重新展开回到默认 5 条')
+  assert.equal(await overflowB.innerText(), '展开其余 1 个会话', 'B 重新展开后剩余条数重新出现')
+  await waitForCount(sessionsA, WORKERS_PER_PROJECT, 'B 重新展开后 A 仍保持 6 条')
 
-  // 收起项目：会话列表整段卸载。
-  await projectRow.locator('button[aria-label="收起会话"]').click()
-  await waitFor({
-    description: '收起项目后会话行全部消失',
-    check: async () => (await sessionRows.count()) === 0,
-  })
+  // 再收起 A：A 自己的水位清掉，B 的 5 条不受影响；重开 A 回到 5 条。
+  await rowA.locator('button[aria-label="收起会话"]').click()
+  await waitForCount(sessionsA, 0, '收起 A 后 A 的会话行全部消失')
+  await waitForCount(sessionsB, PAGE_SIZE, '收起 A 后 B 仍保持 5 条')
 
-  // 再展开：水位必须回到默认一页，而不是保留上次展开的 6 条。
-  await projectRow.locator('button[aria-label="展开会话"]').click()
-  await waitForLocator(sessionRows.first(), { description: '重新展开后的第一条 worker 会话行' })
-  // 第 6 条（下标等于一页条数）不该出现：失败时 locator 读数会给出它的计数与
-  // 可见性，能直接分开「水位没重置」与「列表没渲染」。
-  await waitForLocator(sessionRows.nth(PAGE_SIZE), {
-    description: `重新展开后第 ${PAGE_SIZE + 1} 条会话行不应出现`,
-    state: 'detached',
-  })
-  assert.equal(
-    await sessionRows.count(),
-    PAGE_SIZE,
-    '收起再展开后应回到默认一页',
-  )
-  assert.equal(
-    await overflow.innerText(),
-    '展开其余 1 个会话',
-    '收起再展开后应回到默认一页，剩余条数重新出现在「展开其余」上',
-  )
+  await rowA.locator('button[aria-label="展开会话"]').click()
+  await waitForLocator(sessionsA.first(), { description: 'A 重新展开后的第一条 worker 会话行' })
+  await waitForCount(sessionsA, PAGE_SIZE, 'A 重新展开回到默认 5 条')
+  assert.equal(await overflowA.innerText(), '展开其余 1 个会话', 'A 重新展开后剩余条数重新出现')
+  assert.equal(await sessionsB.count(), PAGE_SIZE, 'A 重新展开不应影响 B 的 5 条')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
 })
