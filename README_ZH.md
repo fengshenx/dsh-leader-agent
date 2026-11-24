@@ -73,7 +73,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 ## 预览
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board-cinema.png" alt="炫酷模式（深色主题）：交付看板画成线路图，卡片挂在主干上，执行者支线按运行状态点亮" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/ab19c6307736fc21675bbac2847dd9bce3bf7a81/docs/assets/readme/board-cinema.png" alt="炫酷模式（深色主题）：交付看板画成线路图，卡片挂在主干上，执行者支线按运行状态点亮" width="1200">
 </div>
 
 **炫酷模式（默认）**：同一块看板画成线路图——卡片挂主干，执行者是右侧支线，只有执行中的支线跑光点。图为深色主题；浅色宿主下是电蓝正交线条。

@@ -73,7 +73,7 @@ For pinning a version, removing it, development installs, or trying it without a
 ## Preview
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board-cinema.png" alt="Cinematic mode in the dark theme: the delivery board as a workflow map, with cards on a trunk and executors on animated branches" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/ab19c6307736fc21675bbac2847dd9bce3bf7a81/docs/assets/readme/board-cinema.png" alt="Cinematic mode in the dark theme: the delivery board as a workflow map, with cards on a trunk and executors on animated branches" width="1200">
 </div>
 
 **Cinematic mode (default).** The same board as a workflow map: cards on a trunk, one branch per executor; only a running branch animates. Shown in the dark theme; the light theme uses electric-blue lines.
