@@ -11,12 +11,13 @@
  * @module dsh-leader-agent/client/board-settings
  */
 
-import { createElement, useState } from 'react'
+import { createElement, useEffect, useState } from 'react'
 import {
   BOARD_MODE_CINEMA,
   BOARD_MODE_WORK,
   BOARD_MODES,
   readBoardMode,
+  subscribeBoardMode,
   setBoardMode,
 } from './board-mode.js'
 import { readLocalStorage } from './guide-card-logic.js'
@@ -118,6 +119,8 @@ function ModeOption({ value, mode, onChoose, t }) {
 function BoardSettingsSection({ t }) {
   const storage = readLocalStorage(globalThis)
   const [mode, setMode] = useState(() => readBoardMode(storage))
+  // 宿主默认模式是异步补上的：设置页先打开时也要跟着换到判定后的模式
+  useEffect(() => subscribeBoardMode(setMode), [])
 
   return createElement(
     'section',

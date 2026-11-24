@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  BOARD_DEFAULT_KEY,
   BOARD_MODE_CINEMA,
   BOARD_MODE_DEFAULT,
   BOARD_MODE_KEY,
   BOARD_MODE_WORK,
   BOARD_MODES,
   announceBoardMode,
+  cacheBoardDefault,
   normalizeBoardMode,
   readBoardMode,
   setBoardMode,
@@ -48,6 +50,44 @@ test('未知值一律回到默认模式', () => {
 
 test('没写过时读默认模式', () => {
   assert.equal(readBoardMode(createStorage()), BOARD_MODE_CINEMA)
+})
+
+test('没有显式选择时用宿主缓存的默认值', () => {
+  const storage = createStorage({ [BOARD_DEFAULT_KEY]: BOARD_MODE_WORK })
+  assert.equal(readBoardMode(storage), BOARD_MODE_WORK)
+})
+
+test('显式选择永远压过宿主默认', () => {
+  const storage = createStorage({
+    [BOARD_MODE_KEY]: BOARD_MODE_CINEMA,
+    [BOARD_DEFAULT_KEY]: BOARD_MODE_WORK,
+  })
+  assert.equal(readBoardMode(storage), BOARD_MODE_CINEMA)
+})
+
+test('缓存宿主默认：只在没有显式选择时写，同值不重复写', () => {
+  const storage = createStorage()
+  assert.equal(cacheBoardDefault(storage, BOARD_MODE_WORK), BOARD_MODE_WORK)
+  assert.deepEqual(storage.writes, [[BOARD_DEFAULT_KEY, BOARD_MODE_WORK]])
+  assert.equal(cacheBoardDefault(storage, BOARD_MODE_WORK), undefined)
+  assert.equal(storage.writes.length, 1)
+
+  const explicit = createStorage({ [BOARD_MODE_KEY]: BOARD_MODE_CINEMA })
+  assert.equal(cacheBoardDefault(explicit, BOARD_MODE_WORK), undefined)
+  assert.deepEqual(explicit.writes, [])
+})
+
+test('存储抛错时读与缓存都退回内置默认', () => {
+  const throwing = {
+    getItem: () => {
+      throw new Error('privacy mode')
+    },
+    setItem: () => {
+      throw new Error('privacy mode')
+    },
+  }
+  assert.equal(readBoardMode(throwing), BOARD_MODE_CINEMA)
+  assert.equal(cacheBoardDefault(throwing, BOARD_MODE_WORK), undefined)
 })
 
 test('写进去的值读得回来', () => {

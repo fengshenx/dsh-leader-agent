@@ -15,6 +15,7 @@
  */
 
 import { BoardBody } from './board.js'
+import { announceBoardMode, cacheBoardDefault } from './board-mode.js'
 import { mountBoardSettings } from './board-settings.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
@@ -23,6 +24,7 @@ import { LeaderChangesAnchor } from './leader-changes-anchor.js'
 import { mountLeaderView } from './leader-view.js'
 import { watchLeaderSessions } from './leader-session-index.js'
 import { LOCALE_UI, SLOT_LOCALE_NAMESPACE, unknownLocaleCodes } from './locales.js'
+import { readLocalStorage } from './guide-card-logic.js'
 import { callProjectRemote, mountProjectRemote } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
@@ -220,10 +222,19 @@ export function apply(ctx) {
   // bundle 提供，缺失时这个回调不执行（`ctx.inject` 单独起一个 fiber，不拖累本
   // 插件），看板与左栏注册照常工作；面板此时显示「项目通道未就绪」。
   ctx.inject(['remote'], function mountProjectChannel(remoteCtx) {
-    void mountProjectRemote(remoteCtx).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error)
-      remoteCtx.logger?.warn?.(`dsh-leader-agent: 项目通道挂载失败：${message}`)
-    })
+    // 看板默认模式由宿主按数据根判一次：升级前已有项目/卡片 → 工作，新装 → 炫酷。
+    // 只缓存默认值，不写显式的 mode key；用户选过的模式永远优先。这里是插件
+    // 初始化时的调用，通常在看板打开前就已完成。
+    void mountProjectRemote(remoteCtx)
+      .then(() => callProjectRemote(remoteCtx, 'boardDefaults', []))
+      .then((defaults) => {
+        const mode = cacheBoardDefault(readLocalStorage(globalThis), defaults?.defaultMode)
+        if (mode !== undefined) announceBoardMode(mode)
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        remoteCtx.logger?.warn?.(`dsh-leader-agent: 项目通道或看板默认模式初始化失败：${message}`)
+      })
     // leader 会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
     watchLeaderSessions(remoteCtx)
     // 建卡后自动打开右栏看板：监视器要走项目通道取卡片，通道没挂好就开不了。

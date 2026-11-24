@@ -57,6 +57,7 @@ async function makeChain() {
     service,
     cards: { detachSession: async () => ({ cards: [], slots: 0, worker: false }) },
     workers: { remove: async () => true },
+    boardDefaults: async () => ({ defaultMode: 'cinema', legacy: false }),
     ctx,
   })
   return { remote, store, registry, workspaces, directory }

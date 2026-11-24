@@ -40,6 +40,7 @@ export const PROJECT_REMOTE_METHODS = Object.freeze({
   sessionsByProject: Object.freeze({}),
   resolveProject: Object.freeze({ sessionId: 'string' }),
   boardCards: Object.freeze({ projectId: 'string' }),
+  boardDefaults: Object.freeze({}),
   projectSlots: Object.freeze({ projectId: 'string' }),
   detachSession: Object.freeze({ sessionId: 'string' }),
   updateCardLinks: Object.freeze({ id: 'string', links: 'links' }),

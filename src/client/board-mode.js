@@ -15,6 +15,14 @@
 /** 存储键。改键等于丢掉老用户的选择，不轻易动。 */
 export const BOARD_MODE_KEY = 'dsh-leader-agent.board.mode'
 
+/**
+ * 宿主判定的默认模式缓存键。
+ *
+ * 老用户（升级前已有项目/卡片）默认工作，新装默认炫酷；默认值单独存，不冒充
+ * 用户的显式选择。显式 key 存在时永远优先。
+ */
+export const BOARD_DEFAULT_KEY = 'dsh-leader-agent.board.default'
+
 /** 线路图模式：列表 + 主干与支线。 */
 export const BOARD_MODE_CINEMA = 'cinema'
 
@@ -48,9 +56,37 @@ export function normalizeBoardMode(value) {
  */
 export function readBoardMode(storage) {
   try {
-    return normalizeBoardMode(storage?.getItem?.(BOARD_MODE_KEY))
+    const explicit = storage?.getItem?.(BOARD_MODE_KEY)
+    if (explicit !== null && explicit !== undefined) return normalizeBoardMode(explicit)
+    const fallback = storage?.getItem?.(BOARD_DEFAULT_KEY)
+    if (fallback !== null && fallback !== undefined) return normalizeBoardMode(fallback)
   } catch {
+    // 隐私模式读存储会抛：连显式选择都读不到，只能按内置默认走
     return BOARD_MODE_DEFAULT
+  }
+  return BOARD_MODE_DEFAULT
+}
+
+/**
+ * 缓存宿主判定的默认模式。
+ *
+ * 只在没有显式选择时写；写成功返回实际生效的模式，否则返回 undefined。
+ *
+ * @param {{ getItem?: (key: string) => string | null, setItem?: (key: string, value: string) => void } | undefined} storage - 存储口
+ * @param {unknown} mode - 宿主给出的默认模式
+ * @returns {string | undefined} 写入的模式
+ */
+export function cacheBoardDefault(storage, mode) {
+  const next = normalizeBoardMode(mode)
+  try {
+    const explicit = storage?.getItem?.(BOARD_MODE_KEY)
+    if (explicit !== null && explicit !== undefined) return undefined
+    if (storage?.getItem?.(BOARD_DEFAULT_KEY) === next) return undefined
+    storage?.setItem?.(BOARD_DEFAULT_KEY, next)
+    return next
+  } catch {
+    // 隐私模式/配额满：默认值退回内置的炫酷，不阻断看板
+    return undefined
   }
 }
 
