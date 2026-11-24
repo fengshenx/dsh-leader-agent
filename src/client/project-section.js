@@ -763,8 +763,13 @@ function ProjectRow(props) {
     leaderRunning: isLeaderRunning(project, sessionRows, archivedSessionIds),
   })
   // 会话列表按水位折叠：默认露出 5 条，点「展开其余」再加一页。状态留在组件
-  // 本地（宿主也不持久化它），每个项目各算各的。
+  // 本地（宿主也不持久化它），每个项目各算各的。收起项目就清掉水位——重新展开
+  // 要回到默认一页，不把上次展开的条数带回来；收起期间列表不渲染，这次重置不会
+  // 让人看见折回去的一瞬间。
   const [watermark, setWatermark] = useState(0)
+  useEffect(() => {
+    if (!expanded) setWatermark(0)
+  }, [expanded])
   const folded = foldSessions(childSessions, watermark, currentSessionId, t)
 
   const menuItems = buildProjectMenuItems(project, {
