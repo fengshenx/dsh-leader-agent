@@ -128,8 +128,8 @@ export function railOrthoBranchPath({ cardRight, cy, slotX, slotY }) {
  * @param {object} input - 几何
  * @param {number} input.trunkX - 主干 x
  * @param {number} input.leaderY - leader 节点中心 y
- * @param {Array<{ status: string, cardX: number, cardRight: number, cy: number, slots?: Array<{ x: number, y: number }> }>} input.rows
- *   自上而下的行几何
+ * @param {Array<{ status: string, cardX: number, cardRight: number, cy: number, slots?: Array<{ x: number, y: number, status?: string }> }>} input.rows
+ *   自上而下的行几何；槽位自带的 `status` 优先于卡片级状态
  * @param {boolean} [input.orthogonal] - 支线走直角（浅色皮的电路感）
  * @returns {Array<{ id: string, kind: string, d: string }>} 线路列表
  */
@@ -144,9 +144,10 @@ export function planRailLanes({ trunkX, leaderY, rows, orthogonal }) {
     })
     const slots = Array.isArray(row.slots) ? row.slots : []
     slots.forEach((slot, slotIndex) => {
+      // 支线按执行者自己的状态上色：同一张卡上，只有正在跑的那个 worker 才有传输
       lanes.push({
         id: `branch:${index}:${slotIndex}`,
-        kind: railLaneKind(row.status),
+        kind: railLaneKind(slot.status ?? row.status),
         d: orthogonal
           ? railOrthoBranchPath({ cardRight: row.cardRight, cy: row.cy, slotX: slot.x, slotY: slot.y })
           : railBranchPath({ cardRight: row.cardRight, cy: row.cy, slotX: slot.x, slotY: slot.y }),

@@ -45,6 +45,25 @@ test('支线是两端水平的 S 弯，短间距也保留弯度', () => {
   )
 })
 
+test('支线按执行者自己的状态上色，不跟卡片级信号走', () => {
+  const lanes = planRailLanes({
+    trunkX: 20,
+    leaderY: 10,
+    rows: [{
+      status: 'running',
+      cardX: 44,
+      cardRight: 300,
+      cy: 50,
+      slots: [
+        { x: 320, y: 50, status: 'running' },
+        { x: 320, y: 70, status: 'idle' },
+        { x: 320, y: 90, status: 'attention' },
+      ],
+    }],
+  })
+  assert.deepEqual(lanes.map((lane) => lane.kind), [RAIL_LANE_HOT, RAIL_LANE_HOT, RAIL_LANE_MUTED, RAIL_LANE_WARN])
+})
+
 test('正交支线先右、再竖、再右，拐角带圆角', () => {
   assert.equal(
     railOrthoBranchPath({ cardRight: 300, cy: 50, slotX: 330, slotY: 80 }),

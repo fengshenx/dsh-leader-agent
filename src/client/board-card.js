@@ -267,6 +267,7 @@ function BoardRailSlot({ slot, onOpenSession, labels, t }) {
       type: 'button',
       className: `dsh-leader-agent-board-rail-slot dsh-leader-agent-board-rail-slot-${slot.state}`,
       'data-rail-slot': '',
+      'data-rail-state': slot.state,
       title: t('board.slot.title', { name, state: stateLabel }),
       'aria-label': name,
       onClick: (event) => {

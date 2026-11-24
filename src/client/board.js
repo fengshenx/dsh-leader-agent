@@ -31,6 +31,7 @@ import {
   reconcileBoardOverlays,
   removeCardFromList,
   slotBindingsOf,
+  slotViewsForCard,
   sortActiveCards,
   sortDoneCards,
 } from './board-projection.js'
@@ -745,9 +746,17 @@ function BoardPanel({
     [signals],
   )
   // 行身份 + 状态的签名：轮询每 2 秒换一次数组，签名不变就不重画，光点不从头上路
+  // 签名要带每个执行者的状态：一张卡上两个 worker 一跑一停，卡片级信号可能
+  // 一直是 running，只有槽位状态能触发支线重画
   const railKey = useMemo(
-    () => `${mode}|${scheme}|${active.map((card) => `${card.id}:${signals.get(card.id)}`).join('|')}`,
-    [mode, scheme, active, signals],
+    () => `${mode}|${scheme}|${active.map((card) => {
+      const slotStates = slotViewsForCard(card, states)
+        .filter((slot) => slot.sessionId !== '')
+        .map((slot) => slot.state)
+        .join(',')
+      return `${card.id}:${signals.get(card.id)}:${slotStates}`
+    }).join('|')}`,
+    [mode, scheme, active, states, signals],
   )
 
   const openSession = useCallback((targetSessionId) => {
