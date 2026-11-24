@@ -1254,9 +1254,9 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 
 .dsh-leader-agent-board-rail-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px;
+  grid-template-columns: minmax(0, 1fr) clamp(56px, 24%, 96px);
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .dsh-leader-agent-board-rail-slots {
@@ -1264,7 +1264,7 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
-  padding-right: 8px;
+  padding-right: 10px;
 }
 
 .dsh-leader-agent-board-rail-slot {

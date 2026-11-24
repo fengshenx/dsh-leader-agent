@@ -388,10 +388,7 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLab
 
   if (!cinema) return cardElement
 
-  // 竖槽最多放三个圆点：卡面高度约 64px，四个就要顶出去。超出的收成 +N，
-  // 完整名单仍在详情里。
-  const railSlots = slots.length > 3 ? slots.slice(0, 2) : slots
-  const extraSlots = slots.length - railSlots.length
+  // 执行者全部展示，不折叠：竖槽高于卡面时行跟着长高，卡片居中，支线自然散开
   return createElement(
     'div',
     {
@@ -400,24 +397,17 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLab
       'data-rail-status': signal,
     },
     cardElement,
-    railSlots.length > 0 || extraSlots > 0
+    slots.length > 0
       ? createElement(
           'div',
           { className: 'dsh-leader-agent-board-rail-slots' },
-          railSlots.map((slot) => createElement(BoardRailSlot, {
+          slots.map((slot) => createElement(BoardRailSlot, {
             key: slot.name,
             slot,
             onOpenSession,
             labels: slotLabels,
             t,
           })),
-          extraSlots > 0
-            ? createElement(
-                'span',
-                { className: 'dsh-leader-agent-board-rail-slot dsh-leader-agent-board-rail-slot-more' },
-                `+${extraSlots}`,
-              )
-            : null,
         )
       : null,
   )
