@@ -129,6 +129,16 @@
     "tab.board.description": "このプロジェクトの Leader とワーカーのセッションにあるタスクのボード",
     "tabs.close": "タブを閉じる",
     "tabs.list": "プロジェクトのセッションタブ",
-    "tabs.more": "その他"
+    "tabs.more": "その他",
+    "board.mode.cinema.desc": "光るレール付きのワークフローマップ。デモや画面収録に。",
+    "board.mode.cinema.title": "シネマモード",
+    "board.mode.work.desc": "アニメーションなしの一覧。タスクの確認に。",
+    "board.mode.work.title": "ワークモード",
+    "board.rail.leader": "Leader",
+    "board.rail.summary": "{running} 実行中 · {total} タスク",
+    "board.settings.desc": "ボードの表示方法を選びます。設定はこのブラウザに保存されます。",
+    "board.settings.nav": "タスクボード",
+    "board.settings.scope": "このブラウザにのみ適用され、プロジェクトのデータは変更しません。",
+    "board.settings.title": "タスクボード"
   }
 }

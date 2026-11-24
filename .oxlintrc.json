@@ -8,10 +8,18 @@
     "growing/**/dist/**"
   ],
   "rules": {
-    "no-unused-vars": ["warn", {
-      "varsIgnorePattern": "^_",
-      "argsIgnorePattern": "^_",
-      "caughtErrorsIgnorePattern": "^_"
-    }]
+    "no-unused-vars": [
+      "warn",
+      {
+        "varsIgnorePattern": "^_",
+        "argsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "no-undef": "error"
+  },
+  "env": {
+    "browser": true,
+    "node": true
   }
 }

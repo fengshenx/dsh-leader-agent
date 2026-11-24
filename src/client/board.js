@@ -21,6 +21,7 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  cardSignal,
   foldDoneCards,
   mergeCardSnapshot,
   mergeCardUpdate,
@@ -30,6 +31,7 @@ import {
   reconcileBoardOverlays,
   removeCardFromList,
   slotBindingsOf,
+  slotViewsForCard,
   sortActiveCards,
   sortDoneCards,
 } from './board-projection.js'
@@ -51,6 +53,114 @@ import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
 import { projectRemoteErrorText } from './project-remote.js'
+import { BOARD_DEFAULT_KEY, BOARD_MODE_KEY, readBoardModeSnapshot, subscribeBoardMode } from './board-mode.js'
+import { readLocalStorage } from './guide-card-logic.js'
+import { BoardRail } from './board-rail.js'
+
+/**
+ * 订阅看板显示模式。
+ *
+ * 同一运行时里设置页写、这里读，走 `board-mode.js` 的模块级订阅；其它窗口靠
+ * `storage` 事件同步。取不到存储时按默认模式走，不阻塞渲染。
+ *
+ * `resolved` 是「偏好有没有依据」：宿主判定的默认值在插件初始化时异步落地，
+ * 落地前老用户没有可读的偏好，此时不能把内置的炫酷当成用户选择来画。
+ *
+ * @returns {{ mode: string, resolved: boolean }} 当前模式与偏好是否已就绪
+ */
+function useBoardMode() {
+  const [snapshot, setSnapshot] = useState(() => readBoardModeSnapshot(readLocalStorage(globalThis)))
+  useEffect(() => {
+    const off = subscribeBoardMode((mode) => setSnapshot({ mode, resolved: true }))
+    const onStorage = (event) => {
+      // 默认值也可能由另一个窗口写入：两种 key 都要重读，不能只认显式选择
+      if (event.key !== BOARD_MODE_KEY && event.key !== BOARD_DEFAULT_KEY) return
+      setSnapshot(readBoardModeSnapshot(readLocalStorage(globalThis)))
+    }
+    globalThis.addEventListener?.('storage', onStorage)
+    return () => {
+      off()
+      globalThis.removeEventListener?.('storage', onStorage)
+    }
+  }, [])
+  return snapshot
+}
+
+/**
+ * 读宿主当前的颜色方案。
+ *
+ * 主题服务由 `@deepseek-ai/dsh-client-ui-theme` 提供（`ctx.theme.getTheme()`）。
+ * 服务缺失（老宿主）时退回系统偏好——总比在深色宿主里给一块浅色面板好。
+ *
+ * @param {(() => object | undefined) | undefined} getTheme - 取主题服务的延迟取值器
+ * @returns {'light' | 'dark'} 颜色方案
+ */
+function readColorScheme(getTheme) {
+  try {
+    const active = getTheme?.()?.getTheme?.().active
+    if (active?.colorScheme === 'light' || active?.colorScheme === 'dark') return active.colorScheme
+  } catch {
+    // 主题服务形态不符：走下面的系统偏好兜底
+  }
+  try {
+    return globalThis.matchMedia?.('(prefers-color-scheme: dark)')?.matches === true ? 'dark' : 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+/**
+ * 跟随宿主主题。切换主题时宿主发 `theme/change`，这里只重读快照。
+ *
+ * @param {(() => object | undefined) | undefined} getTheme - 取主题服务
+ * @param {((listener: () => void) => (() => void) | undefined) | undefined} onThemeChange - 订阅
+ * @returns {'light' | 'dark'} 当前颜色方案
+ */
+function useHostColorScheme(getTheme, onThemeChange) {
+  const [scheme, setScheme] = useState(() => readColorScheme(getTheme))
+  useEffect(() => {
+    if (typeof onThemeChange !== 'function') return undefined
+    const off = onThemeChange(() => setScheme(readColorScheme(getTheme)))
+    return typeof off === 'function' ? off : undefined
+  }, [getTheme, onThemeChange])
+  return scheme
+}
+
+/**
+ * 线路图列表的类名：模式 + 主题各一档，浅色与深色共用同一套几何。
+ *
+ * @param {'light' | 'dark'} scheme - 宿主颜色方案
+ * @returns {string} 类名
+ */
+function cinemaListClass(scheme) {
+  return `dsh-leader-agent-board-list dsh-leader-agent-board-list-cinema dsh-leader-agent-board-list-cinema-${scheme}`
+}
+
+/**
+ * 线路图顶部的 leader 节点。
+ *
+ * 它是整张图的源头：主干从这里向下，卡片都是它的下游。计数只放在这里，
+ * 卡面不重复写。
+ *
+ * @param {object} props - 组件属性
+ * @param {number} props.running - 执行中的卡片数
+ * @param {number} props.total - 进行中的卡片数
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 翻译函数
+ * @returns {object} React 元素
+ */
+function BoardLeaderRow({ running, total, t }) {
+  return createElement(
+    'div',
+    { className: 'dsh-leader-agent-board-rail-head' },
+    createElement('span', { className: 'dsh-leader-agent-board-rail-orb', 'data-rail-leader-dot': '' }),
+    createElement(
+      'div',
+      { className: 'dsh-leader-agent-board-rail-meta' },
+      createElement('b', null, t('board.rail.leader')),
+      createElement('span', null, t('board.rail.summary', { running, total })),
+    ),
+  )
+}
 
 /**
  * 项目归属与 leader 身份的复核间隔。
@@ -101,7 +211,18 @@ function rememberBoard(projectId, project, cards) {
  * @returns {object} React 元素
  */
 export function BoardBody(props) {
-  const { sessionId, getSessions, getUiWorkspace, useSessionStatus, useTabInfo, getSidebarRight, callRemote, t } = props
+  const {
+    sessionId,
+    getSessions,
+    getUiWorkspace,
+    useSessionStatus,
+    useTabInfo,
+    getSidebarRight,
+    callRemote,
+    getTheme,
+    onThemeChange,
+    t,
+  } = props
   // 保留的看板 body 在别的会话/别的位置时仍挂着；只有当前可见的看板才轮询卡片。
   // `useTabInfo` 由右栏 slot 注入；缺它时按可见处理，退回旧行为。
   const useInfo = typeof useTabInfo === 'function' ? useTabInfo : useNoTabInfo
@@ -125,6 +246,8 @@ export function BoardBody(props) {
     getUiWorkspace,
     useSessionStatus,
     callRemote,
+    getTheme,
+    onThemeChange,
     t,
     visible,
     projectHint,
@@ -380,10 +503,10 @@ function BoardEmpty({ allDone, projectName, t }) {
  *
  * @returns {object} React 元素
  */
-function BoardSkeleton() {
+function BoardSkeleton({ listClass }) {
   return createElement(
     'div',
-    { className: 'dsh-leader-agent-board-list' },
+    { className: listClass },
     createElement(
       'div',
       { className: 'dsh-leader-agent-board-group' },
@@ -408,7 +531,18 @@ function BoardSkeleton() {
  * @param {string} [props.projectHint] - 补开看板时带过来的项目 id
  * @returns {object} React 元素
  */
-function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, callRemote, t, visible, projectHint }) {
+function BoardPanel({
+  sessionId,
+  getSessions,
+  getUiWorkspace,
+  useSessionStatus,
+  callRemote,
+  getTheme,
+  onThemeChange,
+  t,
+  visible,
+  projectHint,
+}) {
   // 同一项目的上一份看板数据：worker 的首帧直接画卡，不等项目/卡片 RPC。
   const cached = projectHint === undefined ? undefined : cachedBoard(projectHint)
   const [project, setProject] = useState(cached?.project)
@@ -603,6 +737,36 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }), [cardList, states])
   const doneFold = foldDoneCards(done, doneWatermark, t)
 
+  const modeState = useBoardMode()
+  // 默认值还没落地时既不是工作也不是炫酷：先按无线路图渲染，老用户的首帧不能先
+  // 闪一下炫酷再切回工作；`pending` 也让 e2e 能区分「还没就绪」与「用户选了工作」
+  const mode = modeState.resolved ? modeState.mode : 'pending'
+  const cinema = mode === 'cinema'
+  const scheme = useHostColorScheme(getTheme, onThemeChange)
+  const listClass = cinema ? cinemaListClass(scheme) : 'dsh-leader-agent-board-list'
+  // 线路图只画进行中的卡：完成区是历史，收在折叠里，不参与拓扑
+  const signals = useMemo(
+    () => new Map(active.map((card) => [card.id, cardSignal(card, states)])),
+    [active, states],
+  )
+  const runningCount = useMemo(
+    () => [...signals.values()].filter((signal) => signal === 'running').length,
+    [signals],
+  )
+  // 行身份 + 状态的签名：轮询每 2 秒换一次数组，签名不变就不重画，光点不从头上路
+  // 签名要带每个执行者的状态：一张卡上两个 worker 一跑一停，卡片级信号可能
+  // 一直是 running，只有槽位状态能触发支线重画
+  const railKey = useMemo(
+    () => `${mode}|${scheme}|${active.map((card) => {
+      const slotStates = slotViewsForCard(card, states)
+        .filter((slot) => slot.sessionId !== '')
+        .map((slot) => slot.state)
+        .join(',')
+      return `${card.id}:${signals.get(card.id)}:${slotStates}`
+    }).join('|')}`,
+    [mode, scheme, active, states, signals],
+  )
+
   const openSession = useCallback((targetSessionId) => {
     const uiWorkspace = getUiWorkspace?.()
     if (uiWorkspace === undefined || uiWorkspace === null) return
@@ -671,7 +835,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   if (view === 'no-project') {
     return createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
+      { className: listClass },
       resolved
         ? createElement(
             'div',
@@ -687,14 +851,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               t('board.noProject.hint'),
             ),
           )
-        : createElement(BoardSkeleton),
+        : createElement(BoardSkeleton, { listClass }),
     )
   }
 
   // 身份还没问出来（worker 表那一趟还没回来）：先给骨架。这里不能落进下面的
   // 「不是项目会话」分支——worker 打开看板会先闪一句错话再跳到卡片列表。
   if (view === 'pending') {
-    return createElement(BoardSkeleton)
+    return createElement(BoardSkeleton, { listClass })
   }
 
   // 属于项目但不是项目会话（同目录的普通会话）；leader 本身已失效（归档或被
@@ -705,7 +869,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     const projectName = project?.name
     return createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
+      { className: listClass },
       createElement(
         'div',
         { className: 'dsh-leader-agent-board-empty' },
@@ -735,13 +899,13 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }
 
   if (!loaded) {
-    return createElement(BoardSkeleton)
+    return createElement(BoardSkeleton, { listClass })
   }
 
   if (cards.length === 0) {
     return createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
+      { className: listClass },
       createElement(BoardEmpty, { allDone: false, projectName: project.name, t }),
     )
   }
@@ -761,11 +925,18 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
 
   return createElement(
     'div',
-    { className: 'dsh-leader-agent-board' },
+    { className: 'dsh-leader-agent-board', 'data-mode': mode, 'data-theme': scheme },
     createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
-      active.length > 0
+      { className: listClass },
+      createElement(
+        'div',
+        { className: 'dsh-leader-agent-board-stage' },
+        cinema
+          ? createElement(BoardRail, { railKey, orthogonal: scheme === 'light', theme: scheme })
+          : null,
+        cinema ? createElement(BoardLeaderRow, { running: runningCount, total: active.length, t }) : null,
+        active.length > 0
         ? createElement(
             'div',
             { className: 'dsh-leader-agent-board-group' },
@@ -776,6 +947,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               now,
               slotLabels,
               t,
+              cinema,
               onOpenDetail: openDetail,
               onOpenSession: openSession,
             })),
@@ -845,6 +1017,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               : null,
           )
         : null,
+      ),
     ),
     overlays.detail === null || overlays.pendingDelete !== null
       ? null

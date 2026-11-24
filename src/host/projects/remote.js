@@ -51,10 +51,12 @@ function buildMethodDescriptor() {
  * @param {object} options.cards - 卡片存储（`src/host/cards/store.js`）
  * @param {object} options.workers - worker 登记表（`src/host/worker-registry.js`）
  * @param {object} [options.workerSessions] - worker 会话管理器（`src/host/worker-sessions.js`）
+ * @param {() => Promise<{ defaultMode: string, legacy: boolean }>} options.boardDefaults -
+ *   看板默认模式的延迟取值器（数据根一次性标记）
  * @param {object} options.ctx - 宿主 Cordis 上下文
  * @returns {object} 已注册的远程服务实例
  */
-export function createProjectRemote({ service, cards, workers, workerSessions, ctx }) {
+export function createProjectRemote({ service, cards, workers, workerSessions, boardDefaults, ctx }) {
   // 归档后的收尾要同时改两张表：漏传任何一张，问题都要等到会话真的被归档时才
   // 以 `Cannot read properties of undefined` 暴露，那时用户看到的是「归档失败」。
   if (typeof cards?.detachSession !== 'function') {
@@ -63,18 +65,24 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
   if (typeof workers?.remove !== 'function') {
     throw new Error('dsh-leader-agent: createProjectRemote 缺少 workers，归档后无法摘派工登记')
   }
+  if (typeof boardDefaults !== 'function') {
+    throw new Error('dsh-leader-agent: createProjectRemote 缺少 boardDefaults，无法给出看板默认模式')
+  }
   class ProjectRemote {
     /**
      * @param {object} service - 项目服务
      * @param {object} cards - 卡片存储
      * @param {object} workers - worker 登记表
      * @param {object} [workerSessions] - worker 会话管理器
+     * @param {() => Promise<{ defaultMode: string, legacy: boolean }>} boardDefaults -
+     *   看板默认模式的延迟取值器
      */
-    constructor(service, cards, workers, workerSessions) {
+    constructor(service, cards, workers, workerSessions, boardDefaults) {
       this.projects = service
       this.cards = cards
       this.workers = workers
       this.workerSessions = workerSessions
+      this.resolveBoardDefaults = boardDefaults
       // 服务绑定：宿主据此认出「这个服务导出哪个命名空间」。绑定里的 service 必须
       // 指向服务实例本身，宿主会拿它与调用时取到的实例比对。
       this.typertRemote = {
@@ -82,6 +90,15 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
         serviceKey: PROJECT_REMOTE_SERVICE_KEY,
         namespace: PROJECT_REMOTE_NAMESPACE,
       }
+    }
+
+    /**
+     * 看板默认模式：首次运行本版本时已有项目/卡片的老用户走工作模式，新装走炫酷。
+     *
+     * @returns {Promise<{ defaultMode: string, legacy: boolean }>} 默认模式
+     */
+    async boardDefaults() {
+      return this.resolveBoardDefaults()
     }
 
     /**
@@ -298,7 +315,7 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     value: buildMethodDescriptor(),
   })
 
-  const remote = new ProjectRemote(service, cards, workers, workerSessions)
+  const remote = new ProjectRemote(service, cards, workers, workerSessions, boardDefaults)
   ctx.provide(PROJECT_REMOTE_SERVICE_KEY, remote)
   return remote
 }

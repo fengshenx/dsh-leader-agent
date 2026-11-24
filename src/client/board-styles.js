@@ -1163,6 +1163,389 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   gap: 4px;
   margin-left: auto;
 }
+
+/* ===== 线路图模式 =====
+   两套皮共用同一套几何：浅色宿主走电蓝正交（电路图），深色宿主走黑金曲线。
+   颜色全部取宿主与主题无关的 --dsw-static-* 标尺，或宿主自己的 alias 令牌，
+   不写死色值。颜色只给「正在流动的那条线」：结构线在中性档，执行中的横段与
+   支线才上强调色。深色皮是刻意与宿主解耦的黑面板；浅色皮直接沿用宿主的
+   卡面与文字档，只重画板底与轨道。 */
+.dsh-leader-agent-board-list-cinema {
+  margin: 0;
+  padding: 8px 6px 18px 0;
+}
+
+.dsh-leader-agent-board-list-cinema-light {
+  --dla-structure: var(--dsw-static-neutral-bluish-300);
+  --dla-structure-strong: var(--dsw-static-neutral-bluish-400);
+  --dla-accent: var(--dsw-static-blue-600);
+  --dla-danger: var(--dsw-static-red-600);
+  --dla-node-fill: var(--dsw-static-neutral-00);
+  --dla-trail: var(--dsw-static-blue-600);
+  --dla-trail-shadow: none;
+  --dla-comet: var(--dsw-static-blue-600);
+}
+
+.dsh-leader-agent-board-list-cinema-dark {
+  --dsw-alias-label-primary: var(--dsw-static-neutral-bluish-100);
+  --dsw-alias-label-secondary: var(--dsw-static-neutral-bluish-300);
+  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-400);
+  --dsw-alias-label-caption: var(--dsw-static-neutral-bluish-500);
+  --dsw-alias-bg-layer-2: var(--dsw-static-neutral-bluish-900);
+  --dsw-alias-bg-layer-3: var(--dsw-static-neutral-bluish-850);
+  --dsw-alias-border-l3: var(--dsw-static-neutral-bluish-800);
+  --dsw-alias-border-l4: var(--dsw-static-neutral-bluish-700);
+  --dsw-alias-interactive-bg-hover: var(--dsw-static-neutral-bluish-800);
+  --dsw-alias-link: var(--dsw-static-blue-500);
+  --dsw-alias-bg-skeleton: var(--dsw-static-neutral-bluish-800);
+  --dla-structure: var(--dsw-static-neutral-bluish-800);
+  --dla-structure-strong: var(--dsw-static-neutral-bluish-600);
+  --dla-accent: var(--dsw-static-amber-500);
+  --dla-danger: var(--dsw-static-red-500);
+  --dla-node-fill: var(--dsw-static-neutral-bluish-1000);
+  --dla-trail: var(--dsw-static-amber-100);
+  --dla-trail-shadow: drop-shadow(0 0 4px var(--dsw-static-amber-400));
+  --dla-comet: var(--dsw-static-amber-100);
+}
+
+.dsh-leader-agent-board-stage {
+  position: relative;
+}
+
+/* 卡片要压在 SVG 上面：否则绝对定位的覆盖层会盖住卡面文字与执行者圆点 */
+.dsh-leader-agent-board-stage > .dsh-leader-agent-board-group {
+  position: relative;
+  z-index: 1;
+}
+
+.dsh-leader-agent-board-list-cinema .dsh-leader-agent-board-stage {
+  padding: 6px 0 12px 44px;
+}
+
+.dsh-leader-agent-board-rail {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.dsh-leader-agent-board-rail-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 52px;
+}
+
+.dsh-leader-agent-board-rail-orb {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  corner-shape: round;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--dsw-static-amber-100),
+    var(--dsw-static-amber-400) 55%,
+    var(--dsw-static-amber-600)
+  );
+  box-shadow: 0 0 14px var(--dsw-static-amber-500);
+}
+
+/* 浅色皮的源点是蓝色小方块（电路图的起笔），不是深色那颗发光圆球 */
+.dsh-leader-agent-board-list-cinema-light .dsh-leader-agent-board-rail-orb {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--dla-accent);
+  border-radius: 2px;
+  background: var(--dsw-static-neutral-00);
+  box-shadow: none;
+}
+
+.dsh-leader-agent-board-list-cinema-light .dsh-leader-agent-board-rail-orb::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 1px;
+  background: var(--dla-accent);
+}
+
+.dsh-leader-agent-board-rail-meta b {
+  display: block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-board-rail-meta span {
+  display: block;
+  margin-top: 1px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 10.5px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-agent-board-rail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(44px, 17%, 60px);
+  align-items: center;
+  gap: 10px;
+}
+
+.dsh-leader-agent-board-rail-slots {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.dsh-leader-agent-board-rail-slot {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--dla-structure-strong);
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dsh-leader-agent-board-rail-slot:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dla-accent);
+  outline-offset: 1px;
+}
+
+.dsh-leader-agent-board-rail-slot-running {
+  border-color: var(--dla-accent);
+}
+
+.dsh-leader-agent-board-rail-slot-attention {
+  border-color: var(--dla-danger);
+}
+
+.dsh-leader-agent-board-rail-slot-idle {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-agent-board-rail-slot-more {
+  font-size: 7px;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .dsh-leader-agent-board-list-cinema-dark .dsh-leader-agent-board-card:hover {
+    --dsw-elevation-stroke-color: var(--dsw-static-neutral-bluish-600);
+  }
+}
+
+.dsh-leader-agent-board-rail-trunk {
+  fill: none;
+  stroke: var(--dla-structure);
+  stroke-width: 1.2;
+}
+
+.dsh-leader-agent-board-rail-edge {
+  fill: none;
+  stroke: var(--dla-structure);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.dsh-leader-agent-board-rail-hot {
+  fill: none;
+  stroke: var(--dla-accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.dsh-leader-agent-board-rail-warn {
+  fill: none;
+  stroke: var(--dla-danger);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  animation: dsh-leader-agent-rail-breathe 1.8s ease-in-out infinite;
+}
+
+.dsh-leader-agent-board-rail-trail {
+  fill: none;
+  stroke: var(--dla-trail);
+  stroke-width: 2.8;
+  stroke-linecap: round;
+  filter: var(--dla-trail-shadow);
+  animation: dsh-leader-agent-rail-flow 2.4s linear infinite;
+}
+
+@keyframes dsh-leader-agent-rail-flow {
+  from { stroke-dashoffset: var(--dla-from, 44px); }
+  to { stroke-dashoffset: var(--dla-to, -320px); }
+}
+
+@keyframes dsh-leader-agent-rail-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.dsh-leader-agent-board-rail-node {
+  fill: var(--dla-node-fill);
+  stroke: var(--dla-structure-strong);
+  stroke-width: 1.4;
+}
+
+.dsh-leader-agent-board-rail-node-running { stroke: var(--dla-accent); }
+.dsh-leader-agent-board-rail-node-attention { stroke: var(--dla-danger); }
+
+.dsh-leader-agent-board-rail-halo {
+  fill: none;
+  stroke: var(--dla-accent);
+  stroke-width: 1;
+  animation: dsh-leader-agent-rail-halo 2.2s ease-out infinite;
+}
+
+@keyframes dsh-leader-agent-rail-halo {
+  0% { r: 4; opacity: 0.8; }
+  100% { r: 13; opacity: 0; }
+}
+
+.dsh-leader-agent-board-rail-comet {
+  fill: var(--dla-comet);
+  filter: var(--dla-trail-shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-leader-agent-board-rail-trail,
+  .dsh-leader-agent-board-rail-warn,
+  .dsh-leader-agent-board-rail-halo {
+    animation: none;
+  }
+}
+
+/* ===== 设置页 ===== */
+.dsh-leader-agent-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-settings-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+.dsh-leader-agent-settings-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-agent-settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dsh-leader-agent-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dsh-leader-agent-settings-option:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.dsh-leader-agent-settings-option-selected {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.dsh-leader-agent-settings-preview {
+  flex: none;
+  display: inline-flex;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 预览里的执行者圆点取宿主强调色：浅色皮的实际 accent 是蓝的，固定琥珀会
+   让预览和看板各说一套；强调色本身跟主题走，深色皮自然变亮 */
+.dsh-leader-agent-settings-preview-dot {
+  fill: var(--dsw-alias-state-business-primary);
+}
+
+.dsh-leader-agent-settings-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dsh-leader-agent-settings-copy b {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-settings-copy span {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-agent-settings-radio {
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 50%;
+  corner-shape: round;
+}
+
+.dsh-leader-agent-settings-option-selected .dsh-leader-agent-settings-radio {
+  border: 5px solid var(--dsw-alias-state-business-primary);
+}
+
+.dsh-leader-agent-settings-scope {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
 `
 
 /**

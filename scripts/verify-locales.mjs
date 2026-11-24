@@ -22,6 +22,7 @@ const clientDir = join(root, 'src/client')
 const INTERNAL_CJK = new Set([
   // 内部日志、effect 名与开发期错误：不渲染成界面文案；新增项必须带文件与原文登记。
   "src/client/board.js\x00会话服务不可用",
+  "src/client/board-settings.js\x00dsh-leader-agent 设置页",
   "src/client/guide-card.js\x00dsh-leader-agent 引导卡",
   "src/client/icons.js\x00未知图标字形：",
   "src/client/index.js\x00dsh-leader-agent 槽位显示名",
@@ -33,7 +34,7 @@ const INTERNAL_CJK = new Set([
   "src/client/index.js\x00dsh-leader-agent 提示浮层",
   "src/client/index.js\x00dsh-leader-agent 会话标签栏",
   "src/client/index.js\x00dsh-leader-agent leader 改动卡片隐藏",
-  "src/client/index.js\x00dsh-leader-agent: 项目通道挂载失败：",
+  "src/client/index.js\x00dsh-leader-agent: 项目通道或看板默认模式初始化失败：",
   "src/client/index.js\x00dsh-leader-agent: 当前宿主没有右栏服务，建卡后不自动打开看板",
   "src/client/index.js\x00.json 不在宿主语言目录里，运行时不会被选中",
   "src/client/index.js\x00dsh-leader-agent 看板监视器",
