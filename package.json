@@ -44,6 +44,7 @@
     "build:client": "node build/client.mjs",
     "dev": "node scripts/dev.mjs",
     "desktop": "node scripts/desktop.mjs",
+    "desktop:prod": "node scripts/desktop.mjs --prod",
     "start": "node scripts/start.mjs",
     "worktree:spawn": "node scripts/worktree-spawn.mjs",
     "worktree:prune": "node scripts/worktree-prune.mjs",

@@ -8,7 +8,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { desktopLinkSpec } from '../scripts/desktop-plan.mjs'
+import { desktopLinkSpec, desktopShadowPaths } from '../scripts/desktop-plan.mjs'
+import { syncShadowHome } from '../scripts/desktop-shadow.mjs'
 import { LEADER_AGENT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
 const SCRIPT_DIR = dirname(fileURLToPath(new URL('../scripts/desktop.mjs', import.meta.url)))
@@ -52,7 +53,8 @@ function makeFixture(t, { gitMarker = 'file' } = {}) {
 function seedDailyProfile(home, { worktree = null } = {}) {
   const daily = join(home, '.dsh')
   const profileDir = join(daily, 'profiles', 'desktop')
-  mkdirSync(profileDir, { recursive: true })
+  mkdirSync(join(profileDir, 'node_modules', 'dsh-session-tabs'), { recursive: true })
+  writeFileSync(join(profileDir, 'cordis.yml'), 'plugins: {}\n')
   writeProfileManifest(profileDir, worktree)
   writeFileSync(join(daily, '.credentials.yaml'), 'version: 1\nrefs:\n  DEEPSEEK_API_KEY: sk-probe\n')
   return daily
@@ -89,16 +91,13 @@ function writeProfileManifest(profileDir, worktree) {
  * @param {object} [options.extraEnv] - 追加的环境变量
  * @returns {import('node:child_process').SpawnSyncReturns<string>} 子进程结果
  */
-function runRemove({ tree, home, extraEnv = {} }) {
+function runRemove({ tree, home, extraEnv = {}, prod = false }) {
   const env = { ...process.env, USERPROFILE: home, HOME: home }
   delete env.DSH_HOME
   delete env.DSH_DESKTOP_APP
   Object.assign(env, extraEnv)
-  return spawnSync(process.execPath, [join(tree, 'scripts', 'desktop.mjs'), '--remove'], {
-    cwd: tree,
-    env,
-    encoding: 'utf8',
-  })
+  const args = [join(tree, 'scripts', 'desktop.mjs'), '--remove', ...(prod ? ['--prod'] : [])]
+  return spawnSync(process.execPath, args, { cwd: tree, env, encoding: 'utf8' })
 }
 
 /**
@@ -156,7 +155,7 @@ test('worktree 内 --remove 只摘派生根：不按日常 profile 重建，日�
   assert.equal(existsSync(join(tree, '.dev', 'desktop-home', '.credentials.yaml')), false, '摘除时把日常凭据复制进了派生根')
 })
 
-test('显式 DSH_HOME 时 --remove 只摘那条根，不派生', (t) => {
+test('desktop:prod 且显式 DSH_HOME 时 --remove 只摘那条根，不派生', (t) => {
   const { root, tree, home } = makeFixture(t)
   seedDailyProfile(home)
   const explicitHome = join(root, 'explicit-home')
@@ -164,27 +163,72 @@ test('显式 DSH_HOME 时 --remove 只摘那条根，不派生', (t) => {
   mkdirSync(explicitProfileDir, { recursive: true })
   writeProfileManifest(explicitProfileDir, tree)
 
-  const result = runRemove({ tree, home, extraEnv: { DSH_HOME: explicitHome } })
+  const result = runRemove({ tree, home, prod: true, extraEnv: { DSH_HOME: explicitHome } })
 
   assert.equal(result.status, 0, `--remove 失败:\n${result.stdout}\n${result.stderr}`)
-  assert.match(result.stdout, /已从 desktop profile 摘除/)
+  assert.match(result.stdout, /没有桌面开发数据根/)
   // 只看用户指定的那条根：日常根里那份「没装」的状态原样留着。
   const installed = JSON.parse(readFileSync(join(home, '.dsh', 'profiles', 'desktop', 'package.json'), 'utf8'))
   assert.equal(LEADER_AGENT_PACKAGE in installed.dependencies, false)
-  assert.equal(existsSync(join(tree, '.dev')), false, '显式 DSH_HOME 时不该派生')
+  const explicitAfter = JSON.parse(readFileSync(join(explicitProfileDir, 'package.json'), 'utf8'))
+  assert.equal(LEADER_AGENT_PACKAGE in explicitAfter.dependencies, false)
+  assert.equal(existsSync(join(tree, '.dev')), false, '显式 DSH_HOME 但没建过影子根时不该派生')
 })
 
-test('主 checkout（.git 是目录）时 --remove 摘日常根，不建派生根', (t) => {
+test('主 checkout 的 desktop（dev）--remove 只摘派生根，线上 profile 不动', (t) => {
   const { tree, home } = makeFixture(t, { gitMarker: 'dir' })
   const daily = seedDailyProfile(home, { worktree: tree })
   const manifestPath = join(daily, 'profiles', 'desktop', 'package.json')
+  const before = snapshotOf(manifestPath)
 
   const result = runRemove({ tree, home })
 
   assert.equal(result.status, 0, `--remove 失败:\n${result.stdout}\n${result.stderr}`)
-  assert.match(result.stdout, /已从 desktop profile 摘除/)
-  const after = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  assert.equal(LEADER_AGENT_PACKAGE in after.dependencies, false)
-  assert.deepEqual(after.dsh.profile.bundles, ['@deepseek-ai/dsh-base', WEB_APP_BUNDLE])
-  assert.equal(existsSync(join(tree, '.dev')), false, '主 checkout 不该派生')
+  assert.match(result.stdout, /没有可摘的挂载：/)
+  // `npm run desktop` 是 dev 隔离模式：即使日常 profile 上有旧版挂载，也不碰它。
+  assert.deepEqual(snapshotOf(manifestPath), before)
+  assert.equal(existsSync(join(tree, '.dev')), false, '派生根没建过时不该新建')
+})
+
+test('desktop（dev）即使显式 DSH_HOME 也不碰那条根：模式只看命令', (t) => {
+  const { root, tree, home } = makeFixture(t, { gitMarker: 'dir' })
+  seedDailyProfile(home)
+  const explicitHome = join(root, 'explicit-home')
+  const explicitProfileDir = join(explicitHome, 'profiles', 'desktop')
+  mkdirSync(explicitProfileDir, { recursive: true })
+  writeProfileManifest(explicitProfileDir, tree)
+  const before = snapshotOf(join(explicitProfileDir, 'package.json'))
+
+  const result = runRemove({ tree, home, extraEnv: { DSH_HOME: explicitHome } })
+
+  assert.equal(result.status, 0, `--remove 失败:\n${result.stdout}\n${result.stderr}`)
+  assert.match(result.stdout, /没有可摘的挂载：/)
+  assert.deepEqual(snapshotOf(join(explicitProfileDir, 'package.json')), before)
+  assert.equal(existsSync(join(tree, '.dev')), false, 'dev 模式没建过派生根时不该新建')
+})
+
+test('主 checkout 的 --remove 删掉影子根，线上 profile 一个字节不动', { skip: process.platform !== 'darwin' ? '假 .app 的探活只在 macOS 上可验证' : false }, (t) => {
+  const { tree, home, root } = makeFixture(t, { gitMarker: 'dir' })
+  const daily = seedDailyProfile(home)
+  const manifestPath = join(daily, 'profiles', 'desktop', 'package.json')
+  const before = snapshotOf(manifestPath)
+  const shadowPaths = desktopShadowPaths({ sourceHome: daily, worktree: tree })
+  const sourcePackage = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  syncShadowHome({ sourceHome: daily, worktree: tree, shadowPaths, sourcePackage })
+  assert.equal(existsSync(shadowPaths.home), true)
+
+  // 应用不在跑：用一个可解析、但进程名不存在的假 .app，避免真启动本机应用。
+  const fakeApp = join(root, 'Fake.app')
+  mkdirSync(join(fakeApp, 'Contents'), { recursive: true })
+  writeFileSync(join(fakeApp, 'Contents', 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>DshProbeNone</string></dict></plist>
+`)
+  const result = runRemove({ tree, home, prod: true, extraEnv: { DSH_DESKTOP_APP: fakeApp } })
+
+  assert.equal(result.status, 0, `--remove 失败:\n${result.stdout}\n${result.stderr}`)
+  assert.match(result.stdout, /已删除桌面开发数据根/)
+  assert.equal(existsSync(shadowPaths.home), false)
+  assert.equal(existsSync(join(tree, '.dev')), false)
+  assert.deepEqual(snapshotOf(manifestPath), before)
 })

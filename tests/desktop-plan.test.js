@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { dirname, join, resolve } from 'node:path'
 import {
-  DESKTOP_PROFILE, desktopLinkSpec, desktopPathsOf, derivedDesktopHome, expandHomePath, installedSpecOf,
+  DESKTOP_PROFILE, desktopLinkSpec, desktopPathsOf, desktopShadowPaths, derivedDesktopHome, expandHomePath, installedSpecOf,
   looksLikeAppPath, parseBundleExecutable, parseTasklistImages, planDesktopDisable, planDesktopEnable,
   planDesktopHome, planDshHomeEnv, planLinkAction, planProfileLockAction, resolveDesktopPaths,
   resolveHomePathsOrThrow, windowsExeCandidates,
@@ -174,8 +174,11 @@ test('探活接线：进程名来自 Info.plist，不拿包名或路径去 pgrep
   // 包文件名不等于进程名（Lark.app → Feishu），DSH_DESKTOP_APP 还可能带路径。
   const source = readFileSync(SCRIPT_PATH, 'utf8')
   assert.match(source, /const processName = executableNameOf\(bundle\)/)
-  assert.match(source, /args: \['-x', processName\]/)
-  assert.doesNotMatch(source, /args: \['-x', appName\]/)
+  assert.match(source, /\['-x', processName\]/)
+  // p_comm 只有 16 字节，长名字 -x 匹配不到；按完整可执行文件路径与 helper 路径各兜一次。
+  assert.match(source, /\['-f', `\$\{bundle\}\/Contents\/MacOS\/\$\{processName\}`\]/)
+  assert.match(source, /\['-f', `\$\{bundle\}\/Contents\/Frameworks\/`\]/)
+  assert.doesNotMatch(source, /\['-x', appName\]/)
   assert.doesNotMatch(source, /pgrepNameOf/)
 })
 
@@ -287,9 +290,9 @@ test('宿主 <profile>/lock 按持有者进程判活：活跃拒绝、已退出�
 
 test('摘除不依赖桌面应用是否存在，且实体目录占位时整单拒绝', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  // 探活在挂载分支里；--remove 分支要先返回。找不到应用同样只在挂载分支报错。
-  assert.ok(source.indexOf("if (remove) {") < source.indexOf('const running = desktopAppRunning(target, process.env)'))
-  assert.ok(source.indexOf("if (remove) {") < source.indexOf('throw new Error(missingAppMessage())'))
+  // 派生模式的 --remove 分支里不探活、不报「找不到应用」：改名或卸载之后照样要能摘。
+  const removeBody = source.slice(source.indexOf('if (remove) {'), source.indexOf('if (dailyManifest === null) {'))
+  assert.doesNotMatch(removeBody, /desktopAppRunning|missingAppMessage/)
   // 实体目录 + manifest 有本插件记录：拒绝，不写 manifest。
   assert.match(source, /state === 'foreign' && planned/)
   assert.ok(source.indexOf("state === 'foreign' && planned") < source.indexOf('writeManifest(paths.packagePath, next)'))
@@ -339,12 +342,24 @@ test('启动 fail closed：探不到运行态不启动，open 有 stderr 不当�
   const source = readFileSync(SCRIPT_PATH, 'utf8')
   // 校验必须真接在 main 的第一行，不能在 if 里被短路掉。
   assert.match(source, /const dailyPaths = resolveHomePathsOrThrow\(\{/)
-  // 已运行实例收不到 --env（rc 仍 0），Windows 的单实例冲突同样静默，探不到就不能赌。
-  assert.match(source, /target\.kind !== 'unsupported' && running === null/)
-  assert.ok(source.indexOf("running === null") < source.indexOf('await launchDesktopApp(target'))
+  // 影子 DSH_HOME 只在应用启动时生效：探不到运行态就不启动，也不建影子。
+  assert.match(source, /if \(running === null\) \{/)
+  assert.ok(source.indexOf('if (running === null) {') < source.indexOf('await runShadow('))
   // open 成功是静默的：stderr 非空说明环境没送到。
   assert.match(source, /const complaint = \(result\.stderr \?\? ''\)\.trim\(\)/)
   assert.match(source, /result\.status !== 0 \|\| complaint !== ''/)
+})
+
+test('影子分支接线：用影子 DSH_HOME 起应用，不写还原进程', () => {
+  const source = readFileSync(SCRIPT_PATH, 'utf8')
+  assert.match(source, /const shadowPaths = homePlan\.mode === 'shadow' \? desktopShadowPaths\(\{ sourceHome: dailyPaths\.home, worktree \}\) : null/)
+  assert.match(source, /syncShadowHome\(\{/)
+  assert.match(source, /dshHome: shadowPaths\.home/)
+  assert.doesNotMatch(source, /spawnRestoreHelper|beginSession|endSession/)
+  // 影子分支只读日常 profile：写操作全在 desktop-shadow.mjs 里，作用对象是影子根。
+  const body = source.slice(source.indexOf('async function runShadow('), source.indexOf('function removeShadow('))
+  assert.match(body, /assertWebBundle\(\{\s*\n\s*profileDir: sourcePaths\.profileDir/)
+  assert.doesNotMatch(body, /writeFileSync|rmSync|symlinkSync\(|detachMount/)
 })
 
 test('锁覆盖整个读改写：自己建 <profile>/lock，只删自己那把', () => {
@@ -390,53 +405,61 @@ test('派生根落在工作树内的 .dev/desktop-home，形状与日常根一�
   assert.notEqual(home, join(WORKTREE, '.dev', 'home'))
 })
 
-test('主 checkout 用日常根，worktree 一律派生', () => {
-  assert.deepEqual(planDesktopHome({ inWorktree: false }), { mode: 'daily', owner: null })
-  // 主 checkout 里日常 profile 挂着别处时不在这里放行：由 planDesktopEnable 拒绝。
+test('影子根把开发 profile 放在影子里，来源 profile 只读', () => {
+  const sourceHome = join(HOME, '.dsh')
+  const paths = desktopShadowPaths({ sourceHome, worktree: WORKTREE })
+  assert.equal(paths.home, join(WORKTREE, '.dev', 'desktop-home'))
+  assert.equal(paths.profileDir, join(paths.home, 'profiles', DESKTOP_PROFILE))
+  assert.equal(paths.sourceProfileDir, join(sourceHome, 'profiles', DESKTOP_PROFILE))
+  assert.equal(paths.manifestPath, join(paths.home, '.desktop-shadow.json'))
+  // 影子 profile 与来源 profile 不同目录：线上 profile 一个字节都不写。
+  assert.notEqual(paths.profileDir, paths.sourceProfileDir)
+})
+
+test('desktop 是 dev 派生根，desktop:prod 是正式数据影子根', () => {
+  // 两条命令两个模式，与当前目录、环境变量无关；`owner` 只用于提示日常那份挂的是谁。
+  assert.deepEqual(planDesktopHome({ prod: false }), { mode: 'derived', owner: null })
   assert.deepEqual(
-    planDesktopHome({ inWorktree: false, installedSpec: 'link:/work/repo' }),
-    { mode: 'daily', owner: null },
+    planDesktopHome({ prod: false, installedSpec: '^0.7.0' }),
+    { mode: 'derived', owner: '^0.7.0' },
   )
-  assert.deepEqual(planDesktopHome({ inWorktree: true }), { mode: 'derived', owner: null })
-  // 派生分支把日常那份挂的是谁带出去，只用于提示，不参与判定。
+  assert.deepEqual(planDesktopHome({ prod: true }), { mode: 'shadow', owner: null })
   assert.deepEqual(
-    planDesktopHome({ inWorktree: true, installedSpec: 'link:/work/repo' }),
-    { mode: 'derived', owner: 'link:/work/repo' },
+    planDesktopHome({ prod: true, installedSpec: 'link:/work/repo' }),
+    { mode: 'shadow', owner: 'link:/work/repo' },
   )
   assert.deepEqual(
-    planDesktopHome({ inWorktree: true, installedSpec: '' }),
-    { mode: 'derived', owner: null },
+    planDesktopHome({ prod: true, installedSpec: '' }),
+    { mode: 'shadow', owner: null },
   )
 })
 
-test('派生分支接线：worktree 内才派生，源固定成日常根', () => {
+test('dev 分支接线：desktop 派生，源固定成日常根', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  assert.match(source, /planDshHomeEnv\(rawHome\) === 'unset'/)
-  assert.match(source, /planDesktopHome\(\{ inWorktree: inGitWorktree\(worktree\), installedSpec \}\)/)
+  assert.match(source, /const prod = process\.argv\.slice\(2\)\.includes\('--prod'\)/)
+  assert.match(source, /const homePlan = planDesktopHome\(\{ prod, installedSpec \}\)/)
   assert.match(source, /prepareDerivedPaths\(\{ worktree, homeDir, dailyPaths, dailyManifest \}\)/)
   assert.match(source, /env: \{ DSH_HOME: home, DSH_PROFILE: DESKTOP_PROFILE, DSH_HOME_SOURCE: dailyPaths\.home \}/)
   assert.match(source, /assertSeparateHome\(\{ home: derived\.home, sourceHome: dailyPaths\.home \}\)/)
-  // worktree 标记是文件、主 checkout 是目录——用它区分身份不起 git 子进程。
-  assert.match(source, /function inGitWorktree\(worktree\) \{\s*\n\s*const marker = lstatSync\(join\(worktree, '\.git'\)/)
   // 数据根独立则凭据也独立：派生时把源 HOME 的 refs 搬过来，否则一进界面就没 API key。
   assert.match(source, /const credentials = inheritCredentialRefs\(\{\s*\n\s*credentialsPath: derived\.credentialsPath,\s*\n\s*sourceCredentialsPath: derived\.sourceCredentialsPath,/)
   // 派生根要先建好 profile 再进锁：进锁时才 mkdir 会晚一步看到别的来源。
   // 只在挂载分支里要求这个顺序——摘除分支不派生（见下一条用例）。
-  const mountAt = source.indexOf('const derived = useDerived')
+  const mountAt = source.indexOf('const derived = prepareDerivedPaths(')
   assert.notEqual(mountAt, -1, '找不到挂载分支的派生调用')
   assert.ok(
     source.indexOf('prepareDerivedPaths({ worktree, homeDir, dailyPaths, dailyManifest })', mountAt)
     < source.indexOf('withProfileLock(paths, () => {', mountAt),
   )
-  // 显式 DSH_HOME 时不派生：那条根是用户指定的，另找地方会让「我指定的目录没生效」。
-  assert.match(source, /: \{ mode: 'daily', owner: null \}/)
+  // 显式 DSH_HOME 时走影子分支，不碰派生挂载。
+  assert.match(source, /const shadowPaths = homePlan\.mode === 'shadow' \? desktopShadowPaths/)
 })
 
 test('派生只影响数据根：日常 profile 的说明符与链接一个都不写', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
   const derivedBody = source.slice(
     source.indexOf('function prepareDerivedPaths('),
-    source.indexOf('async function main()'),
+    source.indexOf('/**\n * 从目标 profile'),
   )
   // 派生只读日常根（dailyPaths / dailyManifest），不出现对 dailyPaths 的写操作。
   assert.match(derivedBody, /prepareProfileDir\(/)
