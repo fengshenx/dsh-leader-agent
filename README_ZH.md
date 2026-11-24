@@ -28,7 +28,7 @@
 ## 亮点
 
 1. **通过一个 Leader，帮你推进开发和 Review** — 你只跟 Leader 说目标，它拆卡、派工、盯住每个 worker 的完成、验证产物、组织审查。注意力回到「要什么」上，不用逐个陪跑——目标规模是一次并行开发 10 个 feature。
-2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板。卡面上是执行者槽位与实时信号灯，卡片说明按 Markdown 渲染，链接可在浮层里直接编辑，详情页脚可删除卡片；点卡面看详情（目标、范围、验收、链接，其余只读），点槽位直接下钻进那个 Agent 的会话接着聊。worker 的回报按 Markdown 渲染成左侧 agent 气泡；leader 派过去的任务渲染成右侧用户气泡，正文与 assistant 内容同套 Markdown；单换行按 Markdown 合并，需要断行用空行或 Markdown 语法。
+2. **右栏 SidePanel 看板，正在工作的 Agent 一目了然** — 一个项目一块看板，两套呈现：**炫酷**（默认）把卡片画成线路图，执行中的支线跑光点；**工作**保持纯列表，`设置 → 任务看板` 切换。卡面上是执行者槽位与实时信号灯，卡片说明按 Markdown 渲染，链接可在浮层里直接编辑，详情页脚可删除卡片；点卡面看详情（目标、范围、验收、链接，其余只读），点槽位直接下钻进那个 Agent 的会话接着聊。worker 的回报按 Markdown 渲染成左侧 agent 气泡；leader 派过去的任务渲染成右侧用户气泡，正文与 assistant 内容同套 Markdown；单换行按 Markdown 合并，需要断行用空行或 Markdown 语法。
 3. **Agent 自由编排** — 拆成两份文件：`LEADER.md` 写 Leader 的 prompt 与项目编排规则（职责边界、派工要求、验收口径）；`SLOTS.md` 按角色给 worker 写编排规则（开发 / 审核……）。两者在每次模型请求前求值、正文变化才追加，改文件即改行为，不用重建会话。
 4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个 leader 会话，项目树列出它派出的 worker；项目行可拖拽排序，删除项目只删记录、保留文件夹与会话（dsh 工作区不受影响）。项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
@@ -73,12 +73,18 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 ## 预览
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="dsh-leader-agent：左栏项目树、中栏 Leader 的会话、右栏按项目组织的看板" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board-cinema.png" alt="炫酷模式（深色主题）：交付看板画成线路图，卡片挂在主干上，执行者支线按运行状态点亮" width="1200">
 </div>
 
-左边是项目与每个 Leader 派出的 worker；中间是 Leader 的会话——任务、派工、worker 回报、验收；右边是这个项目的交付看板，一卡一件事，槽位 chip 标出执行者。你能看到正在工作的 Agent，点击即可下钻到它的会话，绕开 Leader 直接和它对话。
+**炫酷模式（默认）**：同一块看板画成线路图——卡片挂主干，执行者是右侧支线，只有执行中的支线跑光点。图为深色主题；浅色宿主下是电蓝正交线条。
 
-截图取自真实工作会话。
+<div align="center">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="工作模式：左栏项目树、中栏 Leader 的会话、右栏列表形态的交付看板" width="1200">
+</div>
+
+**工作模式**：纯列表，一卡一件事，槽位 chip 标出执行者。左栏项目树、中栏 Leader 会话、右栏看板；点执行者即可下钻到它的会话。
+
+在 **设置 → 任务看板** 切换，选择只存本浏览器；截图取自真实会话。
 
 ## 它是怎么跑起来的
 
@@ -117,7 +123,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 2. **加载协议**：leader 会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
 3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从 leader 继承（leader 是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。要看它这一轮怎么做的（调了哪些工具、哪步失败），用 `read_worker_session` 回看，不必唤醒它。
 4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。链接只挂 PR / Issue / 文档 / 成片这类交付物入口，不挂评论或行内评论的锚点（`#issuecomment-` / `#discussion_r` / `#pullrequestreview-`）；评论是过程证据，写进回报正文。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。`list_cards` 与 `create_card` 只给 leader，普通会话一件也没有；`update_card` leader 与 worker 都有。worker 只能改自己挂着的卡，且只能挂 `links` 这类派生字段：`title` / `spec` / `status` / `kind` / `sortOrder` / `slots` 都归 leader（前两者是验收锚点与注入内容，其余组织看板并决定谁在执行）。`read_card` 只给 worker：读本项目的任意卡，不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩或注入失效后找回任务的入口；长规格按 2000 字符分页，用 `specOffset` 续读。
-5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。leader 建卡后自动打开；点卡面看详情（链接可编辑、可删卡，其余只读），点槽位 chip 打开执行者会话。
+5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。leader 建卡后自动打开；点卡面看详情（链接可编辑、可删卡，其余只读），点槽位 chip 打开执行者会话。炫酷是默认模式，想换回纯列表，在 `设置 → 任务看板` 选「工作模式」。
 
 ## 编排：把规则写进文件
 
