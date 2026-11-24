@@ -1165,10 +1165,35 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 }
 
 /* ===== 线路图模式 =====
-   这是一块刻意与宿主主题解耦的深色面板：宿主切到浅色时也保持黑底金线。颜色
-   全部取宿主与主题无关的 --dsw-static-* 标尺，不写死色值；深色只作用于看板
-   内容区——详情浮层 portal 到 body，不受影响。 */
+   两套皮共用同一套几何：浅色宿主走电蓝正交（电路图），深色宿主走黑金曲线。
+   颜色全部取宿主与主题无关的 --dsw-static-* 标尺，或宿主自己的 alias 令牌，
+   不写死色值。颜色只给「正在流动的那条线」：结构线在中性档，执行中的横段与
+   支线才上强调色。深色皮是刻意与宿主解耦的黑面板；浅色皮直接沿用宿主的
+   卡面与文字档，只重画板底与轨道。 */
 .dsh-leader-agent-board-list-cinema {
+  margin: 8px;
+  padding: 8px 6px 18px 0;
+  border: 1px solid var(--dla-panel-line);
+  border-radius: 12px;
+  background: var(--dla-panel);
+  box-shadow: var(--dla-panel-shadow);
+}
+
+.dsh-leader-agent-board-list-cinema-light {
+  --dla-panel: var(--dsw-static-neutral-bluish-50);
+  --dla-panel-line: var(--dsw-static-neutral-bluish-200);
+  --dla-panel-shadow: none;
+  --dla-structure: var(--dsw-static-neutral-bluish-300);
+  --dla-structure-strong: var(--dsw-static-neutral-bluish-400);
+  --dla-accent: var(--dsw-static-blue-600);
+  --dla-danger: var(--dsw-static-red-600);
+  --dla-node-fill: var(--dsw-static-neutral-00);
+  --dla-trail: var(--dsw-static-blue-600);
+  --dla-trail-shadow: none;
+  --dla-comet: var(--dsw-static-blue-600);
+}
+
+.dsh-leader-agent-board-list-cinema-dark {
   --dsw-alias-label-primary: var(--dsw-static-neutral-bluish-100);
   --dsw-alias-label-secondary: var(--dsw-static-neutral-bluish-300);
   --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-400);
@@ -1180,11 +1205,17 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   --dsw-alias-interactive-bg-hover: var(--dsw-static-neutral-bluish-800);
   --dsw-alias-link: var(--dsw-static-blue-500);
   --dsw-alias-bg-skeleton: var(--dsw-static-neutral-bluish-800);
-  margin: 8px;
-  padding: 8px 6px 18px 0;
-  border-radius: 12px;
-  background: var(--dsw-static-neutral-bluish-1000);
-  box-shadow: 0 10px 30px var(--dsw-static-neutral-900);
+  --dla-panel: var(--dsw-static-neutral-bluish-1000);
+  --dla-panel-line: transparent;
+  --dla-panel-shadow: 0 10px 30px var(--dsw-static-neutral-900);
+  --dla-structure: var(--dsw-static-neutral-bluish-800);
+  --dla-structure-strong: var(--dsw-static-neutral-bluish-600);
+  --dla-accent: var(--dsw-static-amber-500);
+  --dla-danger: var(--dsw-static-red-500);
+  --dla-node-fill: var(--dsw-static-neutral-bluish-1000);
+  --dla-trail: var(--dsw-static-amber-100);
+  --dla-trail-shadow: drop-shadow(0 0 4px var(--dsw-static-amber-400));
+  --dla-comet: var(--dsw-static-amber-100);
 }
 
 .dsh-leader-agent-board-stage {
@@ -1237,24 +1268,45 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   box-shadow: 0 0 14px var(--dsw-static-amber-500);
 }
 
+/* 浅色皮的源点是蓝色小方块（电路图的起笔），不是深色那颗发光圆球 */
+.dsh-leader-agent-board-list-cinema-light .dsh-leader-agent-board-rail-orb {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--dla-accent);
+  border-radius: 2px;
+  background: var(--dsw-static-neutral-00);
+  box-shadow: none;
+}
+
+.dsh-leader-agent-board-list-cinema-light .dsh-leader-agent-board-rail-orb::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 1px;
+  background: var(--dla-accent);
+}
+
 .dsh-leader-agent-board-rail-meta b {
   display: block;
-  font-size: 12.5px;
-  font-weight: 650;
-  color: var(--dsw-static-neutral-bluish-100);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dsw-alias-label-primary);
 }
 
 .dsh-leader-agent-board-rail-meta span {
   display: block;
   margin-top: 1px;
-  font-family: var(--ds-font-family-mono, ui-monospace, Menlo, monospace);
+  font-family: ui-monospace, Menlo, monospace;
   font-size: 10.5px;
-  color: var(--dsw-static-neutral-bluish-400);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .dsh-leader-agent-board-rail-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(56px, 24%, 96px);
+  grid-template-columns: minmax(0, 1fr) clamp(44px, 17%, 60px);
   align-items: center;
   gap: 10px;
 }
@@ -1264,7 +1316,7 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
-  padding-right: 10px;
+  padding-right: 8px;
 }
 
 .dsh-leader-agent-board-rail-slot {
@@ -1274,11 +1326,11 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   width: 20px;
   height: 20px;
   padding: 0;
-  border: 1px solid var(--dsw-static-neutral-bluish-700);
+  border: 1px solid var(--dla-structure-strong);
   border-radius: 50%;
   corner-shape: round;
-  background: var(--dsw-static-neutral-bluish-900);
-  color: var(--dsw-static-neutral-bluish-200);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
   font: inherit;
   font-size: 8px;
   font-weight: 650;
@@ -1287,57 +1339,57 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 }
 
 .dsh-leader-agent-board-rail-slot:focus-visible {
-  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-static-blue-500);
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dla-accent);
   outline-offset: 1px;
 }
 
 .dsh-leader-agent-board-rail-slot-running {
-  border-color: var(--dsw-static-blue-500);
+  border-color: var(--dla-accent);
 }
 
 .dsh-leader-agent-board-rail-slot-attention {
-  border-color: var(--dsw-static-red-500);
+  border-color: var(--dla-danger);
 }
 
 .dsh-leader-agent-board-rail-slot-idle {
-  color: var(--dsw-static-neutral-bluish-500);
+  color: var(--dsw-alias-label-tertiary);
 }
 
 .dsh-leader-agent-board-rail-slot-more {
   font-size: 7px;
-  color: var(--dsw-static-neutral-bluish-500);
+  color: var(--dsw-alias-label-tertiary);
   cursor: default;
 }
 
 @media (hover: hover) {
-  .dsh-leader-agent-board-list-cinema .dsh-leader-agent-board-card:hover {
+  .dsh-leader-agent-board-list-cinema-dark .dsh-leader-agent-board-card:hover {
     --dsw-elevation-stroke-color: var(--dsw-static-neutral-bluish-600);
   }
 }
 
 .dsh-leader-agent-board-rail-trunk {
   fill: none;
-  stroke: var(--dsw-static-neutral-bluish-800);
+  stroke: var(--dla-structure);
   stroke-width: 1.2;
 }
 
 .dsh-leader-agent-board-rail-edge {
   fill: none;
-  stroke: var(--dsw-static-neutral-bluish-700);
+  stroke: var(--dla-structure);
   stroke-width: 1.2;
   stroke-linecap: round;
 }
 
 .dsh-leader-agent-board-rail-hot {
   fill: none;
-  stroke: var(--dsw-static-amber-500);
+  stroke: var(--dla-accent);
   stroke-width: 1.8;
   stroke-linecap: round;
 }
 
 .dsh-leader-agent-board-rail-warn {
   fill: none;
-  stroke: var(--dsw-static-red-500);
+  stroke: var(--dla-danger);
   stroke-width: 1.6;
   stroke-linecap: round;
   animation: dsh-leader-agent-rail-breathe 1.8s ease-in-out infinite;
@@ -1345,10 +1397,10 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 
 .dsh-leader-agent-board-rail-trail {
   fill: none;
-  stroke: var(--dsw-static-amber-100);
-  stroke-width: 3;
+  stroke: var(--dla-trail);
+  stroke-width: 2.8;
   stroke-linecap: round;
-  filter: drop-shadow(0 0 4px var(--dsw-static-amber-400));
+  filter: var(--dla-trail-shadow);
   animation: dsh-leader-agent-rail-flow 2.4s linear infinite;
 }
 
@@ -1363,17 +1415,17 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 }
 
 .dsh-leader-agent-board-rail-node {
-  fill: var(--dsw-static-neutral-bluish-1000);
-  stroke: var(--dsw-static-neutral-bluish-600);
+  fill: var(--dla-node-fill);
+  stroke: var(--dla-structure-strong);
   stroke-width: 1.4;
 }
 
-.dsh-leader-agent-board-rail-node-running { stroke: var(--dsw-static-blue-500); }
-.dsh-leader-agent-board-rail-node-attention { stroke: var(--dsw-static-red-500); }
+.dsh-leader-agent-board-rail-node-running { stroke: var(--dla-accent); }
+.dsh-leader-agent-board-rail-node-attention { stroke: var(--dla-danger); }
 
 .dsh-leader-agent-board-rail-halo {
   fill: none;
-  stroke: var(--dsw-static-amber-400);
+  stroke: var(--dla-accent);
   stroke-width: 1;
   animation: dsh-leader-agent-rail-halo 2.2s ease-out infinite;
 }
@@ -1384,8 +1436,8 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 }
 
 .dsh-leader-agent-board-rail-comet {
-  fill: var(--dsw-static-amber-100);
-  filter: drop-shadow(0 0 4px var(--dsw-static-amber-400));
+  fill: var(--dla-comet);
+  filter: var(--dla-trail-shadow);
 }
 
 @media (prefers-reduced-motion: reduce) {

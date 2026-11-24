@@ -176,7 +176,10 @@ test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默�
     '--dsw-static-amber-500',
     '--dsw-static-amber-600',
     '--dsw-static-blue-500',
+    '--dsw-static-blue-600',
     '--dsw-static-neutral-900',
+    '--dsw-static-neutral-00',
+    '--dsw-static-neutral-bluish-50',
     '--dsw-static-neutral-bluish-100',
     '--dsw-static-neutral-bluish-200',
     '--dsw-static-neutral-bluish-300',
@@ -189,6 +192,7 @@ test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默�
     '--dsw-static-neutral-bluish-900',
     '--dsw-static-neutral-bluish-1000',
     '--dsw-static-red-500',
+    '--dsw-static-red-600',
     '--dsw-alias-settings-card-fill',
     '--dsw-alias-settings-card-stroke',
   ])

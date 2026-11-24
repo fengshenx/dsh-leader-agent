@@ -114,6 +114,9 @@ export function apply(ctx) {
       getUiWorkspace: () => ctx.get('uiWorkspace'),
       getSidebarRight: () => ctx.get('sidebarRight'),
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
+      // 线路图有两套皮：浅色宿主走电蓝正交，深色宿主走黑金曲线
+      getTheme: () => ctx.get('theme'),
+      onThemeChange: (listener) => ctx.on('theme/change', listener),
     }),
   }, BoardBody)), 'dsh-leader-agent 看板面板')
 

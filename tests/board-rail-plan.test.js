@@ -7,6 +7,7 @@ import {
   planRailLanes,
   railBranchPath,
   railLaneKind,
+  railOrthoBranchPath,
   railNodeState,
   railTickPath,
 } from '../src/client/board-rail-plan.js'
@@ -42,6 +43,26 @@ test('支线是两端水平的 S 弯，短间距也保留弯度', () => {
     railBranchPath({ cardRight: 300, cy: 50, slotX: 308, slotY: 60 }),
     'M300,50 C310,50 298,60 308,60',
   )
+})
+
+test('正交支线先右、再竖、再右，拐角带圆角', () => {
+  assert.equal(
+    railOrthoBranchPath({ cardRight: 300, cy: 50, slotX: 330, slotY: 80 }),
+    'M300,50 L311,50 Q316,50 316,55 L316,75 Q316,80 321,80 L330,80',
+  )
+  // 上下几乎同高时退化成一条直线，避免两个拐点重叠
+  assert.equal(
+    railOrthoBranchPath({ cardRight: 300, cy: 50, slotX: 330, slotY: 55 }),
+    'M300,50 L330,55',
+  )
+})
+
+test('orthogonal 开关只换支线形状，tick 不变', () => {
+  const rows = [{ status: 'running', cardX: 44, cardRight: 300, cy: 50, slots: [{ x: 330, y: 80 }] }]
+  const curved = planRailLanes({ trunkX: 20, leaderY: 10, rows })
+  const ortho = planRailLanes({ trunkX: 20, leaderY: 10, rows, orthogonal: true })
+  assert.equal(curved[0].d, ortho[0].d)
+  assert.equal(ortho[1].d, railOrthoBranchPath({ cardRight: 300, cy: 50, slotX: 330, slotY: 80 }))
 })
 
 test('每一行一条 tick，有执行者才多出支线', () => {

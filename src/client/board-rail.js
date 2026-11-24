@@ -106,9 +106,10 @@ function measure(element, base) {
  * 重画整张线路图。
  *
  * @param {object} svg - 覆盖层
+ * @param {{ orthogonal?: boolean, theme?: string }} options - 走线方式与主题
  * @returns {void}
  */
-function drawRail(svg) {
+function drawRail(svg, options = {}) {
   const stage = svg.parentElement
   if (stage === null) return
   svg.replaceChildren()
@@ -144,13 +145,12 @@ function drawRail(svg) {
   svg.appendChild(pathNode(`M${trunkX},${leader.cy} L${trunkX},${lastY}`, 'dsh-leader-agent-board-rail-trunk'))
 
   rows.forEach((row) => {
-    svg.appendChild(svgNode('circle', {
-      cx: trunkX,
-      cy: row.cy,
-      r: 3.4,
-      class: `dsh-leader-agent-board-rail-node dsh-leader-agent-board-rail-node-${railNodeState(row.status)}`,
-    }))
-    if (row.status === 'running') {
+    const nodeClass = `dsh-leader-agent-board-rail-node dsh-leader-agent-board-rail-node-${railNodeState(row.status)}`
+    svg.appendChild(options.orthogonal === true
+      ? svgNode('rect', { x: trunkX - 3.2, y: row.cy - 3.2, width: 6.4, height: 6.4, rx: 1.2, class: nodeClass })
+      : svgNode('circle', { cx: trunkX, cy: row.cy, r: 3.4, class: nodeClass }))
+    // 浅色皮的节点是方块，再加扩散圆环会变成「光晕」，那正是浅色最忌讳的材质
+    if (row.status === 'running' && options.theme !== 'light') {
       svg.appendChild(svgNode('circle', {
         cx: trunkX,
         cy: row.cy,
@@ -162,7 +162,7 @@ function drawRail(svg) {
 
   const reduced = prefersReducedMotion()
   let animated = 0
-  planRailLanes({ trunkX, leaderY: leader.cy, rows }).forEach((lane, index) => {
+  planRailLanes({ trunkX, leaderY: leader.cy, rows, orthogonal: options.orthogonal }).forEach((lane, index) => {
     if (lane.kind === RAIL_LANE_HOT) {
       svg.appendChild(pathNode(lane.d, 'dsh-leader-agent-board-rail-hot'))
       if (reduced || animated >= MAX_ANIMATED_LANES) return
@@ -198,27 +198,27 @@ function drawRail(svg) {
  * @param {string} props.railKey - 行与状态的签名
  * @returns {object} React 元素
  */
-export function BoardRail({ railKey }) {
+export function BoardRail({ railKey, orthogonal, theme }) {
   const ref = useRef(null)
 
   useLayoutEffect(() => {
     const svg = ref.current
     if (svg === null) return undefined
     const stage = svg.parentElement
-    drawRail(svg)
+    drawRail(svg, { orthogonal, theme })
     if (stage === null || typeof ResizeObserver === 'undefined') return undefined
     let frame = 0
     const observer = new ResizeObserver(() => {
       // 观测回调里直接改 DOM 会打断布局；推到下一帧再量
       cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => { drawRail(svg) })
+      frame = requestAnimationFrame(() => { drawRail(svg, { orthogonal, theme }) })
     })
     observer.observe(stage)
     return () => {
       cancelAnimationFrame(frame)
       observer.disconnect()
     }
-  }, [railKey])
+  }, [railKey, orthogonal, theme])
 
   return createElement('svg', {
     ref,

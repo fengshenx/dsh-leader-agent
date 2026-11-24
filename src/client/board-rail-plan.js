@@ -89,6 +89,37 @@ export function railBranchPath({ cardRight, cy, slotX, slotY }) {
 }
 
 /**
+ * 正交走线：先向右出线，再竖直，再向右进圆点；拐角用 5px 圆角。
+ *
+ * 直角比 S 弯更像电路图，也让「出线点 → 竖槽」的距离一眼可读。竖槽很窄时
+ * 退化成一条直线，避免拐点跑到圆点右边去。
+ *
+ * @param {object} input - 几何
+ * @param {number} input.cardRight - 卡面右缘 x
+ * @param {number} input.cy - 卡面中心 y
+ * @param {number} input.slotX - 执行者圆点左缘 x
+ * @param {number} input.slotY - 执行者圆点中心 y
+ * @returns {string} SVG path
+ */
+export function railOrthoBranchPath({ cardRight, cy, slotX, slotY }) {
+  const elbow = Math.min(cardRight + 16, slotX - 6)
+  const radius = 5
+  const dy = slotY - cy
+  if (Math.abs(dy) < radius * 2 || elbow <= cardRight) {
+    return `M${px(cardRight)},${px(cy)} L${px(slotX)},${px(slotY)}`
+  }
+  const dir = dy > 0 ? 1 : -1
+  return [
+    `M${px(cardRight)},${px(cy)}`,
+    `L${px(elbow - radius)},${px(cy)}`,
+    `Q${px(elbow)},${px(cy)} ${px(elbow)},${px(cy + dir * radius)}`,
+    `L${px(elbow)},${px(slotY - dir * radius)}`,
+    `Q${px(elbow)},${px(slotY)} ${px(elbow + radius)},${px(slotY)}`,
+    `L${px(slotX)},${px(slotY)}`,
+  ].join(' ')
+}
+
+/**
  * 把量好的行几何拆成线。
  *
  * 每行产出一条 tick 与若干支线；支线数量等于该行实际渲染的执行者圆点数。没有
@@ -99,9 +130,10 @@ export function railBranchPath({ cardRight, cy, slotX, slotY }) {
  * @param {number} input.leaderY - leader 节点中心 y
  * @param {Array<{ status: string, cardX: number, cardRight: number, cy: number, slots?: Array<{ x: number, y: number }> }>} input.rows
  *   自上而下的行几何
+ * @param {boolean} [input.orthogonal] - 支线走直角（浅色皮的电路感）
  * @returns {Array<{ id: string, kind: string, d: string }>} 线路列表
  */
-export function planRailLanes({ trunkX, leaderY, rows }) {
+export function planRailLanes({ trunkX, leaderY, rows, orthogonal }) {
   const lanes = []
   let fromY = leaderY
   rows.forEach((row, index) => {
@@ -115,7 +147,9 @@ export function planRailLanes({ trunkX, leaderY, rows }) {
       lanes.push({
         id: `branch:${index}:${slotIndex}`,
         kind: railLaneKind(row.status),
-        d: railBranchPath({ cardRight: row.cardRight, cy: row.cy, slotX: slot.x, slotY: slot.y }),
+        d: orthogonal
+          ? railOrthoBranchPath({ cardRight: row.cardRight, cy: row.cy, slotX: slot.x, slotY: slot.y })
+          : railBranchPath({ cardRight: row.cardRight, cy: row.cy, slotX: slot.x, slotY: slot.y }),
       })
     })
     fromY = row.cy
