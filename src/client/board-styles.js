@@ -1191,6 +1191,12 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   position: relative;
 }
 
+/* 卡片要压在 SVG 上面：否则绝对定位的覆盖层会盖住卡面文字与执行者圆点 */
+.dsh-leader-agent-board-stage > .dsh-leader-agent-board-group {
+  position: relative;
+  z-index: 1;
+}
+
 .dsh-leader-agent-board-list-cinema .dsh-leader-agent-board-stage {
   padding: 6px 0 12px 44px;
 }
@@ -1198,6 +1204,7 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 .dsh-leader-agent-board-rail {
   position: absolute;
   inset: 0;
+  z-index: 0;
   width: 100%;
   height: 100%;
   overflow: visible;
@@ -1206,6 +1213,7 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 
 .dsh-leader-agent-board-rail-head {
   position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   height: 52px;
@@ -1246,24 +1254,25 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 
 .dsh-leader-agent-board-rail-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 30px;
+  grid-template-columns: minmax(0, 1fr) 56px;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .dsh-leader-agent-board-rail-slots {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 3px;
+  align-items: flex-end;
+  gap: 4px;
+  padding-right: 8px;
 }
 
 .dsh-leader-agent-board-rail-slot {
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1px solid var(--dsw-static-neutral-bluish-700);
   border-radius: 50%;

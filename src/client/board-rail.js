@@ -127,7 +127,8 @@ function drawRail(svg) {
     const card = measure(cardElement, base)
     const slots = [...row.querySelectorAll('[data-rail-slot]')]
       .map((slot) => measure(slot, base))
-      .map((slot) => ({ x: slot.cx, y: slot.cy }))
+      // 支线停在圆点左缘外 2px：画到圆心上会从首字上穿过去
+      .map((slot) => ({ x: slot.cx - 12, y: slot.cy }))
     rows.push({
       status: row.dataset.railStatus ?? 'none',
       cardX: card.x,
