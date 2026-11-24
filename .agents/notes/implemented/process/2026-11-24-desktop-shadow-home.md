@@ -12,7 +12,9 @@ Status: implemented
 
 ## Decision
 
-- 给应用一个**影子 `DSH_HOME`**：`<repo>/.dev/desktop-home`。里面的 `profiles/desktop`
+- 给应用一个**影子 `DSH_HOME`**：prod 是 `<repo>/.dev/desktop-prod-home`；dev 仍用
+  `<repo>/.dev/desktop-home`。两个根必须不同：影子根把数据目录链回日常根，dev 复用
+  同一根时，dev 的会话/项目/卡片会顺着链接写进正式数据。影子根里的 `profiles/desktop`
   从日常 profile 派生（依赖与 bundle 照抄、本插件指工作树），其余顶层项链回日常根：
   目录用符号链接（Windows junction），只读小文件复制。
 - 凭据不靠链接：开发 profile 的 `cordis.patch.yml` 把 `credentials` 行的 `path` 指回
@@ -24,8 +26,14 @@ Status: implemented
   `npm run desktop` → 派生根（dev，数据独立，适合并行验证分支）。不再按主 checkout /
   worktree 或环境变量猜意图。
 - 宿主将来新增顶层数据域时，它只会落在影子里；下次启动（或 `--remove`）把不在清单里的
-  实体项搬回日常根，已有同名实体则挪到旁边并告警，不删数据。
-- `--remove` 删影子根；旧版永久挂在线上 profile 的 `link:` 仍顺手摘掉。
+  实体项搬回日常根，已有同名实体则挪到旁边并告警，不删数据。清单里的 known 项若被人
+  换成实体目录（`sessions` 链接变成目录），也按同样的「搬走/挪到旁边」处理，不跟随
+  `rmSync` 删除。
+- `--remove` 只删影子根；旧版永久挂在线上 profile 的 `link:` 要
+  `--remove --remove-mount` 显式摘除（会改线上 profile），默认输出只提示不摘。
+- 顶层文件照清单复制，其中 `.env` 可能带密钥，影子副本权限收到 600；这是「文件复制」
+  而非「凭据链接」的代价，凭据本身仍用 `credentials.path` 指回日常文件。
+- 源根与影子根 realpath 相同时拒绝同步，避免把用户显式指定的日常根先挪走再改写。
 
 ## Alternatives considered
 
@@ -38,11 +46,12 @@ Status: implemented
 
 ## Consequences
 
-- 线上 `~/.dsh/profiles/desktop` 在开发会话前后完全一致；直接启动始终是线上版。
+- 线上 `~/.dsh/profiles/desktop` 在启动路径前后完全一致；直接启动始终是线上版。
 - `npm run desktop` 不会读日常会话/卡片；要共用就跑 `npm run desktop:prod`。
 - 开发会话写真实会话/项目/卡片：存储格式的降级兼容由开发版负责。
 - 宿主新增的顶层数据域在下一次运行前只存在影子里（不丢，搬回有延迟）；同名冲突挪到
-  `.dev/desktop-home-leftover-*` 并告警。
+  `.dev/desktop-home-leftover-*` 并告警。`--remove --remove-mount` 是唯一会改线上
+  profile 的路径。
 - 会话期间在插件管理里改的东西落在影子 profile，重建时消失。
 - 同一时刻仍只有一个桌面实例；直接启动会激活正在运行的开发实例。
 - 收益：`desktop:prod` 时本地代码与日常数据共用，线上 profile 零改动，不需要卸载，也
@@ -50,7 +59,10 @@ Status: implemented
 
 ## Testing
 
-`tests/desktop-shadow.test.js` 覆盖链接/复制/凭据指向/新数据域搬回/拒绝删除来历不明的
-影子根；`tests/desktop-remove.integration.test.js` 用真实脚本验证删影子根后线上 profile
-指纹不变。另用安装版桌面 CLI 把影子 profile 以 `probe` 名 `--dump-config`，确认
-`credentials` 行落在 `~/.dsh/.credentials.yaml`、`dsh-leader-agent` 解析到工作树。
+`tests/desktop-shadow.test.js` 覆盖链接/复制/凭据指向/新数据域搬回/known 项被换成实体
+目录时挪到旁边/源根与影子根相同拒绝/`.env` 副本 600；`tests/desktop-remove.integration.test.js`
+用真实脚本验证：整棵日常根（sessions/storages/cards/credentials 等）树级指纹不变、
+dev 与 prod 启动分别落不同根、prod 建影子后跑 dev 日常不变、假 `.app` 启动路径、默认
+`--remove` 不摘线上旧版挂载而 `--remove-mount` 才摘。另用安装版桌面 CLI 把影子 profile
+以 `probe` 名 `--dump-config`，确认 `credentials` 行落在 `~/.dsh/.credentials.yaml`、
+`dsh-leader-agent` 解析到工作树。

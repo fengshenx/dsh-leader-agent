@@ -55,7 +55,7 @@ Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`
 
 On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
 
-For development, `npm run desktop` uses an isolated root; `npm run desktop:prod` uses production data via a shadow root linking sessions and cards back to `~/.dsh`, leaving the online profile untouched. Both run local code; direct launches keep using the installed version. `-- --remove` cleans up.
+Development: `npm run desktop` uses an isolated root (`.dev/desktop-home`); `npm run desktop:prod` uses a shadow root (`.dev/desktop-prod-home`) linking sessions/cards to `~/.dsh`; online profile untouched. Both run local code; direct launches use the installed version. `-- --remove` cleans its root; `-- --remove --remove-mount` removes a legacy mount.
 
 ### Web install
 

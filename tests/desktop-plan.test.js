@@ -352,7 +352,7 @@ test('启动 fail closed：探不到运行态不启动，open 有 stderr 不当�
 
 test('影子分支接线：用影子 DSH_HOME 起应用，不写还原进程', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  assert.match(source, /const shadowPaths = homePlan\.mode === 'shadow' \? desktopShadowPaths\(\{ sourceHome: dailyPaths\.home, worktree \}\) : null/)
+  assert.match(source, /const shadowPaths = homePlan\.mode === 'shadow'\s*\n\s*\? desktopShadowPaths\(\{ sourceHome: dailyPaths\.home, worktree, home: homePlan\.home \}\)\s*\n\s*: null/)
   assert.match(source, /syncShadowHome\(\{/)
   assert.match(source, /dshHome: shadowPaths\.home/)
   assert.doesNotMatch(source, /spawnRestoreHelper|beginSession|endSession/)
@@ -405,39 +405,52 @@ test('派生根落在工作树内的 .dev/desktop-home，形状与日常根一�
   assert.notEqual(home, join(WORKTREE, '.dev', 'home'))
 })
 
-test('影子根把开发 profile 放在影子里，来源 profile 只读', () => {
+test('影子根与 dev 派生根是两个目录，来源 profile 只读', () => {
   const sourceHome = join(HOME, '.dsh')
   const paths = desktopShadowPaths({ sourceHome, worktree: WORKTREE })
-  assert.equal(paths.home, join(WORKTREE, '.dev', 'desktop-home'))
+  assert.equal(paths.home, join(WORKTREE, '.dev', 'desktop-prod-home'))
   assert.equal(paths.profileDir, join(paths.home, 'profiles', DESKTOP_PROFILE))
   assert.equal(paths.sourceProfileDir, join(sourceHome, 'profiles', DESKTOP_PROFILE))
   assert.equal(paths.manifestPath, join(paths.home, '.desktop-shadow.json'))
   // 影子 profile 与来源 profile 不同目录：线上 profile 一个字节都不写。
   assert.notEqual(paths.profileDir, paths.sourceProfileDir)
+  // dev 根与 prod 影子根必须不同：prod 把数据链回日常根，复用 dev 根会让 dev 写正式数据。
+  assert.notEqual(paths.home, derivedDesktopHome({ worktree: WORKTREE }))
 })
 
 test('desktop 是 dev 派生根，desktop:prod 是正式数据影子根', () => {
   // 两条命令两个模式，与当前目录、环境变量无关；`owner` 只用于提示日常那份挂的是谁。
-  assert.deepEqual(planDesktopHome({ prod: false }), { mode: 'derived', owner: null })
   assert.deepEqual(
-    planDesktopHome({ prod: false, installedSpec: '^0.7.0' }),
-    { mode: 'derived', owner: '^0.7.0' },
-  )
-  assert.deepEqual(planDesktopHome({ prod: true }), { mode: 'shadow', owner: null })
-  assert.deepEqual(
-    planDesktopHome({ prod: true, installedSpec: 'link:/work/repo' }),
-    { mode: 'shadow', owner: 'link:/work/repo' },
+    planDesktopHome({ prod: false, worktree: WORKTREE }),
+    { mode: 'derived', owner: null, home: join(WORKTREE, '.dev', 'desktop-home') },
   )
   assert.deepEqual(
-    planDesktopHome({ prod: true, installedSpec: '' }),
-    { mode: 'shadow', owner: null },
+    planDesktopHome({ prod: false, installedSpec: '^0.7.0', worktree: WORKTREE }),
+    { mode: 'derived', owner: '^0.7.0', home: join(WORKTREE, '.dev', 'desktop-home') },
+  )
+  assert.deepEqual(
+    planDesktopHome({ prod: true, worktree: WORKTREE }),
+    { mode: 'shadow', owner: null, home: join(WORKTREE, '.dev', 'desktop-prod-home') },
+  )
+  assert.deepEqual(
+    planDesktopHome({ prod: true, installedSpec: 'link:/work/repo', worktree: WORKTREE }),
+    { mode: 'shadow', owner: 'link:/work/repo', home: join(WORKTREE, '.dev', 'desktop-prod-home') },
+  )
+  assert.deepEqual(
+    planDesktopHome({ prod: true, installedSpec: '', worktree: WORKTREE }),
+    { mode: 'shadow', owner: null, home: join(WORKTREE, '.dev', 'desktop-prod-home') },
+  )
+  // 返回实际根，且两个模式不共用：只返回 mode 时调用方会把两条命令指到同一根。
+  assert.notEqual(
+    planDesktopHome({ prod: false, worktree: WORKTREE }).home,
+    planDesktopHome({ prod: true, worktree: WORKTREE }).home,
   )
 })
 
 test('dev 分支接线：desktop 派生，源固定成日常根', () => {
   const source = readFileSync(SCRIPT_PATH, 'utf8')
-  assert.match(source, /const prod = process\.argv\.slice\(2\)\.includes\('--prod'\)/)
-  assert.match(source, /const homePlan = planDesktopHome\(\{ prod, installedSpec \}\)/)
+  assert.match(source, /const prod = args\.includes\('--prod'\)/)
+  assert.match(source, /const homePlan = planDesktopHome\(\{ prod, installedSpec, worktree \}\)/)
   assert.match(source, /prepareDerivedPaths\(\{ worktree, homeDir, dailyPaths, dailyManifest \}\)/)
   assert.match(source, /env: \{ DSH_HOME: home, DSH_PROFILE: DESKTOP_PROFILE, DSH_HOME_SOURCE: dailyPaths\.home \}/)
   assert.match(source, /assertSeparateHome\(\{ home: derived\.home, sourceHome: dailyPaths\.home \}\)/)
@@ -452,7 +465,7 @@ test('dev 分支接线：desktop 派生，源固定成日常根', () => {
     < source.indexOf('withProfileLock(paths, () => {', mountAt),
   )
   // 显式 DSH_HOME 时走影子分支，不碰派生挂载。
-  assert.match(source, /const shadowPaths = homePlan\.mode === 'shadow' \? desktopShadowPaths/)
+  assert.match(source, /const shadowPaths = homePlan\.mode === 'shadow'\s*\n\s*\? desktopShadowPaths\(\{ sourceHome: dailyPaths\.home, worktree, home: homePlan\.home \}\)/)
 })
 
 test('派生只影响数据根：日常 profile 的说明符与链接一个都不写', () => {

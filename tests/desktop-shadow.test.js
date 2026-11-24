@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import {
   existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync,
-  writeFileSync,
+  statSync, writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { desktopShadowPaths } from '../scripts/desktop-plan.mjs'
-import { removeShadowHome, syncShadowHome } from '../scripts/desktop-shadow.mjs'
+import { assertShadowHomeSeparate, removeShadowHome, syncShadowHome } from '../scripts/desktop-shadow.mjs'
 import { LEADER_AGENT_PACKAGE, WEB_APP_BUNDLE } from '../scripts/dev-plan.mjs'
 
 /**
@@ -82,6 +82,8 @@ test('影子根共享会话目录，凭据指回日常文件，线上 profile �
   assert.equal(readlinkSync(join(fixture.shadowPaths.home, 'storages')), join(fixture.sourceHome, 'storages'))
   assert.equal(lstatSync(join(fixture.shadowPaths.home, '.env')).isFile(), true)
   assert.equal(readFileSync(join(fixture.shadowPaths.home, '.env'), 'utf8'), 'DSH_KEY=x\n')
+  // 顶层文件可能是 `.env` 这类密钥，影子副本只给当前用户读。
+  assert.equal(statSync(join(fixture.shadowPaths.home, '.env')).mode & 0o777, 0o600)
   assert.equal(existsSync(join(fixture.shadowPaths.home, '.credentials.yaml')), false)
   assert.equal(existsSync(join(fixture.shadowPaths.home, '.DS_Store')), false)
 
@@ -173,4 +175,40 @@ test('影子里的文件副本每次同步刷新，目录保持链接', (t) => {
   assert.equal(readFileSync(join(fixture.shadowPaths.home, '.env'), 'utf8'), 'DSH_KEY=y\n')
   assert.equal(lstatSync(join(fixture.shadowPaths.home, '.env')).isSymbolicLink(), false)
   assert.equal(readdirSync(join(fixture.shadowPaths.home, 'profiles')).includes('desktop'), true)
+})
+
+test('源根与影子根相同时拒绝同步，源根一个文件都没动', (t) => {
+  const fixture = makeFixture(t)
+  const before = readdirSync(fixture.sourceHome).sort()
+  const samePaths = { ...fixture.shadowPaths, home: fixture.sourceHome, manifestPath: join(fixture.sourceHome, '.desktop-shadow.json') }
+  assert.throws(
+    () => syncShadowHome({
+      sourceHome: fixture.sourceHome,
+      worktree: fixture.worktree,
+      shadowPaths: samePaths,
+      sourcePackage: fixture.sourcePackage,
+    }),
+    /同一个目录/,
+  )
+  assert.throws(
+    () => assertShadowHomeSeparate({ sourceHome: fixture.sourceHome, shadowHome: fixture.sourceHome }),
+    /同一个目录/,
+  )
+  assert.deepEqual(readdirSync(fixture.sourceHome).sort(), before)
+})
+
+test('known 项被换成实体目录时挪到旁边保留，不跟随 rmSync 删除', (t) => {
+  const fixture = makeFixture(t)
+  sync(fixture)
+  const sessions = join(fixture.shadowPaths.home, 'sessions')
+  rmSync(sessions, { force: true })
+  mkdirSync(sessions)
+  writeFileSync(join(sessions, 'new-dev.json'), '{"keep":true}\n')
+
+  const second = sync(fixture)
+  // 日常根已有同名 sessions 目录：不能覆盖，挪到 .dev 下的 aside。
+  assert.equal(second.conflicts.length, 1)
+  const aside = second.conflicts[0].split(' -> ')[1]
+  assert.equal(readFileSync(join(aside, 'new-dev.json'), 'utf8'), '{"keep":true}\n')
+  assert.equal(lstatSync(join(fixture.shadowPaths.home, 'sessions')).isSymbolicLink(), true)
 })

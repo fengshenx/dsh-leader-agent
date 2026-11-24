@@ -11,10 +11,10 @@
  */
 
 import {
-  copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync,
-  rmSync, statSync, symlinkSync, writeFileSync,
+  chmodSync, copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync,
+  realpathSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { prepareProfileDir } from './dev-instance.mjs'
 
 /** 不共享、也不复制到影子根的顶层项：`profiles` 由本模块造，凭据与 Finder 垃圾另有处理。 */
@@ -46,6 +46,8 @@ function exposeSourceEntries({ sourceHome, shadowHome }) {
       symlinkSync(from, to, process.platform === 'win32' ? 'junction' : 'dir')
     } else {
       copyFileSync(from, to)
+      // 顶层文件里可能有 `.env` 这类密钥；影子副本只给当前用户读。
+      chmodSync(to, 0o600)
     }
     created.push(name)
   }
@@ -89,12 +91,67 @@ function moveEntry(from, to) {
     if (error.code !== 'EXDEV') throw error
   }
   if (statSync(from).isDirectory()) {
+    // EXDEV 下复制不是原子的：中途失败会留下半份目标，源仍在影子里。下次启动会把
+    // 完整源当同名冲突挪到 aside，日常根留下半份目标；不覆盖，也不静默丢源数据
+    // （aside 可人工找回），这里不做半途回滚。
     cpSync(from, to, { recursive: true, force: false, errorOnExist: true })
     rmSync(from, { recursive: true, force: true })
     return
   }
   copyFileSync(from, to)
   rmSync(from, { force: true })
+}
+
+/**
+ * 取路径的真实身份，不存在时退回字面量。
+ *
+ * @param {string} path - 路径
+ * @returns {string} 规范化后的绝对路径
+ */
+function identityOf(path) {
+  try {
+    return realpathSync(path)
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return resolve(path)
+  }
+}
+
+/**
+ * 挡住「影子根就是源数据根」：继续同步会先在源根上 rmSync/重建，等于改写日常数据。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.sourceHome - 源数据根
+ * @param {string} options.shadowHome - 影子根
+ * @returns {void} 无返回
+ * @throws 两者 realpath 相同时
+ */
+export function assertShadowHomeSeparate({ sourceHome, shadowHome }) {
+  if (identityOf(sourceHome) === identityOf(shadowHome)) {
+    throw new Error(
+      `影子根与源数据根是同一个目录（${shadowHome}）：继续会在日常根上重建影子并改写它。`
+      + '\n检查 DSH_HOME；不显式指定时影子根落在工作树内的 .dev/desktop-prod-home。',
+    )
+  }
+}
+
+/**
+ * 清单里的已知项是不是本脚本自己建的那一份。
+ *
+ * 目录是符号链接、文件是副本，才可以直接删掉重建；known 项被宿主或人换成实体
+ * 目录/另一种类型时，里面可能有新数据，必须按 leftover 搬走而不是 rmSync 删掉。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.sourceHome - 日常数据根
+ * @param {string} options.shadowHome - 影子数据根
+ * @param {string} options.name - 顶层项名字
+ * @returns {boolean} 是否可以安全重建
+ */
+function isKnownEntrySafe({ sourceHome, shadowHome, name }) {
+  const shadowStat = lstatSync(join(shadowHome, name))
+  if (shadowStat.isSymbolicLink()) return true
+  const sourceStat = lstatSync(join(sourceHome, name), { throwIfNoEntry: false })
+  return sourceStat?.isFile() === true && shadowStat.isFile()
 }
 
 /**
@@ -126,7 +183,8 @@ function migrateLeftovers({ sourceHome, shadowHome, manifestPath }) {
   const migrated = []
   const conflicts = []
   for (const name of readdirSync(shadowHome)) {
-    if (name === 'profiles' || name === '.desktop-shadow.json' || known.has(name)) continue
+    if (name === 'profiles' || name === '.desktop-shadow.json') continue
+    if (known.has(name) && isKnownEntrySafe({ sourceHome, shadowHome, name })) continue
     const entry = join(shadowHome, name)
     const target = join(sourceHome, name)
     if (!existsSync(target)) {
@@ -205,6 +263,7 @@ function pinSharedCredentials({ sourceHome, shadowProfileDir }) {
  * @returns {{ credentials: { mode: string, path: string | null }, migrated: string[], conflicts: string[], foreign: boolean, foreignPath: string | null }} 结果
  */
 export function syncShadowHome({ sourceHome, worktree, shadowPaths, sourcePackage }) {
+  assertShadowHomeSeparate({ sourceHome, shadowHome: shadowPaths.home })
   const leftovers = migrateLeftovers({ sourceHome, shadowHome: shadowPaths.home, manifestPath: shadowPaths.manifestPath })
   let foreignPath = null
   if (leftovers.foreign) {

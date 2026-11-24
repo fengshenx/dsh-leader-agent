@@ -9,10 +9,13 @@
  * - `npm run desktop` → **dev 派生根** `./.dev/desktop-home`：数据独立，不碰日常
  *   profile，也不共用日常会话/项目/卡片，适合并行验证分支。
  * - `npm run desktop:prod`（`--prod`）→ **正式数据影子根**：应用拿到的 `DSH_HOME`
- *   是 `<repo>/.dev/desktop-home`，里面的 `profiles/desktop` 是从 `DSH_HOME` 对应的
- *   日常 profile 派生的开发 profile，sessions、项目、卡片等顶层项链回那条根。
+ *   是 `<repo>/.dev/desktop-prod-home`，里面的 `profiles/desktop` 是从 `DSH_HOME`
+ *   对应的日常 profile 派生的开发 profile，sessions、项目、卡片等顶层项链回那条根。
  *   线上 profile 不动，直接启动应用仍用线上版；没有后台还原进程，应用被 kill、
  *   断电也不需要还原。
+ *
+ * 两种模式的根必须不同：prod 的影子根把数据目录链回日常根，dev 若复用同一个根，
+ * dev 的会话/项目/卡片就会顺着链接写进正式数据。
  *
  * 脚本做的事：
  * - 影子根：重建客户端产物 → 迁移上次 leftover → 建顶层链接 → 派生开发 profile
@@ -22,8 +25,9 @@
  * - 启动桌面应用（macOS 用 `open --env -a`，Windows 直接起 exe 并把 `DSH_HOME` 放进
  *   子进程环境；`DSH_DESKTOP_APP` 可换应用名、`.app`／exe 路径或安装目录）。
  *
- * 撤销：`npm run desktop -- --remove`（影子根：删影子根，线上 profile 不动；
- * worktree：摘派生挂载）。
+ * 撤销：`npm run desktop -- --remove`（dev：摘派生挂载）；`npm run desktop:prod --
+ * --remove`（删影子根，线上 profile 不动）；旧版本永久挂在线上 profile 的 `link:`
+ * 另用 `--remove --remove-mount` 显式摘除（会改线上 profile）。
  *
  * 走这条路径不碰 pnpm：宿主启动时只按 `bundles` 顺序解析包，不校验 `link:` 与磁盘
  * 链接是否一致（`npm run dev` 的派生 profile 就是同样跑通的）。
@@ -50,7 +54,7 @@ import {
   parseTasklistImages, planDesktopDisable, planDesktopEnable, planDesktopHome,
   planLinkAction, planProfileLockAction, resolveHomePathsOrThrow, windowsExeCandidates,
 } from './desktop-plan.mjs'
-import { removeShadowHome, syncShadowHome } from './desktop-shadow.mjs'
+import { assertShadowHomeSeparate, removeShadowHome, syncShadowHome } from './desktop-shadow.mjs'
 import { CommandNotFoundError, spawnCommandSync } from './spawn-command.mjs'
 import { detachNodeModulesLink } from './worktree-common.mjs'
 
@@ -637,7 +641,7 @@ function detachMount(paths, { onlyOurs = false } = {}) {
 /**
  * 影子根启动：用本仓派生的开发 profile 起桌面应用，数据仍写日常根。
  *
- * 线上 `profiles/desktop` 不参与：应用拿到的是 `DSH_HOME=<repo>/.dev/desktop-home`。
+ * 线上 `profiles/desktop` 不参与：应用拿到的是 `DSH_HOME=<repo>/.dev/desktop-prod-home`。
  * 这里不写后台还原进程——没有换名，就没有需要还原的状态；应用被 kill、崩溃或断电
  * 都只留下一个可以下次重建的影子根。
  *
@@ -673,6 +677,7 @@ async function runShadow({ target, shadowPaths, sourcePaths, sourceManifest, own
 
   console.log('')
   console.log('== dsh-leader-agent 以开发版启动桌面（影子数据根）==')
+  console.log(`  影子根    ${shadowPaths.home}`)
   console.log(`  数据根    ${sourcePaths.home}（sessions、项目、卡片通过符号链接共用）`)
   console.log(`  线上 profile  ${sourcePaths.profileDir}${owner === null ? '' : `（挂着 ${owner}）`}，本次不动`)
   console.log(`  开发 profile  ${shadowPaths.profileDir}`)
@@ -706,9 +711,10 @@ async function runShadow({ target, shadowPaths, sourcePaths, sourceManifest, own
  * @param {object} options.shadowPaths - `desktopShadowPaths` 的结果
  * @param {object} options.sourcePaths - 日常数据根的 `desktopPathsOf` 结果
  * @param {{ kind: string, path: string | null }} options.target - 启动目标
+ * @param {boolean} [options.removeMount] - 是否顺手摘线上 profile 的旧版挂载
  * @returns {void} 无返回
  */
-function removeShadow({ shadowPaths, sourcePaths, target }) {
+function removeShadow({ shadowPaths, sourcePaths, target, removeMount = false }) {
   const shadowExists = existsSync(shadowPaths.home)
   if (shadowExists) {
     const running = desktopAppRunning(target, process.env)
@@ -731,15 +737,22 @@ function removeShadow({ shadowPaths, sourcePaths, target }) {
     process.exit(1)
   }
 
-  // 旧版这条命令会永久写日常 profile；顺手摘掉，免得「线上版」其实还是本地链接。
-  const legacy = existsSync(sourcePaths.packagePath) ? detachMount(sourcePaths, { onlyOurs: true }) : null
+  // 旧版命令会永久写日常 profile；默认不碰它，只有显式 --remove-mount 才摘，
+  // 否则「线上 profile 未动」与顺手摘挂载的输出自相矛盾。
+  const legacyMounted = existsSync(sourcePaths.packagePath)
+    && installedSpecOf(readManifest(sourcePaths.packagePath)) === desktopLinkSpec(worktree)
+  const legacy = removeMount && existsSync(sourcePaths.packagePath)
+    ? detachMount(sourcePaths, { onlyOurs: true })
+    : null
   console.log('')
   console.log(result.removed ? '== 已删除桌面开发数据根 ==' : '== 没有桌面开发数据根 ==')
   console.log(`  影子根    ${shadowPaths.home}${result.removed ? '' : '（不存在）'}`)
-  console.log(`  线上 profile  ${sourcePaths.profileDir}（未动）`)
+  console.log(`  线上 profile  ${sourcePaths.profileDir}${legacy?.changed ? '（已摘除本工作树旧版挂载）' : '（未动）'}`)
   if (result.migrated.length > 0) console.log(`  已搬回   ${result.migrated.join(', ')}`)
   for (const conflict of result.conflicts) console.warn(`  冲突      ${conflict}`)
-  if (legacy?.changed) console.log('  旧版挂载  已从线上 profile 摘除')
+  if (!removeMount && legacyMounted) {
+    console.log('  旧版挂载  线上 profile 仍有本工作树的旧版挂载；要摘除加 --remove-mount（会改线上 profile）')
+  }
   console.log('')
   console.log('重新打开 DeepSeek Harness 仍用线上版。')
 }
@@ -755,20 +768,32 @@ async function main() {
   const dailyPaths = resolveHomePathsOrThrow({ rawHome, homeDir, cwd: process.cwd() })
   const appName = process.env.DSH_DESKTOP_APP || DESKTOP_APP_NAME
   const target = desktopTarget(appName, { homeDir, env: process.env })
-  const remove = process.argv.slice(2).includes('--remove')
+  const args = process.argv.slice(2)
+  const remove = args.includes('--remove')
+  const removeMount = args.includes('--remove-mount')
+  if (removeMount && !remove) {
+    console.error('--remove-mount 只与 --remove 一起用：它摘的是线上 profile 里本工作树的旧版挂载。')
+    process.exit(1)
+  }
 
   const dailyManifest = existsSync(dailyPaths.packagePath) ? readManifest(dailyPaths.packagePath) : null
   const installedSpec = installedSpecOf(dailyManifest)
-  // 显式给了 DSH_HOME 就是指定了数据根，脚本不另找地方：在那条根上做影子根，
-  // 而不是派生到工作树里，否则「我指定的目录怎么没生效」。
-  const prod = process.argv.slice(2).includes('--prod')
-  const homePlan = planDesktopHome({ prod, installedSpec })
-  const shadowPaths = homePlan.mode === 'shadow' ? desktopShadowPaths({ sourceHome: dailyPaths.home, worktree }) : null
+  // 显式给了 DSH_HOME 就是指定了源数据根：影子根仍落在工作树，数据链回这条根；
+  // 不会再派生一份独立的工作树数据根，否则「我指定的目录怎么没生效」。
+  const prod = args.includes('--prod')
+  const homePlan = planDesktopHome({ prod, installedSpec, worktree })
+  const shadowPaths = homePlan.mode === 'shadow'
+    ? desktopShadowPaths({ sourceHome: dailyPaths.home, worktree, home: homePlan.home })
+    : null
 
   if (remove) {
     if (shadowPaths !== null) {
-      removeShadow({ shadowPaths, sourcePaths: dailyPaths, target })
+      removeShadow({ shadowPaths, sourcePaths: dailyPaths, target, removeMount })
       return
+    }
+    if (removeMount) {
+      console.error('--remove-mount 只用于 desktop:prod：dev 的派生挂载由 --remove 直接摘除，不涉及线上 profile。')
+      process.exit(1)
     }
     // 摘除只看目标根自己：为了算路径去派生会新建目录、把日常凭据复制进来，
     // 而「这个根上没装过」本来就该是空操作。
@@ -811,6 +836,8 @@ async function main() {
       console.error('其他平台用 worktree 里的 npm run desktop（派生数据根，不碰日常 profile）。')
       process.exit(1)
     }
+    // 源根就是影子根时，sync 会先把源根清掉；必须在任何写操作之前拒绝。
+    assertShadowHomeSeparate({ sourceHome: dailyPaths.home, shadowHome: shadowPaths.home })
     // 影子 DSH_HOME 只在应用启动时生效；已运行的实例收不到 --env，探不到也不能赌。
     if (running === null) {
       console.error(`探不到桌面应用是否在运行（${target.kind === 'exe' ? 'tasklist' : 'pgrep'} 不可用），不启动。`)
