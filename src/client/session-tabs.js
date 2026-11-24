@@ -79,12 +79,13 @@ const STYLE_TEXT = `
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 38px;
+  height: 48px;
   min-width: 0;
   box-sizing: border-box;
-  /* 宿主右栏顶行是 38px 的条带：10px 上留白 + 底部 28px 内容带。标签栏
-     同高，但内容要压到同一条 28px 带上，否则两边的 chip 与按钮差 5px。 */
-  padding-block: 10px 0;
+  /* 宿主右栏顶行是 28px 内容带 + 10px 上留白，下方没有分割线。标签栏内容
+     与它压在同一条带上（10px 上留白），再补 10px 下留白：让底部分隔线落在
+     chip 下方，而不是紧贴 chip 下沿。 */
+  padding-block: 10px;
   padding-inline-start: max(20px, var(--dsh-frame-leading-clearance, 0px));
   /* 右侧只留右栏开关：它被钉到标签栏这一行（见下），标签滚动区必须在它
      左边结束，否则长标签会钻到按钮下面。会话「更多」是本插件自己渲染的

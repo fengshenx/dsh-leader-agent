@@ -261,19 +261,19 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   const header = page.locator('header:has([data-conversation-header-leading])').first()
   await waitForLocator(header, { description: '会话头', timeoutMs: 10_000 })
   const headerBox = await header.boundingBox()
-  assert.ok(barBox !== null && Math.abs(barBox.height - 38) <= 1, `标签栏高度应为 38px，实际 ${JSON.stringify(barBox)}`)
+  assert.ok(barBox !== null && Math.abs(barBox.height - 48) <= 1, `标签栏高度应为 48px，实际 ${JSON.stringify(barBox)}`)
   assert.ok(
     barBox !== null && headerBox !== null && barBox.y + barBox.height <= headerBox.y + 1,
     `标签栏应在会话头之上：bar=${JSON.stringify(barBox)} header=${JSON.stringify(headerBox)}`,
   )
-  // 38px 是宿主右栏顶行的高度，内容要压在底部那 28px 内容带上（上方 10px
-  // 留白），否则两边的 chip 与按钮差 5px，看起来比右栏矮一截。
+  // 宿主右栏顶条是 28px 内容带 + 10px 上留白；它下方没有分割线，所以标签栏
+  // 再撑高 10px：chip 仍压在同一条内容带上，底部留白把分隔线与 chip 分开。
   const barChipBox = await leaderTab.boundingBox()
   assert.ok(
     barBox !== null && barChipBox !== null
       && Math.abs(barChipBox.y - (barBox.y + 10)) <= 1
-      && Math.abs((barChipBox.y + barChipBox.height) - (barBox.y + barBox.height)) <= 1,
-    `标签内容应压在标签栏底部 28px 内容带：bar=${JSON.stringify(barBox)} chip=${JSON.stringify(barChipBox)}`,
+      && Math.abs((barChipBox.y + barChipBox.height) - (barBox.y + barBox.height - 10)) <= 1,
+    `标签内容应压在上留白 10px 的 28px 内容带、下方留 10px 分隔线位置：bar=${JSON.stringify(barBox)} chip=${JSON.stringify(barChipBox)}`,
   )
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'session-tabs')
