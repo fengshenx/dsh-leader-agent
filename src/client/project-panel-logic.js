@@ -213,8 +213,9 @@ export function collectExcludedSessionIds(projects, sessionsByProject) {
  * 从会话快照里取主区域当前会话。
  *
  * 与宿主的 `mainSessionId`（`tree.ts`）同判据：`mainView` 持有数大于 0 的那条。
- * 宿主用它在官方树里高亮当前会话行、点亮它所在的工作区分组，另在右侧面板激活时
- * 把当前会话视作空（`panelActive`）——那一层属于宿主的视图 store，这里不跟。
+ * 宿主用它在官方树里高亮当前会话行、点亮它所在的工作区分组，另在左栏面板页激活时
+ * 把当前会话视作空（`panelActive`）。这里只管快照这一半；面板页那一半由调用方
+ * 决定（`project-panel` 的 `selectionSessionId`），本函数不读布局服务。
  *
  * @param {Record<string, object> | undefined} byId - 会话快照（`sessions.list`）
  * @returns {string | undefined} 当前会话 id；主区域没有会话时 undefined

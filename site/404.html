@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>404 — page not found · dsh-leader-agent</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#06070a">
+<link rel="icon" type="image/svg+xml" href="/dsh-leader-agent/logo-mark.svg">
+<style>
+  :root {
+    --bg: #06070a;
+    --border: rgba(255, 255, 255, 0.08);
+    --ink: #f4f5f8;
+    --ink-soft: #9aa3b2;
+    --ink-muted: #647084;
+    --accent: #4f6fff;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15.5px/1.65 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { width: min(680px, calc(100% - 48px)); margin: 0 auto; }
+  header { border-bottom: 1px solid var(--border); }
+  header .wrap { display: flex; align-items: center; height: 64px; }
+  .brand { display: inline-flex; align-items: center; gap: 11px; font-weight: 650; font-size: 15px; letter-spacing: -0.02em; }
+  .brand img { width: 28px; height: 28px; border-radius: 7px; display: block; }
+  .brand-pill { font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--ink-soft); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+  main { flex: 1; display: flex; align-items: center; padding: 72px 0; }
+  .code { margin: 0 0 12px; font-family: var(--mono); font-size: 13px; letter-spacing: 0.18em; color: var(--accent); }
+  h1 { margin: 0 0 14px; font-size: clamp(30px, 5vw, 42px); line-height: 1.12; letter-spacing: -0.03em; }
+  p { margin: 0 0 28px; max-width: 46ch; color: var(--ink-soft); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; height: 44px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--border); font-size: 14px; font-weight: 600; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+  footer { padding: 24px 0; border-top: 1px solid var(--border); font-size: 13px; color: var(--ink-muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="/dsh-leader-agent/">
+      <img src="/dsh-leader-agent/logo-mark.svg" alt="" width="28" height="28">
+      dsh-leader-agent
+      <span class="brand-pill">404</span>
+    </a>
+  </div>
+</header>
+<main>
+  <div class="wrap">
+    <p class="code">404</p>
+    <h1>This page doesn't exist.</h1>
+    <p>The link may be out of date, or the page moved. The landing page has the install steps, the delivery-board walkthrough and the FAQ.</p>
+    <div class="actions">
+      <a class="btn primary" href="/dsh-leader-agent/">Back to the landing page</a>
+      <a class="btn" href="https://github.com/fengshenx/dsh-leader-agent">GitHub repository</a>
+    </div>
+  </div>
+</main>
+<footer>
+  <div class="wrap">dsh-leader-agent — a dsh leader agent for DeepSeek Harness.</div>
+</footer>
+</body>
+</html>

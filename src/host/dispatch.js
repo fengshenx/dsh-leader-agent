@@ -28,12 +28,16 @@
  *
  * 本模块不新增 session event 类型（仓外插件的硬约束），完成通知走自有落盘队列。
  *
- * 人下钻到 worker 会话直接对话时不经过本模块：那种轮次不会登记在飞记录，也就
- * 不会被结算，worker 不会因为人自己聊了几句去打扰 leader。
+ * 结算按**回合归属**判：在飞记录记的是「这条 leader 消息」的消息 id，`turn/end`
+ * 只在两种条件下结算——这一轮真的消费了这条消息，且这一轮是 leader 开启的（第一
+ * 条人消息就是它）。人自己下钻跟 worker 聊出来的回合不回报；leader 的消息如果落
+ * 在用户回合的收件箱里还没被取走，记录留到它真正进入的那一轮，不会被用户回合
+ * 顶名结算。
  *
  * @module dsh-leader-agent/host/dispatch
  */
 
+import { randomUUID } from 'node:crypto'
 import { createUserMessage } from './message.js'
 import { messageText } from '../shared/message-text.js'
 import { foldTurns, renderTranscript } from './worker-transcript.js'
@@ -46,6 +50,7 @@ import {
   createStallWatch,
   formatElapsed,
 } from './worker-stall.js'
+import { readWorkerTaskSource } from '../shared/worker-task.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
@@ -197,6 +202,17 @@ export function createDispatcher({
   }
   /** @type {Map<string, object>} 派工记录，key 为 worker 会话 id */
   const inflight = new Map()
+  /**
+   * 当前打开的回合，key 为会话 id。
+   *
+   * 结算归属要落到回合这一级：同一会话里用户自己聊的轮次与 leader 派工的轮次交错，
+   * 只看「会话里有没有在飞记录」会把用户的产物当成派工产物。这里按宿主的事件序列
+   * 折叠：`turn/start` 开回合、`user/message` 认输入来源、`assistant/message` 攒
+   * 文本、`turn/end` 结算。
+   *
+   * @type {Map<string, { openedBy: 'leader' | 'user' | undefined, leaderMessageIds: Set<string>, text: string }>}
+   */
+  const openTurns = new Map()
   /**
    * 本进程派出的 worker 归属，key 为会话 id。
    *
@@ -717,20 +733,9 @@ export function createDispatcher({
       throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息')
     }
     const displayName = name ?? (typeof worker.name === 'string' ? worker.name : sessionId)
-    // worker 活着就直接投，不在内存就冷恢复后再投——两种形态对调用方是同一步。
-    const form = await workerSessions.send({
-      sessionId,
-      text: message,
-      name,
-      parentSessionId: parent.id,
-      signal,
-    })
-    // 这一轮由 leader 发起：登记在飞记录，worker 的 `turn/end` 到来时据此结算。
-    // 人自己下钻跟 worker 聊的轮次不走这里，也就不会打扰 leader。
-    //
-    // 必须在任何落盘 await 之前登记：`workerSessions.send()` 对活会话是同步
-    // `agent.steer`，worker 可能在 `markUsed` 写 workers.json 的窗口里就结束
-    // 一轮；先等落盘会让 `turn/end` 找不到在飞记录，消息发出去了却不结算。
+    // 消息 id 先于投递生成并记进在飞表：worker 可能在本轮收尾时立刻取走这条消息，
+    // 等 `send` 返回再登记就赶不上那次 `turn/end` 了。投递失败把记录退回去。
+    const messageId = randomUUID()
     const previous = inflight.get(sessionId)
     const record = {
       childId: sessionId,
@@ -738,12 +743,34 @@ export function createDispatcher({
       parent,
       name: displayName,
       task: message,
+      messageId,
       startedAt: Date.now(),
     }
-    // 并入当前轮时承接本轮已产出的文本；旧记录若已冻结（summary 非空）说明
-    // 那一轮已结束、正在结算，新消息属于下一轮，不能继承旧产物。
-    if (previous?.summary === undefined && previous?.text !== undefined) record.text = previous.text
+    // 必须在任何落盘 await 之前登记：`workerSessions.send()` 对活会话是同步
+    // `agent.steer`，worker 可能在 `markUsed` 写 workers.json 的窗口里就结束
+    // 一轮；先等落盘会让 `turn/end` 找不到在飞记录，消息发出去了却不结算。
     inflight.set(sessionId, record)
+    // worker 活着就直接投，不在内存就冷恢复后再投——两种形态对调用方是同一步。
+    let form
+    try {
+      form = await workerSessions.send({
+        sessionId,
+        text: message,
+        name,
+        parentSessionId: parent.id,
+        messageId,
+        signal,
+      })
+    } catch (error) {
+      // 没投出去的消息没有「属于它的回合」，留着记录会让下一轮结束时的结算
+      // 认领一条从未发生的派工。只回滚自己登记的那条：并发的 B 可能已经
+      // 成功写入，无条件恢复/删除会把 B 的在飞记录一起吞掉。
+      if (inflight.get(sessionId) === record) {
+        if (previous === undefined) inflight.delete(sessionId)
+        else inflight.set(sessionId, previous)
+      }
+      throw error
+    }
     // 投递成功才算一次使用；失败/回滚不动 LRU。落盘失败只影响候选顺序，不能让
     // 已经投出的消息回头变成失败。
     try {
@@ -1160,19 +1187,29 @@ export function createDispatcher({
    * 产出取这一轮的 `assistant/message`，终态取 `turn/end` 的 `reason`——与宿主
    * subagent 的 `captureLocalResult()` 同源，不依赖 worker 主动交付。
    *
+   * 归属按回合判：这一轮必须真的消费了在飞记录的那条消息，且这一轮是 leader 开启
+   * 的。用户自己聊出来的回合不结算；那条消息如果已经被用户回合吃掉，记录随即丢弃
+   * ——它已经进过上下文，留到下一轮只会把别的产物认成它的。
+   *
    * @param {string} sessionId - worker 会话 id
    * @param {object} reason - `turn/end` 的 `reason`
+   * @param {object | undefined} turn - 这一轮的归属（从 `turn/start` 折叠到 `turn/end`）
    * @returns {Promise<boolean>} 是否确实结算了一条在飞的派工/续聊
    */
-  async function settleTurn(sessionId, reason) {
+  async function settleTurn(sessionId, reason, turn) {
     const record = inflight.get(sessionId)
     if (record === undefined) return false
     // 摘要与终态在第一次结算时冻结进记录：落盘失败后下一轮结束时重试的必须是
     // **这一轮**的产物，不能被下一轮的 assistant 文本覆盖。
     if (record.summary === undefined) {
+      const consumed = turn?.leaderMessageIds.has(record.messageId) === true
+      if (turn?.openedBy !== 'leader' || !consumed) {
+        if (consumed) inflight.delete(sessionId)
+        return false
+      }
       record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
       record.summary = record.outcome === 'completed'
-        ? record.text ?? ''
+        ? turn.text
         : describeTurnFailure(reason)
     }
     const judged = record.outcome === 'completed'
@@ -1205,10 +1242,11 @@ export function createDispatcher({
   }
 
   /**
-   * 观察会话事件，在 worker 的轮次边界上结算。
+   * 观察会话事件，在轮次边界上按回合归属结算。
    *
-   * 一个 turn 是 `agent.run()` 的一次调用（内部含多个 step），正好等于「leader 派的
-   * 这一轮」。人直接跟 worker 聊的轮次不进 `inflight`，因此不会被结算。
+   * 一个 turn 是 `agent.run()` 的一次调用（内部含多个 step）。宿主的追加顺序是
+   * `turn/start` → 这一轮取走的 `user/message` → `assistant/message` → `turn/end`，
+   * 所以「这一轮是谁的、用了哪条 leader 消息、产出是什么」只能在这条序列上折叠。
    *
    * @param {object} session - 追加事件的会话
    * @param {object} event - 刚追加的会话事件
@@ -1218,22 +1256,48 @@ export function createDispatcher({
   function observeTurn(session, event) {
     const sessionId = session?.id
     if (typeof sessionId !== 'string') return undefined
-    if (event?.type === 'assistant/message') {
-      const record = inflight.get(sessionId)
-      if (record === undefined) return undefined
-      const text = messageText(event.data?.message?.content)
-      // 空内容（宿主对空响应也会发这条）不能覆盖本轮已有的文本，但文本只记在
-      // 当前记录上：新消息若已换了一条记录，旧轮文本不会漏到新轮。
-      if (text !== '') record.text = text
-      return undefined
+    switch (event?.type) {
+      case 'turn/start': {
+        openTurns.set(sessionId, {
+          openedBy: undefined,
+          leaderMessageIds: new Set(),
+          text: '',
+        })
+        return undefined
+      }
+      case 'user/message': {
+        const turn = openTurns.get(sessionId)
+        if (turn === undefined) return undefined
+        const input = event.data
+        // leader 任务消息自带 parentSessionId 凭证（见 `shared/worker-task.js`），
+        // 用户输入与宿主注入的上下文都没有这个 kind。
+        if (readWorkerTaskSource(input?.source) !== null) {
+          turn.leaderMessageIds.add(input.id)
+          turn.openedBy ??= 'leader'
+        } else if (input?.source?.kind === 'user') {
+          turn.openedBy ??= 'user'
+        }
+        return undefined
+      }
+      case 'assistant/message': {
+        const turn = openTurns.get(sessionId)
+        if (turn === undefined) return undefined
+        const text = messageText(event.data?.message?.content)
+        // 空内容（宿主对空响应也会发这条）不能覆盖本轮已有的文本。
+        if (text !== '') turn.text = text
+        return undefined
+      }
+      case 'turn/end': {
+        const turn = openTurns.get(sessionId)
+        openTurns.delete(sessionId)
+        // 宿主会接住并记下观察者的异常，但那条日志混在宿主日志里查不出来源；自己接住，
+        // 才能把「回报没送到」记成这条链上的失败。
+        return settleTurn(sessionId, event.data?.reason, turn).catch((error) => {
+          logger(`dsh-leader-agent: 结算 worker ${sessionId} 的轮次失败：${error instanceof Error ? error.message : String(error)}`)
+          return false
+        })
+      }
     }
-    if (event?.type !== 'turn/end') return undefined
-    // 宿主会接住并记下观察者的异常，但那条日志混在宿主日志里查不出来源；自己接住，
-    // 才能把「回报没送到」记成这条链上的失败。
-    return settleTurn(sessionId, event.data?.reason).catch((error) => {
-      logger(`dsh-leader-agent: 结算 worker ${sessionId} 的轮次失败：${error instanceof Error ? error.message : String(error)}`)
-      return false
-    })
   }
 
   // cordis 的 Context 永远有 `on`（返回 disposer），所以这里不做出厂能力探测：
@@ -1345,6 +1409,7 @@ export function createDispatcher({
       }
       waiting.clear()
       alertAt.clear()
+      openTurns.clear()
     },
 
     /**

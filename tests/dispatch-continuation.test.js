@@ -36,8 +36,16 @@ function createHost({ resumeError } = {}) {
    * @returns {object} 句柄
    */
   function createHandle(sessionId) {
-    const entry = { sessionId, messages: [], disposed: false }
+    const entry = {
+      sessionId,
+      messages: [],
+      pending: [],
+      turns: 0,
+      openTurn: undefined,
+      disposed: false,
+    }
     spawned.push(entry)
+    entries.set(sessionId, entry)
     const session = { id: sessionId, header: { id: sessionId } }
     return {
       entry,
@@ -47,6 +55,8 @@ function createHost({ resumeError } = {}) {
           session,
           steer(message) {
             entry.messages.push(message)
+            // 投给空闲 worker 的 steer 会开一轮；这里先记成待取输入，由回合夹具消费。
+            entry.pending.push(message)
           },
           followup() {},
         },
@@ -75,6 +85,8 @@ function createHost({ resumeError } = {}) {
 
   /** 订阅上来的 `session/event` 监听器 */
   const sessionEventListeners = []
+  /** 会话 id → 当前句柄的记录（冷恢复会用同一 id 再建一份） */
+  const entries = new Map()
   const ctx = {
     on(event, listener) {
       assert.equal(event, 'session/event')
@@ -95,6 +107,50 @@ function createHost({ resumeError } = {}) {
   }
 
   /**
+   * 把一条事件原样交给监听器（不自动补回合边界）。
+   *
+   * @param {string} sessionId - 会话 id
+   * @param {object} event - 会话事件
+   * @returns {Promise<unknown>} 结算结果
+   */
+  async function emitRaw(sessionId, event) {
+    const pending = sessionEventListeners
+      .map((listener) => listener({ id: sessionId }, event))
+      .filter((item) => item !== undefined)
+    return (await Promise.all(pending))[0]
+  }
+
+  /**
+   * 开一个回合：宿主先落 `turn/start`，再把收件箱里取走的输入落成 `user/message`。
+   *
+   * @param {string} sessionId - 会话 id
+   * @returns {Promise<void>} 边界落完
+   */
+  async function beginTurn(sessionId) {
+    const entry = entries.get(sessionId)
+    if (entry === undefined) return
+    entry.turns += 1
+    entry.openTurn = entry.turns
+    await emitRaw(sessionId, { type: 'turn/start', data: { turn: entry.openTurn } })
+    const consumed = entry.pending.splice(0)
+    for (const message of consumed) {
+      await emitRaw(sessionId, { type: 'user/message', data: message })
+    }
+    if (consumed.length === 0) {
+      // 没有待取输入：这一轮是人自己在下钻会话里聊出来的。
+      await emitRaw(sessionId, {
+        type: 'user/message',
+        data: {
+          id: `user-${sessionId}-${entry.openTurn}`,
+          role: 'user',
+          content: [{ type: 'text', text: '用户插话' }],
+          source: { kind: 'user' },
+        },
+      })
+    }
+  }
+
+  /**
    * 让某个 worker 走完一轮：先落 assistant 文本，再落 `turn/end`。
    *
    * @param {string} sessionId - 会话 id
@@ -102,17 +158,14 @@ function createHost({ resumeError } = {}) {
    * @returns {Promise<unknown>} 结算结果（是否确实结算了一条在飞记录）
    */
   async function finishTurn(sessionId, { text = '产物在此', reason = { kind: 'completed' } } = {}) {
-    const settle = sessionEventListeners
-      .map((listener) => listener({ id: sessionId }, {
-        type: 'assistant/message',
-        data: { message: { content: [{ type: 'text', text }] } },
-      }))
-      .filter((item) => item !== undefined)
-    await Promise.all(settle)
-    const settled = sessionEventListeners
-      .map((listener) => listener({ id: sessionId }, { type: 'turn/end', data: { reason } }))
-      .filter((item) => item !== undefined)
-    return (await Promise.all(settled))[0]
+    await beginTurn(sessionId)
+    await emitRaw(sessionId, {
+      type: 'assistant/message',
+      data: { message: { content: [{ type: 'text', text }] } },
+    })
+    const entry = entries.get(sessionId)
+    if (entry !== undefined) entry.openTurn = undefined
+    return await emitRaw(sessionId, { type: 'turn/end', data: { reason } })
   }
 
   return { ctx, spawned, resumed, finishTurn }

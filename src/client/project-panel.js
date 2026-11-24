@@ -79,12 +79,15 @@ const PROJECT_REFRESH_INTERVAL_MS = 5000
  * @param {() => object | undefined} props.getUiWorkspace - 取导航服务
  * @param {() => object | undefined} props.getSessions - 取会话服务
  * @param {() => object | undefined} props.getWorkspaces - 取工作区服务（归档会话走它）
+ * @param {() => object | undefined} props.getLayout - 取布局服务（面板页是否接管主区域）
  * @param {(listener: () => void) => (() => void)} [props.onWorkspacesReady] - 订阅工作区服务就绪
  * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
  * @returns {object} React 元素
  */
 export function ProjectPanel(props) {
-  const { wide, callRemote, getUiWorkspace, getSessions, getWorkspaces, onWorkspacesReady, t } = props
+  const {
+    wide, callRemote, getUiWorkspace, getSessions, getWorkspaces, getLayout, onWorkspacesReady, t,
+  } = props
   const [projects, setProjects] = useState([])
   const [busy, setBusy] = useState(false)
   const [floating, setFloating] = useState(false)
@@ -111,6 +114,8 @@ export function ProjectPanel(props) {
   const [archivedSessionIds, setArchivedSessionIds] = useState(() => new Set())
   /** 主区域的当前会话 id；宿主按它点亮会话行与工作区分组。 */
   const [currentSessionId, setCurrentSessionId] = useState(undefined)
+  /** 主区域接管的面板页 id；null 表示对话视图。 */
+  const [activePanelId, setActivePanelId] = useState(null)
   /** 工作区视图（`{ workspaceId, sessionIds }`）；用来算官方树里各组的排除数。 */
   const [workspaceItems, setWorkspaceItems] = useState([])
   /**
@@ -317,6 +322,33 @@ export function ProjectPanel(props) {
     }
   }, [getWorkspaces, onWorkspacesReady])
 
+  // 宿主的会话树在面板页打开时把「当前会话」视作空（`WorkspaceBrowser` 的
+  // `panelActive` 分支）：主区域在看插件页或自动化任务，左栏就不该亮着任何一行。
+  // 项目区块早先只认会话快照里的主视图会话，点「插件」之后主区域已经换了内容，
+  // 项目行与它的会话行却还铺着选中底色。
+  useEffect(() => {
+    const info = getLayout?.()?.panelInfo
+    if (info === undefined || typeof info.subscribe !== 'function' || typeof info.getSnapshot !== 'function') {
+      return undefined
+    }
+    const sync = () => setActivePanelId(info.getSnapshot().activePanelId ?? null)
+    sync()
+    return info.subscribe(sync)
+  }, [getLayout])
+
+  // 面板页接管主区域时没有「当前会话」：行的选中态、行首文件夹的点亮与折叠水位
+  // 都要按这个口径算，与宿主会话树一致。
+  const panelActive = activePanelId !== null
+  const selectionSessionId = panelActive ? undefined : currentSessionId
+
+  // 窄导轨的浮层是固定定位的，面板页打开后它仍盖在主区域上、入口图标也还亮着：
+  // 导航已经走了，收起来才算把这次交互结束掉。依赖面板页 id 而不是 boolean——
+  // 在「插件」页手动打开浮层再切到「自动化任务」，boolean 没有翻转，浮层会继续
+  // 盖在新面板页上。
+  useEffect(() => {
+    if (activePanelId !== null) setFloating(false)
+  }, [activePanelId])
+
   const excludedSessionIds = useMemo(
     () => collectExcludedSessionIds(projects, sessionsByProject),
     [projects, sessionsByProject],
@@ -336,11 +368,11 @@ export function ProjectPanel(props) {
       workspaceItems,
       excluded: excludedSessionIds,
       archivedSessionIds,
-      currentSessionId,
+      currentSessionId: selectionSessionId,
     })
     if (ungrouped > 0) counts.set('', ungrouped)
     return counts
-  }, [workspaceItems, excludedSessionIds, archivedSessionIds, sessionRows, currentSessionId])
+  }, [workspaceItems, excludedSessionIds, archivedSessionIds, sessionRows, selectionSessionId])
 
   // 组头要不要藏只按会话快照判：判据只问「剩下的会话是不是全在排除集里」，与宿主
   // 怎么排版无关。早先按 DOM 判空，押在「组头所在容器里能查到自己的行」上——折叠、
@@ -659,7 +691,7 @@ export function ProjectPanel(props) {
     },
     onArchiveSession: (sessionId) => { void archiveSession(sessionId) },
     archivedSessionIds,
-    currentSessionId,
+    currentSessionId: selectionSessionId,
   })
 
   // 弹窗自己 portal 到 body，但必须挂在不会被浮层收起卸载的位置：窄栏下浮层
@@ -702,6 +734,7 @@ export function ProjectPanel(props) {
           type: 'button',
           title: t('project.label'),
           'aria-label': t('project.label'),
+          'aria-expanded': floating ? 'true' : 'false',
           onClick: () => setFloating((value) => !value),
           style: {
             width: '100%',
