@@ -9,7 +9,7 @@ Status: implemented
 ## Decision
 
 - `site/robots.txt`：`Allow: /` 加一行 `Sitemap:` 指向线上 sitemap，给爬虫一个不依赖 Search Console 的发现入口。
-- `site/404.html`：Pages 直接从产物返回 404，不再走后端的兜底；带 `noindex`，只回链首页与仓库，不加载分析脚本——错误路径不该计入站点流量。
+- `site/404.html`：Pages 用根目录这张页面替换未知路径的响应体，**HTTP 状态仍是 404**，页面没有 refresh / JS 软跳转，不再走后端的兜底；带 `noindex`，只回链首页与仓库，不加载分析脚本——错误路径不该计入站点流量。
 
 ## Alternatives considered
 
@@ -22,10 +22,10 @@ Status: implemented
 
 - sitemap 有两个发现入口（robots.txt 与 Search Console 提交）；新增页面要同时更新 `site/sitemap.xml`。
 - 404 页与首页视觉一致但样式各自内联（`site/` 没有构建链），改品牌色要改两处。
-- `site/` 仍不在任何门禁范围内，`tests/site-crawl.test.js` 只钉住 robots 的 sitemap 指向、sitemap 的 loc 与 404 的 noindex；线上状态靠部署后核对。
+- `site/` 没有构建链，只有静态契约测试（`tests/site-crawl.test.js`，随 `npm run check` 执行）：robots 的放行与 sitemap 指向、sitemap 的 loc 与 canonical、404 的 noindex 与无软跳转；线上状态码仍靠部署后核对。
 
 收益：robots.txt 与 404 都由产物直接提供，爬虫不会再把一次未命中读成 5xx。
 
 ## Testing
 
-部署后验 `robots.txt` 与 `sitemap.xml` 均 200、未命中路径返回 404 且是本站 404 页；收录侧读数看 Search Console 的 robots.txt 抓取与 sitemap 状态、Bing Webmaster 的 URL 检查。
+部署后验 `robots.txt` 与 `sitemap.xml` 均 200、未命中路径返回 404（只替换响应体，状态仍是 404，页面无 refresh/JS 软跳转）且是本站 404 页；收录侧读数看 Search Console 的 robots.txt 抓取与 sitemap 状态、Bing Webmaster 的 URL 检查。
