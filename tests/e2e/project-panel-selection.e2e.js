@@ -181,11 +181,13 @@ test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持�
     0,
     '导轨收起时项目浮层不应展开',
   )
+  assert.equal(await entry.getAttribute('aria-expanded'), 'false', '浮层收起时入口的 aria-expanded 应为 false')
   await entry.click()
   await waitForLocator(page.locator('.dsh-leader-agent-project-section').first(), {
     description: '导轨里的项目浮层展开',
     timeoutMs: 10_000,
   })
+  assert.equal(await entry.getAttribute('aria-expanded'), 'true', '浮层展开时入口的 aria-expanded 应为 true')
   const floatingBackground = await entry.evaluate((node) => getComputedStyle(node).backgroundColor)
   assert.notEqual(floatingBackground, 'rgba(0, 0, 0, 0)', '浮层展开时入口图标应当高亮')
 
@@ -209,6 +211,39 @@ test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持�
     'rgba(0, 0, 0, 0)',
     '浮层收起后入口图标不应还亮着',
   )
+  assert.equal(await entry.getAttribute('aria-expanded'), 'false', '浮层收起后入口的 aria-expanded 应为 false')
+
+  // 在面板页上手动打开浮层，再切到另一个面板页：`panelActive` 的 boolean 没有翻转，
+  // effect 若只依赖它会漏掉这次切换，浮层就继续盖在新面板页上。
+  await entry.click()
+  await waitForLocator(page.locator('.dsh-leader-agent-project-section').first(), {
+    description: '插件页上手动展开项目浮层',
+    timeoutMs: 10_000,
+  })
+  assert.equal(await entry.getAttribute('aria-expanded'), 'true', '浮层展开时入口的 aria-expanded 应为 true')
+  const sectionsBeforeSwitch = await page.locator('.dsh-leader-agent-project-section').count()
+
+  const railAutomationsRow = page.locator('nav button[aria-label="自动化任务"]').first()
+  await waitForLocator(railAutomationsRow, { description: '导轨里出现「自动化任务」入口', timeoutMs: 15_000 })
+  await railAutomationsRow.click()
+  await waitForLocator(page.locator('nav button[aria-label="自动化任务"][aria-current="page"]'), {
+    description: '「自动化任务」面板页接管主区域',
+    timeoutMs: 15_000,
+  })
+  await waitFor({
+    description: '面板页之间切换后导轨里的项目浮层收起',
+    check: async () => (await page.locator('.dsh-leader-agent-project-section').count()) === 0,
+    timeoutMs: 10_000,
+  }).catch(async (error) => {
+    const reading = {
+      sectionsBeforeSwitch,
+      sectionsAfterSwitch: await page.locator('.dsh-leader-agent-project-section').count(),
+      ariaExpanded: await entry.getAttribute('aria-expanded'),
+    }
+    throw new Error(`${error.message}；失败读数 ${JSON.stringify(reading)}`)
+  })
+  console.log(`[e2e] 面板页切换前后 sections ${sectionsBeforeSwitch} -> 0`)
+  assert.equal(await entry.getAttribute('aria-expanded'), 'false', '切换面板页后入口的 aria-expanded 应为 false')
 
   await e2eShot(page, 'panel-selection')
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')

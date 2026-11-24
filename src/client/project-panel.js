@@ -114,8 +114,8 @@ export function ProjectPanel(props) {
   const [archivedSessionIds, setArchivedSessionIds] = useState(() => new Set())
   /** 主区域的当前会话 id；宿主按它点亮会话行与工作区分组。 */
   const [currentSessionId, setCurrentSessionId] = useState(undefined)
-  /** 主区域是否被左栏的面板页（插件、自动化任务等）接管。 */
-  const [panelActive, setPanelActive] = useState(false)
+  /** 主区域接管的面板页 id；null 表示对话视图。 */
+  const [activePanelId, setActivePanelId] = useState(null)
   /** 工作区视图（`{ workspaceId, sessionIds }`）；用来算官方树里各组的排除数。 */
   const [workspaceItems, setWorkspaceItems] = useState([])
   /**
@@ -331,20 +331,23 @@ export function ProjectPanel(props) {
     if (info === undefined || typeof info.subscribe !== 'function' || typeof info.getSnapshot !== 'function') {
       return undefined
     }
-    const sync = () => setPanelActive(info.getSnapshot().activePanelId !== null)
+    const sync = () => setActivePanelId(info.getSnapshot().activePanelId ?? null)
     sync()
     return info.subscribe(sync)
   }, [getLayout])
 
   // 面板页接管主区域时没有「当前会话」：行的选中态、行首文件夹的点亮与折叠水位
   // 都要按这个口径算，与宿主会话树一致。
+  const panelActive = activePanelId !== null
   const selectionSessionId = panelActive ? undefined : currentSessionId
 
   // 窄导轨的浮层是固定定位的，面板页打开后它仍盖在主区域上、入口图标也还亮着：
-  // 导航已经走了，收起来才算把这次交互结束掉。
+  // 导航已经走了，收起来才算把这次交互结束掉。依赖面板页 id 而不是 boolean——
+  // 在「插件」页手动打开浮层再切到「自动化任务」，boolean 没有翻转，浮层会继续
+  // 盖在新面板页上。
   useEffect(() => {
-    if (panelActive) setFloating(false)
-  }, [panelActive])
+    if (activePanelId !== null) setFloating(false)
+  }, [activePanelId])
 
   const excludedSessionIds = useMemo(
     () => collectExcludedSessionIds(projects, sessionsByProject),
@@ -731,6 +734,7 @@ export function ProjectPanel(props) {
           type: 'button',
           title: t('project.label'),
           'aria-label': t('project.label'),
+          'aria-expanded': floating ? 'true' : 'false',
           onClick: () => setFloating((value) => !value),
           style: {
             width: '100%',
