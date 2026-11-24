@@ -266,6 +266,15 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     barBox !== null && headerBox !== null && barBox.y + barBox.height <= headerBox.y + 1,
     `标签栏应在会话头之上：bar=${JSON.stringify(barBox)} header=${JSON.stringify(headerBox)}`,
   )
+  // 38px 是宿主右栏顶行的高度，内容要压在底部那 28px 内容带上（上方 10px
+  // 留白），否则两边的 chip 与按钮差 5px，看起来比右栏矮一截。
+  const barChipBox = await leaderTab.boundingBox()
+  assert.ok(
+    barBox !== null && barChipBox !== null
+      && Math.abs(barChipBox.y - (barBox.y + 10)) <= 1
+      && Math.abs((barChipBox.y + barChipBox.height) - (barBox.y + barBox.height)) <= 1,
+    `标签内容应压在标签栏底部 28px 内容带：bar=${JSON.stringify(barBox)} chip=${JSON.stringify(barChipBox)}`,
+  )
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'session-tabs')
   mkdirSync(artifacts, { recursive: true })
@@ -313,6 +322,11 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   assert.ok(
     expandBox !== null && moreBox !== null && moreBox.x + moreBox.width <= expandBox.x,
     `更多按钮应在右栏开关左侧：more=${JSON.stringify(moreBox)} expand=${JSON.stringify(expandBox)}`,
+  )
+  assert.ok(
+    expandBox !== null && moreBox !== null
+      && Math.abs(centerOf(moreBox)[1] - centerOf(expandBox)[1]) <= 1,
+    `更多按钮与右栏开关应在同一内容带：more=${JSON.stringify(moreBox)} expand=${JSON.stringify(expandBox)}`,
   )
   const headerMenuButtons = page.locator('[class*="headerMenuButton"]')
   assert.equal(await headerMenuButtons.count(), 1, '会话头标题行原更多按钮应仍挂载，才能证明是隐藏而不是不存在')
@@ -369,6 +383,21 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
       && openMoreBox.y >= openBarBox.y - 1
       && openMoreBox.y + openMoreBox.height <= openBarBox.y + openBarBox.height + 1,
     `右栏展开后更多按钮仍应在标签栏这一行：bar=${JSON.stringify(openBarBox)} more=${JSON.stringify(openMoreBox)}`,
+  )
+  // 展开后宿主收起按钮在面板自己的顶条里，主列右缘不再有开关；「更多」的
+  // 右留白从 42px 收到 6px，不再在右侧留一段空档。
+  assert.ok(
+    openBarBox !== null && openMoreBox !== null
+      && Math.abs((openBarBox.x + openBarBox.width) - (openMoreBox.x + openMoreBox.width) - 6) <= 1,
+    `右栏展开后更多按钮应贴主列右缘 6px：bar=${JSON.stringify(openBarBox)} more=${JSON.stringify(openMoreBox)}`,
+  )
+  // 与右栏面板自己的 chip 同底对齐：两侧顶行视觉上是同一条 38px 条带。
+  const panelChipBox = await page.locator('[data-sidebar-right-open] [data-dockkit-strip] [role="tab"]').first().boundingBox()
+  assert.ok(
+    panelChipBox !== null && openMoreBox !== null
+      && Math.abs(panelChipBox.y - openMoreBox.y) <= 1
+      && Math.abs((panelChipBox.y + panelChipBox.height) - (openMoreBox.y + openMoreBox.height)) <= 1,
+    `标签栏内容带应与右栏面板顶条对齐：more=${JSON.stringify(openMoreBox)} panelChip=${JSON.stringify(panelChipBox)}`,
   )
 
   // 点项目树里的 worker：形成标签并成为当前标签。

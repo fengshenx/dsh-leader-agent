@@ -82,16 +82,25 @@ const STYLE_TEXT = `
   height: 38px;
   min-width: 0;
   box-sizing: border-box;
-  padding-block: 0;
+  /* 宿主右栏顶行是 38px 的条带：10px 上留白 + 底部 28px 内容带。标签栏
+     同高，但内容要压到同一条 28px 带上，否则两边的 chip 与按钮差 5px。 */
+  padding-block: 10px 0;
   padding-inline-start: max(20px, var(--dsh-frame-leading-clearance, 0px));
   /* 右侧只留右栏开关：它被钉到标签栏这一行（见下），标签滚动区必须在它
      左边结束，否则长标签会钻到按钮下面。会话「更多」是本插件自己渲染的
      flex 子项，不占这段留白。 */
   padding-inline-end: 42px;
   background: var(--dsw-alias-bg-base);
-  border-bottom: .5px solid var(--dsw-alias-border-l3);
+  /* 分隔线画成 inset shadow：border 会占掉 border-box 的 0.5px，内容带就
+     凑不满 28px，与右栏条带对不齐。 */
+  box-shadow: inset 0 -0.5px 0 var(--dsw-alias-border-l3);
   -webkit-app-region: drag;
   overflow: hidden;
+}
+/* 右栏展开后收起按钮在面板自己的顶条里，主列右缘不再有开关；42px 的开关
+   留白此时只剩空档，把「更多」收回到 6px 边距，与弹出时同一列。 */
+body:has([data-sidebar-right-session]:not([hidden]) [data-sidebar-right-open]) .dsh-leader-agent-tabs {
+  padding-inline-end: 6px;
 }
 /* 右栏开关本来在会话头的标题行（标签栏下一行）。收起右栏时它在下面，
    展开后宿主把面板的收起按钮画在面板自己的顶部条（标签栏这一行）——
