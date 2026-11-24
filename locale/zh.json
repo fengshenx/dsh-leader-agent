@@ -129,6 +129,16 @@
     "tab.board.description": "项目 leader 与 worker 会话里的任务交付看板",
     "tabs.close": "关闭标签",
     "tabs.list": "项目会话标签",
-    "tabs.more": "更多"
+    "tabs.more": "更多",
+    "board.mode.cinema.desc": "线路图与金色光流，适合演示与录屏。",
+    "board.mode.cinema.title": "炫酷模式",
+    "board.mode.work.desc": "纯列表、无动效，适合日常扫任务。",
+    "board.mode.work.title": "工作模式",
+    "board.rail.leader": "Leader",
+    "board.rail.summary": "{running} 执行中 · {total} 个任务",
+    "board.settings.desc": "选择看板的呈现方式。设置保存在当前浏览器。",
+    "board.settings.nav": "任务看板",
+    "board.settings.scope": "只影响当前浏览器，不写入项目数据。",
+    "board.settings.title": "任务看板"
   }
 }

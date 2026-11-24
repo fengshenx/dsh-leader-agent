@@ -3,6 +3,8 @@
     "src/client/agent-bubble-view.js": "agent 消息气泡组件（React.createElement），单测无渲染环境，行为由 e2e/真机覆盖",
     "src/client/board-card.js": "看板卡片组件（React.createElement），单测无渲染环境，行为由 npm run e2e 的看板场景覆盖",
     "src/client/board-guide-entry.js": "看板空态引导入口，挂在宿主 sidebar 注入点上，只有真实宿主能加载",
+    "src/client/board-rail.js": "SVG 覆盖层，依赖 DOM 实测与动画，单测不起浏览器",
+    "src/client/board-settings.js": "设置页 React 组件，宿主设置壳里才能渲染",
     "src/client/board.js": "看板外壳组件，依赖宿主模块表，归 e2e",
     "src/client/card-detail.js": "卡片详情弹层组件，归 e2e",
     "src/client/card-links-editor.js": "链接编辑器组件，归 e2e",

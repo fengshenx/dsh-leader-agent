@@ -171,7 +171,30 @@ test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默�
     '--dsw-radius-sm',
     '--dsw-radius-xl',
     '--dsw-radius-xs',
+    '--dsw-static-amber-100',
+    '--dsw-static-amber-400',
+    '--dsw-static-amber-500',
+    '--dsw-static-amber-600',
     '--dsw-static-blue-500',
+    '--dsw-static-blue-600',
+    '--dsw-static-neutral-900',
+    '--dsw-static-neutral-00',
+    '--dsw-static-neutral-bluish-50',
+    '--dsw-static-neutral-bluish-100',
+    '--dsw-static-neutral-bluish-200',
+    '--dsw-static-neutral-bluish-300',
+    '--dsw-static-neutral-bluish-400',
+    '--dsw-static-neutral-bluish-500',
+    '--dsw-static-neutral-bluish-600',
+    '--dsw-static-neutral-bluish-700',
+    '--dsw-static-neutral-bluish-800',
+    '--dsw-static-neutral-bluish-850',
+    '--dsw-static-neutral-bluish-900',
+    '--dsw-static-neutral-bluish-1000',
+    '--dsw-static-red-500',
+    '--dsw-static-red-600',
+    '--dsw-alias-settings-card-fill',
+    '--dsw-alias-settings-card-stroke',
   ])
   const referenced = new Set()
   for (const rule of rules) {
@@ -278,4 +301,23 @@ test('卡面链接静息态不抢强调色，hover 与键盘焦点才提亮', ()
     const rule = rules.find((item) => item.selector === selector)
     assert.equal(rule?.declarations.color, 'var(--dsw-alias-label-secondary)', `${selector} 不该染成链接色`)
   }
+})
+
+test('需注意的线只呼吸、不流动：与文案「不流动（会呼吸）」同一口径', () => {
+  // 红线曾经被写成「不动」，但 CSS 里一直是 breathe。这里把口径钉死：warn 只
+  // 呼吸提示，光流只属于执行中的线；改任何一边都要同时改文案。
+  const warn = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-rail-warn')
+  assert.notEqual(warn, undefined, '缺需注意的线规则')
+  assert.match(warn.declarations.animation ?? '', /^dsh-leader-agent-rail-breathe /, '需注意的线应只呼吸')
+  assert.doesNotMatch(warn.declarations.animation ?? '', /dsh-leader-agent-rail-flow/, '需注意的线不该跑光流')
+
+  const trail = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-rail-trail')
+  assert.match(trail?.declarations.animation ?? '', /^dsh-leader-agent-rail-flow /, '光流只属于执行中的线')
+})
+
+test('设置页预览的执行者圆点取主题强调色，不写死琥珀', () => {
+  // 浅色皮的实际 accent 是蓝的，预览点固定 amber 会让设置页与看板各说一套
+  const dot = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-preview-dot')
+  assert.notEqual(dot, undefined, '缺设置页预览圆点规则')
+  assert.equal(dot.declarations.fill, 'var(--dsw-alias-state-business-primary)')
 })
