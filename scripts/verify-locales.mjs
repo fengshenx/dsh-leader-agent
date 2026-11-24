@@ -22,6 +22,7 @@ const clientDir = join(root, 'src/client')
 const INTERNAL_CJK = new Set([
   // 内部日志、effect 名与开发期错误：不渲染成界面文案；新增项必须带文件与原文登记。
   "src/client/board.js\x00会话服务不可用",
+  "src/client/board-settings.js\x00dsh-leader-agent 设置页",
   "src/client/guide-card.js\x00dsh-leader-agent 引导卡",
   "src/client/icons.js\x00未知图标字形：",
   "src/client/index.js\x00dsh-leader-agent 槽位显示名",

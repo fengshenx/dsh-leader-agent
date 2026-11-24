@@ -129,6 +129,16 @@
     "tab.board.description": "Tablero de entregas para las tareas de las sesiones del Leader y de los workers de este proyecto",
     "tabs.close": "Cerrar pestaña",
     "tabs.list": "Pestañas de sesiones del proyecto",
-    "tabs.more": "Más"
+    "tabs.more": "Más",
+    "board.mode.cinema.desc": "Mapa de flujo con un raíl luminoso. Ideal para demos y grabaciones.",
+    "board.mode.cinema.title": "Modo espectáculo",
+    "board.mode.work.desc": "Lista simple, sin animación. Ideal para revisar tareas.",
+    "board.mode.work.title": "Modo trabajo",
+    "board.rail.leader": "Leader",
+    "board.rail.summary": "{running} en curso · {total} tareas",
+    "board.settings.desc": "Elige cómo se muestra el tablero. Se guarda en este navegador.",
+    "board.settings.nav": "Tablero de tareas",
+    "board.settings.scope": "Solo afecta a este navegador; no modifica los datos del proyecto.",
+    "board.settings.title": "Tablero de tareas"
   }
 }

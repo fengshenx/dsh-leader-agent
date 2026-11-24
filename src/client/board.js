@@ -21,6 +21,7 @@
 
 import { createElement, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  cardSignal,
   foldDoneCards,
   mergeCardSnapshot,
   mergeCardUpdate,
@@ -51,6 +52,59 @@ import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
 import { projectRemoteErrorText } from './project-remote.js'
+import { BOARD_MODE_KEY, normalizeBoardMode, readBoardMode, subscribeBoardMode } from './board-mode.js'
+import { readLocalStorage } from './guide-card-logic.js'
+import { BoardRail } from './board-rail.js'
+
+/**
+ * 订阅看板显示模式。
+ *
+ * 同一运行时里设置页写、这里读，走 `board-mode.js` 的模块级订阅；其它窗口靠
+ * `storage` 事件同步。取不到存储时按默认模式走，不阻塞渲染。
+ *
+ * @returns {string} 当前模式
+ */
+function useBoardMode() {
+  const [mode, setMode] = useState(() => readBoardMode(readLocalStorage(globalThis)))
+  useEffect(() => {
+    const off = subscribeBoardMode(setMode)
+    const onStorage = (event) => {
+      if (event.key === BOARD_MODE_KEY) setMode(normalizeBoardMode(event.newValue))
+    }
+    globalThis.addEventListener?.('storage', onStorage)
+    return () => {
+      off()
+      globalThis.removeEventListener?.('storage', onStorage)
+    }
+  }, [])
+  return mode
+}
+
+/**
+ * 线路图顶部的 leader 节点。
+ *
+ * 它是整张图的源头：主干从这里向下，卡片都是它的下游。计数只放在这里，
+ * 卡面不重复写。
+ *
+ * @param {object} props - 组件属性
+ * @param {number} props.running - 执行中的卡片数
+ * @param {number} props.total - 进行中的卡片数
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 翻译函数
+ * @returns {object} React 元素
+ */
+function BoardLeaderRow({ running, total, t }) {
+  return createElement(
+    'div',
+    { className: 'dsh-leader-agent-board-rail-head' },
+    createElement('span', { className: 'dsh-leader-agent-board-rail-orb', 'data-rail-leader-dot': '' }),
+    createElement(
+      'div',
+      { className: 'dsh-leader-agent-board-rail-meta' },
+      createElement('b', null, t('board.rail.leader')),
+      createElement('span', null, t('board.rail.summary', { running, total })),
+    ),
+  )
+}
 
 /**
  * 项目归属与 leader 身份的复核间隔。
@@ -380,10 +434,14 @@ function BoardEmpty({ allDone, projectName, t }) {
  *
  * @returns {object} React 元素
  */
-function BoardSkeleton() {
+function BoardSkeleton({ cinema }) {
   return createElement(
     'div',
-    { className: 'dsh-leader-agent-board-list' },
+    {
+      className: cinema
+        ? 'dsh-leader-agent-board-list dsh-leader-agent-board-list-cinema'
+        : 'dsh-leader-agent-board-list',
+    },
     createElement(
       'div',
       { className: 'dsh-leader-agent-board-group' },
@@ -603,6 +661,23 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }), [cardList, states])
   const doneFold = foldDoneCards(done, doneWatermark, t)
 
+  const mode = useBoardMode()
+  const cinema = mode === 'cinema'
+  // 线路图只画进行中的卡：完成区是历史，收在折叠里，不参与拓扑
+  const signals = useMemo(
+    () => new Map(active.map((card) => [card.id, cardSignal(card, states)])),
+    [active, states],
+  )
+  const runningCount = useMemo(
+    () => [...signals.values()].filter((signal) => signal === 'running').length,
+    [signals],
+  )
+  // 行身份 + 状态的签名：轮询每 2 秒换一次数组，签名不变就不重画，光点不从头上路
+  const railKey = useMemo(
+    () => `${mode}|${active.map((card) => `${card.id}:${signals.get(card.id)}`).join('|')}`,
+    [mode, active, signals],
+  )
+
   const openSession = useCallback((targetSessionId) => {
     const uiWorkspace = getUiWorkspace?.()
     if (uiWorkspace === undefined || uiWorkspace === null) return
@@ -671,7 +746,11 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   if (view === 'no-project') {
     return createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
+      {
+        className: cinema
+          ? 'dsh-leader-agent-board-list dsh-leader-agent-board-list-cinema'
+          : 'dsh-leader-agent-board-list',
+      },
       resolved
         ? createElement(
             'div',
@@ -687,14 +766,14 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               t('board.noProject.hint'),
             ),
           )
-        : createElement(BoardSkeleton),
+        : createElement(BoardSkeleton, { cinema }),
     )
   }
 
   // 身份还没问出来（worker 表那一趟还没回来）：先给骨架。这里不能落进下面的
   // 「不是项目会话」分支——worker 打开看板会先闪一句错话再跳到卡片列表。
   if (view === 'pending') {
-    return createElement(BoardSkeleton)
+    return createElement(BoardSkeleton, { cinema })
   }
 
   // 属于项目但不是项目会话（同目录的普通会话）；leader 本身已失效（归档或被
@@ -705,7 +784,11 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
     const projectName = project?.name
     return createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
+      {
+        className: cinema
+          ? 'dsh-leader-agent-board-list dsh-leader-agent-board-list-cinema'
+          : 'dsh-leader-agent-board-list',
+      },
       createElement(
         'div',
         { className: 'dsh-leader-agent-board-empty' },
@@ -735,13 +818,17 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
   }
 
   if (!loaded) {
-    return createElement(BoardSkeleton)
+    return createElement(BoardSkeleton, { cinema })
   }
 
   if (cards.length === 0) {
     return createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
+      {
+        className: cinema
+          ? 'dsh-leader-agent-board-list dsh-leader-agent-board-list-cinema'
+          : 'dsh-leader-agent-board-list',
+      },
       createElement(BoardEmpty, { allDone: false, projectName: project.name, t }),
     )
   }
@@ -761,11 +848,20 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
 
   return createElement(
     'div',
-    { className: 'dsh-leader-agent-board' },
+    { className: 'dsh-leader-agent-board', 'data-mode': mode },
     createElement(
       'div',
-      { className: 'dsh-leader-agent-board-list' },
-      active.length > 0
+      {
+        className: cinema
+          ? 'dsh-leader-agent-board-list dsh-leader-agent-board-list-cinema'
+          : 'dsh-leader-agent-board-list',
+      },
+      createElement(
+        'div',
+        { className: 'dsh-leader-agent-board-stage' },
+        cinema ? createElement(BoardRail, { railKey }) : null,
+        cinema ? createElement(BoardLeaderRow, { running: runningCount, total: active.length, t }) : null,
+        active.length > 0
         ? createElement(
             'div',
             { className: 'dsh-leader-agent-board-group' },
@@ -776,6 +872,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               now,
               slotLabels,
               t,
+              cinema,
               onOpenDetail: openDetail,
               onOpenSession: openSession,
             })),
@@ -845,6 +942,7 @@ function BoardPanel({ sessionId, getSessions, getUiWorkspace, useSessionStatus, 
               : null,
           )
         : null,
+      ),
     ),
     overlays.detail === null || overlays.pendingDelete !== null
       ? null

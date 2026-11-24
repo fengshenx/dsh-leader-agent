@@ -15,6 +15,7 @@
  */
 
 import { BoardBody } from './board.js'
+import { mountBoardSettings } from './board-settings.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
 import { mountGuideCard } from './guide-card.js'
@@ -115,6 +116,10 @@ export function apply(ctx) {
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
     }),
   }, BoardBody)), 'dsh-leader-agent 看板面板')
+
+  // 设置页：宿主的 settings.section 是公开槽位，注册了就出现在设置导航里。
+  // 旧宿主没有这个槽时 inject 不触发，设置页静默缺席，看板按默认的炫酷模式走。
+  mountBoardSettings(ctx, t)
 
   // 右栏 guide 页的「看板」入口由本插件自己渲染。宿主的入口来自 tab 类型的
   // 静态注册，注册表没有按会话过滤的扩展点（docs/capability-gaps.md 第 15 条），

@@ -1163,6 +1163,332 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   gap: 4px;
   margin-left: auto;
 }
+
+/* ===== 线路图模式 =====
+   这是一块刻意与宿主主题解耦的深色面板：宿主切到浅色时也保持黑底金线。颜色
+   全部取宿主与主题无关的 --dsw-static-* 标尺，不写死色值；深色只作用于看板
+   内容区——详情浮层 portal 到 body，不受影响。 */
+.dsh-leader-agent-board-list-cinema {
+  --dsw-alias-label-primary: var(--dsw-static-neutral-bluish-100);
+  --dsw-alias-label-secondary: var(--dsw-static-neutral-bluish-300);
+  --dsw-alias-label-tertiary: var(--dsw-static-neutral-bluish-400);
+  --dsw-alias-label-caption: var(--dsw-static-neutral-bluish-500);
+  --dsw-alias-bg-layer-2: var(--dsw-static-neutral-bluish-900);
+  --dsw-alias-bg-layer-3: var(--dsw-static-neutral-bluish-850);
+  --dsw-alias-border-l3: var(--dsw-static-neutral-bluish-800);
+  --dsw-alias-border-l4: var(--dsw-static-neutral-bluish-700);
+  --dsw-alias-interactive-bg-hover: var(--dsw-static-neutral-bluish-800);
+  --dsw-alias-link: var(--dsw-static-blue-500);
+  --dsw-alias-bg-skeleton: var(--dsw-static-neutral-bluish-800);
+  margin: 8px;
+  padding: 8px 6px 18px 0;
+  border-radius: 12px;
+  background: var(--dsw-static-neutral-bluish-1000);
+  box-shadow: 0 10px 30px var(--dsw-static-neutral-900);
+}
+
+.dsh-leader-agent-board-stage {
+  position: relative;
+}
+
+.dsh-leader-agent-board-list-cinema .dsh-leader-agent-board-stage {
+  padding: 6px 0 12px 44px;
+}
+
+.dsh-leader-agent-board-rail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.dsh-leader-agent-board-rail-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  height: 52px;
+}
+
+.dsh-leader-agent-board-rail-orb {
+  position: absolute;
+  left: -24px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  corner-shape: round;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    var(--dsw-static-amber-100),
+    var(--dsw-static-amber-400) 55%,
+    var(--dsw-static-amber-600)
+  );
+  box-shadow: 0 0 14px var(--dsw-static-amber-500);
+}
+
+.dsh-leader-agent-board-rail-meta b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--dsw-static-neutral-bluish-100);
+}
+
+.dsh-leader-agent-board-rail-meta span {
+  display: block;
+  margin-top: 1px;
+  font-family: var(--ds-font-family-mono, ui-monospace, Menlo, monospace);
+  font-size: 10.5px;
+  color: var(--dsw-static-neutral-bluish-400);
+}
+
+.dsh-leader-agent-board-rail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 6px;
+}
+
+.dsh-leader-agent-board-rail-slots {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.dsh-leader-agent-board-rail-slot {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--dsw-static-neutral-bluish-700);
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dsw-static-neutral-bluish-900);
+  color: var(--dsw-static-neutral-bluish-200);
+  font: inherit;
+  font-size: 8px;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dsh-leader-agent-board-rail-slot:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-static-blue-500);
+  outline-offset: 1px;
+}
+
+.dsh-leader-agent-board-rail-slot-running {
+  border-color: var(--dsw-static-blue-500);
+}
+
+.dsh-leader-agent-board-rail-slot-attention {
+  border-color: var(--dsw-static-red-500);
+}
+
+.dsh-leader-agent-board-rail-slot-idle {
+  color: var(--dsw-static-neutral-bluish-500);
+}
+
+.dsh-leader-agent-board-rail-slot-more {
+  font-size: 7px;
+  color: var(--dsw-static-neutral-bluish-500);
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .dsh-leader-agent-board-list-cinema .dsh-leader-agent-board-card:hover {
+    --dsw-elevation-stroke-color: var(--dsw-static-neutral-bluish-600);
+  }
+}
+
+.dsh-leader-agent-board-rail-trunk {
+  fill: none;
+  stroke: var(--dsw-static-neutral-bluish-800);
+  stroke-width: 1.2;
+}
+
+.dsh-leader-agent-board-rail-edge {
+  fill: none;
+  stroke: var(--dsw-static-neutral-bluish-700);
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.dsh-leader-agent-board-rail-hot {
+  fill: none;
+  stroke: var(--dsw-static-amber-500);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.dsh-leader-agent-board-rail-warn {
+  fill: none;
+  stroke: var(--dsw-static-red-500);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  animation: dsh-leader-agent-rail-breathe 1.8s ease-in-out infinite;
+}
+
+.dsh-leader-agent-board-rail-trail {
+  fill: none;
+  stroke: var(--dsw-static-amber-100);
+  stroke-width: 3;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 4px var(--dsw-static-amber-400));
+  animation: dsh-leader-agent-rail-flow 2.4s linear infinite;
+}
+
+@keyframes dsh-leader-agent-rail-flow {
+  from { stroke-dashoffset: var(--dla-from, 44px); }
+  to { stroke-dashoffset: var(--dla-to, -320px); }
+}
+
+@keyframes dsh-leader-agent-rail-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.dsh-leader-agent-board-rail-node {
+  fill: var(--dsw-static-neutral-bluish-1000);
+  stroke: var(--dsw-static-neutral-bluish-600);
+  stroke-width: 1.4;
+}
+
+.dsh-leader-agent-board-rail-node-running { stroke: var(--dsw-static-blue-500); }
+.dsh-leader-agent-board-rail-node-attention { stroke: var(--dsw-static-red-500); }
+
+.dsh-leader-agent-board-rail-halo {
+  fill: none;
+  stroke: var(--dsw-static-amber-400);
+  stroke-width: 1;
+  animation: dsh-leader-agent-rail-halo 2.2s ease-out infinite;
+}
+
+@keyframes dsh-leader-agent-rail-halo {
+  0% { r: 4; opacity: 0.8; }
+  100% { r: 13; opacity: 0; }
+}
+
+.dsh-leader-agent-board-rail-comet {
+  fill: var(--dsw-static-amber-100);
+  filter: drop-shadow(0 0 4px var(--dsw-static-amber-400));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dsh-leader-agent-board-rail-trail,
+  .dsh-leader-agent-board-rail-warn,
+  .dsh-leader-agent-board-rail-halo {
+    animation: none;
+  }
+}
+
+/* ===== 设置页 ===== */
+.dsh-leader-agent-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 720px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-settings-title {
+  margin: 0;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+.dsh-leader-agent-settings-desc {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-agent-settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dsh-leader-agent-settings-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  border-radius: var(--dsw-radius-xl);
+  background: var(--dsw-alias-settings-card-fill);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dsh-leader-agent-settings-option:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
+}
+
+.dsh-leader-agent-settings-option-selected {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.dsh-leader-agent-settings-preview {
+  flex: none;
+  display: inline-flex;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-leader-agent-settings-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dsh-leader-agent-settings-copy b {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-leader-agent-settings-copy span {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-leader-agent-settings-radio {
+  flex: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  border: 0.5px solid var(--dsw-alias-border-l4);
+  border-radius: 50%;
+  corner-shape: round;
+}
+
+.dsh-leader-agent-settings-option-selected .dsh-leader-agent-settings-radio {
+  border: 5px solid var(--dsw-alias-state-business-primary);
+}
+
+.dsh-leader-agent-settings-scope {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+}
+
 `
 
 /**

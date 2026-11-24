@@ -245,6 +245,40 @@ function BoardSlot({ slot, onOpenSession, labels, t }) {
 }
 
 /**
+ * 线路图模式下的执行者圆点。
+ *
+ * 窄栏里放不下「状态点 + 角色名 + 箭头」，只留一个首字圆点；完整名字与状态在
+ * `title` 里，点击仍然打开该会话。它不是另一套语义，只是同一个入口的紧凑形态。
+ *
+ * @param {object} props - 组件属性
+ * @param {object} props.slot - 槽位视图（已绑定会话）
+ * @param {(sessionId: string) => void} props.onOpenSession - 打开会话
+ * @param {Record<string, string> | undefined} props.labels - 项目下发的槽位显示名
+ * @param {(key: string) => string} props.t - 当前语言的翻译函数
+ * @returns {object} React 元素
+ */
+function BoardRailSlot({ slot, onOpenSession, labels, t }) {
+  const stateKey = STATE_LABEL_KEYS[slot.state]
+  const stateLabel = stateKey === undefined ? slot.state : t(stateKey)
+  const name = slotDisplayName(slot.name, labels, t)
+  return createElement(
+    'button',
+    {
+      type: 'button',
+      className: `dsh-leader-agent-board-rail-slot dsh-leader-agent-board-rail-slot-${slot.state}`,
+      'data-rail-slot': '',
+      title: t('board.slot.title', { name, state: stateLabel }),
+      'aria-label': name,
+      onClick: (event) => {
+        event.stopPropagation()
+        onOpenSession(slot.sessionId)
+      },
+    },
+    name.slice(0, 1),
+  )
+}
+
+/**
  * 看板卡片行。
  *
  * @param {object} props - 组件属性
@@ -257,7 +291,7 @@ function BoardSlot({ slot, onOpenSession, labels, t }) {
  * @param {(key: string) => string} props.t - 当前语言的翻译函数（槽位显示名）
  * @returns {object} React 元素
  */
-function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLabels, t }) {
+function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLabels, t, cinema }) {
   const links = Array.isArray(card.links) ? card.links : []
   const done = card.status === 'done'
 
@@ -293,53 +327,97 @@ function BoardCardView({ card, states, now, onOpenDetail, onOpenSession, slotLab
   const hollow = stalled && signal !== 'attention'
   const kind = cardKind(card)
 
-  return createElement(
+  const head = createElement(
+    'div',
+    { className: 'dsh-leader-agent-board-card-head' },
+    createElement(
+      'span',
+      { className: 'dsh-leader-agent-board-card-id' },
+      createElement('span', { className: 'dsh-leader-agent-board-card-number' }, `#${card.number ?? '?'}`),
+      kind === null
+        ? null
+        : createElement('span', { className: 'dsh-leader-agent-board-card-kind-separator' }, '/'),
+      kind === null
+        ? null
+        : createElement('span', { className: 'dsh-leader-agent-board-card-kind', title: kind }, kind),
+    ),
+    createElement(
+      'span',
+      { className: 'dsh-leader-agent-board-signal-slot' },
+      createElement('span', {
+        className: `dsh-leader-agent-board-signal dsh-leader-agent-board-signal-${signal}${hollow ? ' dsh-leader-agent-board-signal-hollow' : ''}`,
+        title: STATE_LABEL_KEYS[signal] === undefined ? signal : t(STATE_LABEL_KEYS[signal]),
+      }),
+    ),
+  )
+
+  const cardElement = createElement(
     'div',
     {
-      className: 'dsh-leader-agent-board-card',
+      className: cinema
+        ? 'dsh-leader-agent-board-card dsh-leader-agent-board-card-rail'
+        : 'dsh-leader-agent-board-card',
       role: 'button',
       tabIndex: 0,
       onClick: (event) => onOpenDetail(card, event.currentTarget),
       onKeyDown: (event) => openDetailOnKey(event, card, onOpenDetail),
     },
-    createElement(
-      'div',
-      { className: 'dsh-leader-agent-board-card-head' },
-      createElement(
-        'span',
-        { className: 'dsh-leader-agent-board-card-id' },
-        createElement('span', { className: 'dsh-leader-agent-board-card-number' }, `#${card.number ?? '?'}`),
-        kind === null
-          ? null
-          : createElement('span', { className: 'dsh-leader-agent-board-card-kind-separator' }, '/'),
-        kind === null
-          ? null
-          : createElement('span', { className: 'dsh-leader-agent-board-card-kind', title: kind }, kind),
-      ),
-      createElement(
-        'span',
-        { className: 'dsh-leader-agent-board-signal-slot' },
-        createElement('span', {
-          className: `dsh-leader-agent-board-signal dsh-leader-agent-board-signal-${signal}${hollow ? ' dsh-leader-agent-board-signal-hollow' : ''}`,
-          title: STATE_LABEL_KEYS[signal] === undefined ? signal : t(STATE_LABEL_KEYS[signal]),
-        }),
-      ),
-    ),
+    head,
     createElement('span', { className: 'dsh-leader-agent-board-card-title', title: card.title }, card.title ?? ''),
     links.length > 0
       ? createElement(BoardLinks, { links, onOpenDetail: (anchor) => onOpenDetail(card, anchor), t })
       : null,
-    slots.length > 0
+    // 线路图模式把执行者移到卡面右侧的竖槽：它要成为图上的独立节点，留在卡里
+    // 就画不出支线（SVG 垫在卡面下面）
+    cinema
+      ? null
+      : slots.length > 0
+        ? createElement(
+            'div',
+            { className: 'dsh-leader-agent-board-card-slots' },
+            slots.map((slot) => createElement(BoardSlot, {
+              key: slot.name,
+              slot,
+              onOpenSession,
+              labels: slotLabels,
+              t,
+            })),
+          )
+        : null,
+  )
+
+  if (!cinema) return cardElement
+
+  // 竖槽最多放三个圆点：卡面高度约 64px，四个就要顶出去。超出的收成 +N，
+  // 完整名单仍在详情里。
+  const railSlots = slots.length > 3 ? slots.slice(0, 2) : slots
+  const extraSlots = slots.length - railSlots.length
+  return createElement(
+    'div',
+    {
+      className: 'dsh-leader-agent-board-rail-row',
+      'data-rail-row': '',
+      'data-rail-status': signal,
+    },
+    cardElement,
+    railSlots.length > 0 || extraSlots > 0
       ? createElement(
           'div',
-          { className: 'dsh-leader-agent-board-card-slots' },
-          slots.map((slot) => createElement(BoardSlot, {
+          { className: 'dsh-leader-agent-board-rail-slots' },
+          railSlots.map((slot) => createElement(BoardRailSlot, {
             key: slot.name,
             slot,
             onOpenSession,
             labels: slotLabels,
             t,
           })),
+          extraSlots > 0
+            ? createElement(
+                'span',
+                { className: 'dsh-leader-agent-board-rail-slot dsh-leader-agent-board-rail-slot-more' },
+                `+${extraSlots}`,
+              )
+            : null,
         )
       : null,
   )
