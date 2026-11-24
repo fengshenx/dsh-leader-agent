@@ -1171,18 +1171,14 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
    支线才上强调色。深色皮是刻意与宿主解耦的黑面板；浅色皮直接沿用宿主的
    卡面与文字档，只重画板底与轨道。 */
 .dsh-leader-agent-board-list-cinema {
-  margin: 8px;
+  margin: 0;
   padding: 8px 6px 18px 0;
-  border: 1px solid var(--dla-panel-line);
-  border-radius: 12px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
   background: var(--dla-panel);
-  box-shadow: var(--dla-panel-shadow);
 }
 
 .dsh-leader-agent-board-list-cinema-light {
   --dla-panel: var(--dsw-static-neutral-bluish-50);
-  --dla-panel-line: var(--dsw-static-neutral-bluish-200);
-  --dla-panel-shadow: none;
   --dla-structure: var(--dsw-static-neutral-bluish-300);
   --dla-structure-strong: var(--dsw-static-neutral-bluish-400);
   --dla-accent: var(--dsw-static-blue-600);
@@ -1206,8 +1202,6 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   --dsw-alias-link: var(--dsw-static-blue-500);
   --dsw-alias-bg-skeleton: var(--dsw-static-neutral-bluish-800);
   --dla-panel: var(--dsw-static-neutral-bluish-1000);
-  --dla-panel-line: transparent;
-  --dla-panel-shadow: 0 10px 30px var(--dsw-static-neutral-900);
   --dla-structure: var(--dsw-static-neutral-bluish-800);
   --dla-structure-strong: var(--dsw-static-neutral-bluish-600);
   --dla-accent: var(--dsw-static-amber-500);
