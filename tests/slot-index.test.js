@@ -24,22 +24,24 @@ test('建卡即建索引，槽位名反查到会话', async () => {
   }
 })
 
-test('改卡改绑后索引同步更新', async () => {
+test('改卡换人后索引同步更新', async () => {
   const { store, home } = await createStore()
   try {
-    const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'session-dev' } } })
-    await store.update({ id: card.id, slots: { review: { sessionId: 'session-dev' } } })
-    assert.equal(store.slotIndex.get('session-dev'), 'review')
+    const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'session-dev-old' } } })
+    await store.update({ id: card.id, slots: { dev: { sessionId: 'session-dev-new' } } })
+    assert.equal(store.slotIndex.has('session-dev-old'), false)
+    assert.equal(store.slotIndex.get('session-dev-new'), 'dev')
   } finally {
     await rm(home, { recursive: true, force: true })
   }
 })
 
-test('改卡清空槽位后索引移除该会话', async () => {
+test('关闭卡片自动释放槽位后索引移除该会话', async () => {
   const { store, home } = await createStore()
   try {
     const card = await store.create({ title: '任务', slots: { dev: { sessionId: 'session-dev' } } })
-    await store.update({ id: card.id, slots: {} })
+    const done = await store.update({ id: card.id, status: 'done' })
+    assert.deepEqual(done.slots, {})
     assert.equal(store.slotIndex.has('session-dev'), false)
   } finally {
     await rm(home, { recursive: true, force: true })

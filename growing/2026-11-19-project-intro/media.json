@@ -1,0 +1,36 @@
+{
+  "campaign": "2026-11-19-project-intro",
+  "bucket": "dsh-agent-leader",
+  "region": "oss-cn-beijing",
+  "prefix": "growing/2026-11-19-project-intro/",
+  "baseUrl": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/",
+  "keyBase": "prefix-relative",
+  "versions": [
+    {
+      "version": 2,
+      "assets": [
+        {
+          "kind": "html",
+          "key": "html/deck-1600x900-v2.html",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/html/deck-1600x900-v2.html",
+          "bytes": 45144,
+          "sha256": "d8c91240a5c7ee4ed72335417a963820746ff0bbca0ea235a6d885c60affc976",
+          "contentType": "text/html; charset=utf-8"
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "assets": [
+        {
+          "kind": "html",
+          "key": "html/deck-1600x900-v1.html",
+          "url": "https://dsh-agent-leader.oss-cn-beijing.aliyuncs.com/growing/2026-11-19-project-intro/html/deck-1600x900-v1.html",
+          "bytes": 45177,
+          "sha256": "db0730f9bef1527d8f179467ebb04a7b2d3ffa40586ec5a7e01def02e1228609",
+          "contentType": "text/html; charset=utf-8"
+        }
+      ]
+    }
+  ]
+}

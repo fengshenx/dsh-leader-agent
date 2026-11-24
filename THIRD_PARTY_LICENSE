@@ -7,16 +7,16 @@
 
 ## 随客户端产物分发的第三方代码
 
-### minidenticons 4.2.1（MIT）
+### blobatar 2.7.0（MIT）
 
-- 来源：https://github.com/laurentpayot/minidenticons
-- 版权：Copyright (c) 2021 Laurent Payot
-- 用途：worker / leader 头像的确定性像素图案。实现由 esbuild 内联进 lib/client.js；产物头部另有同份 MIT 声明。
+- 来源：https://github.com/Alain00/blobatar
+- 版权：Copyright (c) 2026 Alain
+- 用途：worker / leader 头像的确定性「身体 + 胶囊眼」几何。实现由 esbuild 内联进 lib/client.js；产物头部另有同份 MIT 声明。
 
 ```text
 MIT License
 
-Copyright (c) 2021 Laurent Payot
+Copyright (c) 2026 Alain
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,8 +33,7 @@ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ## 随包安装的运行时依赖
@@ -79,6 +78,7 @@ SOFTWARE.
 | 包 | 版本 | 许可 | 来源 |
 | --- | --- | --- | --- |
 | esbuild | 0.28.2 | MIT | https://github.com/evanw/esbuild |
+| oxlint | 1.94.0 | MIT | https://github.com/oxc-project/oxc |
 | playwright | 1.64.1 | Apache-2.0 | https://github.com/microsoft/playwright |
 
 这些工具只在开发、构建或测试时使用，不进入 npm 包或客户端产物；完整许可文本在各自安装目录的 `LICENSE` 文件里。

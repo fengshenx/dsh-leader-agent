@@ -24,6 +24,7 @@ function validKey(value) {
   return typeof value === 'string'
     && value.length > 0
     && value.length <= 200
+    // oxlint-disable-next-line no-control-regex -- 校验的正是控制字符本身
     && !/[\u0000-\u001f\u007f]/.test(value)
 }
 
@@ -166,16 +167,16 @@ export function removeOpenTab(store, projectId, sessionId) {
 /**
  * worker 标签上的信号灯档位。
  *
- * 与项目树会话行同一口径：运行中盖过「完成未查看」，都没有就是空闲。宿主
- * 会话快照只给这两档；「等你输入」属于卡片信号，不在会话行上，标签栏不另
- * 造一套判定。
+ * 与看板卡面同一套信号名：运行中盖过「完成未读」，都没有就是空闲。宿主会话
+ * 快照只给得出这两档事实；「等你输入」「失败」属于卡片侧的会话状态投影，不
+ * 在会话快照里，标签栏不另造判定。
  *
  * @param {object | undefined} row - 会话行
- * @returns {'ongoing' | 'done' | 'idle'} StateDot 档位
+ * @returns {'running' | 'unread' | 'idle'} 信号档位
  */
 export function workerTabState(row) {
-  if (row?.running === true) return 'ongoing'
-  if (row?.completed === true) return 'done'
+  if (row?.running === true) return 'running'
+  if (row?.completed === true) return 'unread'
   return 'idle'
 }
 
@@ -366,4 +367,17 @@ export function tabAfterClose(view, closingId) {
   if (view?.visible !== true || typeof closingId !== 'string') return null
   if (view.activeSessionId !== closingId) return null
   return view.leaderId
+}
+
+/**
+ * 宿主是否提供 contextMenus 服务。
+ *
+ * 缺失时标签栏不接管会话「更多」：不渲染按钮、也不打隐藏宿主原按钮的标记；
+ * 宿主自己的菜单入口继续可用。
+ *
+ * @param {object | null | undefined} contextMenus - `ctx.get('contextMenus')` 的结果
+ * @returns {boolean} 是否由标签栏接管
+ */
+export function hasSessionMenu(contextMenus) {
+  return contextMenus !== null && contextMenus !== undefined
 }

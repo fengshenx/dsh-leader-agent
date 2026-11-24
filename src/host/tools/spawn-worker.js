@@ -77,7 +77,7 @@ export function createSpawnWorkerTool({ dispatcher }) {
         },
         force: {
           type: 'string',
-          description: '名册到顶（未归档 worker 上限）时的逃逸理由：非空即强制新建，仅当返回的可复用候选都不适合时使用，理由进会话历史可审计。',
+          description: '名册到顶（本项目未归档 worker 上限）时的逃逸理由：非空即强制新建，仅当返回的可复用候选都不适合时使用，理由进会话历史可审计。',
         },
       },
       required: ['name'],

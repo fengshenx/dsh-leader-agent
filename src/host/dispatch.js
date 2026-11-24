@@ -54,15 +54,41 @@ import { readWorkerTaskSource } from '../shared/worker-task.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
- * 未归档 worker 的数量上限。
+ * 每个项目未归档 worker 的数量上限。
  *
  * worker 是常驻根会话，不 dispose 就一直活着，所以名册按登记表算：它是续聊的
  * 唯一入口，也是「这个项目还留着多少条工」的唯一真源（宿主的 `sessions.list()`
- * 只反映进程内活着的会话，重启后归零）。到顶后先劝复用（`message_worker` 冷恢复），
+ * 只反映进程内活着的会话，重启后归零）。上限按项目计：同一台机器上并行几个项目
+ * 时，一个项目攒满不该把另一个项目也卡死。到顶后先劝复用（`message_worker` 冷恢复），
  * 不是硬性禁止。
  */
 const DEFAULT_ACTIVE_WORKER_LIMIT = 50
 const NOTIFICATION_LIMIT = 4000
+
+/**
+ * worker 最近一次被使用的时刻。
+ *
+ * 旧登记表没有 `lastUsedAt`；读取时注册表会按 `registeredAt` 补值，这里再兜一层，
+ * 让自定义登记表实现也能按同一口径排序。
+ *
+ * @param {object} worker - 登记记录
+ * @returns {number} 最后使用时刻（毫秒）
+ */
+function lastUsedAtOf(worker) {
+  if (typeof worker.lastUsedAt === 'number') return worker.lastUsedAt
+  return typeof worker.registeredAt === 'number' ? worker.registeredAt : 0
+}
+
+/**
+ * 给到顶提示里的候选标出最后使用时刻。
+ *
+ * @param {object} worker - 登记记录
+ * @returns {string} 人可读的一行
+ */
+function candidateLine(worker) {
+  const name = `${worker.childId} ${worker.name ?? worker.label ?? ''}`.trimEnd()
+  return `- ${name}（lastUsedAt=${new Date(lastUsedAtOf(worker)).toISOString()}）`
+}
 /** 空闲检测的轮询间隔（毫秒）。 */
 const IDLE_POLL_MS = 500
 
@@ -127,7 +153,7 @@ export function buildWorkerReport(outcome) {
  * @param {object} options.workerSessions - worker 会话管理器（见 `worker-sessions.js`）
  * @param {object} options.leaderIndex - 项目注册表（提供 `awaitIndex` 与 `isLeaderSession`）
  * @param {number} [options.autoResumeLimit] - 连续自动续行上限
- * @param {number} [options.activeWorkerLimit] - 未归档 worker 数量上限
+ * @param {number} [options.activeWorkerLimit] - 每个项目未归档 worker 数量上限
  * @param {(parentSessionId: string) => string | undefined} [options.resolveWorkerCwd] - 取 worker 的工作目录
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
@@ -422,7 +448,7 @@ export function createDispatcher({
     const hasWork = [...waiting.values()].some((list) => list.some((item) => item.exhausted !== true))
     if (!hasWork) return
     const pending = await store.listPending()
-    for (const [parentSessionId, list] of [...waiting]) {
+    for (const [parentSessionId, list] of Array.from(waiting)) {
       // 先摘后投：投递期间等待表里没有这些条目，轮询重入也拿不到同一条。
       waiting.delete(parentSessionId)
       /** 已达上限、等人工介入复位的条目：不投、不写盘、不记日志，但留在表里。 */
@@ -502,14 +528,41 @@ export function createDispatcher({
   }
 
   /**
-   * 未归档 worker 的名册概况。
+   * 本项目 leader 与退役 leader 的会话 id 集合。
    *
-   * @returns {Promise<{ total: number, idle: object[] } | null>} 名册；拿不到归档集合时 null（此时不限数量）
+   * worker 只由 leader 派（派工前过 `assertLeader`），登记表记的是父会话 id；换
+   * leader 时 `reassignParent` 把原班 worker 改绑到新会话，旧会话记进项目记录的
+   * `retiredLeaderSessionIds`。所以「父会话 id 在本集合里」就是 worker 的项目归属，
+   * 不必逐条反查会话库。
+   *
+   * 拿不到项目时返回 undefined：没有 `resolveProject`（卡片能力缺失的组合）或
+   * 项目索引里还查不出这条会话。调用方退回全局口径，与改动前一致。
+   *
+   * @param {string} sessionId - 调用方会话 id
+   * @returns {Promise<Set<string> | undefined>} leader 会话 id 集合
    */
-  async function describeRoster() {
+  async function leaderSessionsOfProject(sessionId) {
+    if (typeof resolveProject !== 'function') return undefined
+    const project = await resolveProject(sessionId)
+    if (project?.id === undefined) return undefined
+    const ids = [project.leaderSessionId, ...(project.retiredLeaderSessionIds ?? [])]
+      .filter((id) => typeof id === 'string' && id !== '')
+    // 项目记录里一条 leader 指针都没有：分不出归属，退回全局口径比「一条都不算」安全。
+    return ids.length === 0 ? undefined : new Set(ids)
+  }
+
+  /**
+   * 未归档 worker 的名册概况，只算调用方会话所属项目。
+   *
+   * @param {string} scopeSessionId - 调用方会话 id（派工的 leader）
+   * @returns {Promise<{ total: number, idle: object[], bound: object[], newest: object | undefined } | null>} 名册；拿不到归档集合时 null（此时不限数量）
+   */
+  async function describeRoster(scopeSessionId) {
     if (typeof archivedSessionIds !== 'function') return null
     const archived = new Set(archivedSessionIds())
-    const active = (await workers.list()).filter((item) => !archived.has(item.childId))
+    const leaders = await leaderSessionsOfProject(scopeSessionId)
+    const active = (await workers.list()).filter((item) => !archived.has(item.childId)
+      && (leaders === undefined || leaders.has(item.parentSessionId)))
     // 绑定一次读盘取全量再分组：逐 worker 读 `cards.json` 会让一次派工付 O(N × 文件体积)。
     // 两个提供方都没有时不做分类，与投递门禁的降级口径一致。
     let bindingsFor
@@ -532,9 +585,24 @@ export function createDispatcher({
         bound.push({ ...item, cards })
         continue
       }
-      idle.push(item)
+      idle.push({ ...item, lastUsedAt: lastUsedAtOf(item) })
     }
-    return { total: active.length, idle, bound }
+    // LRU：最久没被 leader 用过的排前面；bound 的顺序不动（它们本来就不能接）。
+    // 同刻使用按登记时间、再按 id 兜底，避免同毫秒读到不确定顺序。
+    idle.sort((left, right) => (
+      lastUsedAtOf(left) - lastUsedAtOf(right)
+      || (left.registeredAt ?? 0) - (right.registeredAt ?? 0)
+      || String(left.childId).localeCompare(String(right.childId))
+    ))
+    // 登记时间同毫秒时按 active 的稳定顺序取后出现的那条；list() 的稳定排序保留
+    // 写入顺序，后出现的才是更新的。不能按 childId 重排，否则「最近新建」会标错。
+    const idleIds = new Set(idle.map((item) => item.childId))
+    const newest = active.reduce((best, item) => {
+      if (!idleIds.has(item.childId)) return best
+      if (best === undefined || (item.registeredAt ?? 0) >= (best.registeredAt ?? 0)) return item
+      return best
+    }, undefined)
+    return { total: active.length, idle, bound, newest }
   }
 
   /**
@@ -678,6 +746,9 @@ export function createDispatcher({
       messageId,
       startedAt: Date.now(),
     }
+    // 必须在任何落盘 await 之前登记：`workerSessions.send()` 对活会话是同步
+    // `agent.steer`，worker 可能在 `markUsed` 写 workers.json 的窗口里就结束
+    // 一轮；先等落盘会让 `turn/end` 找不到在飞记录，消息发出去了却不结算。
     inflight.set(sessionId, record)
     // worker 活着就直接投，不在内存就冷恢复后再投——两种形态对调用方是同一步。
     let form
@@ -692,10 +763,20 @@ export function createDispatcher({
       })
     } catch (error) {
       // 没投出去的消息没有「属于它的回合」，留着记录会让下一轮结束时的结算
-      // 认领一条从未发生的派工。
-      if (previous === undefined) inflight.delete(sessionId)
-      else inflight.set(sessionId, previous)
+      // 认领一条从未发生的派工。只回滚自己登记的那条：并发的 B 可能已经
+      // 成功写入，无条件恢复/删除会把 B 的在飞记录一起吞掉。
+      if (inflight.get(sessionId) === record) {
+        if (previous === undefined) inflight.delete(sessionId)
+        else inflight.set(sessionId, previous)
+      }
       throw error
+    }
+    // 投递成功才算一次使用；失败/回滚不动 LRU。落盘失败只影响候选顺序，不能让
+    // 已经投出的消息回头变成失败。
+    try {
+      await workers.markUsed(sessionId, Date.now())
+    } catch (error) {
+      logger(`dsh-leader-agent: worker ${sessionId} 的最后使用时刻落盘失败：${error instanceof Error ? error.message : String(error)}`)
     }
     if (name !== undefined) {
       try {
@@ -804,20 +885,30 @@ export function createDispatcher({
     // 绑卡前先校验归属与状态：跨项目写会污染对方的看板与上下文，已关闭的卡绑上去
     // 会绕过投递门禁。校验放在建会话之前，被拒时磁盘上连会话都不会留下。
     if (cardId !== undefined) await assertCardAssignable(cardId, parent)
-    // 名册上限：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
+    // 名册上限按项目算：到顶先劝复用——已派出的 worker 都能冷恢复，新建只在确实需要
     // 一条干净上下文时才值得。`force` 非空是明确的逃逸声明，理由随工具调用进
     // 会话历史，可审计。
     if (typeof force !== 'string' || force.trim() === '') {
-      const roster = await describeRoster()
+      const roster = await describeRoster(parent.id)
       if (roster !== null && roster.total >= activeWorkerLimit) {
         const candidates = roster.idle.slice(0, 10)
         const bound = roster.bound.slice(0, 10)
-        throw new Error([
-          `spawn_worker: 未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
+        // 最近新建的那条单独标出来：它可能还带着最近的上下文，优先复用更旧的。
+        // 只标一条，不把最新的一批重新包装成推荐候选。
+        const newest = roster.newest
+        const candidateIds = new Set(candidates.map((item) => item.childId))
+        const recentOutside = newest !== undefined && !candidateIds.has(newest.childId)
+        const lines = [
+          `spawn_worker: 本项目未归档的 worker 已达上限 ${activeWorkerLimit}，本次未新建。`,
           candidates.length === 0
             ? '当前没有可复用的 worker（都在跑，或都挂着未完成的卡）：等它们结算，或关闭手上的卡释放执行者。'
-            : `可复用的 worker（当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
-              candidates.map((item) => `- ${item.childId} ${item.name ?? item.label ?? ''}`.trimEnd()).join('\n')
+            : `推荐复用（最久未用优先；当前不在跑、也没挂未完成的卡；用 message_worker 投递新简报即可，可带 rename 换角色）：\n${
+              candidates.map((item) => {
+                const line = candidateLine(item)
+                return item.childId === newest?.childId
+                  ? `${line}（最近新建，保留上下文；优先复用前面的旧 worker）`
+                  : line
+              }).join('\n')
             }`,
           bound.length === 0
             ? ''
@@ -826,8 +917,14 @@ export function createDispatcher({
                 item.cards.map((card) => `#${card.number} ${card.title}（cardId: ${card.cardId}，槽位 ${card.slot}）`).join('、')
               }`.trimEnd()).join('\n')
             }`,
+          recentOutside
+            ? `最近新建、建议保留上下文的 worker（不要为了腾名额复用）：\n- ${newest.childId} ${newest.name ?? newest.label ?? ''}（registeredAt=${
+              new Date(newest.registeredAt ?? 0).toISOString()
+            }）`.trimEnd()
+            : '',
           '确实要新建：传 force 说明为什么现有 worker 都不适合。',
-        ].filter((line) => line !== '').join('\n'))
+        ]
+        throw new Error(lines.filter((line) => line !== '').join('\n'))
       }
     }
     // worker 的工作目录由项目决定：leader 不能指定 worker 跑在哪，也不该让
@@ -973,9 +1070,9 @@ export function createDispatcher({
     const facts = new Map()
     try {
       for (const record of await workers.list()) {
-        facts.set(record.childId, {
-          ...typeof record.lastReportAt === 'number' ? { lastReportAt: record.lastReportAt } : {},
-        })
+        facts.set(record.childId, typeof record.lastReportAt === 'number'
+          ? { lastReportAt: record.lastReportAt }
+          : {})
       }
     } catch (error) {
       // 读不出登记表时不阻塞查卡：只是槽位行少一段附注。

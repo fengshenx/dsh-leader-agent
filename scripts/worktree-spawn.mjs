@@ -6,7 +6,7 @@
  * 就能起一个挂该工作树插件版本的 dsh 实例（见 `scripts/dev.mjs`）。
  *
  * 依赖不重新安装：`node_modules` 符号链接到主 checkout 那一份。本仓库的运行期
- * 依赖只有 esbuild（构建）与 minidenticons（打进客户端产物），共享一份足够；
+ * 依赖只有 esbuild（构建）与 blobatar（打进客户端产物），共享一份足够；
  * 代价是改 `package.json` 后在 worktree 里 `npm install` 会写到主 checkout，
  * 依赖变更请在主 checkout 做。
  *

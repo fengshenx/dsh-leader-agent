@@ -69,7 +69,8 @@ export function createLeaderSessionIndex() {
       const nextIds = new Set(next)
       if (nextIds.size === ids.size && [...nextIds].every((id) => ids.has(id))) return
       ids = nextIds
-      for (const listener of [...listeners]) listener(ids)
+      // 先快照：通知期间订阅者可能订阅或退订，实时迭代会让本轮多叫一次。
+      for (const listener of Array.from(listeners)) listener(ids)
     },
   }
 }

@@ -23,17 +23,19 @@
 
 import { createElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
+import { findColumn, findMainSlot, mainBodyOf } from './main-panel.js'
 import { currentSessionIdOf } from './project-panel-logic.js'
 import { onProjectsChanged } from './project-changes.js'
 import { isProjectRemoteReady, onProjectRemoteReady } from './project-remote.js'
 import { BOARD_TAB_KIND } from './project-board-monitor.js'
 import { createSessionCompletionTracker } from './session-completion.js'
+import { signalStyleText } from './signal-styles.js'
 import {
   addOpenTab,
   emptyTabStore,
   hasOpenTab,
+  hasSessionMenu,
   parseTabStore,
   removeOpenTab,
   resolveTabView,
@@ -52,6 +54,17 @@ const COLUMN_ATTR = 'data-dsh-leader-agent-tabs-column'
 /** 会话体标记：宿主的会话根节点带高度约束，不覆盖会在标签栏下方溢出。 */
 const MAIN_ATTR = 'data-dsh-leader-agent-tabs-main'
 
+/**
+ * 信号灯档位到字典键。
+ *
+ * 与看板卡面共用同一组文案：两处说的是同一档状态，不再各养一套。
+ */
+const SIGNAL_LABEL_KEYS = {
+  running: 'board.state.running',
+  unread: 'board.state.unread',
+  idle: 'board.state.idle',
+}
+
 // client 侧的样式写在模板字符串里，不能出现反引号。
 const STYLE_TEXT = `
 [${COLUMN_ATTR}] { min-height: 0; }
@@ -66,16 +79,75 @@ const STYLE_TEXT = `
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 38px;
+  height: 48px;
   min-width: 0;
   box-sizing: border-box;
-  padding-block: 0;
+  /* 宿主右栏顶行是 28px 内容带 + 10px 上留白，下方没有分割线。标签栏内容
+     与它压在同一条带上（10px 上留白），再补 10px 下留白：让底部分隔线落在
+     chip 下方，而不是紧贴 chip 下沿。 */
+  padding-block: 10px;
   padding-inline-start: max(20px, var(--dsh-frame-leading-clearance, 0px));
-  padding-inline-end: 20px;
+  /* 右侧只留右栏开关：它被钉到标签栏这一行（见下），标签滚动区必须在它
+     左边结束，否则长标签会钻到按钮下面。会话「更多」是本插件自己渲染的
+     flex 子项，不占这段留白。 */
+  padding-inline-end: 42px;
   background: var(--dsw-alias-bg-base);
-  border-bottom: .5px solid var(--dsw-alias-border-l3);
+  /* 分隔线画成 inset shadow：border 会占掉 border-box 的 0.5px，内容带就
+     凑不满 28px，与右栏条带对不齐。 */
+  box-shadow: inset 0 -0.5px 0 var(--dsw-alias-border-l3);
   -webkit-app-region: drag;
   overflow: hidden;
+}
+/* 右栏展开后收起按钮在面板自己的顶条里，主列右缘不再有开关；42px 的开关
+   留白此时只剩空档，把「更多」收回到 6px 边距，与弹出时同一列。 */
+body:has([data-sidebar-right-session]:not([hidden]) [data-sidebar-right-open]) .dsh-leader-agent-tabs {
+  padding-inline-end: 6px;
+}
+/* 右栏开关本来在会话头的标题行（标签栏下一行）。收起右栏时它在下面，
+   展开后宿主把面板的收起按钮画在面板自己的顶部条（标签栏这一行）——
+   同一个开关会上下跳一行。这里把开关钉到标签栏这一行：收起时它在
+   [顶部条右侧 6px、顶行内容起点]，展开后宿主的收起按钮在同一坐标接管。
+   用 fixed 是因为会话根带 overflow: hidden，普通绝对定位会被裁掉。 */
+[${COLUMN_ATTR}] [data-sidebar-right-expand] {
+  position: fixed;
+  top: calc(var(--dsh-windows-titlebar-height, 0px) + 10px);
+  right: 6px;
+  z-index: 1;
+}
+/* 开关已经移出标题行；让 corner 的盒子（含 8px/负 16px 外边距）不再参与
+   标题行排版，否则标题右侧会多出一段为按钮保留的空白。 */
+[${COLUMN_ATTR}] [data-conversation-header-corner] {
+  display: contents;
+}
+/* 「更多」由标签栏自己渲染（见 SessionTabBar）；只有宿主真给了 contextMenus
+   服务、栏里真的补出这枚按钮时才藏宿主标题行里那一枚，避免同一个会话菜单
+   出现两次（服务缺失时宿主原按钮继续可用）。 */
+[${COLUMN_ATTR}]:has([data-dsh-leader-agent-tabs-menu]) [class*="headerMenuButton"] {
+  display: none;
+}
+.dsh-leader-agent-tabs-action {
+  flex: none;
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dsw-radius-sm, 8px);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+.dsh-leader-agent-tabs-action:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+.dsh-leader-agent-tabs-action:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary, #4176e6);
+  outline-offset: -2px;
 }
 .dsh-leader-agent-tabs-scroll {
   flex: 1 1 auto;
@@ -134,6 +206,10 @@ const STYLE_TEXT = `
   width: 12px;
   height: 12px;
 }
+/* 标签要的是信号灯，不是加载态：宿主的 StateDot 运行中画转圈 spinner，这里改成
+   与看板卡面同一套静态点——运行中琥珀色呼吸、完成未读蓝、空闲弱化灰。形状与
+   色相都跟卡面对应，扫描标签时不会把「正在跑」读成「正在加载」。 */
+${signalStyleText('dsh-leader-agent-tab-signal')}
 .dsh-leader-agent-tab-label {
   min-width: 0;
   overflow: hidden;
@@ -181,48 +257,6 @@ function ensureStyles() {
   style.id = STYLE_ID
   style.textContent = STYLE_TEXT
   document.head.append(style)
-}
-
-/**
- * 找主面板槽位。
- *
- * 宿主在 web-app 的壳层给主区域标了 `data-slot="main"`；`[class*="mainPanel"]`
- * 是宿主改掉槽位标记时的兜底（CSS module 的类名保留了 `mainPanel` 词干）。
- *
- * @returns {Element | null} 槽位节点
- */
-function findMainSlot() {
-  if (typeof document === 'undefined') return null
-  return document.querySelector('#root [data-slot="main"]')
-    ?? document.querySelector('[data-slot="main"]')
-    ?? document.querySelector('[class*="mainPanel"]')
-}
-
-/**
- * 找标签栏要插入的列。
- *
- * 槽位外面可能还套着带 `data-slot` 的包装；往上走到最后一个带槽位标记的节点。
- * 走到主面板为止——主面板自己是 `display:flex; flex-direction:column` 的
- * 容器，标签栏作为它的第一个子节点即可。
- *
- * @param {Element} slot - 主槽位
- * @returns {Element} 插入列
- */
-function findColumn(slot) {
-  let column = slot.parentElement
-  while (column !== null && column.hasAttribute('data-slot') && column.parentElement !== null) {
-    column = column.parentElement
-  }
-  return column ?? slot
-}
-
-/** 跳过 `display:contents` 包装，取真正占布局的会话体。 */
-function mainBodyOf(slot) {
-  let body = slot.firstElementChild
-  while (body !== null && typeof window !== 'undefined' && window.getComputedStyle(body).display === 'contents') {
-    body = body.firstElementChild
-  }
-  return body
 }
 
 /**
@@ -336,8 +370,10 @@ export function SessionTabsAnchor(props) {
  * @param {object} props - 槽位注入的运行时能力
  * @returns {object | null} React 元素；不需要标签栏时不渲染
  */
-function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, getSidebarRight, reportVisible }) {
+function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, getSidebarRight, getContextMenus, reportVisible }) {
   const sessions = getSessions?.()
+  const menus = getContextMenus?.() ?? null
+  const hasMenu = hasSessionMenu(menus)
   const [snapshot, setSnapshot] = useState(() => sessions?.list?.getSnapshot?.() ?? {
     phase: 'pending',
     ids: [],
@@ -348,6 +384,7 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   const [groups, setGroups] = useState([])
   const [store, setStore] = useState(readStore)
   const [panelActive, setPanelActive] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const lastCurrent = useRef(undefined)
   const tabRefs = useRef(new Map())
   // 键盘切换后要聚焦的标签：宿主切会话时会把焦点收回会话区，等它落定再抢回来。
@@ -401,6 +438,32 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
   }, [getLayout])
 
   const currentSessionId = useMemo(() => currentSessionIdOf(snapshot.byId), [snapshot])
+
+  // 菜单可能被宿主的快捷键/外部点击关掉；按钮的 aria-expanded 跟着服务走，
+  // 不能只记自己点击的那一下。
+  useEffect(() => {
+    const active = menus?.active
+    if (active === undefined || typeof active.subscribe !== 'function') return undefined
+    const sync = () => {
+      const target = active.getSnapshot()
+      setMenuOpen(target?.kind === 'sessionHeader' && target.value?.sessionId === currentSessionId)
+    }
+    sync()
+    return active.subscribe(sync)
+  }, [menus, currentSessionId])
+
+  // 程序化切会话不会经过标签点击的 pointerdown，宿主菜单不会自己关；旧会话的
+  // sessionHeader 菜单必须在这时收掉，否则按钮报 false、菜单却还在旧目标上。
+  useEffect(() => {
+    const active = menus?.active
+    if (active === undefined || typeof active.getSnapshot !== 'function' || typeof menus.close !== 'function') return
+    const target = active.getSnapshot()
+    if (target?.kind === 'sessionHeader'
+      && typeof target.value?.sessionId === 'string'
+      && target.value.sessionId !== currentSessionId) {
+      menus.close()
+    }
+  }, [menus, currentSessionId])
 
   useEffect(() => {
     const previous = lastCurrent.current
@@ -518,8 +581,22 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
 
   if (!barVisible) return null
 
-  const listLabel = typeof t === 'function' ? t('tabs.list') : '项目会话标签'
-  const closeLabel = typeof t === 'function' ? t('tabs.close') : '关闭标签'
+  const listLabel = t('tabs.list')
+  const closeLabel = t('tabs.close')
+  const moreLabel = t('tabs.more')
+  const openSessionMenu = (event) => {
+    if (!hasMenu || currentSessionId === undefined) return
+    if (menuOpen) {
+      menus.close()
+      return
+    }
+    const rect = event.currentTarget.getBoundingClientRect()
+    menus.open(
+      { kind: 'sessionHeader', value: { sessionId: currentSessionId } },
+      { x: rect.left, y: rect.bottom },
+      { button: 'dsh-leader-agent-session-tabs-more' },
+    )
+  }
   const openSession = (sessionId) => {
     if (sessionId === view.activeSessionId) return
     const workspace = getUiWorkspace?.()
@@ -543,12 +620,11 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
     {
       className: 'dsh-leader-agent-tabs',
       'data-dsh-leader-agent-session-tabs-bar': '',
-      role: 'tablist',
-      'aria-label': listLabel,
+      ...(hasMenu ? { 'data-dsh-leader-agent-tabs-menu': '' } : {}),
     },
     createElement(
       'div',
-      { className: 'dsh-leader-agent-tabs-scroll' },
+      { className: 'dsh-leader-agent-tabs-scroll', role: 'tablist', 'aria-label': listLabel },
       ...view.tabs.map((tab) => createElement(
         'div',
         {
@@ -594,9 +670,12 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
           : createElement(
               'span',
               { className: 'dsh-leader-agent-tab-dot' },
-              createElement(StateDot, {
-                state: tab.state,
-                size: tab.state === 'ongoing' ? 12 : 8,
+              createElement('span', {
+                className: `dsh-leader-agent-tab-signal dsh-leader-agent-tab-signal-${tab.state}`,
+                'data-signal': tab.state,
+                role: 'img',
+                'aria-label': t(SIGNAL_LABEL_KEYS[tab.state]),
+                title: t(SIGNAL_LABEL_KEYS[tab.state]),
               }),
             ),
         createElement('span', { className: 'dsh-leader-agent-tab-label' }, tab.label),
@@ -618,6 +697,23 @@ function SessionTabBar({ t, callRemote, getSessions, getUiWorkspace, getLayout, 
           : null,
       )),
     ),
+    !hasMenu
+      ? null
+      : createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'dsh-leader-agent-tabs-action',
+            'data-dsh-leader-agent-tabs-more': '',
+            'aria-label': moreLabel,
+            'aria-haspopup': 'menu',
+            'aria-expanded': menuOpen ? 'true' : 'false',
+            title: moreLabel,
+            disabled: currentSessionId === undefined,
+            onClick: openSessionMenu,
+          },
+          productIcon('ellipsis-outline', { size: 14 }),
+        ),
   )
 }
 

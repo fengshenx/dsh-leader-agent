@@ -116,7 +116,26 @@ const NAMESPACE_SERVICE_KEY = `remote.${PROJECT_REMOTE_NAMESPACE}`
 
 const readyListeners = new Set()
 let ready = false
-let mountError = ''
+
+/**
+ * 项目通道错误。插件自有诊断只保留 code；界面文案由调用方按当前语言映射，
+ * 宿主给的 `result.error.message` 原样留在 `detail`，不在这里拼接。
+ */
+export class ProjectRemoteError extends Error {
+  /**
+   * @param {'remote-missing' | 'namespace-missing' | 'call-failed'} code - 错误码
+   * @param {{ method?: string, hostCode?: string, detail?: string }} [details] - 调用上下文
+   */
+  constructor(code, { method, hostCode, detail } = {}) {
+    const context = [method, hostCode].filter((part) => typeof part === 'string' && part !== '').join(' / ')
+    super(context === '' ? code : `${code} (${context})`)
+    this.name = 'ProjectRemoteError'
+    this.code = code
+    this.method = method
+    this.hostCode = hostCode
+    this.detail = typeof detail === 'string' ? detail : ''
+  }
+}
 
 /**
  * 通道是否已挂好。
@@ -124,24 +143,6 @@ let mountError = ''
  */
 export function isProjectRemoteReady() {
   return ready
-}
-
-/**
- * 挂载失败的原因。
- * @returns {string} 错误说明；没有错误时是空串
- */
-export function projectRemoteError() {
-  return mountError
-}
-
-/**
- * 记录挂载失败的原因，供界面显示。
- * @param {string} message - 错误说明
- * @returns {void}
- */
-export function reportProjectRemoteError(message) {
-  mountError = message
-  notifyReady()
 }
 
 /**
@@ -174,10 +175,9 @@ function notifyReady() {
  */
 export async function mountProjectRemote(ctx) {
   const remote = ctx.get('remote')
-  if (remote === undefined) throw new Error('宿主未提供远程调用通道')
+  if (remote === undefined) throw new ProjectRemoteError('remote-missing')
   await remote.$mount(PROJECT_REMOTE_CONTRIBUTION)
   ready = true
-  mountError = ''
   notifyReady()
 }
 
@@ -190,16 +190,43 @@ export async function mountProjectRemote(ctx) {
  */
 export async function callProjectRemote(ctx, method, args = []) {
   const namespace = ctx.get(NAMESPACE_SERVICE_KEY)
-  if (namespace === undefined) throw new Error('项目通道不可用')
+  if (namespace === undefined) throw new ProjectRemoteError('namespace-missing')
   const result = await namespace[method](...args)
   if (!result.ok) {
-    const code = result.error?.code ?? 'unknown'
-    // 宿主把业务失败的原因写在 message 里（如「卡片已归档，归档是终态」）。只报
-    // code 的话，用户看到的是一条无法照着处理的 `gateway/internal`。
-    const reason = typeof result.error?.message === 'string' && result.error.message !== ''
-      ? `：${result.error.message}`
-      : ''
-    throw new Error(`项目通道调用失败：${method}（${code}）${reason}`)
+    throw new ProjectRemoteError('call-failed', {
+      method,
+      hostCode: result.error?.code ?? 'unknown',
+      // 宿主的业务原因（可能仍是宿主语言）原样保留，映射层只负责包前缀。
+      detail: typeof result.error?.message === 'string' ? result.error.message : '',
+    })
   }
   return result.value
+}
+
+/**
+ * 把项目通道错误映射成当前语言的文案。
+ *
+ * 非通道错误沿用调用方的通用模板；通道错误只翻插件自有的 code，宿主 message
+ * 作为 detail 原样附在句尾（不在这里翻译）。
+ *
+ * @param {unknown} error - 捕获到的错误
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
+ * @param {string} fallbackKey - 调用方的操作文案 key（通道失败时也用它作前缀）
+ * @returns {string} 用户可见文案
+ */
+export function projectRemoteErrorText(error, t, fallbackKey) {
+  if (error instanceof ProjectRemoteError) {
+    if (error.code === 'remote-missing') return t('project.remoteNotReady')
+    if (error.code === 'namespace-missing') return t('project.error.namespaceMissing')
+    // 前缀必须保留调用方的操作语义（改名/删除/读卡片）；method 与 hostCode 只作为
+    // 括号里的技术细节，宿主 message 原样放在前面。
+    const technical = [error.method, error.hostCode]
+      .filter((part) => typeof part === 'string' && part !== '')
+      .join(' / ')
+    const message = technical === ''
+      ? error.detail
+      : error.detail === '' ? technical : `${error.detail} (${technical})`
+    return t(fallbackKey, { message })
+  }
+  return t(fallbackKey, { message: error instanceof Error ? error.message : String(error) })
 }

@@ -10,7 +10,7 @@ Status: implemented
 
 - **结算按回合归属**，不按会话：`turn/start` 开回合、`user/message` 认输入来源、`assistant/message` 攒这一轮文本、`turn/end` 结算。
 - **两个条件都满足才结算**：这一轮真的取走了在飞记录的那条消息（消息 id 匹配），且这一轮的第一条人消息就是 leader 任务（`source.kind` 为 worker-task、带 `parentSessionId` 凭证）。用户先开口的回合永不结算。
-- **消息 id 在投递前预生成并先记进在飞表**：worker 可能在本轮收尾时立刻取走它，等 `send` 返回再登记会赶不上那次 `turn/end`；投递失败回滚记录。
+- **消息 id 在投递前预生成并先记进在飞表**：worker 可能在本轮收尾时立刻取走它，等 `send` 返回再登记会赶不上那次 `turn/end`；投递失败只回滚自己登记的那条，不能吞掉并发成功写入的后一条。
 - **被用户回合取走的记录直接丢弃**：消息已经进过上下文，留到下一轮只会把别人的产物认成它的。没被取走的记录留着，等它真正进入的那一轮。
 - **摘要从回合里攒**：空 `assistant/message` 不覆盖已有文本；落盘失败冻结的摘要在下一次 `turn/end` 重试时保持不变。
 
@@ -26,10 +26,11 @@ Status: implemented
 - **回报可能迟一轮**：leader 的消息在用户回合运行期间投进来、被下一轮取走时，回报在下一轮结束时才到。
 - **被用户回合取走的派工不回报**：用户接管了这次对话，leader 收不到那一轮的通知；要回报须重新 `message_worker`。
 - **没被取走的记录会留到下一次开工**：回合被取消等情况下消息一直不进上下文，记录留在内存，直到下一次 `message_worker` 覆盖；期间名册把该 worker 算作在忙。
+- **并发投递失败只回滚自己那条**：A 失败、B 已成功时，A 不能删 B 的在飞记录；否则 B 的消息已投出、`turn/end` 却找不到记录，leader 永远收不到 B 的回报。
 - **回合归属依赖宿主的追加顺序**（`turn/start` → `user/message` → `assistant/message` → `turn/end`）：这是低于 `engines.dsh` 下限的宿主不具备的契约，与订阅 `session/event` 是同一类版本前提。
 
 收益：用户跟 worker 聊天不再触发 leader 回报，leader 的消息也不会被用户回合顶名结算。
 
 ## Testing
 
-`tests/dispatch.test.js` 新增三条：用户回合结束后不回报、派工消息留到下一轮并取下一轮文本；消息被用户回合取走时丢弃记录且之后不再误结算；续聊投递失败时把在飞记录退回上一条。`tests/dispatch-continuation.test.js` 与 `tests/dispatch.test.js` 的夹具改为按宿主顺序落回合边界。双向验证：把归属判据退回「会话里有记录就结算」→ 前两条红；把投递失败改成直接删记录 → 第三条红；还原 → 全绿。
+`tests/dispatch.test.js` 新增四条：用户回合结束后不回报、派工消息留到下一轮并取下一轮文本；消息被用户回合取走时丢弃记录且之后不再误结算；续聊投递失败时把在飞记录退回上一条；并发 A 失败、B 已成功时只回滚 A，`inflightCount()` 保持 1。`tests/dispatch-continuation.test.js` 与 `tests/dispatch.test.js` 的夹具改为按宿主顺序落回合边界。双向验证：把归属判据退回「会话里有记录就结算」→ 前两条红；把回滚改成无条件删/恢复 → 并发用例红（期望 1、实得 0）；还原 → 全绿。

@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **部分被 [leader 工具面补上 wait_agent](../bug-fix/2026-11-20-leader-wait-agent-deny.md) 取代**：宿主 subagent 清单已从三件扩为四件，文中「三件」是当时口径；读卡边界本身不变。
+
 ## Problem
 
 worker 的卡片事实原先只有注入一条通道（`dsh-leader-agent:task-card`）。注入 provider 求值失败、绑定被摘，或压缩后快照被摘要吞掉时，worker 手里没有 cardId，无法确认自己该做什么；它也需要看同项目里依赖卡的现状，而注入只给它自己的卡。现有工具对不上：`list_cards` 只给 leader，`create_card` / `update_card` 是写通道，worker 没有任何读入口。

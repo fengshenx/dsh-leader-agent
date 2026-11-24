@@ -74,16 +74,16 @@ export function requiredWatermark(rows, currentSessionId) {
  * @param {object} options - 选项
  * @param {number} options.pageSize - 一页的行数
  * @param {number} [options.baseline] - 折叠基线，默认等于 `pageSize`
- * @param {string} options.noun - 按钮文案里的名词（「会话」「卡片」）
+ * @param {(hiddenCount: number) => string} options.expandLabel - 「展开其余」按钮文案
  * @returns {{ rows: object[], hiddenCount: number, expanded: boolean, expandLabel: string }} 视图
  */
-export function foldRows(rows, watermark, { pageSize, baseline = pageSize, noun }) {
+export function foldRows(rows, watermark, { pageSize, baseline = pageSize, expandLabel }) {
   const limit = Math.max(baseline, watermark)
   const visible = watermarkRows(rows, limit)
   return {
     ...visible,
     expanded: visible.hiddenCount === 0 && limit > baseline,
-    expandLabel: `展开其余 ${visible.hiddenCount} 个${noun}`,
+    expandLabel: expandLabel(visible.hiddenCount),
   }
 }
 
@@ -120,11 +120,15 @@ export function nextWatermark(hiddenCount, visibleCount, pageSize = SESSION_WATE
  *
  * @param {readonly object[]} rows - 会话行
  * @param {number} storedWatermark - 用户展开出来的水位（0 表示没展开过）
- * @param {string} [currentSessionId] - 当前打开的会话 id
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @param {number} [pageSize] - 一页的条数，默认 {@link SESSION_WATERMARK_BASE}
  * @returns {{ rows: object[], hiddenCount: number, expanded: boolean, expandLabel: string }} 视图
  */
-export function foldSessions(rows, storedWatermark, currentSessionId, pageSize = SESSION_WATERMARK_BASE) {
+export function foldSessions(rows, storedWatermark, currentSessionId, t, pageSize = SESSION_WATERMARK_BASE) {
   const baseline = Math.max(pageSize, requiredWatermark(rows, currentSessionId))
-  return foldRows(rows, Math.max(baseline, storedWatermark), { pageSize, baseline, noun: '会话' })
+  return foldRows(rows, Math.max(baseline, storedWatermark), {
+    pageSize,
+    baseline,
+    expandLabel: (hiddenCount) => t('session.fold.expand', { count: hiddenCount }),
+  })
 }

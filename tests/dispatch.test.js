@@ -315,7 +315,9 @@ function createMemoryRegistry() {
   const workers = new Map()
   return {
     async register(worker) {
-      workers.set(worker.childId, { ...worker, registeredAt: Date.now() })
+      const registeredAt = typeof worker.registeredAt === 'number' ? worker.registeredAt : Date.now()
+      const lastUsedAt = typeof worker.lastUsedAt === 'number' ? worker.lastUsedAt : registeredAt
+      workers.set(worker.childId, { ...worker, registeredAt, lastUsedAt })
       return workers.get(worker.childId)
     },
     async get(childId) {
@@ -330,10 +332,17 @@ function createMemoryRegistry() {
       existing.name = name
       return existing
     },
+    async markUsed(childId, at = Date.now()) {
+      const existing = workers.get(childId)
+      if (existing === undefined) return undefined
+      existing.lastUsedAt = at
+      return existing
+    },
     async markReported(childId, at = Date.now()) {
       const existing = workers.get(childId)
       if (existing === undefined) return undefined
       existing.lastReportAt = at
+      existing.lastUsedAt = at
       return existing
     },
   }
@@ -2053,8 +2062,14 @@ test('未归档 worker 到顶时拒绝新建，并给出可复用候选', async 
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
-  await fixture.workers.register({ childId: 'child-old-1', parentSessionId: 'parent-1', name: 'research-sources' })
-  await fixture.workers.register({ childId: 'child-old-2', parentSessionId: 'parent-1', name: 'write-summary' })
+  await fixture.workers.register({
+    childId: 'child-old-1', parentSessionId: 'parent-1', name: 'research-sources',
+    registeredAt: 1_700_000_000_000, lastUsedAt: 1_700_000_000_000,
+  })
+  await fixture.workers.register({
+    childId: 'child-old-2', parentSessionId: 'parent-1', name: 'write-summary',
+    registeredAt: 1_700_000_001_000, lastUsedAt: 1_700_000_001_000,
+  })
   const dispatcher = makeDispatcher({
     ctx: fixture.ctx,
     store,
@@ -2072,15 +2087,63 @@ test('未归档 worker 到顶时拒绝新建，并给出可复用候选', async 
     }),
     (error) => {
       assert.match(error.message, /已达上限 2/)
-      // 候选要能直接被拿去续聊：id 与名字都在提示里。
-      assert.match(error.message, /child-old-2 write-summary/)
+      // 候选要能直接被拿去续聊：id 与名字都在提示里；旧的 lastUsedAt 排在前面。
       assert.match(error.message, /child-old-1 research-sources/)
+      assert.match(error.message, /child-old-2 write-summary/)
+      assert.ok(error.message.indexOf('child-old-1') < error.message.indexOf('child-old-2'))
+      assert.match(error.message, /lastUsedAt=/)
       assert.match(error.message, /force/)
       return true
     },
   )
   // 拒绝发生在拉起会话之前
   assert.equal(fixture.spawned.length, 0)
+})
+
+test('名册到顶时 idle 按 lastUsedAt 升序，候选最久未用优先', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 三条同毫秒登记，只有 lastUsedAt 不同：删掉 lastUsedAt 比较后按 id 兜底
+  // 会得到 mid→new→old，不能碰巧仍是旧→中→新。
+  const registeredAt = 1_700_000_000_000
+  await fixture.workers.register({
+    childId: 'child-lru-old', parentSessionId: 'parent-1', name: '最久未用',
+    registeredAt, lastUsedAt: 1_700_000_000_000,
+  })
+  await fixture.workers.register({
+    childId: 'child-lru-mid', parentSessionId: 'parent-1', name: '中间使用',
+    registeredAt, lastUsedAt: 1_700_000_001_000,
+  })
+  await fixture.workers.register({
+    childId: 'child-lru-new', parentSessionId: 'parent-1', name: '最近新建',
+    registeredAt, lastUsedAt: 1_700_000_002_000,
+  })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 3,
+    archivedSessionIds: () => [],
+  })
+
+  await assert.rejects(
+    () => dispatcher.dispatch({
+      parent: createParent('parent-1', fixture.delivered),
+      name: '新工',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      const oldAt = error.message.indexOf('child-lru-old')
+      const midAt = error.message.indexOf('child-lru-mid')
+      const newAt = error.message.indexOf('child-lru-new')
+      assert.ok(oldAt >= 0 && midAt >= 0 && newAt >= 0, error.message)
+      assert.ok(oldAt < midAt && midAt < newAt, `候选顺序应为旧→中→新：${error.message}`)
+      assert.match(error.message, /lastUsedAt=2023-11-14T/)
+      assert.match(error.message, /最近新建，保留上下文/)
+      return true
+    },
+  )
 })
 
 test('名册到顶时不推荐挂着未完成卡的 worker，单独说明怎么释放', async () => {
@@ -2231,6 +2294,112 @@ test('名册已归档的记录不占名额', async () => {
   })
   assert.equal(record.name, '新工')
   assert.equal(fixture.spawned.length, 1)
+})
+
+test('名册上限按项目算：别的项目攒满不占本项目名额', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 全局名册已经到上限，但都属于另一个项目；本项目一条工都没有。
+  await fixture.workers.register({ childId: 'child-b-1', parentSessionId: 'leader-b', name: 'B 工 1' })
+  await fixture.workers.register({ childId: 'child-b-2', parentSessionId: 'leader-b', name: 'B 工 2' })
+  const projects = new Map([
+    ['leader-a', { id: 'project-a', leaderSessionId: 'leader-a', retiredLeaderSessionIds: [] }],
+    ['leader-b', { id: 'project-b', leaderSessionId: 'leader-b', retiredLeaderSessionIds: [] }],
+  ])
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 2,
+    archivedSessionIds: () => [],
+    resolveProject: async (sessionId) => projects.get(sessionId),
+    getCard: async () => undefined,
+  })
+
+  const record = await dispatcher.dispatch({
+    parent: createParent('leader-a', fixture.delivered),
+    name: '新工',
+    signal: new AbortController().signal,
+  })
+  assert.equal(record.name, '新工')
+  assert.equal(fixture.spawned.length, 1)
+})
+
+test('名册到顶的提示只列本项目的候选', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-a', parentSessionId: 'leader-a', name: 'A 工' })
+  await fixture.workers.register({ childId: 'child-b', parentSessionId: 'leader-b', name: 'B 工' })
+  const projects = new Map([
+    ['leader-a', { id: 'project-a', leaderSessionId: 'leader-a', retiredLeaderSessionIds: [] }],
+    ['leader-b', { id: 'project-b', leaderSessionId: 'leader-b', retiredLeaderSessionIds: [] }],
+  ])
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 1,
+    archivedSessionIds: () => [],
+    resolveProject: async (sessionId) => projects.get(sessionId),
+    getCard: async () => undefined,
+  })
+
+  await assert.rejects(
+    () => dispatcher.dispatch({
+      parent: createParent('leader-a', fixture.delivered),
+      name: '新工',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assert.match(error.message, /本项目未归档的 worker 已达上限 1/)
+      // 另一个项目的 worker 既不能占名额，也不能出现在可复用候选里。
+      assert.match(error.message, /child-a A 工/)
+      assert.doesNotMatch(error.message, /child-b/)
+      return true
+    },
+  )
+  assert.equal(fixture.spawned.length, 0)
+})
+
+test('退役 leader 派的 worker 仍算本项目名额，别的项目不占', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  // 换 leader 后 worker 会改绑到新会话；即使改绑没跑完（父会话还是退役那条），
+  // 它仍属于这个项目、仍占名额。
+  await fixture.workers.register({ childId: 'child-old', parentSessionId: 'leader-old', name: '旧工' })
+  // 同一条名册里再放一个别的项目的 worker：它不能占本项目名额，也不能进候选。
+  await fixture.workers.register({ childId: 'child-b', parentSessionId: 'leader-b', name: 'B 工' })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    activeWorkerLimit: 1,
+    archivedSessionIds: () => [],
+    resolveProject: async () => ({
+      id: 'project-a',
+      leaderSessionId: 'leader-a',
+      retiredLeaderSessionIds: ['leader-old'],
+    }),
+    getCard: async () => undefined,
+  })
+
+  await assert.rejects(
+    () => dispatcher.dispatch({
+      parent: createParent('leader-a', fixture.delivered),
+      name: '新工',
+      signal: new AbortController().signal,
+    }),
+    (error) => {
+      assert.match(error.message, /已达上限 1/)
+      assert.match(error.message, /child-old 旧工/)
+      // 去掉项目过滤后，child-b 会同时进计数与候选，这条断言就会红。
+      assert.doesNotMatch(error.message, /child-b/)
+      return true
+    },
+  )
 })
 
 test('force 非空时越过名册上限', async () => {
@@ -2837,6 +3006,122 @@ test('每轮结算把回报时刻写进登记表，供巡查与槽位行判断�
   assert.equal((await fixture.workers.get(childId)).lastReportAt, reportedAt)
 })
 
+test('message_worker 成功投递会记录 lastUsedAt', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  let used = 0
+  const workers = {
+    ...fixture.workers,
+    async markUsed(childId, at) {
+      used += 1
+      return fixture.workers.markUsed(childId, at)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '使用工',
+    signal: new AbortController().signal,
+  })
+  assert.ok(used >= 1)
+  assert.equal(typeof (await fixture.workers.get(fixture.spawned.at(-1).sessionId)).lastUsedAt, 'number')
+})
+
+test('markUsed 落盘慢于 turn/end 时仍在飞记录结算', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  let releaseMarkUsed
+  const markUsedGate = new Promise((resolve) => { releaseMarkUsed = resolve })
+  let markUsedStarted
+  const started = new Promise((resolve) => { markUsedStarted = resolve })
+  const workers = {
+    ...fixture.workers,
+    async markUsed(childId, at) {
+      markUsedStarted()
+      await markUsedGate
+      return fixture.workers.markUsed(childId, at)
+    },
+  }
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  try {
+    const record = await dispatcher.dispatch({
+      parent,
+      name: '竞态工',
+      signal: new AbortController().signal,
+    })
+    const sending = dispatcher.message({
+      parent,
+      sessionId: record.childId,
+      message: '做一件事',
+      signal: new AbortController().signal,
+    })
+    // markUsed 已经进入落盘等待；此时让 worker 结束，旧顺序会因 inflight 未登记
+    // 而结算失败。turn/end 不能被落盘窗口挡住。
+    await started
+    const settled = await fixture.finishTurn(record.childId, { text: '竞态产物' })
+    releaseMarkUsed()
+    await sending
+    assert.equal(settled, true)
+    await waitFor(() => fixture.delivered.length === 1)
+    assert.match(fixture.delivered[0].content[0].text, /竞态产物/)
+  } finally {
+    releaseMarkUsed()
+  }
+})
+
+test('并发投递失败只回滚自己的在飞记录', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const parent = createParent('parent-1', fixture.delivered)
+  const childId = 'worker-concurrent'
+  await fixture.workers.register({ childId, parentSessionId: parent.id, name: '并发工', registeredAt: 1 })
+  /** @type {{ options: object, resolve: (value: string) => void, reject: (error: Error) => void }[]} */
+  const sends = []
+  const dispatcher = createDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    workerSessions: {
+      async spawn() {
+        throw new Error('本用例只验证 message 的并发回滚')
+      },
+      send(options) {
+        return new Promise((resolve, reject) => {
+          sends.push({ options, resolve, reject })
+        })
+      },
+    },
+    leaderIndex: {
+      async awaitIndex() {
+        return true
+      },
+      isLeaderSession: () => true,
+    },
+  })
+  const signal = new AbortController().signal
+  const first = dispatcher.message({ parent, sessionId: childId, message: 'A', signal })
+  const second = dispatcher.message({ parent, sessionId: childId, message: 'B', signal })
+  await waitFor(() => sends.length === 2)
+  const sendA = sends.find((send) => send.options.text === 'A')
+  const sendB = sends.find((send) => send.options.text === 'B')
+  assert.ok(sendA)
+  assert.ok(sendB)
+  sendB.resolve('live')
+  await second
+  sendA.reject(new Error('A 投递失败'))
+  await assert.rejects(first, /A 投递失败/)
+  // A 失败时 B 已经登记成功：只能回滚 A 自己那条，不能把 B 的在飞记录吞掉。
+  assert.equal(dispatcher.inflightCount(), 1)
+})
+
 test('未到 15 分钟不注入巡查提醒', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
@@ -2844,14 +3129,17 @@ test('未到 15 分钟不注入巡查提醒', async () => {
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
-  await dispatchAndStart(dispatcher, {
+  const record = await dispatchAndStart(dispatcher, {
     parent,
     initialMessage: '做一件长活',
     name: '长活',
     signal: new AbortController().signal,
   })
-  const startedAt = Date.now()
-  assert.equal(await dispatcher.scanStalled(startedAt + 15 * 60 * 1000 - 1), 0)
+  // 用真实的在跑起点而不是投递前后的 Date.now()：这样恰好验证
+  // 「阈值前 1ms 不报警」，提前 1ms 的回归也会在集成层变红。
+  const runningSince = (await dispatcher.workerFacts()).get(record.childId)?.runningSince
+  assert.equal(typeof runningSince, 'number')
+  assert.equal(await dispatcher.scanStalled(runningSince + 15 * 60 * 1000 - 1), 0)
   assert.equal(fixture.delivered.length, 0)
   assert.equal((await store.listPending()).length, 0)
   dispatcher.dispose()

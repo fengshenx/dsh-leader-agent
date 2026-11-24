@@ -6,7 +6,7 @@
 
 用当前宿主提供的卡片工具和 `git worktree list` 核对任务指针；开发 worktree 以 git 名录与项目约定的 worktree 目录为准，不维护盘上注册表。执行者活性以宿主为准，PR/CI 以代码托管平台为准。名录不是任务内容或完成证明。
 
-用户授权协调既有执行者后才投递消息。派工、回派与暂停都走本 bundle 的 `message_worker`（`sessionId` + `message`），不用别的消息工具猜会话 id——宿主的 `list_agents` / `send_message` / `interrupt_agent` 只认宿主 subagent 体系，本 bundle 的 worker 是普通会话，它们看不到、也投不到。
+用户授权协调既有执行者后才投递消息。派工、回派与暂停都走本 bundle 的 `message_worker`（`sessionId` + `message`），不用别的消息工具猜会话 id——宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 只认宿主 subagent 体系，本 bundle 的 worker 是普通会话，它们看不到、也投不到。
 
 派活绑定卡槽位，不按「谁空闲」：投递前用查卡工具确认任务挂在哪张卡、槽位上是谁，只派给那张卡的槽位执行者——空闲不等于可派，一会话一时只服务一张卡的一个槽位。**挂着未完成卡的 worker 不能接别的工作**（投递门禁只放行同卡续跑）：先把它手上的卡标 `done` 或归档，槽位会自动释放，worker 才能接新任务。**同时挂多张 `active` 卡**（整卡替换 `slots` 时会造出来）一律拒绝投递，与声明哪张卡无关——先关掉多余的卡收敛到一张。`idle` 不等于有人可派：卡槽位与看板信号都看不出「被用户停止」，停用会话状态即 idle。不做事前判断，**投递即探测**：`message_worker` 失败后按错误信息判——报「没有派工记录」说明该会话已撤销（归档会摘掉登记），视作死槽，用 `update_card` 把该槽位改派给新会话；其余错误是普通失败，照常上报，不动槽位。
 

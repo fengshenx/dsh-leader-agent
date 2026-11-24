@@ -23,7 +23,7 @@ import {
  * @param {(sessionId: string) => Promise<object[]>} [options.cardBindingsOf] - 会话的卡片绑定
  * @returns {Promise<{ home: string, store: object, tools: Record<string, object> }>} 工具集、存储与 home 目录
  */
-async function createTools(resolveProject, canWrite, { isWorkerSession, cardBindingsOf } = {}) {
+async function createTools(resolveProject, canWrite, { isWorkerSession, cardBindingsOf, logger } = {}) {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-cardtools-'))
   // 可控时钟：卡片排序按更新时间戳，两次写入落在同一毫秒会退回插入序，
   // 断言「最近更新的排前面」就成了碰运气的 flaky 用例。
@@ -33,8 +33,8 @@ async function createTools(resolveProject, canWrite, { isWorkerSession, cardBind
     home,
     store,
     tools: {
-      create_card: createCreateCardTool({ store, resolveProject, canWrite }),
-      update_card: createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf }),
+      create_card: createCreateCardTool({ store, resolveProject, canWrite, logger }),
+      update_card: createUpdateCardTool({ store, resolveProject, canWrite, isWorkerSession, cardBindingsOf, logger }),
       list_cards: createListCardsTool({ store, resolveProject }),
       read_card: createReadCardTool({ store, resolveProject, isWorkerSession, cardBindingsOf }),
     },
@@ -254,6 +254,103 @@ test('改卡工具的入参 schema 暴露 addLinks，模型才用得到', async 
   }
 })
 
+test('卡片工具的链接描述只放交付物入口，不挂评论与行内评论锚点', async () => {
+  const { home, tools } = await createTools()
+  try {
+    for (const description of [
+      tools.update_card.parameters.properties.addLinks.description,
+      tools.update_card.parameters.properties.links.description,
+      tools.create_card.parameters.properties.links.description,
+    ]) {
+      assert.match(description, /交付物入口/)
+      assert.match(description, /#issuecomment-/)
+      assert.match(description, /#discussion_r/)
+      assert.match(description, /#pullrequestreview-/)
+      assert.match(description, /过程证据.*回报正文/)
+      assert.doesNotMatch(description, /spec/)
+    }
+    assert.match(tools.update_card.parameters.properties.links.description, /行内评论/)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('评论锚点写入只告警不阻断，普通交付物链接不告警', async () => {
+  const messages = []
+  const { home, tools } = await createTools(undefined, undefined, {
+    logger: (message) => messages.push(message),
+  })
+  try {
+    const created = await tools.create_card.execute({
+      title: '审查',
+      links: [{
+        label: '审查评论',
+        url: 'https://github.com/o/r/pull/1#issuecomment-123',
+      }],
+    }, exec)
+    assert.equal(created.card.number, 1)
+    assert.equal(messages.length, 1)
+    assert.match(messages[0], /卡片 #1 的 links 含评论锚点/)
+    assert.match(messages[0], /回报正文/)
+
+    const updated = await tools.update_card.execute({
+      id: created.card.id,
+      addLinks: [{
+        label: '讨论',
+        url: 'https://github.com/o/r/pull/1#discussion_r456',
+      }],
+    }, exec)
+    assert.equal(updated.card.number, 1)
+    assert.equal(messages.length, 2)
+    assert.match(messages[1], /卡片 #1 的 addLinks 含评论锚点/)
+
+    await tools.update_card.execute({
+      id: created.card.id,
+      links: [{
+        label: 'Review',
+        url: 'https://github.com/o/r/pull/1#pullrequestreview-789',
+      }],
+    }, exec)
+    assert.equal(messages.length, 3)
+    assert.match(messages[2], /卡片 #1 的 links 含评论锚点/)
+
+    await tools.update_card.execute({
+      id: created.card.id,
+      links: [{ label: 'PR', url: 'https://github.com/o/r/pull/1' }],
+    }, exec)
+    assert.equal(messages.length, 3, '普通交付物入口不产生告警')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('logger 抛错时评论锚点写入仍成功', async () => {
+  const { home, tools } = await createTools(undefined, undefined, {
+    logger: () => { throw new Error('logger boom') },
+  })
+  try {
+    const created = await tools.create_card.execute({
+      title: '审查',
+      links: [{
+        label: '审查评论',
+        url: 'https://github.com/o/r/pull/1#issuecomment-123',
+      }],
+    }, exec)
+    assert.equal(created.card.number, 1)
+
+    const updated = await tools.update_card.execute({
+      id: created.card.id,
+      addLinks: [{
+        label: '讨论',
+        url: 'https://github.com/o/r/pull/1#discussion_r456',
+      }],
+    }, exec)
+    assert.equal(updated.card.number, 1)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
 test('查卡工具默认只列 active，归档卡要显式要', async () => {
   const { home, tools } = await createTools()
   try {
@@ -446,6 +543,102 @@ test('建卡与改卡工具接受 ASCII 槽位名', async () => {
       exec,
     )
     assert.deepEqual(Object.keys(updated.card.slots), ['dev', 'review'])
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('active 卡移除槽位绑定直接拒绝，不静默清空', async () => {
+  const { home, store, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { review: { sessionId: 'review-1' } } },
+      exec,
+    )
+    await assert.rejects(
+      () => tools.update_card.execute({ id: created.card.id, slots: {} }, exec),
+      /仍是 active.*卡未关闭时槽位不能清空.*review.*替换为新会话.*done \/ archived/,
+    )
+    // 拒绝是硬闸：卡片与槽位都保持原样，不落半截更新。
+    const after = await store.get(created.card.id)
+    assert.deepEqual(after.slots, { review: { sessionId: 'review-1' } })
+    assert.equal(after.revision, 0)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('槽位换人：替换到新会话成功，不触发移除拦截', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { review: { sessionId: 'review-1' } } },
+      exec,
+    )
+    const updated = await tools.update_card.execute(
+      { id: created.card.id, slots: { review: { sessionId: 'review-2' } } },
+      exec,
+    )
+    assert.deepEqual(updated.card.slots, { review: { sessionId: 'review-2' } })
+    assert.equal(updated.warnings, undefined)
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('关闭卡片释放执行者；worker 接新卡后旧卡 links 仍能找回', async () => {
+  const { home, store, tools } = await createTools()
+  try {
+    const oldCard = await tools.create_card.execute(
+      { title: '审查 #167', slots: { review: { sessionId: 'worker-1' } } },
+      exec,
+    )
+    const linked = await tools.update_card.execute({
+      id: oldCard.card.id,
+      addLinks: [{ label: '审查结论', url: 'https://example.test/reviews/167' }],
+    }, exec)
+    assert.equal(linked.warnings, undefined)
+
+    const closed = await tools.update_card.execute(
+      { id: oldCard.card.id, status: 'done' },
+      exec,
+    )
+    assert.deepEqual(closed.card.slots, {})
+    assert.equal(closed.warnings, undefined)
+    assert.equal(closed.card.links[0].label, '审查结论')
+
+    const nextCard = await tools.create_card.execute(
+      { title: '审查 #168', slots: { dev: { sessionId: 'worker-1' } } },
+      exec,
+    )
+    assert.deepEqual(
+      (await store.bindingsOf('worker-1')).map((binding) => binding.cardId),
+      [nextCard.card.id],
+    )
+    const found = await store.get(oldCard.card.id)
+    assert.equal(found.links[0].label, '审查结论')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('关闭没有交付物链接的卡片时软提示，但仍关闭', async () => {
+  const { home, tools } = await createTools()
+  try {
+    const created = await tools.create_card.execute(
+      { title: '任务', slots: { review: { sessionId: 'worker-1' } } },
+      exec,
+    )
+    const closed = await tools.update_card.execute(
+      { id: created.card.id, status: 'done' },
+      exec,
+    )
+    assert.equal(closed.card.status, 'done')
+    assert.deepEqual(closed.card.slots, {})
+    assert.equal(closed.warnings.length, 1)
+    assert.equal(closed.warnings[0], '这张卡没有交付物链接，关闭后只剩标题。')
+    const rendered = tools.update_card.output.render({}, closed)
+    assert.match(rendered[0].text, /提醒：这张卡没有交付物链接/)
   } finally {
     await rm(home, { recursive: true, force: true })
   }

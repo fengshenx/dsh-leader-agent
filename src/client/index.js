@@ -18,10 +18,11 @@ import { BoardBody } from './board.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
 import { mountGuideCard } from './guide-card.js'
+import { LeaderChangesAnchor } from './leader-changes-anchor.js'
 import { mountLeaderView } from './leader-view.js'
 import { watchLeaderSessions } from './leader-session-index.js'
-import { SLOT_LOCALE_NAMESPACE, en, zh } from './locales.js'
-import { callProjectRemote, mountProjectRemote, reportProjectRemoteError } from './project-remote.js'
+import { LOCALE_UI, SLOT_LOCALE_NAMESPACE, unknownLocaleCodes } from './locales.js'
+import { callProjectRemote, mountProjectRemote } from './project-remote.js'
 import { mountProjectBoardMonitor } from './project-board-monitor.js'
 import { createReadySignal } from './ready-signal.js'
 import { SessionTabsAnchor } from './session-tabs.js'
@@ -50,9 +51,24 @@ export function apply(ctx) {
   // 槽位显示名字典：槽位名本身是 ASCII 机器标识，卡面按当前界面语言翻译。
   // 字典晚于 UI 挂载也能生效（locale 服务会推 revision），不必等挂载顺序。
   ctx.effect(
-    () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, { zh, en }),
+    () => ctx.locale.register(SLOT_LOCALE_NAMESPACE, LOCALE_UI),
     'dsh-leader-agent 槽位显示名',
   )
+  // 注册期文案（tab 标题、guide 说明、左栏 label）没有 `t` 形参，宿主只在
+  // 取用时重读 thunk；bind 返回的函数同样在调用时读当前语言，语言切换后
+  // 下次投影就是新文案，不需要重新注册。
+  const t = ctx.locale.bind(SLOT_LOCALE_NAMESPACE)
+  // 语言目录是宿主运行时的：本地多一个 locale 文件不代表宿主认它。只比较并告警，
+  // 不把宿主列表写进构建门禁——宿主加语言时门禁不该跟着漂。
+  const hostLocales = ctx.locale?.getSnapshot?.()?.locales
+  if (Array.isArray(hostLocales)) {
+    for (const code of unknownLocaleCodes(LOCALE_UI, hostLocales)) {
+      const message = `dsh-leader-agent: locale/${code}.json 不在宿主语言目录里，运行时不会被选中`
+      ctx.logger?.warn?.(message)
+      // 浏览器的 client logger 不一定有 exporter；配置错误要能在 DevTools 里看见。
+      console.warn(message)
+    }
+  }
 
   // 注册必须放进 effect：注册表把 effect 挂到调用方 fiber 上，在别的插件的
   // apply 里直接注册会让浏览器启动静默卡住。
@@ -62,14 +78,23 @@ export function apply(ctx) {
     // 右栏按会话存布局：切会话时宿主会卸载非当前会话的栏。看板保留已访问的
     // body（keepMounted），切回来不重挂、不重新拉项目与卡片，避免闪一下。
     keepMounted: true,
-    title: () => '看板',
+    title: () => t('tab.board'),
     guide: [{
       id: 'board',
       order: 10,
-      title: () => '看板',
-      description: () => '项目 leader 与 worker 会话里的任务交付看板',
+      title: () => t('tab.board'),
+      description: () => t('tab.board.description'),
     }],
   }), 'dsh-leader-agent 看板 tab 类型')
+
+  // tab chip 的标题单独占一个席位：宿主在打开 tab 时就把 title thunk 的结果写进
+  // 布局记录，之后切语言不会重读。这里按 definition id 接管自己的标题，让 chip
+  // 跟着当前语言走；不注册时宿主回落到打开那一刻的快照。
+  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab.title', () => ctx.slots.register({
+    name: 'sidebar.right.pane.tab.title',
+    key: PLUGIN_ID,
+    locale: SLOT_LOCALE_NAMESPACE,
+  }, BoardTabTitle)), 'dsh-leader-agent 看板 tab 标题')
 
   // 面板主体挂在 tab 类型 id 上：tab 类型 id 既是实现身份，也是它在
   // `sidebar.right.pane.tab` 座里的注册键。
@@ -118,7 +143,8 @@ export function apply(ctx) {
     name: 'sidebar.footer.action',
     id: 'dsh-leader-agent-projects',
     order: 10,
-    label: '项目',
+    label: () => t('project.label'),
+    locale: SLOT_LOCALE_NAMESPACE,
     inject: () => ({
       callRemote: (method, args) => callProjectRemote(ctx, method, args),
       getUiWorkspace: () => ctx.get('uiWorkspace'),
@@ -153,8 +179,22 @@ export function apply(ctx) {
       getUiWorkspace: () => ctx.get('uiWorkspace'),
       getLayout: () => ctx.get('layout'),
       getSidebarRight: () => ctx.get('sidebarRight'),
+      // 「更多」菜单走宿主的 contextMenus 服务：标签栏接管按钮本身，菜单项
+      // 仍由宿主与其它插件按 sessionHeader 目标注册，不在本仓复制一份。
+      getContextMenus: () => ctx.get('contextMenus'),
     }),
   }, SessionTabsAnchor)), 'dsh-leader-agent 会话标签栏')
+
+  // leader 会话不显示宿主的「已编辑 N 个文件」汇总卡片（`conversation.chat.turnTail`
+  // 里的 deliverables 条目）：宿主的 slot 注册没有按会话过滤的参数，唯一的开关是
+  // 全局偏好，所以走渲染层——在主面板容器上打标记，由本插件的样式表隐藏。
+  // 锚点同样借 `shell.overlay` 的 React 生命周期，不渲染内容。
+  ctx.effect(() => ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'dsh-leader-agent-leader-changes',
+    order: 40,
+    inject: () => ({ getSessions: () => ctx.sessions }),
+  }, LeaderChangesAnchor)), 'dsh-leader-agent leader 改动卡片隐藏')
 
   // leader 视图目标：让 leader 会话进入官方 active 形态，输入框停靠底部而会话区
   // 保持空白。`uiConversation` 由 ui-conversation bundle 提供，缺失时这个回调
@@ -174,7 +214,6 @@ export function apply(ctx) {
   ctx.inject(['remote'], function mountProjectChannel(remoteCtx) {
     void mountProjectRemote(remoteCtx).catch((error) => {
       const message = error instanceof Error ? error.message : String(error)
-      reportProjectRemoteError(message)
       remoteCtx.logger?.warn?.(`dsh-leader-agent: 项目通道挂载失败：${message}`)
     })
     // leader 会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
@@ -182,6 +221,17 @@ export function apply(ctx) {
     // 建卡后自动打开右栏看板：监视器要走项目通道取卡片，通道没挂好就开不了。
     mountBoardMonitor(ctx)
   })
+}
+
+/**
+ * 看板 tab chip 的标题。
+ *
+ * @param {object} props - 槽位属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 当前语言的翻译函数
+ * @returns {string} 标题
+ */
+function BoardTabTitle({ t }) {
+  return t('tab.board')
 }
 
 /**
@@ -235,6 +285,7 @@ function mountMessageBubbles(ctx) {
     ctx.effect(() => ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
       name: 'conversation.chat.node',
       key: bubble.kind,
+      locale: SLOT_LOCALE_NAMESPACE,
       // `uiWorkspace` 只挂在 web-app bundle 上，写进 inject 的服务缺失会让整个插件
       // 挂起——惰性获取，点击名字时才取。
       inject: () => ({

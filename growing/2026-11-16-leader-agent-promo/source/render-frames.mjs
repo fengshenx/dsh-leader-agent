@@ -30,7 +30,8 @@ function arg(name, fallback) {
 
 const outDir = path.resolve(arg('out', '.dev/promo/frames'))
 const htmlPath = path.resolve(arg('html', path.join(here, 'promo.html')))
-const timeline = JSON.parse(fs.readFileSync(path.join(here, '..', 'timeline.json'), 'utf8'))
+const timelinePath = path.resolve(arg('timeline', path.join(here, '..', 'timeline.json')))
+const timeline = JSON.parse(fs.readFileSync(timelinePath, 'utf8'))
 const fps = timeline.fps
 const duration = timeline.duration
 const total = Math.ceil(duration * fps)

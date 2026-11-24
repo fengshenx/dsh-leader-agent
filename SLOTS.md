@@ -40,7 +40,7 @@ slots:
 
 ### 测试与验证
 
-- 只有 `node:test`，没有 lint；改完要手扫未使用的 import、死代码和拼写错误。
+- 测试用 `node:test`，lint 用 oxlint（`npm run lint`，已接进 `npm run check`）；未使用的 import 与死代码由 lint 拦住，拼写错误仍靠人工。
 - 覆盖率按 per-file 行覆盖判；新增文件没登记门槛就是 100%，单测加载不到的要说明理由并登记，不要靠漏测变绿。
 - 假件照宿主真实 API 面构造：多给一个宿主方法，就会掩盖下限版本没有它。
 - 判据在宿主 UI 里的行为才跑 `npm run e2e`；纯函数不要塞进 e2e，也不要引 jsdom。

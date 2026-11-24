@@ -26,14 +26,15 @@ export function basenameOf(path) {
 /**
  * 校验项目名。
  * @param {string} name - 候选项目名
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {{ ok: boolean, error: string }} 校验结果
  */
-export function validateProjectName(name) {
+export function validateProjectName(name, t) {
   if (typeof name !== 'string' || name.trim() === '') {
-    return { ok: false, error: '项目名不能为空' }
+    return { ok: false, error: t('project.name.empty') }
   }
   if (name.trim().length > MAX_PROJECT_NAME_LENGTH) {
-    return { ok: false, error: `项目名过长（上限 ${MAX_PROJECT_NAME_LENGTH} 字）` }
+    return { ok: false, error: t('project.name.tooLong', { max: MAX_PROJECT_NAME_LENGTH }) }
   }
   return { ok: true, error: '' }
 }
@@ -46,11 +47,12 @@ export function validateProjectName(name) {
  *
  * @param {string} currentName - 项目当前的名字
  * @param {string} nextName - 输入框里的名字
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {{ action: 'close' | 'keep' | 'commit', name?: string, error?: string }} 判定
  */
-export function planProjectRename(currentName, nextName) {
+export function planProjectRename(currentName, nextName, t) {
   if (nextName === currentName) return { action: 'close' }
-  const check = validateProjectName(nextName)
+  const check = validateProjectName(nextName, t)
   if (!check.ok) return { action: 'keep', error: check.error }
   return { action: 'commit', name: nextName }
 }
@@ -62,11 +64,12 @@ export function planProjectRename(currentName, nextName) {
  * 直接提交只会换回一条没有出口的报错。
  *
  * @param {string} directory - 选中的目录
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {{ name: string, ok: boolean, error: string }} 默认名与判定
  */
-export function defaultProjectName(directory) {
+export function defaultProjectName(directory, t) {
   const name = basenameOf(directory)
-  const check = validateProjectName(name)
+  const check = validateProjectName(name, t)
   return { name, ok: check.ok, error: check.error }
 }
 
@@ -323,12 +326,13 @@ export function isArchiveActiveRefusal(reason) {
  * @param {object} options - 选项
  * @param {object} options.project - 项目
  * @param {(sessionId: string) => void} options.openSession - 打开会话
+ * @param {(key: string, params?: Record<string, unknown>) => string} options.t - 当前语言的翻译函数
  * @returns {{ok: boolean, message?: string}} 打开结果
  */
-export function openLeaderSession({ project, openSession }) {
+export function openLeaderSession({ project, openSession, t }) {
   const sessionId = project?.leaderSessionId
   if (typeof sessionId !== 'string' || sessionId === '') {
-    return { ok: false, message: `项目「${project?.name ?? ''}」没有可打开的 leader 会话，请换新 Leader。` }
+    return { ok: false, message: t('project.leaderMissing', { name: project?.name ?? '' }) }
   }
   openSession(sessionId)
   return { ok: true }
@@ -343,13 +347,14 @@ export function openLeaderSession({ project, openSession }) {
  *
  * @param {object} project - 项目
  * @param {{onRename: Function, onReplace: Function, onRemove: Function}} handlers - 各项的处理函数
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {object[]} 菜单条目
  */
-export function buildProjectMenuItems(project, handlers) {
+export function buildProjectMenuItems(project, handlers, t) {
   const items = []
-  items.push({ id: 'rename', label: '重命名', icon: 'edit-outline', onSelect: () => handlers.onRename(project) })
-  items.push({ id: 'replace', label: '换新 Leader', icon: 'refresh-outline', onSelect: () => handlers.onReplace(project) })
-  items.push({ id: 'remove', label: '删除', icon: 'trash-outline', danger: true, onSelect: () => handlers.onRemove(project) })
+  items.push({ id: 'rename', label: t('project.rename'), icon: 'edit-outline', onSelect: () => handlers.onRename(project) })
+  items.push({ id: 'replace', label: t('project.replaceLeader'), icon: 'refresh-outline', onSelect: () => handlers.onReplace(project) })
+  items.push({ id: 'remove', label: t('common.delete'), icon: 'trash-outline', danger: true, onSelect: () => handlers.onRemove(project) })
   return items
 }
 
@@ -360,10 +365,11 @@ export function buildProjectMenuItems(project, handlers) {
  * 用户最担心的是「目录和会话被删了」，这句必须把它们讲明白。
  *
  * @param {object} project - 项目
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {string} 确认弹窗的说明文字
  */
-export function describeProjectRemoval(project) {
-  return `将把项目「${project.name}」删除。文件夹、会话记录与 dsh 工作区都会保留。`
+export function describeProjectRemoval(project, t) {
+  return t('project.remove.description', { name: project.name })
 }
 
 /**
@@ -374,10 +380,11 @@ export function describeProjectRemoval(project) {
  *
  * @param {object} project - 被删的项目
  * @param {{notFound?: boolean, reason?: string}} _result - 宿主返回的删除结果
+ * @param {(key: string, params?: Record<string, unknown>) => string} t - 当前语言的翻译函数
  * @returns {string} 提示文字
  */
-export function describeDeletionNotice(project, _result) {
-  return `已删除项目「${project.name}」。`
+export function describeDeletionNotice(project, _result, t) {
+  return t('project.remove.notice', { name: project.name })
 }
 
 /**

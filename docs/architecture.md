@@ -17,7 +17,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 
-**零运行时依赖的边界**：宿主侧只用 Node 内置模块与 Cordis 注入的 `ctx`，不 peer 依赖任何 dsh 内部包——宿主解析失败会让整个 bundle 加载失败。运行时唯一依赖 `minidenticons`（worker 头像），只用于客户端产物。
+**零运行时依赖的边界**：宿主侧只用 Node 内置模块与 Cordis 注入的 `ctx`，不 peer 依赖任何 dsh 内部包——宿主解析失败会让整个 bundle 加载失败。构建期唯一内联依赖 `blobatar`（worker 头像），只用于客户端产物。
 
 **插件行必须是纯包名**：`cordis.patch.yml` 的插件行写成 `dsh-leader-agent/src/host` 这类子路径时，浏览器侧定位不到包 manifest，宿主便不下发 client bundle。
 
@@ -27,11 +27,11 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 | 身份 | 判定 | 工具面 |
 |---|---|---|
-| leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` / `read_card` |
+| leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` / `read_card` |
 | worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题、分类、排序与槽位）与 `read_card` |
-| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card` / `read_card`；保留宿主 subagent 三件工具 |
+| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card` / `read_card`；保留宿主 subagent 四件工具 |
 
-身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。
+身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。普通会话保留的宿主 subagent 工具在 0.2.2 起为四件（含 `wait_agent`）；`engines.dsh` 下限 0.2.1-rc.2 只有前三件，`applyToolGate` 的逐件重试会跳过缺失项。
 
 ### 派工与唤醒
 
@@ -49,7 +49,7 @@ worker 长时间没有回报时另一条链路会说话：一个 60s 的**巡查
 
 工具面按角色在**会话创建时**裁剪，落在 `agent/created` 上：
 
-- leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent`——它们对 worker 无效，从工具面直接摘掉，模型就不会照描述去用一个拿不到效果的东西；也没有 `read_card`：它的单卡读走 `list_cards`（传 `cardId`），不必有两个等价入口；
+- leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent`——前三件对 worker 无效；`wait_agent` 只会阻塞空等，而 worker 跑完会自己唤醒 leader。也没有 `read_card`：它的单卡读走 `list_cards`（传 `cardId`），不必有两个等价入口；
 - 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；普通会话也没有 `read_card`；
 - `create_card` 只给 leader：建卡与派工是 leader 的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、leader 建卡（普通会话为什么一并收掉见[已知限制](limitations.md#看板与卡片)）。
 - `read_card` 只给 worker：读本项目的任意卡（读放开、写收窄），不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩、注入失效或冷恢复后找回任务的入口；多张绑定直接报错列候选，不替调用方猜。规格按 2000 字符分页，`specOffset` 续读到全文；长规格本身就是压缩对象，一次灌进上下文会挤掉真正的工作内容。
@@ -94,7 +94,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 左栏项目区块 | 在「面板列表 nav」之后 DOM 注入容器，用 portal 渲染；0.2.2 起宿主把面板列表与工作区包进滚动网格，容器改插工作区顶部。布局取位「自动化任务之下、工作区之上」，找不到锚点时退回原槽 |
 | 项目树 | 自建树，列出该项目派出的 worker 与退役 leader；行形态与活动提示（宿主 `StateDot`）复刻官方工作区行，但行首图标用宿主 `apps-add-outline`（三格 + 一个加号），不用官方目录字形 |
 | 官方树排除 | 渲染层按 `data-row-key="session:<id>"` 给 leader 与 worker 行加隐藏类；数据层不动，因此官方计数与搜索仍包含它们 |
-| 项目会话标签栏 | 在 `shell.overlay` 挂一个不占布局的锚，effect 把宿主节点插到主面板第一个子节点、portal 渲染真正的栏；首标签是项目名（leader 入口），worker 标签按项目记在浏览器 localStorage；栏可见时给主面板与会话体加 flex 收缩标记（参考 dsh-session-tabs，见 `THIRD_PARTY_LICENSE`） |
+| 项目会话标签栏 | 在 `shell.overlay` 挂一个不占布局的锚，effect 把宿主节点插到主面板第一个子节点、portal 渲染真正的栏；首标签是项目名（leader 入口），worker 标签按项目记在浏览器 localStorage；栏右端承接会话「更多」（宿主 `contextMenus`）与右栏开关；栏可见时给主面板与会话体加 flex 收缩标记（参考 dsh-session-tabs，见 `THIRD_PARTY_LICENSE`） |
 | 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
 | leader 引导卡 | `conversation.input.dock` 上的独立条目（与视图入口同槽），会话快照 `blank` 且未关闭时画出一行上手说明（与输入框同宽同圆角）；「了解怎么用」经宿主 `inputActions` 发一条消息：先讲协作方式，再问是否初始化 `LEADER.md` 与 `SLOTS.md`（确认前不写文件）；关闭标记存 localStorage |

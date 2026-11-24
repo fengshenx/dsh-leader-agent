@@ -76,6 +76,7 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  *   与 `isWorkerSession` 一起限定 worker 的写卡范围，`read_card` 用它反查默认要读的卡
  * @param {(() => Promise<Map<string, { lastReportAt?: number, runningSince?: number }>>) | undefined} [options.workerFacts] -
  *   会话活性快照；`list_cards` 的槽位行用它渲染最后回报
+ * @param {(message: string) => void} [options.logger] - 评论锚点等软告警出口
  * @returns {object[]} 工具定义
  */
 export function createBundleTools({
@@ -86,6 +87,7 @@ export function createBundleTools({
   isWorkerSession,
   cardBindingsOf,
   workerFacts,
+  logger = () => {},
 } = {}) {
   // 漏传判定会让写卡闸静默失效：工具面照裁，执行时却对所有会话放行。文档门禁走
   // 无参调用（没有 cards），单测直接调工具工厂，都不受这条约束。
@@ -106,6 +108,7 @@ export function createBundleTools({
       resolveProject,
       canWrite: canWriteCards,
       isWorkerSession,
+      logger,
     }),
     createUpdateCardTool({
       store: cards,
@@ -113,6 +116,7 @@ export function createBundleTools({
       canWrite: canWriteCards,
       isWorkerSession,
       cardBindingsOf,
+      logger,
     }),
     createListCardsTool({ store: cards, resolveProject, workerFacts }),
     createReadCardTool({
@@ -125,9 +129,9 @@ export function createBundleTools({
 }
 
 /**
- * 文档里可以引用的工具名：本 bundle 注册的，加上宿主 subagent 组合提供的三件。
+ * 文档里可以引用的工具名：本 bundle 注册的，加上宿主 subagent 组合提供的四件。
  *
- * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主三件不进本 bundle 的
+ * 门禁（`scripts/verify-doc-tool-names.mjs`）按它比对。宿主四件不进本 bundle 的
  * 注册面，但文档会写它们——所以从 `HOST_SUBAGENT_TOOLS` 这个语义来源取，而不是
  * 借用 deny 名单：那份名单的变化理由是「leader 能不能用」，与「文档能不能写」不同。
  *
@@ -156,7 +160,7 @@ export function apply(ctx) {
   )
 
   // 项目注册表：编排语境的容器。目录是代码语境，项目是编排语境，二者不合并。
-  const projects = createProjectStore({ home: resolveDshHome(), logger })
+  const projects = createProjectStore({ home: resolveDshHome() })
   // worker 会话管理器要先建：项目服务列 worker 时要用它的同步判定（会话头没有
   // subagent 标记了，只有登记知道谁是 worker）。
   const workerSessions = createWorkerSessions({ ctx, logger })
@@ -184,7 +188,7 @@ export function apply(ctx) {
     awaitIndex: () => projectService.awaitIndex(),
   })
 
-  const cards = createCardStore({ home: resolveDshHome(), logger })
+  const cards = createCardStore({ home: resolveDshHome() })
   // 卡片按项目归属：归属由宿主按调用方会话判定，模型不传项目参数。
   const resolveProject = (sessionId) => projectService.resolveProjectOfSession(sessionId)
 
@@ -259,6 +263,7 @@ export function apply(ctx) {
     isWorkerSession: workerSessions.isWorkerSession,
     cardBindingsOf: (sessionId) => cards.bindingsOf(sessionId),
     workerFacts: () => dispatcher.workerFacts(),
+    logger,
   })) ctx.tools.register(tool)
 
   // 角色槽位注入：会话被卡片绑到某个槽位时，每轮请求组装时求值该槽位在项目
@@ -344,6 +349,14 @@ export function apply(ctx) {
   ctx.on('agent/disposed', ({ agent }) => {
     dispatcher.markDisposed(agent.id)
     workerSessions.forget(agent.id)
+    // 宿主自己销毁会话（会话管理删除、外部归档）时，卡片上的槽位就是死引用；
+    // 浏览器归档路径已经调过 detachSession，这里可能重复触发，而它是幂等的。
+    // 插件卸载时的 disposeAll 也会发这个事件——那不是宿主删会话，不能清卡。
+    if (!disposed) {
+      void cards.detachSession(agent.id).catch((error) => {
+        logger(`dsh-leader-agent: 会话 ${agent.id} 销毁后摘卡片槽位失败：${error instanceof Error ? error.message : String(error)}`)
+      })
+    }
   })
 
   // 外部输入抵达即重置该会话的自动续行计数——人工介入后护栏应重新开始计数。
