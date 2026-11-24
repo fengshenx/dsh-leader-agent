@@ -97,6 +97,14 @@ test('宿主默认值 RPC 失败：已有显式选择时不写也不覆盖', () 
   assert.deepEqual(storage.writes, [])
 })
 
+test('宿主返回缺字段（{} 或 defaultMode 缺失）也走回退，不把看板留在 pending', () => {
+  const storage = createStorage()
+  assert.equal(settleBoardDefault(storage, {}), BOARD_MODE_CINEMA)
+  const missing = createStorage()
+  assert.equal(settleBoardDefault(missing, { defaultMode: undefined }), BOARD_MODE_CINEMA)
+  assert.equal(readBoardModeSnapshot(missing).resolved, true)
+})
+
 test('宿主正常返回时缓存并广播，存储写失败仍返回生效模式', () => {
   const storage = createStorage()
   assert.equal(settleBoardDefault(storage, { defaultMode: BOARD_MODE_WORK }), BOARD_MODE_WORK)

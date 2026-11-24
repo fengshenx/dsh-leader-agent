@@ -30,6 +30,7 @@ const ROW = '[data-rail-row]'
 const RAIL_SLOT = '[data-rail-slot]'
 const CARD_SLOT = '.dsh-leader-agent-board-slot'
 const SETTINGS_DIALOG = '[data-shortcut-modal="settings"]'
+const GUIDE_ENTRY = '.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -124,7 +125,15 @@ async function openSettings(page) {
   return dialog
 }
 
-/** 打开项目 leader 的看板；刷新后右栏可能已经被宿主恢复，不重复点开。 */
+/**
+ * 打开项目 leader 的看板，返回这次走的路径。
+ *
+ * 刷新后右栏可能恢复成看板、guide 页或别的页：只有看板已经可见时才直接收工；
+ * 否则按当前页决定「点 guide 入口」还是「新开 guide 标签再点入口」。路径返回值
+ * 让用例能断言 reload 后确实需要导航，而不是碰巧被宿主恢复了看板。
+ *
+ * @returns {Promise<'board-restored' | 'expanded-board' | 'guide-entry' | 'new-tab-guide'>} 进入路径
+ */
 async function openBoard(page, session) {
   const projectRow = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
@@ -139,31 +148,73 @@ async function openBoard(page, session) {
     check: async () => (await projectRow.getAttribute('data-selected')) === 'true',
     timeoutMs: 15_000,
   })
-  const board = page.locator(BOARD)
-  const expand = page.locator('[data-sidebar-right-expand="true"]').first()
-  // 刷新恢复布局时右栏可能已经挂在看板上；只有收起态才需要重新展开。
+
+  const board = page.locator(`${BOARD}:visible`)
+  const guideEntry = page.locator(`${GUIDE_ENTRY}:visible`)
+  const expand = page.locator('[data-sidebar-right-expand="true"]:visible').first()
+  const addTab = page.locator('[data-sidebar-right-session]:visible [data-dockkit-add-tab]').first()
+  const ready = async () => (await board.count()) > 0
+    || (await guideEntry.count()) > 0
+    || (await addTab.count()) > 0
+
+  // 收起态只有展开按钮；已展开的右栏至少有 tab 条（add-tab 可见）
   await waitFor({
-    description: '看板已恢复或右栏出现展开按钮',
-    check: async () => (await board.count()) > 0 || (await expand.count()) > 0,
+    description: '看板/guide 就绪或右栏出现展开按钮',
+    check: async () => (await ready()) || (await expand.count()) > 0,
     timeoutMs: 15_000,
   })
-  if ((await board.count()) === 0) {
+
+  let expandedNow = false
+  if ((await board.count()) === 0 && (await expand.count()) > 0) {
     await expand.click({ force: true })
-    await waitFor({
-      description: '右栏绑定到 leader 会话',
-      check: async () => {
-        const rightbar = page.locator('[data-sidebar-right-session]').first()
-        return (await rightbar.getAttribute('data-sidebar-right-session').catch(() => null)) === session.id
-      },
-      timeoutMs: 15_000,
-    })
-    const guideEntry = page.locator(
-      '.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]',
-    )
-    await waitForLocator(guideEntry, { description: '右栏 guide 页的看板入口', timeoutMs: 15_000 })
-    await guideEntry.click()
+    expandedNow = true
   }
+
+  // 导航前确认右栏已经绑到 leader：恢复/展开时可能先画上一帧的会话页
+  await waitFor({
+    description: '右栏绑到 leader 且可导航',
+    check: async () => {
+      const rightbar = page.locator('[data-sidebar-right-session]:visible').first()
+      const bound = (await rightbar.getAttribute('data-sidebar-right-session').catch(() => null)) === session.id
+      return bound && await ready()
+    },
+    timeoutMs: 15_000,
+  })
+
+  if ((await board.count()) > 0) return expandedNow ? 'expanded-board' : 'board-restored'
+
+  let route = 'guide-entry'
+  if ((await guideEntry.count()) === 0) {
+    // 右栏停在非 guide 页：新开一个 guide 标签，再点看板入口
+    route = 'new-tab-guide'
+    await addTab.click({ force: true })
+  }
+  await waitForLocator(guideEntry, { description: '右栏 guide 页的看板入口', timeoutMs: 15_000 })
+  await guideEntry.click()
   await waitForLocator(board.first(), { description: '看板挂载', timeoutMs: 15_000 })
+  return route
+}
+
+/** 工作模式的可观测事实：模式、rail/槽位与存储。 */
+async function assertWorkBoard(page) {
+  assert.equal(await page.locator(`${BOARD}[data-mode="work"]`).count(), 1, '看板应处于工作模式')
+  assert.equal(await page.locator(RAIL).count(), 0, '工作模式不该渲染 rail')
+  assert.equal(await page.locator(RAIL_SLOT).count(), 0, '工作模式不该有 rail 槽位')
+  assert.equal(await page.locator(CARD_SLOT).count(), 3, '工作模式应把会话入口放回卡内')
+  assert.equal(
+    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
+    BOARD_MODE_WORK,
+    '显式选择应留在 localStorage',
+  )
+}
+
+/** 给日志用的读数快照。 */
+async function boardFacts(page) {
+  return {
+    mode: await page.locator(BOARD).getAttribute('data-mode'),
+    rail: await page.locator(RAIL).count(),
+    slot: await page.locator(CARD_SLOT).count(),
+  }
 }
 
 test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消失', { timeout: scenarioTimeout() }, async (t) => {
@@ -298,21 +349,57 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
     timeoutMs: 10_000,
   })
 
-  // 刷新后仍是工作模式：显式选择压过宿主默认，rail 不该回来。
+  // 路径 A：右栏保持展开直接 reload，宿主恢复看板 tab → 不需要再导航。
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await openBoard(page, session)
   await waitForLocator(page.locator(`${BOARD}[data-mode="work"]`), {
-    description: '刷新后看板仍是工作模式',
+    description: '刷新后宿主恢复看板',
     timeoutMs: 15_000,
   })
-  assert.equal(await page.locator(RAIL).count(), 0, '刷新后工作模式不该渲染 rail')
-  assert.equal(await page.locator(RAIL_SLOT).count(), 0, '刷新后工作模式不该有 rail 槽位')
-  assert.equal(await page.locator(CARD_SLOT).count(), 3, '刷新后会话入口仍在卡内')
-  assert.equal(
-    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
-    BOARD_MODE_WORK,
-    '刷新后显式选择仍在 localStorage',
-  )
+  const beforeA = {
+    board: await page.locator(`${BOARD}:visible`).count(),
+    expand: await page.locator('[data-sidebar-right-expand="true"]:visible').count(),
+  }
+  const routeA = await openBoard(page, session)
+  assert.equal(routeA, 'board-restored', `右栏展开着 reload 应由宿主恢复看板，实际走了 ${routeA}`)
+  await assertWorkBoard(page)
+  console.log(`[e2e] path A ${JSON.stringify({ beforeA, routeA, ...(await boardFacts(page)) })}`)
+
+  // 路径 B：先把右栏切到 guide 页再收起，reload 后必须重新点 guide 入口才能回来。
+  // 这条路径不能靠「宿主已经恢复看板」蒙混过关。
+  const addTab = page.locator('[data-sidebar-right-session]:visible [data-dockkit-add-tab]').first()
+  await addTab.click({ force: true })
+  await waitForLocator(page.locator(`${GUIDE_ENTRY}:visible`), {
+    description: '新开的 guide 标签页',
+    timeoutMs: 15_000,
+  })
+  assert.equal(await page.locator(`${BOARD}:visible`).count(), 0, 'guide 标签应把看板 tab 切到后台')
+  const toggle = page.locator('[data-sidebar-right-toggle]:visible').first()
+  await toggle.click({ force: true })
+  await waitFor({
+    description: '右栏收起',
+    check: async () => (await page.locator('[data-sidebar-right-expand="true"]:visible').count()) > 0,
+    timeoutMs: 10_000,
+  })
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await waitFor({
+    description: 'reload 后右栏展开按钮就绪',
+    check: async () => (await page.locator(`${BOARD}:visible`).count()) > 0
+      || (await page.locator('[data-sidebar-right-expand="true"]:visible').count()) > 0,
+    timeoutMs: 15_000,
+  })
+  const beforeB = {
+    board: await page.locator(`${BOARD}:visible`).count(),
+    expand: await page.locator('[data-sidebar-right-expand="true"]:visible').count(),
+  }
+  assert.equal(beforeB.board, 0, '右栏收起时看板不应可见')
+  const routeB = await openBoard(page, session)
+  assert.notEqual(routeB, 'board-restored', `收起右栏后 reload 必须重新导航，实际走了 ${routeB}`)
+  await waitForLocator(page.locator(`${BOARD}[data-mode="work"]`), {
+    description: '收起右栏 reload 后看板仍是工作模式',
+    timeoutMs: 15_000,
+  })
+  await assertWorkBoard(page)
+  console.log(`[e2e] path B ${JSON.stringify({ beforeB, routeB, ...(await boardFacts(page)) })}`)
 
   await closeBrowser(browser)
   browser = null
