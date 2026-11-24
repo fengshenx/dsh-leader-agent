@@ -15,7 +15,7 @@
  */
 
 import { BoardBody } from './board.js'
-import { announceBoardMode, cacheBoardDefault } from './board-mode.js'
+import { announceBoardMode, settleBoardDefault } from './board-mode.js'
 import { mountBoardSettings } from './board-settings.js'
 import { BoardGuideEntry } from './board-guide-entry.js'
 import { ProjectPanel } from './project-panel.js'
@@ -225,15 +225,19 @@ export function apply(ctx) {
     // 看板默认模式由宿主按数据根判一次：升级前已有项目/卡片 → 工作，新装 → 炫酷。
     // 只缓存默认值，不写显式的 mode key；用户选过的模式永远优先。这里是插件
     // 初始化时的调用，通常在看板打开前就已完成。
+    const settleDefaults = (defaults) => {
+      const mode = settleBoardDefault(readLocalStorage(globalThis), defaults)
+      if (mode !== undefined) announceBoardMode(mode)
+    }
     void mountProjectRemote(remoteCtx)
       .then(() => callProjectRemote(remoteCtx, 'boardDefaults', []))
-      .then((defaults) => {
-        const mode = cacheBoardDefault(readLocalStorage(globalThis), defaults?.defaultMode)
-        if (mode !== undefined) announceBoardMode(mode)
-      })
+      .then(settleDefaults)
       .catch((error) => {
         const message = error instanceof Error ? error.message : String(error)
         remoteCtx.logger?.warn?.(`dsh-leader-agent: 项目通道或看板默认模式初始化失败：${message}`)
+        // RPC 失败也要落地一个模式：缓存里有数据算出的默认就沿用，否则回退内置
+        // 默认。看板不能永远停在 pending 的纯列表上。
+        settleDefaults(undefined)
       })
     // leader 会话名单走同一条通道：填充不挂在项目面板上，侧栏收起时面板会卸载。
     watchLeaderSessions(remoteCtx)

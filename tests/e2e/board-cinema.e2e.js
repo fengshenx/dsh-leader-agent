@@ -124,7 +124,7 @@ async function openSettings(page) {
   return dialog
 }
 
-/** 打开项目 leader 的看板。 */
+/** 打开项目 leader 的看板；刷新后右栏可能已经被宿主恢复，不重复点开。 */
 async function openBoard(page, session) {
   const projectRow = page.locator('.dsh-leader-agent-project-row').first()
   await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
@@ -139,24 +139,31 @@ async function openBoard(page, session) {
     check: async () => (await projectRow.getAttribute('data-selected')) === 'true',
     timeoutMs: 15_000,
   })
-  await waitForLocator(page.locator('[data-sidebar-right-expand="true"]').first(), {
-    description: '右栏的展开按钮',
-    timeoutMs: 15_000,
-  })
-  await page.locator('[data-sidebar-right-expand="true"]').first().click({ force: true })
+  const board = page.locator(BOARD)
+  const expand = page.locator('[data-sidebar-right-expand="true"]').first()
+  // 刷新恢复布局时右栏可能已经挂在看板上；只有收起态才需要重新展开。
   await waitFor({
-    description: '右栏绑定到 leader 会话',
-    check: async () => {
-      const rightbar = page.locator('[data-sidebar-right-session]').first()
-      return (await rightbar.getAttribute('data-sidebar-right-session').catch(() => null)) === session.id
-    },
+    description: '看板已恢复或右栏出现展开按钮',
+    check: async () => (await board.count()) > 0 || (await expand.count()) > 0,
     timeoutMs: 15_000,
   })
-  const guideEntry = page.locator(
-    '.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]',
-  )
-  await waitForLocator(guideEntry, { description: '右栏 guide 页的看板入口', timeoutMs: 15_000 })
-  await guideEntry.click()
+  if ((await board.count()) === 0) {
+    await expand.click({ force: true })
+    await waitFor({
+      description: '右栏绑定到 leader 会话',
+      check: async () => {
+        const rightbar = page.locator('[data-sidebar-right-session]').first()
+        return (await rightbar.getAttribute('data-sidebar-right-session').catch(() => null)) === session.id
+      },
+      timeoutMs: 15_000,
+    })
+    const guideEntry = page.locator(
+      '.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]',
+    )
+    await waitForLocator(guideEntry, { description: '右栏 guide 页的看板入口', timeoutMs: 15_000 })
+    await guideEntry.click()
+  }
+  await waitForLocator(board.first(), { description: '看板挂载', timeoutMs: 15_000 })
 }
 
 test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消失', { timeout: scenarioTimeout() }, async (t) => {
@@ -281,7 +288,7 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
   assert.equal(
     await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
     BOARD_MODE_WORK,
-    '切模式应写进 localStorage，刷新后仍生效',
+    '切模式应把显式选择写进 localStorage',
   )
 
   await page.keyboard.press('Escape')
@@ -290,6 +297,22 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
     check: async () => !(await page.locator(SETTINGS_DIALOG).isVisible()),
     timeoutMs: 10_000,
   })
+
+  // 刷新后仍是工作模式：显式选择压过宿主默认，rail 不该回来。
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await openBoard(page, session)
+  await waitForLocator(page.locator(`${BOARD}[data-mode="work"]`), {
+    description: '刷新后看板仍是工作模式',
+    timeoutMs: 15_000,
+  })
+  assert.equal(await page.locator(RAIL).count(), 0, '刷新后工作模式不该渲染 rail')
+  assert.equal(await page.locator(RAIL_SLOT).count(), 0, '刷新后工作模式不该有 rail 槽位')
+  assert.equal(await page.locator(CARD_SLOT).count(), 3, '刷新后会话入口仍在卡内')
+  assert.equal(
+    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
+    BOARD_MODE_WORK,
+    '刷新后显式选择仍在 localStorage',
+  )
 
   await closeBrowser(browser)
   browser = null

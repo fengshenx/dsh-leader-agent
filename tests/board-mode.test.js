@@ -13,6 +13,7 @@ import {
   readBoardMode,
   readBoardModeSnapshot,
   setBoardMode,
+  settleBoardDefault,
   subscribeBoardMode,
   writeBoardMode,
 } from '../src/client/board-mode.js'
@@ -74,6 +75,39 @@ test('存储读不出来时同样是未就绪，而不是内置默认', () => {
     getItem: () => { throw new Error('privacy mode') },
   }
   assert.deepEqual(readBoardModeSnapshot(throwing), { mode: BOARD_MODE_CINEMA, resolved: false })
+})
+
+test('宿主默认值 RPC 失败：没有缓存时回退内置默认并广播，不能停在 pending', () => {
+  const storage = createStorage()
+  assert.equal(settleBoardDefault(storage, undefined), BOARD_MODE_CINEMA)
+  assert.deepEqual(storage.writes, [[BOARD_DEFAULT_KEY, BOARD_MODE_CINEMA]])
+  assert.equal(readBoardModeSnapshot(storage).resolved, true)
+})
+
+test('宿主默认值 RPC 失败：已有数据算出的缓存时沿用缓存，不被内置默认覆盖', () => {
+  const storage = createStorage({ [BOARD_DEFAULT_KEY]: BOARD_MODE_WORK })
+  assert.equal(settleBoardDefault(storage, undefined), undefined)
+  assert.deepEqual(storage.writes, [])
+  assert.equal(readBoardMode(storage), BOARD_MODE_WORK)
+})
+
+test('宿主默认值 RPC 失败：已有显式选择时不写也不覆盖', () => {
+  const storage = createStorage({ [BOARD_MODE_KEY]: BOARD_MODE_CINEMA })
+  assert.equal(settleBoardDefault(storage, undefined), undefined)
+  assert.deepEqual(storage.writes, [])
+})
+
+test('宿主正常返回时缓存并广播，存储写失败仍返回生效模式', () => {
+  const storage = createStorage()
+  assert.equal(settleBoardDefault(storage, { defaultMode: BOARD_MODE_WORK }), BOARD_MODE_WORK)
+  assert.deepEqual(storage.writes, [[BOARD_DEFAULT_KEY, BOARD_MODE_WORK]])
+
+  const throwing = {
+    getItem: () => { throw new Error('privacy mode') },
+    setItem: () => { throw new Error('privacy mode') },
+  }
+  assert.equal(settleBoardDefault(throwing, { defaultMode: BOARD_MODE_WORK }), BOARD_MODE_WORK)
+  assert.equal(settleBoardDefault(throwing, undefined), BOARD_MODE_CINEMA)
 })
 
 test('没有显式选择时用宿主缓存的默认值', () => {

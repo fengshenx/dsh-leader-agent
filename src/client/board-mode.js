@@ -124,6 +124,24 @@ export function writeBoardMode(storage, mode) {
   return next
 }
 
+/**
+ * 结算宿主默认值，返回要广播的模式。
+ *
+ * 默认值 RPC 可能失败（项目通道还没挂好、宿主版本缺这个方法）：失败时不能把看板
+ * 永远留在 `pending`。已有缓存或显式选择时保持不动；都没有才回退到内置默认并
+ * 广播——这一步只影响呈现，不值得让看板停在半初始化状态。
+ *
+ * @param {{ getItem?: (key: string) => string | null, setItem?: (key: string, value: string) => void } | undefined} storage - 存储口
+ * @param {unknown} defaults - 宿主返回值；RPC 失败时传 undefined
+ * @returns {string | undefined} 要广播的模式；不需要广播时为 undefined
+ */
+export function settleBoardDefault(storage, defaults) {
+  if (defaults?.defaultMode !== undefined) return cacheBoardDefault(storage, defaults.defaultMode)
+  // RPC 失败：缓存里已有依据就保持不动，不要用内置炫酷覆盖掉数据算出的工作默认
+  if (readBoardModeSnapshot(storage).resolved) return undefined
+  return cacheBoardDefault(storage, BOARD_MODE_DEFAULT)
+}
+
 /** 同一运行时内的订阅者。设置页写、看板读，都在这张表上。 */
 const listeners = new Set()
 
