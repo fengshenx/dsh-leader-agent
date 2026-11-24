@@ -53,6 +53,19 @@ function sliceSessionRow(source) {
   return endAt === -1 ? source.slice(startAt) : source.slice(startAt, endAt)
 }
 
+/**
+ * 切出 ProjectRow 的函数体：水位是本组件自己持有的状态，重置也只可能在它里面。
+ *
+ * @param {string} source - project-section.js 全文
+ * @returns {string} ProjectRow 的源码片段
+ */
+function sliceProjectRow(source) {
+  const startAt = source.indexOf('function ProjectRow(props)')
+  assert.notEqual(startAt, -1, '找不到 ProjectRow 定义')
+  const endAt = source.indexOf('\nfunction ', startAt + 1)
+  return endAt === -1 ? source.slice(startAt) : source.slice(startAt, endAt)
+}
+
 test('目录末段在两种分隔符下都能取到', () => {
   assert.equal(basenameOf('/work/alpha'), 'alpha')
   assert.equal(basenameOf('C:\\work\\alpha'), 'alpha')
@@ -400,6 +413,19 @@ test('完成未读投影接线到会话行', () => {
   assert.match(source, /\}, \[\]\)\s*\n\s*\/\/ 订阅已归档集合/)
   // 结果填进行数据：会话行渲染只认 row.completed，不另开第二条状态通道。
   assert.match(source, /completed: completed\.has\(id\),/)
+})
+
+test('收起项目清掉展开水位：重新展开回到默认一页', () => {
+  const source = readFileSync(sectionPath, 'utf8').replace(/\r\n/g, '\n')
+  const rowSource = sliceProjectRow(source)
+  // 水位是 ProjectRow 的本地状态，折叠视图与「展开其余」共用同一个值：收起时
+  // 只在 expanded 变 false 的这次渲染之后清一次，再展开不能把上次展开的条数带回来。
+  assert.match(
+    rowSource,
+    /useEffect\(\(\) => \{\n\s*if \(!expanded\) setWatermark\(0\)\n\s*\}, \[expanded\]\)/,
+  )
+  assert.match(rowSource, /const folded = foldSessions\(childSessions, watermark, currentSessionId, t\)/)
+  assert.match(rowSource, /setWatermark\(\(value\) => nextWatermark\(/)
 })
 
 test('当前会话是 leader 或项目下的 worker 时项目行有激活态', () => {
