@@ -36,6 +36,8 @@ const STYLE_TEXT = `
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 与上方 Tab 栏的分割线放在共用类上：工作/炫酷两种模式、空态与骨架态都有 */
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
   padding: 10px 12px 24px;
   /* 滚动条档位不在这里重绑：看板所在的宿主 paneBody/floatBody 已按浮起面绑成
      l2，本层再绑一次只是同值重复；写 body 的基础档反而会在浮起面上读成脏印 */
@@ -1173,12 +1175,9 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 .dsh-leader-agent-board-list-cinema {
   margin: 0;
   padding: 8px 6px 18px 0;
-  border-top: 0.5px solid var(--dsw-alias-border-l3);
-  background: var(--dla-panel);
 }
 
 .dsh-leader-agent-board-list-cinema-light {
-  --dla-panel: var(--dsw-static-neutral-bluish-50);
   --dla-structure: var(--dsw-static-neutral-bluish-300);
   --dla-structure-strong: var(--dsw-static-neutral-bluish-400);
   --dla-accent: var(--dsw-static-blue-600);
@@ -1201,7 +1200,6 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   --dsw-alias-interactive-bg-hover: var(--dsw-static-neutral-bluish-800);
   --dsw-alias-link: var(--dsw-static-blue-500);
   --dsw-alias-bg-skeleton: var(--dsw-static-neutral-bluish-800);
-  --dla-panel: var(--dsw-static-neutral-bluish-1000);
   --dla-structure: var(--dsw-static-neutral-bluish-800);
   --dla-structure-strong: var(--dsw-static-neutral-bluish-600);
   --dla-accent: var(--dsw-static-amber-500);
