@@ -19,6 +19,7 @@ import { createSkillProvider } from './skills.js'
 import { createSpawnWorkerTool } from './tools/spawn-worker.js'
 import { createMessageWorkerTool } from './tools/message-worker.js'
 import { createReadWorkerTool } from './tools/read-worker.js'
+import { createListWorkerModelsTool } from './tools/list-worker-models.js'
 import { createCreateCardTool, createUpdateCardTool, createListCardsTool, createReadCardTool } from './tools/cards.js'
 import { createNotificationStore } from './notification-store.js'
 import { resolveDshHome } from './home-paths.js'
@@ -35,6 +36,7 @@ import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/ga
 import { applyRoleContext } from './slots/index.js'
 import { applyLeaderContext } from './leader-context.js'
 import { applyTeamGuard } from './team-guard.js'
+import { normalizeModelSelection } from './worker-model.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -66,6 +68,7 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  *
  * @param {object} [options] - 工具依赖
  * @param {object} [options.dispatcher] - 派工器
+ * @param {object} [options.ctx] - Cordis 上下文；`list_worker_models` 执行时用它取 `llm`
  * @param {object} [options.cards] - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
  * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWriteCards] -
@@ -81,6 +84,7 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  */
 export function createBundleTools({
   dispatcher,
+  ctx,
   cards,
   resolveProject,
   canWriteCards,
@@ -103,6 +107,7 @@ export function createBundleTools({
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
     createReadWorkerTool({ dispatcher }),
+    createListWorkerModelsTool({ ctx }),
     createCreateCardTool({
       store: cards,
       resolveProject,
@@ -161,12 +166,20 @@ export function apply(ctx) {
 
   // 项目注册表：编排语境的容器。目录是代码语境，项目是编排语境，二者不合并。
   const projects = createProjectStore({ home: resolveDshHome() })
-  // worker 会话管理器要先建：项目服务列 worker 时要用它的同步判定（会话头没有
-  // subagent 标记了，只有登记知道谁是 worker）。
-  const workerSessions = createWorkerSessions({ ctx, logger })
-  // 登记表也要先建：项目树按它的 `lastUsedAt` 给 worker 排序。文件读写都在调用
-  // 时发生，这里只准备路径。
+  // 登记表先建：项目树按它的 `lastUsedAt` 给 worker 排序；冷恢复时 worker 会话
+  // 管理器还要按它读回派工时的模型选择。文件读写都在调用时发生，这里只准备路径。
   const workers = createWorkerRegistry({ home: resolveDshHome(), logger })
+  // worker 会话管理器要用登记表的同步判定（会话头没有 subagent 标记了，只有登记
+  // 知道谁是 worker）。模型选择也随登记表落盘：rc.2 的 `agents.resume` 只从
+  // agentOptions 取 route，冷恢复不传回它，自定义模型的 worker 首轮会失败。
+  const workerSessions = createWorkerSessions({
+    ctx,
+    logger,
+    resolveSessionSelection: async (sessionId) => {
+      const record = await workers.get(sessionId)
+      return normalizeModelSelection(record?.agentOptions)
+    },
+  })
   // 换 leader 后的接管要同时改登记表、通知队列与派工器内存态，而派工器依赖项目
   // 服务（身份判定、worker 目录），只能晚绑定：先占位，装配完再换成真动作。
   /** @type {(change: { projectId: string }) => Promise<void>} */
@@ -269,6 +282,7 @@ export function apply(ctx) {
   // 同样只给 leader。
   for (const tool of createBundleTools({
     dispatcher,
+    ctx,
     cards,
     resolveProject,
     canWriteCards,

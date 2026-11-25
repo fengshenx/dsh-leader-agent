@@ -50,9 +50,11 @@ function explainOccupiedError(error, sessionId) {
  * @param {object} options - 选项
  * @param {object} options.ctx - Cordis 上下文
  * @param {(message: string) => void} [options.logger] - 日志输出
+ * @param {(sessionId: string) => Promise<object | undefined>} [options.resolveSessionSelection] -
+ *   冷恢复时按会话 id 读回创建时的模型选择；返回 undefined 表示沿用旧行为
  * @returns {object} 管理器
  */
-export function createWorkerSessions({ ctx, logger = () => {} }) {
+export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSelection }) {
   /** @type {Map<string, object>} 活着的 worker 会话，值为 `AgentHandle` */
   const live = new Map()
   /**
@@ -130,6 +132,20 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
   }
 
   /**
+   * 把派工选好的模型包成建会话参数。
+   *
+   * 显式选择用普通值而不是 getter：这是派工那一刻定下的 route，不该跟着部署默认
+   * 模型之后的变化漂移。没有选择时回落到默认模型（旧行为）。
+   *
+   * @param {{ provider: string, model: string, reasoningEffort?: string } | undefined} selection - 模型选择
+   * @returns {{ agentOptions?: object }} 建会话参数
+   */
+  function agentOptionsOf(selection) {
+    if (selection === undefined) return agentOptionsFromDefaults()
+    return { agentOptions: { ...selection } }
+  }
+
+  /**
    * 补做建会话时的「呈现」：改标题。
    *
    * @param {object} handle - AgentHandle
@@ -203,13 +219,23 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
       // 冷恢复建的是新的作用域，preset 组合不会自己回来；按会话投影里记的
       // preset 重新挂（宿主 resume 路径同样走 composeAgent）。
       //
+      // 模型也要按派工登记表传回去：rc.2 的 resume 只从 agentOptions 取 route，
+      // 不传的话自定义模型的 worker 冷恢复后没有 provider/model，首轮直接失败。
+      const selection = typeof resolveSessionSelection === 'function'
+        ? await resolveSessionSelection(sessionId)
+        : undefined
       // 先登记再恢复：`agent/created` 在 resume 内部就发出来了，晚一步这个会话
       // 会被裁成普通会话——worker 于是丢掉卡片写入，再也汇报不了自己的卡。
       const known = workerIds.has(sessionId)
       workerIds.add(sessionId)
       let handle
       try {
-        handle = await agents.resume({ resumeSessionId: sessionId, signal, ...agentPresetResumeSetup(ctx, logger) })
+        handle = await agents.resume({
+          resumeSessionId: sessionId,
+          signal,
+          ...selection === undefined ? {} : { agentOptions: { ...selection } },
+          ...agentPresetResumeSetup(ctx, logger),
+        })
       } catch (error) {
         // 只回滚这次新登记的身份：已收编的 worker id 不能被抹掉，会话 id 不复用、
         // 留着不会误判（见 `forget`），抹掉反而让它下次被判成普通会话。
@@ -287,10 +313,11 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
      * @param {string} [options.name] - 显示名（同时用作会话标题）；`deferPresentation` 时由 `present` 使用
      * @param {boolean} [options.deferPresentation] - 推后改名与挂工作区；派工要在绑卡成功后才做
      * @param {object} [options.permissionFrom] - 权限来源会话（leader）；沙箱模式与审批策略从它继承
+     * @param {{ provider: string, model: string, reasoningEffort?: string }} [options.selection] - 派工选好的模型
      * @param {AbortSignal} options.signal - 取消信号
      * @returns {Promise<{ sessionId: string, permission: object | undefined }>} 新会话 id 与 worker 实际生效的权限
      */
-    async spawn({ cwd, name, signal, permissionFrom, deferPresentation = false }) {
+    async spawn({ cwd, name, signal, permissionFrom, deferPresentation = false, selection }) {
       const agents = ctx.get('agents')
       if (agents === undefined) {
         throw new Error('dsh-leader-agent: 当前组合未启用 agents 服务，无法创建 worker 会话')
@@ -310,7 +337,7 @@ export function createWorkerSessions({ ctx, logger = () => {} }) {
         handle = await agents.create({
           sessionId,
           signal,
-          ...agentOptionsFromDefaults(),
+          ...agentOptionsOf(selection),
           ...preset.setup === undefined ? {} : { setup: preset.setup },
           ...Object.keys(meta).length === 0 ? {} : { meta },
         })

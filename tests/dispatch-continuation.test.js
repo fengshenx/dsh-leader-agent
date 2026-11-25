@@ -89,6 +89,8 @@ function createHost({ resumeError } = {}) {
   const entries = new Map()
   const ctx = {
     on(event, listener) {
+      // 本文件的夹具不模拟预检失败；claim 订阅只需一个可释放的句柄。
+      if (event === 'agent/inbox/claimed') return () => {}
       assert.equal(event, 'session/event')
       sessionEventListeners.push(listener)
       return () => {

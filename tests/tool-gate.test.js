@@ -28,7 +28,7 @@ import {
  */
 function makeAgent(id, registered = [
   'list_agents', 'send_message', 'interrupt_agent', 'wait_agent', 'read', 'write',
-  'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
+  'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards', 'list_worker_models',
   'create_card', 'update_card', 'read_card',
 ]) {
   const restrictions = []
@@ -145,6 +145,27 @@ test('read_worker_session 只给 leader：worker 与普通会话的工具面都�
   assert.ok(!leaderDenied.includes('read_worker_session'))
 })
 
+test('list_worker_models 只给 leader：worker 与普通会话都摘掉它', () => {
+  const leaderDenied = deniedToolsFor({
+    agent: makeAgent('leader-1'),
+    isLeaderSession: (id) => id === 'leader-1',
+    isWorkerSession: () => false,
+  })
+  const workerDenied = deniedToolsFor({
+    agent: makeAgent('worker-1'),
+    isLeaderSession: () => false,
+    isWorkerSession: (id) => id === 'worker-1',
+  })
+  const plainDenied = deniedToolsFor({
+    agent: makeAgent('plain-1'),
+    isLeaderSession: () => false,
+    isWorkerSession: () => false,
+  })
+  assert.ok(!leaderDenied.includes('list_worker_models'))
+  assert.ok(workerDenied.includes('list_worker_models'))
+  assert.ok(plainDenied.includes('list_worker_models'))
+})
+
 test('缺 worker 判定时按普通会话处理，不误判成 worker', () => {
   const denied = deniedToolsFor({
     agent: makeAgent('whatever'),
@@ -218,7 +239,7 @@ test('rc.2 形态：subagent 三件在、wait_agent 缺，逐件 deny 三件而�
   // 整批 restrict 会因未知 wait_agent 失败，必须走 denyAvailable 的逐件重试。
   const leader = makeAgent('c', [
     'list_agents', 'send_message', 'interrupt_agent', 'read', 'write',
-    'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards',
+    'spawn_worker', 'message_worker', 'read_worker_session', 'list_cards', 'list_worker_models',
     'create_card', 'update_card', 'read_card',
   ])
   const denied = applyToolGate({

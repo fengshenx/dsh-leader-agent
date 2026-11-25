@@ -51,6 +51,8 @@ import {
   formatElapsed,
 } from './worker-stall.js'
 import { readWorkerTaskSource } from '../shared/worker-task.js'
+import { loadSlotTemplates } from './slots/slot-templates.js'
+import { normalizeModelSelection, resolveWorkerModel } from './worker-model.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
@@ -100,6 +102,28 @@ const RETRYABLE = 'retryable'
 const EXHAUSTED = 'exhausted'
 
 /**
+ * 把派工记录里的模型选择写成给 leader 看的短标签。
+ *
+ * 首次派工记录带 `modelSource`，续聊记录只有从登记表读回的路由；两者都能给出
+ * route 与 effort，来源只在知道时标注。
+ *
+ * @param {{ model?: string, effort?: string, modelSource?: string } | undefined} record - 派工记录
+ * @returns {string | undefined} 模型标签；没有模型选择时 undefined
+ */
+function describeRecordModel(record) {
+  if (record?.model === undefined) return undefined
+  const effort = record.effort === undefined ? '' : `，effort ${record.effort}`
+  const source = record.modelSource === 'spawn'
+    ? '（派工参数）'
+    : record.modelSource === 'slot'
+      ? '（槽位默认）'
+      : record.modelSource === 'leader'
+        ? '（leader 当前模型）'
+        : ''
+  return `${record.model}${effort}${source}`
+}
+
+/**
  * 构造完成通知正文。
  * @param {object} record - 派工记录
  * @param {{ ok: boolean, result?: object, error?: unknown }} outcome - 终态
@@ -110,17 +134,31 @@ export function buildNotificationText(record, outcome) {
   const status = outcome.ok ? outcome.result?.stopReason ?? 'completed' : 'failed'
   // 正文不带「谁在说话」的前缀：说话人由消息的 source 标记，客户端渲染成
   // 带头像与身份的气泡。前缀写进正文会同时污染模型读的事实与用户看到的界面。
-  lines.push(`任务「${record.name}」已结束。`)
+  lines.push(record.unattributed === true
+    ? record.claimed === true
+      ? `worker「${record.name}」有一轮执行失败；任务消息已被取走，但还没落成 user/message。`
+      : `worker「${record.name}」有一轮执行失败，且无法确认是否消费了你的任务。`
+    : `任务「${record.name}」已结束。`)
   lines.push(`子会话：${record.childId}`)
   lines.push(`状态：${status}`)
   if (!outcome.ok) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
+    const model = describeRecordModel(record)
+    if (model !== undefined) lines.push(`模型：${model}`)
     lines.push(`失败原因：${reason}`)
+    if (record.unattributed === true) {
+      lines.push(record.claimed === true
+        ? '注意：这一轮在你的任务消息落成 user/message 前失败；消息已被取走，不在收件箱里。先 read_worker_session 查看，再决定重投或换模型。'
+        : '注意：这一轮在你的任务消息被记录进会话前失败；先 read_worker_session 查看，再决定重投或换模型。')
+    }
   } else {
     const summary = messageText(outcome.result?.output ?? [])
     lines.push(summary === '' ? '产物摘要：（worker 未产出文本）' : `产物摘要：\n${summary}`)
   }
   lines.push('下一步：按 leader 协议判断验收、返工或派新工。')
+  if (!outcome.ok && record.model !== undefined) {
+    lines.push('若怀疑模型或凭据不可用，用 list_worker_models 换 route 重新派工；瞬时故障可 message_worker 重试。')
+  }
   return lines.join('\n').slice(0, NOTIFICATION_LIMIT)
 }
 
@@ -131,12 +169,14 @@ export function buildNotificationText(record, outcome) {
  * worker 真正产出的内容——成功是产物摘要，失败是失败原因。
  *
  * @param {{ ok: boolean, result?: object, error?: unknown }} outcome - 终态
+ * @param {{ model?: string, effort?: string, modelSource?: string }} [record] - 派工记录；有模型时失败回报点名
  * @returns {string} 最后一次回报的内容
  */
-export function buildWorkerReport(outcome) {
+export function buildWorkerReport(outcome, record) {
   if (!outcome.ok) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
-    return `失败：${reason}`.slice(0, NOTIFICATION_LIMIT)
+    const model = describeRecordModel(record)
+    return `${model === undefined ? '失败' : `失败（模型 ${model}）`}：${reason}`.slice(0, NOTIFICATION_LIMIT)
   }
   // 气泡按 Markdown 渲染：块间要空行，单个 \n 是软换行，多块会被折成一段。
   const summary = messageText(outcome.result?.output ?? [], '\n\n')
@@ -210,7 +250,13 @@ export function createDispatcher({
    * 折叠：`turn/start` 开回合、`user/message` 认输入来源、`assistant/message` 攒
    * 文本、`turn/end` 结算。
    *
-   * @type {Map<string, { openedBy: 'leader' | 'user' | undefined, leaderMessageIds: Set<string>, text: string }>}
+   * @type {Map<string, {
+   *   turn: number | undefined,
+   *   openedBy: 'leader' | 'user' | undefined,
+   *   leaderMessageIds: Set<string>,
+   *   leaderClaimedMessageIds: Set<string>,
+   *   text: string
+   * }>}
    */
   const openTurns = new Map()
   /**
@@ -518,7 +564,7 @@ export function createDispatcher({
       name: record.name,
       text,
       summary: text.split('\n')[0] ?? '',
-      report: buildWorkerReport(outcome),
+      report: buildWorkerReport(outcome, record),
       outcome: outcome.ok ? 'completed' : 'failed',
       createdAt: Date.now(),
       attempts: 0,
@@ -733,6 +779,13 @@ export function createDispatcher({
       throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息')
     }
     const displayName = name ?? (typeof worker.name === 'string' ? worker.name : sessionId)
+    // 续聊记录也带上模型：失败回报要能直接说出 worker 跑在哪个 route 上。
+    // 登记表是跨进程真源；`owners` 兜住本次进程里登记落盘失败的会话。
+    const selection = normalizeModelSelection(worker.agentOptions)
+    const model = selection === undefined
+      ? worker.model
+      : `${selection.provider}/${selection.model}`
+    const effort = selection?.reasoningEffort ?? worker.effort
     // 消息 id 先于投递生成并记进在飞表：worker 可能在本轮收尾时立刻取走这条消息，
     // 等 `send` 返回再登记就赶不上那次 `turn/end` 了。投递失败把记录退回去。
     const messageId = randomUUID()
@@ -742,6 +795,11 @@ export function createDispatcher({
       parentSessionId: parent.id,
       parent,
       name: displayName,
+      ...model === undefined ? {} : {
+        model,
+        ...effort === undefined ? {} : { effort },
+        ...typeof worker.modelSource === 'string' ? { modelSource: worker.modelSource } : {},
+      },
       task: message,
       messageId,
       startedAt: Date.now(),
@@ -860,11 +918,13 @@ export function createDispatcher({
    * @param {string} options.name - worker 显示名
    * @param {string} [options.cardId] - 要绑的卡片 id；与 `slot` 成对
    * @param {string} [options.slot] - 要绑的槽位名；与 `cardId` 成对
+   * @param {string} [options.model] - 显式模型（`provider/model` 或裸模型 id）
+   * @param {string} [options.effort] - 显式 reasoning effort
    * @param {string} [options.force] - 名册到顶时的逃逸理由；非空才放行新建
    * @param {AbortSignal} options.signal - 取消信号
    * @returns {Promise<object>} 派工记录
    */
-  async function dispatch({ parent, name, cardId, slot, force, signal }) {
+  async function dispatch({ parent, name, cardId, slot, force, model, effort, signal }) {
     // 绑定参数成对出现：只给一半会让调用方以为绑上了，实际什么都没发生。
     if ((cardId === undefined) !== (slot === undefined)) {
       throw new Error('spawn_worker: cardId 与 slot 必须成对传入（要绑卡就两者都给，不绑就都不给）')
@@ -930,6 +990,18 @@ export function createDispatcher({
     // worker 的工作目录由项目决定：leader 不能指定 worker 跑在哪，也不该让
     // worker 跑到项目外面去。项目目录是绝对路径，worker 会话直接采用。
     const cwd = resolveWorkerCwd?.(parent.id)
+    // 槽位默认模型从项目目录的 SLOTS.md 读；模型/effort 的选择与预检放在建会话
+    // 之前——非法 route 不该先留下一个等消息的 worker。
+    const slotEntry = cwd === undefined || slot === undefined ? undefined : loadSlotTemplates(cwd).get(slot)
+    const modelChoice = await resolveWorkerModel({
+      ctx,
+      parent,
+      slot: slotEntry,
+      slotName: slot,
+      model,
+      effort,
+      signal,
+    })
     // 「呈现」（改名）推到绑定成功之后：改名会追加 `session/title` 事件、让会话
     // 在磁盘上 materialize，先做就没有东西可回滚了。
     //
@@ -941,6 +1013,7 @@ export function createDispatcher({
       signal,
       permissionFrom: parent.session,
       deferPresentation: true,
+      ...modelChoice === undefined ? {} : { selection: modelChoice.selection },
     })
     // 绑卡必须在返回前完成：leader 接下来投递的第一条消息就该带着角色与卡片事实。
     // 绑不上就销毁刚建的会话——它还没 materialize，磁盘上不会留下半成品。
@@ -957,6 +1030,7 @@ export function createDispatcher({
       }
     }
     workerSessions.present(childId, { name })
+    const agentOptions = modelChoice?.selection
     const record = {
       childId,
       parentSessionId: parent.id,
@@ -966,16 +1040,34 @@ export function createDispatcher({
       // worker 以什么权限跑要跟着派工结果回去：继承到完全权限时，用户在派工
       // 那一刻就该知道，而不是事后翻 worker 的会话日志。
       permission,
+      ...agentOptions === undefined ? {} : {
+        model: `${agentOptions.provider}/${agentOptions.model}`,
+        ...agentOptions.reasoningEffort === undefined ? {} : { effort: agentOptions.reasoningEffort },
+        modelSource: modelChoice.source,
+      },
     }
     // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
-    owners.set(childId, { parentSessionId: parent.id, name })
+    owners.set(childId, {
+      parentSessionId: parent.id,
+      name,
+      ...agentOptions === undefined ? {} : {
+        model: `${agentOptions.provider}/${agentOptions.model}`,
+        ...agentOptions.reasoningEffort === undefined ? {} : { effort: agentOptions.reasoningEffort },
+        modelSource: modelChoice.source,
+      },
+    })
     // 派工落登记表：leader 可能在任何时刻（含本进程重启后）续聊，归属与父会话
     // 映射不能只活在内存里。任务正文此时还没有，等 `message` 投递后才有。
+    // 模型选择一并落盘：冷恢复要按它还原 route（rc.2 的 resume 不从会话日志取）。
     try {
       await workers.register({
         childId: record.childId,
         parentSessionId: parent.id,
         name,
+        ...agentOptions === undefined ? {} : {
+          agentOptions: { ...agentOptions },
+          modelSource: modelChoice.source,
+        },
       })
     } catch (error) {
       logger(`dsh-leader-agent: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
@@ -999,7 +1091,7 @@ export function createDispatcher({
       case 'aborted': return `被取消：${reason.reason?.kind ?? '未说明原因'}`
       case 'blocked': return '被阻断：这一轮被宿主拦下，没有开始'
       case 'max-tokens': return '输出达到 token 上限，这一轮没有正常收尾'
-      case 'error': return `失败：${reason.error?.message ?? '未知错误'}`
+      case 'error': return reason.error?.message ?? '未知错误'
       default: return `这一轮没有正常结束（${reason?.kind ?? '未知原因'}）`
     }
   }
@@ -1203,14 +1295,28 @@ export function createDispatcher({
     // **这一轮**的产物，不能被下一轮的 assistant 文本覆盖。
     if (record.summary === undefined) {
       const consumed = turn?.leaderMessageIds.has(record.messageId) === true
-      if (turn?.openedBy !== 'leader' || !consumed) {
-        if (consumed) inflight.delete(sessionId)
-        return false
+      const claimed = turn?.leaderClaimedMessageIds?.has(record.messageId) === true
+      const attributed = turn?.openedBy === 'leader' && consumed
+      if (!attributed) {
+        if (consumed) {
+          inflight.delete(sessionId)
+          return false
+        }
+        // 模型 route 在 `preStep`/`prepareRequest` 就失败时，这一轮还没走到
+        // `user/message`，但宿主已经在 `agent/inbox/claimed` 里报过取走了谁的输入。
+        // 用户 claim 的轮次失败不能算派工失败，记录要留着等任务消息真正进入下一轮；
+        // 只接 error 终态。归属仍不确定时在通知里写明，让 leader 自己决定重投或换模型。
+        if (turn?.openedBy !== undefined || reason?.kind !== 'error') return false
+        record.outcome = 'failed'
+        record.summary = describeTurnFailure(reason)
+        record.unattributed = true
+        if (claimed) record.claimed = true
+      } else {
+        record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
+        record.summary = record.outcome === 'completed'
+          ? turn.text
+          : describeTurnFailure(reason)
       }
-      record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
-      record.summary = record.outcome === 'completed'
-        ? turn.text
-        : describeTurnFailure(reason)
     }
     const judged = record.outcome === 'completed'
       ? { ok: true, result: { stopReason: 'completed', output: [{ type: 'text', text: record.summary }] } }
@@ -1242,6 +1348,34 @@ export function createDispatcher({
   }
 
   /**
+   * 记录宿主在步骤边界取走了谁的输入。
+   *
+   * `preStep`/`prepareRequest` 失败时这一轮只有 `turn/start` + `turn/end`，
+   * `user/message` 还没落盘；只靠会话事件看不出这一轮是用户自己开的。宿主的
+   * `agent/inbox/claimed` 在取走输入时给出消息来源，正好补上这个窗口。
+   *
+   * @param {{ agent?: object, message?: object, turn?: number }} [payload] - 领取通知
+   * @returns {void}
+   */
+  function observeClaim(payload = {}) {
+    const agent = payload?.agent
+    const sessionId = typeof agent?.id === 'string' ? agent.id : agent?.session?.id
+    if (typeof sessionId !== 'string') return
+    const turn = openTurns.get(sessionId)
+    if (turn === undefined) return
+    if (typeof payload?.turn === 'number' && turn.turn !== undefined && turn.turn !== payload.turn) return
+    const input = payload?.message
+    if (typeof input?.id !== 'string') return
+    // leader 任务消息自带 parentSessionId 凭证；用户输入没有这个 kind。这里只记
+    // claim，不把 leader 消息直接算成已消费——真正的消费仍以 `user/message` 为准。
+    if (readWorkerTaskSource(input.source) !== null) {
+      turn.leaderClaimedMessageIds.add(input.id)
+    } else if (input.source?.kind === 'user') {
+      turn.openedBy ??= 'user'
+    }
+  }
+
+  /**
    * 观察会话事件，在轮次边界上按回合归属结算。
    *
    * 一个 turn 是 `agent.run()` 的一次调用（内部含多个 step）。宿主的追加顺序是
@@ -1259,8 +1393,10 @@ export function createDispatcher({
     switch (event?.type) {
       case 'turn/start': {
         openTurns.set(sessionId, {
+          turn: event.data?.turn,
           openedBy: undefined,
           leaderMessageIds: new Set(),
+          leaderClaimedMessageIds: new Set(),
           text: '',
         })
         return undefined
@@ -1304,6 +1440,7 @@ export function createDispatcher({
   // 订阅不到事件只可能是宿主低于 `engines.dsh` 下限（rc.2 已提供 `session/event`
   // 与 `turn/end`），那是版本契约问题，不是装配期能判定的事。
   const stopTurns = ctx.on('session/event', (session, event) => observeTurn(session, event))
+  const stopClaims = ctx.on('agent/inbox/claimed', (payload) => observeClaim(payload))
 
   // 单个 60s 节拍扫全部在飞轮次：没有在跑的 worker 时零动作，不给 leader 发例行询问。
   const stallWatch = createStallWatch({
@@ -1402,6 +1539,7 @@ export function createDispatcher({
       closed = true
       // 卸载后不再有派工：留着订阅会继续替已死记录结算，也会让宿主持住这个模块。
       stopTurns()
+      stopClaims()
       stallWatch.dispose()
       if (idleTimer !== undefined) {
         clearInterval(idleTimer)
