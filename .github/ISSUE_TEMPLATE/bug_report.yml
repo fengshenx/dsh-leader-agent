@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        开新 issue 前先搜一遍既有 issue，并对照[已知限制](https://github.com/fengshenx/dsh-leader-agent/blob/main/docs/limitations.md)，看是不是明知的边界。宿主升级后出现的问题，也请顺手确认是不是宿主本身的行为。
+        开新 issue 前先搜一遍既有 issue。宿主升级后出现的问题，也请顺手确认是不是宿主本身的行为。
 
   - type: input
     id: version
