@@ -1002,3 +1002,63 @@ test('冷恢复完成后清掉在飞记录：forget 之后再 send 会重新恢�
   await sessions.send({ sessionId: 'worker-1', text: '三', parentSessionId: 'c', signal })
   assert.equal(resumeCalls, 2)
 })
+
+test('spawn 带 selection 时按它建会话，不再用部署默认模型', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+
+  await sessions.spawn({
+    name: 'w',
+    selection: { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' },
+    signal: new AbortController().signal,
+  })
+
+  assert.deepEqual(fixture.created[0].options.agentOptions, {
+    provider: 'deepseek',
+    model: 'deepseek-reasoner',
+    reasoningEffort: 'high',
+  })
+})
+
+test('冷恢复按 resolveSessionSelection 读回派工时的模型选择', async () => {
+  const fixture = createFixture()
+  const asked = []
+  const sessions = createWorkerSessions({
+    ctx: fixture.ctx,
+    resolveSessionSelection: async (sessionId) => {
+      asked.push(sessionId)
+      return { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' }
+    },
+  })
+
+  await sessions.send({
+    sessionId: 'worker-1',
+    text: '继续',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.deepEqual(asked, ['worker-1'])
+  assert.deepEqual(fixture.resumeOptions[0].agentOptions, {
+    provider: 'deepseek',
+    model: 'deepseek-reasoner',
+    reasoningEffort: 'high',
+  })
+})
+
+test('冷恢复解析不出模型时不塞空的 agentOptions', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({
+    ctx: fixture.ctx,
+    resolveSessionSelection: async () => undefined,
+  })
+
+  await sessions.send({
+    sessionId: 'worker-1',
+    text: '继续',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal('agentOptions' in fixture.resumeOptions[0], false)
+})

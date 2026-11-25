@@ -51,6 +51,8 @@ import {
   formatElapsed,
 } from './worker-stall.js'
 import { readWorkerTaskSource } from '../shared/worker-task.js'
+import { loadSlotTemplates } from './slots/slot-templates.js'
+import { resolveWorkerModel } from './worker-model.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
@@ -860,11 +862,13 @@ export function createDispatcher({
    * @param {string} options.name - worker 显示名
    * @param {string} [options.cardId] - 要绑的卡片 id；与 `slot` 成对
    * @param {string} [options.slot] - 要绑的槽位名；与 `cardId` 成对
+   * @param {string} [options.model] - 显式模型（`provider/model` 或裸模型 id）
+   * @param {string} [options.effort] - 显式 reasoning effort
    * @param {string} [options.force] - 名册到顶时的逃逸理由；非空才放行新建
    * @param {AbortSignal} options.signal - 取消信号
    * @returns {Promise<object>} 派工记录
    */
-  async function dispatch({ parent, name, cardId, slot, force, signal }) {
+  async function dispatch({ parent, name, cardId, slot, force, model, effort, signal }) {
     // 绑定参数成对出现：只给一半会让调用方以为绑上了，实际什么都没发生。
     if ((cardId === undefined) !== (slot === undefined)) {
       throw new Error('spawn_worker: cardId 与 slot 必须成对传入（要绑卡就两者都给，不绑就都不给）')
@@ -930,6 +934,18 @@ export function createDispatcher({
     // worker 的工作目录由项目决定：leader 不能指定 worker 跑在哪，也不该让
     // worker 跑到项目外面去。项目目录是绝对路径，worker 会话直接采用。
     const cwd = resolveWorkerCwd?.(parent.id)
+    // 槽位默认模型从项目目录的 SLOTS.md 读；模型/effort 的选择与预检放在建会话
+    // 之前——非法 route 不该先留下一个等消息的 worker。
+    const slotEntry = cwd === undefined || slot === undefined ? undefined : loadSlotTemplates(cwd).get(slot)
+    const modelChoice = await resolveWorkerModel({
+      ctx,
+      parent,
+      slot: slotEntry,
+      slotName: slot,
+      model,
+      effort,
+      signal,
+    })
     // 「呈现」（改名）推到绑定成功之后：改名会追加 `session/title` 事件、让会话
     // 在磁盘上 materialize，先做就没有东西可回滚了。
     //
@@ -941,6 +957,7 @@ export function createDispatcher({
       signal,
       permissionFrom: parent.session,
       deferPresentation: true,
+      ...modelChoice === undefined ? {} : { selection: modelChoice.selection },
     })
     // 绑卡必须在返回前完成：leader 接下来投递的第一条消息就该带着角色与卡片事实。
     // 绑不上就销毁刚建的会话——它还没 materialize，磁盘上不会留下半成品。
@@ -957,6 +974,7 @@ export function createDispatcher({
       }
     }
     workerSessions.present(childId, { name })
+    const agentOptions = modelChoice?.selection
     const record = {
       childId,
       parentSessionId: parent.id,
@@ -966,16 +984,23 @@ export function createDispatcher({
       // worker 以什么权限跑要跟着派工结果回去：继承到完全权限时，用户在派工
       // 那一刻就该知道，而不是事后翻 worker 的会话日志。
       permission,
+      ...agentOptions === undefined ? {} : {
+        model: `${agentOptions.provider}/${agentOptions.model}`,
+        ...agentOptions.reasoningEffort === undefined ? {} : { effort: agentOptions.reasoningEffort },
+        modelSource: modelChoice.source,
+      },
     }
     // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
     owners.set(childId, { parentSessionId: parent.id, name })
     // 派工落登记表：leader 可能在任何时刻（含本进程重启后）续聊，归属与父会话
     // 映射不能只活在内存里。任务正文此时还没有，等 `message` 投递后才有。
+    // 模型选择一并落盘：冷恢复要按它还原 route（rc.2 的 resume 不从会话日志取）。
     try {
       await workers.register({
         childId: record.childId,
         parentSessionId: parent.id,
         name,
+        ...agentOptions === undefined ? {} : { agentOptions: { ...agentOptions } },
       })
     } catch (error) {
       logger(`dsh-leader-agent: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)

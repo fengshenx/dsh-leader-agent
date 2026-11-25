@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 import { createDispatcher, buildNotificationText, buildWorkerReport } from '../src/host/dispatch.js'
 import { createNotificationStore } from '../src/host/notification-store.js'
@@ -58,13 +60,15 @@ function createFixture({ permissions } = {}) {
   /**
    * 造一个假 AgentHandle：`steer` 记录投递，session 供标题改写与身份判定。
    * @param {string} sessionId - 会话 id
+   * @param {object} [options] - 宿主传给 create/resume 的完整参数
    * @returns {object} 句柄
    */
-  function createHandle(sessionId) {
+  function createHandle(sessionId, options = {}) {
     // pending 是投给 worker、还没被某个 step 取走的输入：宿主只在 `user/message`
     // 落盘时才算消费，结算归属要靠这条边界。
     const entry = {
       sessionId,
+      options,
       messages: [],
       pending: [],
       turns: 0,
@@ -114,17 +118,19 @@ function createFixture({ permissions } = {}) {
   }
 
   const agents = {
-    async create({ sessionId }) {
+    async create(options) {
       sequence += 1
-      const { handle } = createHandle(sessionId ?? `worker-${sequence}`)
+      const sessionId = options.sessionId ?? `worker-${sequence}`
+      const { handle } = createHandle(sessionId, options)
       return handle
     },
-    async resume({ resumeSessionId }) {
+    async resume(options) {
+      const resumeSessionId = options.resumeSessionId
       resumed.push(resumeSessionId)
       // 冷恢复沿用同一个会话 id，历史消息不在这个假身里重建。
       const existing = spawned.find((item) => item.sessionId === resumeSessionId)
       if (existing !== undefined) existing.disposed = false
-      const { handle } = createHandle(resumeSessionId)
+      const { handle } = createHandle(resumeSessionId, options)
       return handle
     },
     get(sessionId) {
@@ -165,6 +171,15 @@ function createFixture({ permissions } = {}) {
       }
       if (key === 'sessionPersistence') return { append() {} }
       if (key === 'sessionQuery') return { observeSession() {} }
+      // 模型预检假件：只认一个「解析不了」的模型，其余原样通过。
+      if (key === 'llm') {
+        return {
+          async resolveCallConfig(selection) {
+            if (selection.model === 'missing') throw new Error('unknown model')
+            return selection
+          },
+        }
+      }
       // 权限服务照 rc.2 的方法面；默认不提供，只有权限继承用例打开。
       if (key === 'sandboxPolicy' && permissions !== undefined) {
         return {
@@ -1056,6 +1071,15 @@ test('spawn_worker 缺少调用方 agent 时报错', async () => {
     await assert.rejects(
       () => tool.execute({ name: '工', cardId: 'card-1' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
       /cardId 与 slot 必须成对/,
+    )
+    // 模型与 effort 传非字符串会被当成没传，worker 静默跑在别的模型上。
+    await assert.rejects(
+      () => tool.execute({ name: '工', model: 42 }, { signal: new AbortController().signal }),
+      /model 必须是字符串/,
+    )
+    await assert.rejects(
+      () => tool.execute({ name: '工', effort: 42 }, { signal: new AbortController().signal }),
+      /effort 必须是字符串/,
     )
   } finally {
   }
@@ -3508,4 +3532,152 @@ test('续聊投递失败时把在飞记录退回去，上一轮不会失去结�
   assert.equal(await fixture.finishTurn(record.childId, { text: '第一轮产物' }), true)
   await waitFor(() => fixture.delivered.length === 1)
   assert.match(fixture.delivered[0].content[0].text, /第一轮产物/)
+})
+
+/**
+ * 造一个带当前模型选择的 leader 假身。
+ *
+ * @param {string} id - 会话 id
+ * @param {object[]} delivered - 收到的完成通知
+ * @param {{ provider: string, model: string, reasoningEffort?: string }} selection - 当前模型
+ * @returns {object} agent 假身
+ */
+function createParentWithModel(id, delivered, selection) {
+  return {
+    ...createParent(id, delivered),
+    model: { current: () => selection },
+  }
+}
+
+test('spawn_worker 把显式模型与 effort 交给 worker，回执写明来源', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  try {
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+    })
+    const tool = createSpawnWorkerTool({ dispatcher })
+    const parent = createParentWithModel('leader-1', fixture.delivered, { provider: 'leader-provider', model: 'leader-model' })
+
+    const result = await tool.execute(
+      { name: '实现派工', model: 'deepseek/reasoner', effort: 'high' },
+      { signal: new AbortController().signal, agent: parent },
+    )
+
+    assert.equal(result.model, 'deepseek/reasoner')
+    assert.equal(result.effort, 'high')
+    assert.equal(result.modelSource, 'spawn')
+    assert.deepEqual(fixture.spawned[0].options.agentOptions, {
+      provider: 'deepseek',
+      model: 'reasoner',
+      reasoningEffort: 'high',
+    })
+    // 模型选择随登记表落盘：冷恢复要按它还原 route。
+    assert.deepEqual((await fixture.workers.get(result.childId)).agentOptions, {
+      provider: 'deepseek',
+      model: 'reasoner',
+      reasoningEffort: 'high',
+    })
+    const rendered = tool.output.render({ name: '实现派工' }, result).map((block) => block.text).join('\n')
+    assert.match(rendered, /模型：deepseek\/reasoner，effort high（来自派工参数）/)
+  } finally {
+  }
+})
+
+test('spawn_worker 绑定槽位时用 SLOTS.md 的角色默认模型', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const project = await makeTempDir('dsh-leader-agent-project-')
+  try {
+    await writeFile(join(project, 'SLOTS.md'), [
+      '---',
+      'slots:',
+      '  dev:',
+      '    label: 开发',
+      '    model: deepseek/slot-model',
+      '    effort: medium',
+      '---',
+      '## dev',
+      '你是实现者。',
+    ].join('\n'), 'utf8')
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+      resolveWorkerCwd: () => project,
+      bindCardSlot: (input) => cards.bindSlot(input),
+      getCard: (cardId) => cards.get(cardId),
+      resolveProject: async () => ({ id: 'project-a' }),
+    })
+    const card = await cards.create({ title: '任务', projectId: 'project-a' })
+    const parent = createParentWithModel('leader-1', fixture.delivered, {
+      provider: 'leader-provider',
+      model: 'leader-model',
+      reasoningEffort: 'low',
+    })
+
+    const record = await dispatcher.dispatch({
+      parent,
+      name: '实现派工',
+      cardId: card.id,
+      slot: 'dev',
+      signal: new AbortController().signal,
+    })
+
+    assert.equal(record.model, 'deepseek/slot-model')
+    assert.equal(record.effort, 'medium')
+    assert.equal(record.modelSource, 'slot')
+    assert.deepEqual(fixture.spawned[0].options.agentOptions, {
+      provider: 'deepseek',
+      model: 'slot-model',
+      reasoningEffort: 'medium',
+    })
+  } finally {
+  }
+})
+
+test('spawn_worker 的模型预检失败时不建会话', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  try {
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+    })
+    const tool = createSpawnWorkerTool({ dispatcher })
+    const parent = createParentWithModel('leader-1', fixture.delivered, { provider: 'leader-provider', model: 'leader-model' })
+
+    await assert.rejects(
+      () => tool.execute(
+        { name: '实现派工', model: 'mock/missing' },
+        { signal: new AbortController().signal, agent: parent },
+      ),
+      /模型 mock\/missing 不可用：unknown model/,
+    )
+    assert.equal(fixture.spawned.length, 0)
+  } finally {
+  }
+})
+
+test('spawn_worker 回执标出模型来自槽位还是 leader', () => {
+  const tool = createSpawnWorkerTool({ dispatcher: {} })
+  const slotText = tool.output.render(
+    { slot: 'dev' },
+    { childId: 'c', status: 'spawned', model: 'p/m', effort: 'medium', modelSource: 'slot' },
+  ).map((block) => block.text).join('\n')
+  assert.match(slotText, /模型：p\/m，effort medium（来自槽位「dev」的默认）/)
+
+  const leaderText = tool.output.render(
+    {},
+    { childId: 'c', status: 'spawned', model: 'p/m', effort: 'low', modelSource: 'leader' },
+  ).map((block) => block.text).join('\n')
+  assert.match(leaderText, /模型：p\/m，effort low（来自leader 当前模型）/)
+
+  const noneText = tool.output.render({}, { childId: 'c', status: 'spawned' })
+    .map((block) => block.text).join('\n')
+  assert.doesNotMatch(noneText, /模型：/)
 })

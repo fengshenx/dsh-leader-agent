@@ -1,0 +1,37 @@
+# Agent Note: worker 模型选择
+
+Status: implemented
+
+## Problem
+
+worker 建会话时只能拿 `agentDefaultModel` 的部署默认值，leader 无法按任务要求换模型；`SLOTS.md` 的角色只贡献提示词，同一角色的默认模型无处声明。派工参数里也没有 effort，模型选择完全脱离 leader 的编排判断。
+
+## Decision
+
+- **派工参数优先**：`spawn_worker` 新增可选 `model` 与 `effort`。`model` 写 `provider/model`；只写模型 id 时沿用 leader 的 provider（模型 id 自身含斜杠时必须写全 route）。只给 `effort` 时套在最终模型上。
+- **槽位默认其次**：`SLOTS.md` frontmatter 的 `slots.<名字>` 可写 `model` / `effort`。派工绑到该槽位且未显式指定模型时使用它；槽位没写 model 时才回落到 leader 当前模型。
+- **effort 跟随模型来源**：显式换模型但没给 effort 时用新模型的默认 effort，不把槽位 effort 跨模型套用；模型回落到 leader 时槽位 effort 仍可覆盖 leader 的 effort。
+- **建会话前预检**：需要换 route 或 effort 时调宿主 `llm.resolveCallConfig()`；不可用就拒绝派工，不在磁盘上留下等消息的空会话。纯回落 leader 当前 route 不重复预检。
+- **模型是建会话时的 route**：选择随派工登记表落盘；冷恢复按 `agentOptions` 还原。rc.2 的 `agents.resume()` 只从 `agentOptions` 取 route，不从会话日志推导，不落盘会让自定义模型的 worker 重启后首轮失败。
+- **回执可审计**：`spawn_worker` 返回并渲染 `model`、`effort` 与 `modelSource`（派工参数 / 槽位默认 / leader 当前模型），leader 不必猜 worker 实际跑在什么模型上。
+
+## Alternatives considered
+
+- **照宿主 subagent 拆 `provider` + `model` + `reasoning_effort` 三个字段**：最无歧义，但 leader 每次派工要多填一段已知前缀；`provider/model` 单字段已能表达，裸 id 再用 leader provider 兜底。
+- **只做 `SLOTS.md` 默认，不给派工参数**：跨角色的临时任务（同一 dev 槽位这次要快模型）只能改项目文件，违背「模型是单次派工决策」。
+- **只做派工参数，不做槽位默认**：角色默认要由 leader 每次记得，且项目配置无法表达「review 固定用强模型」。
+- **模型为空时回落到部署默认而非 leader**：用户要求按 leader 当前模型回落；部署默认在 leader 手动换过模型后与它不一致。
+- **冷恢复从会话日志 `model/selection` 反推 route**：新宿主可行，但 rc.2 是 `engines.dsh` 下限，且 `model/selection` 只记录选择、不保证在首轮请求前存在；登记表是同一份派工事实的持久化落点。
+
+## Consequences
+
+- **改 `SLOTS.md` 不切换已在跑的 worker**：模型只在建会话时定下，角色正文仍每轮更新。要换模型只能新派 worker 或原会话里手工换。
+- **没有模型目录工具**：leader 要自己知道 route；写错时预检错误会点名 provider/model 与来源，但不列出全部可选模型。
+- **登记表是冷恢复的模型真源**：登记失败（已记日志）或旧记录没有 `agentOptions` 时，恢复行为退回旧路径；新宿主仍可从 `modelSelection` 投影取回。
+- **槽位模型值非法只影响该槽位派工**：解析期忽略并告警，绑到该槽位派工时直接拒绝，不影响其他槽位与注入。
+
+收益：leader 能在派工那一刻按任务难度与角色分配模型，同时保留项目级角色默认与 leader 兜底。
+
+## Testing
+
+`tests/worker-model.test.js` 钉住来源优先级、route 解析与预检；`tests/slots.test.js` 钉住 frontmatter 读取与非法值；`tests/worker-sessions.test.js` 钉住创建与冷恢复传 `agentOptions`；`tests/dispatch.test.js` 钉住派工参数、槽位默认、失败不建会话与回执。双向：把 `spawn_worker` 的模型参数从 dispatcher 调用里删掉 → 显式模型用例红；把预检跳过 → 预检失败用例红；还原后全绿。

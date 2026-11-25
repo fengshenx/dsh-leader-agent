@@ -69,6 +69,8 @@ README 给最短路径，[使用手册](usage.md) 给每个动作的完整边界
 slots:
   dev:
     label: 开发
+    model: deepseek/deepseek-reasoner
+    effort: high
   review:
     label: 审核
 ---
@@ -89,7 +91,7 @@ slots:
 - 至少跑一条对抗探针（并发、边界值、幂等、错误路径）。
 ```
 
-槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），中文显示名写 frontmatter 的 `label`。卡片的 `slots` 字段把角色绑到会话，被绑会话每轮注入对应正文。
+槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），中文显示名写 frontmatter 的 `label`。卡片的 `slots` 字段把角色绑到会话，被绑会话每轮注入对应正文。`model` / `effort` 是角色默认模型，没写回落 leader 当前模型；只在建 worker 时定下。
 
 ## 四、一张卡：从创建到下钻
 
@@ -115,7 +117,7 @@ slots:
 | 右栏没有「看板」Tab | 当前会话不属于任何项目；看板只对项目会话展示 |
 | `create_card` 报没有权限 | 只有 Leader 能建卡与列卡，worker 只有 `update_card` |
 | `spawn_worker` 被拒 | 卡不是本项目、不是 `active`，或这个 worker 还挂着未完成卡 |
-| 改 `SLOTS.md` 没生效 | 确认改的是被绑的那个槽位名，且正文确实变了 |
+| 改 `SLOTS.md` 没生效 | 确认槽位与正文都改对了；模型只在建 worker 时生效 |
 | 桌面版没有看板 | 桌面版读 `desktop` profile，与 web 的插件安装互不相通 |
 
 完整边界见[使用手册](usage.md)：派工、续聊、回看 worker 会话、卡片、看板、项目管理、槽位与 leader 手册。看板与信号灯的口径见[已知限制](limitations.md)。

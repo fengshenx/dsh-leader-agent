@@ -39,6 +39,8 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 建 worker 与冷恢复都要显式把 `agentPresets.mount()` 交给 `setup` 并把 preset id 写进 `meta.agentPreset`，否则只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。挂上的是整个标准组合（persona、`agent-instructions`、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web`…），因此 worker 也能向用户提问。worker 的沙箱模式与审批策略在派工时从 leader 继承，回执写回读到的实际权限（[capability-gaps 第 41 条](capability-gaps.md)、[限制](limitations.md#worker-的控制面)）。
 
+模型选择在建会话时交给 `agentOptions`，并随登记表落盘供冷恢复还原（rc.2 的 `resume` 不从日志取 route）。
+
 派工分两步：`spawn_worker` 建会话、登记、可选绑卡槽位后**立即返回且不开工**；开工由 `message_worker` 的第一条消息触发。这样槽位绑定与卡片事实先落盘，首轮请求就带着它们。`message_worker` 既是开工入口也是续聊入口：会话活着就把消息 `steer` 进它的当前轮次（下一步注入，空闲则立即开一轮）。「活着」分两层——插件自己的 `live` 表，以及宿主 `agents.get()` 里的活 agent（GUI 打开或进程启动时恢复的会话在这里，写句柄随它常驻）；两层都没有才冷恢复。回执按投递形态分：前两层都算 `merged`，只有冷恢复是 `sent`，可选 `rename` 改名。
 
 完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让 leader 卡在等待里。唤醒走 `agent.followup()`：宿主的 completion notice 只投给 subagent 树里的创建者，worker 是根会话不在树上，所以本 bundle 自己订阅会话事件重建同一条路径，并多做一层落盘（父会话离线时下次启动补投）。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步）且父会话空闲才投；为什么这样定、代价是什么见[限制](limitations.md#宿主语义与运行形态)。结算按**回合归属**判：`turn/end` 只在「这一轮取走了那条 leader 消息、且这一轮由 leader 开启」时结算，人自己下钻聊出来的回合不回报；leader 的消息若还没被取走，记录留到它真正进入的那一轮。
@@ -133,7 +135,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 
 卡片状态变为 `done` 或 `archived` 时，`cards.store.update` 把 `slots` 一并清空：**关闭卡片即释放执行者**。重新打开不恢复绑定——那是新的指派，要显式再绑一次。投递门禁按绑定卡的 `status === 'active'` 判断；同时挂多张 `active` 卡一律拒绝投递（角色注入只按一张卡算），要把卡先收敛到一张。名册到顶给候选时，挂卡 worker 单列、不当作可复用。
 
-`SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则；frontmatter 的 `slots:` 只声明界面显示名。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
+`SLOTS.md` 的槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器同规则；frontmatter 的 `slots:` 声明界面显示名与角色默认模型，模型只在派工时用。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
 
 协议层随 bundle 分发到包内 `.agents/skills/`（装机后位于 `node_modules/dsh-leader-agent/.agents/skills/`）。它同时是 dsh 的项目级 skill 目录：项目放同名副本即可覆盖，项目副本优先（项目级 rank 200，bundle 600）。
 
