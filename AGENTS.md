@@ -65,7 +65,8 @@ npm run e2e:install               # 首次跑 e2e 前下载 chromium
 npm run build:client              # 重建客户端产物 lib/client.js（加 `-- --watch` 常驻，改 src/client/ 自动替换运行中的插件）
 npm run dev                       # 起一个挂当前工作树插件版本的 dsh 实例
 npm start                         # 起日常实例（~/.dsh 的数据与 profile，先校验 dsh、profile 与产物）
-npm run desktop                   # 挂进桌面版的 desktop profile 并拉起应用（-- --remove 摘除）
+npm run desktop                   # dev：用当前目录的代码起桌面版，隔离派生根（-- --remove 清理）
+npm run desktop:prod              # prod：同一份代码 + 日常数据（影子根，线上 profile 不动；-- --remove 清理）
 npm run worktree:spawn <任务名>    # 建 .worktrees/<任务名> + feature/<任务名>
 npm run worktree:prune            # 清已合并的 worktree（默认只打印，--apply 才删）
 npm run verify:pack               # 打一次真实的包，校验内容清单并装机加载一遍（需先 build:client）

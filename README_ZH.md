@@ -55,7 +55,7 @@
 
 Windows / Linux 换成安装目录里对应的 `runtime/cli/bin/dsh`。应用只在启动时读 profile，同一时刻只能挂一个版本；`DSH_HOME` 要用绝对路径或 `~/` 写法。会话、项目与卡片数据与 `web` 共享，插件包与激活状态各自一份。
 
-在本仓库里开发时改用 `npm run desktop`：挂当前工作树、重建产物并拉起应用，`-- --remove` 摘除。
+`npm run desktop` 用 dev 根 `.dev/desktop-home`；`npm run desktop:prod` 用正式数据（影子根 `.dev/desktop-prod-home`，共用日常，线上 profile 不动）。都用本仓代码，直接启动仍用线上；`-- --remove` 清根，旧版用 `-- --remove --remove-mount` 摘。
 
 ### Web 版安装
 
