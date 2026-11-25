@@ -10,7 +10,7 @@ Status: implemented
 
 `requiredWatermark` 只认当前会话：它仍在可见范围（前 50 条）内，刚点开的行不会当场消失；运行中与完成未读不参与水位。分页与收起项目后的水位重置不变（[收起项目回到默认一页](2026-11-24-project-fold-reset-on-collapse.md)）。绿点保留状态语义，折在「展开其余」后面。
 
-这是刻意与宿主分叉：宿主的水位按运行中、有子代理在跑、等你输入抬高。看板「已完成」区没有注意力档，不受影响。
+这是刻意与宿主分叉：宿主的水位按运行中、未读完成、有子代理在跑、等你输入抬高。看板「已完成」区没有注意力档，不受影响。
 
 ## Alternatives considered
 
@@ -29,5 +29,5 @@ Status: implemented
 ## Testing
 
 - `tests/session-watermark.test.js` 钉住「运行中 / 完成未读不抬水位」与「当前会话仍抬」。
-- 双向：把 `running` / `completed` 分支加回 `requiredWatermark` → 新用例红；还原后全绿。
-- `tests/e2e/project-session-fold.e2e.js`（分页与收起回落）与 `session-done-dot.e2e.js`（绿点时序）行为不变。
+- 双向：把 `running` / `completed` 分支加回 `requiredWatermark` → 新用例红；把 completed 分支加回 → `project-session-fold` 的「完成未读不撑开」断言红（等待 5 条超时）；还原后全绿。
+- `tests/e2e/project-session-fold.e2e.js`（分页、收起回落、完成未读不撑开）与 `session-done-dot.e2e.js`（绿点时序）。
