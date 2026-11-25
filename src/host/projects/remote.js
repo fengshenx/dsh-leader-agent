@@ -51,10 +51,11 @@ function buildMethodDescriptor() {
  * @param {object} options.cards - 卡片存储（`src/host/cards/store.js`）
  * @param {object} options.workers - worker 登记表（`src/host/worker-registry.js`）
  * @param {object} [options.workerSessions] - worker 会话管理器（`src/host/worker-sessions.js`）
+ * @param {object} [options.settings] - 插件设置存储（`src/host/settings-store.js`）；缺省时设置方法报错
  * @param {object} options.ctx - 宿主 Cordis 上下文
  * @returns {object} 已注册的远程服务实例
  */
-export function createProjectRemote({ service, cards, workers, workerSessions, ctx }) {
+export function createProjectRemote({ service, cards, workers, workerSessions, settings, ctx }) {
   // 归档后的收尾要同时改两张表：漏传任何一张，问题都要等到会话真的被归档时才
   // 以 `Cannot read properties of undefined` 暴露，那时用户看到的是「归档失败」。
   if (typeof cards?.detachSession !== 'function') {
@@ -69,12 +70,14 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
      * @param {object} cards - 卡片存储
      * @param {object} workers - worker 登记表
      * @param {object} [workerSessions] - worker 会话管理器
+     * @param {object} [settings] - 插件设置存储
      */
-    constructor(service, cards, workers, workerSessions) {
+    constructor(service, cards, workers, workerSessions, settings) {
       this.projects = service
       this.cards = cards
       this.workers = workers
       this.workerSessions = workerSessions
+      this.settings = settings
       // 服务绑定：宿主据此认出「这个服务导出哪个命名空间」。绑定里的 service 必须
       // 指向服务实例本身，宿主会拿它与调用时取到的实例比对。
       this.typertRemote = {
@@ -291,6 +294,32 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
       }
       return labels
     }
+
+    /**
+     * 读插件设置。
+     *
+     * 返回的是设置快照，不是项目或卡片数据：设置页只改护栏，业务事实仍归
+     * 各自的存储。缺设置存储时明确报错，避免界面静默显示一个假默认值。
+     *
+     * @returns {Promise<{ autoResumeLimit: number }>} 设置快照
+     */
+    async readSettings() {
+      if (this.settings === undefined) throw new Error('readSettings: 当前装配没有设置存储')
+      return this.settings.get()
+    }
+
+    /**
+     * 更新插件设置。
+     *
+     * 只接受自动续行上限；校验在设置存储里完成，这里不做第二套范围判断。
+     *
+     * @param {number} autoResumeLimit - 新的自动续行上限
+     * @returns {Promise<{ autoResumeLimit: number }>} 更新后的快照
+     */
+    async updateSettings(autoResumeLimit) {
+      if (this.settings === undefined) throw new Error('updateSettings: 当前装配没有设置存储')
+      return this.settings.update(autoResumeLimit)
+    }
   }
 
   Object.defineProperty(ProjectRemote.prototype, REMOTE_METHOD_DESCRIPTOR, {
@@ -298,7 +327,7 @@ export function createProjectRemote({ service, cards, workers, workerSessions, c
     value: buildMethodDescriptor(),
   })
 
-  const remote = new ProjectRemote(service, cards, workers, workerSessions)
+  const remote = new ProjectRemote(service, cards, workers, workerSessions, settings)
   ctx.provide(PROJECT_REMOTE_SERVICE_KEY, remote)
   return remote
 }

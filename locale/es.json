@@ -136,9 +136,21 @@
     "board.mode.work.title": "Modo trabajo",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} en curso · {total} tareas",
-    "board.settings.desc": "Elige cómo se muestra el tablero. Se guarda en este navegador.",
+    "board.settings.desc": "Elige cómo se muestra el tablero en este navegador.",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "Solo afecta a este navegador; no modifica los datos del proyecto.",
-    "board.settings.title": "Tablero de tareas"
+    "board.settings.scope": "Se guarda solo en este navegador. No modifica proyectos, tarjetas ni el contenido de las sesiones; al cambiar de navegador o borrar los datos del sitio se restaura el valor predeterminado.",
+    "board.settings.title": "Tablero de tareas",
+    "settings.autoResume.title": "Reanudación automática",
+    "settings.autoResume.desc": "Mientras no estás, cuántas veces puede despertarse el Leader automáticamente para atender informes de workers y comprobaciones en segundo plano.",
+    "settings.autoResume.label": "Límite de reanudación automática (veces)",
+    "settings.autoResume.hint": "Predeterminado {default}; rango {min}–{max}. Al alcanzar el límite, los nuevos informes quedan en cola hasta que envíes un mensaje en la sesión del Leader.",
+    "settings.autoResume.scope": "Se guarda en esta instancia de DSH y lo comparten todos los proyectos. No modifica tarjetas, proyectos ni el contenido de las sesiones.",
+    "settings.autoResume.save": "Guardar",
+    "settings.autoResume.saving": "Guardando…",
+    "settings.autoResume.saved": "Guardado",
+    "settings.autoResume.invalid": "Introduce un número entero entre {min} y {max}.",
+    "settings.autoResume.loadFailed": "No se pudo leer la configuración: {message}",
+    "settings.autoResume.saveFailed": "No se pudo guardar: {message}",
+    "settings.autoResume.retry": "Reintentar"
   }
 }

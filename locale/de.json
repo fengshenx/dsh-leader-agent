@@ -136,9 +136,21 @@
     "board.mode.work.title": "Arbeit",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} laufen · {total} Aufgaben",
-    "board.settings.desc": "Wähle die Darstellung des Boards. Die Einstellung wird in diesem Browser gespeichert.",
+    "board.settings.desc": "Wähle, wie das Board in diesem Browser dargestellt wird.",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "Gilt nur für diesen Browser; Projektdaten bleiben unverändert.",
-    "board.settings.title": "Aufgabenboard"
+    "board.settings.scope": "Wird nur in diesem Browser gespeichert. Ändert weder Projekte noch Karten oder Sitzungsinhalte; bei Browserwechsel oder Löschen der Websitedaten gilt wieder der Standard.",
+    "board.settings.title": "Aufgabenboard",
+    "settings.autoResume.title": "Automatische Fortsetzung",
+    "settings.autoResume.desc": "Wie oft der Leader während deiner Abwesenheit automatisch geweckt werden darf, um Worker-Berichte und Hintergrundprüfungen zu bearbeiten.",
+    "settings.autoResume.label": "Obergrenze für automatische Fortsetzung (Anzahl)",
+    "settings.autoResume.hint": "Standard {default}; Bereich {min}–{max}. Nach Erreichen der Grenze bleiben neue Berichte in der Warteschlange, bis du in der Leader-Sitzung eine Nachricht sendest.",
+    "settings.autoResume.scope": "Wird in dieser DSH-Instanz gespeichert und von allen Projekten gemeinsam genutzt. Ändert weder Karten noch Projekte oder Sitzungsinhalte.",
+    "settings.autoResume.save": "Speichern",
+    "settings.autoResume.saving": "Wird gespeichert…",
+    "settings.autoResume.saved": "Gespeichert",
+    "settings.autoResume.invalid": "Gib eine ganze Zahl zwischen {min} und {max} ein.",
+    "settings.autoResume.loadFailed": "Einstellungen konnten nicht gelesen werden: {message}",
+    "settings.autoResume.saveFailed": "Speichern fehlgeschlagen: {message}",
+    "settings.autoResume.retry": "Erneut versuchen"
   }
 }

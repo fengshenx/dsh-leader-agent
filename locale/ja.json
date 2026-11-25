@@ -136,9 +136,21 @@
     "board.mode.work.title": "ワークモード",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} 実行中 · {total} タスク",
-    "board.settings.desc": "ボードの表示方法を選びます。設定はこのブラウザに保存されます。",
+    "board.settings.desc": "ボードの表示方法をこのブラウザで選びます。",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "このブラウザにのみ適用され、プロジェクトのデータは変更しません。",
-    "board.settings.title": "タスクボード"
+    "board.settings.scope": "このブラウザにのみ保存されます。プロジェクト、カード、セッションの内容は変更しません。別のブラウザやキャッシュ削除後は既定に戻ります。",
+    "board.settings.title": "タスクボード",
+    "settings.autoResume.title": "自動再開",
+    "settings.autoResume.desc": "Leader が不在の間、Worker の報告とバックグラウンド確認を処理するために自動で起こされる最大回数です。",
+    "settings.autoResume.label": "自動再開の上限（回）",
+    "settings.autoResume.hint": "既定 {default}、範囲 {min}–{max}。上限に達すると、新しい報告は Leader セッションでメッセージを送るまでキューに残ります。",
+    "settings.autoResume.scope": "現在の DSH インスタンスに保存され、すべてのプロジェクトで共有されます。カード、プロジェクト、セッションの内容は変更しません。",
+    "settings.autoResume.save": "保存",
+    "settings.autoResume.saving": "保存中…",
+    "settings.autoResume.saved": "保存しました",
+    "settings.autoResume.invalid": "{min}–{max} の整数を入力してください。",
+    "settings.autoResume.loadFailed": "設定の読み込みに失敗しました：{message}",
+    "settings.autoResume.saveFailed": "保存に失敗しました：{message}",
+    "settings.autoResume.retry": "再試行"
   }
 }

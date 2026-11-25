@@ -136,9 +136,21 @@
     "board.mode.work.title": "Modo trabalho",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} em execução · {total} tarefas",
-    "board.settings.desc": "Escolha como o quadro aparece. A configuração é salva neste navegador.",
+    "board.settings.desc": "Escolha como o quadro aparece neste navegador.",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "Vale apenas para este navegador; não altera os dados do projeto.",
-    "board.settings.title": "Quadro de tarefas"
+    "board.settings.scope": "Salvo apenas neste navegador. Não altera projetos, cartões nem o conteúdo das sessões; ao trocar de navegador ou limpar os dados do site, o padrão é restaurado.",
+    "board.settings.title": "Quadro de tarefas",
+    "settings.autoResume.title": "Retomada automática",
+    "settings.autoResume.desc": "Enquanto você está ausente, quantas vezes o Leader pode ser despertado automaticamente para tratar relatórios dos workers e verificações em segundo plano.",
+    "settings.autoResume.label": "Limite de retomada automática (vezes)",
+    "settings.autoResume.hint": "Padrão {default}; intervalo {min}–{max}. Ao atingir o limite, novos relatórios ficam na fila até você enviar uma mensagem na sessão do Leader.",
+    "settings.autoResume.scope": "Salvo nesta instância do DSH e compartilhado por todos os projetos. Não altera cartões, projetos nem o conteúdo das sessões.",
+    "settings.autoResume.save": "Salvar",
+    "settings.autoResume.saving": "Salvando…",
+    "settings.autoResume.saved": "Salvo",
+    "settings.autoResume.invalid": "Digite um número inteiro entre {min} e {max}.",
+    "settings.autoResume.loadFailed": "Falha ao ler as configurações: {message}",
+    "settings.autoResume.saveFailed": "Falha ao salvar: {message}",
+    "settings.autoResume.retry": "Tentar novamente"
   }
 }

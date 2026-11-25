@@ -33,7 +33,7 @@
 4. **Many projects in parallel, one Leader each** — Adding a project binds a leader session to it, and the project tree lists the workers that Leader spawned; rows can be dragged to reorder, and deleting a project only drops the record while keeping the folder and the sessions (dsh workspaces are untouched). Projects stay out of each other's way. Swap in a new Leader and the existing workers plus undelivered reports move over, so it can dispatch immediately.
 5. **The `leader-mode` skill: an orchestration protocol for the Leader** — Not "you are a tech lead". Staged playbooks across discussion → design → implementation and delivery → review → merge, plus guidance on parallel collaboration and handoff.
 6. **Read back what a worker did, without waking it** — `read_worker_session` reads a worker's session log directly and returns each turn's task, body, the tools it called and why anything failed. Read-only: it does not wake the worker and triggers no model call. The completion notice tells you what came out; this tells you how it got there, so debugging does not need another round.
-7. **A worker that goes quiet gets flagged** — When a Leader-dispatched turn produces no report for 15 minutes, a plain-text background patrol notice (prefixed with 【后台巡查】) arrives with the session id, the card it holds, how long it has been silent, its last report and a copy-pasteable read-back call. At most one every 15 minutes: no polling, and no pretending it is still alive.
+7. **A worker that goes quiet gets flagged** — When a Leader-dispatched turn produces no report for 15 minutes, a plain-text background patrol notice (prefixed with 【后台巡查】) arrives with the session id, the card it holds, how long it has been silent, its last report and a copy-pasteable read-back call. At most one every 15 minutes: no polling, and no pretending it is still alive. The unattended auto-wake limit is configurable under Settings → Leader Agent → Auto-resume; the default is 200.
 
 ## Install
 
@@ -84,7 +84,7 @@ For pinning a version, removing it, development installs, or trying it without a
 
 **Cinematic mode.** The same board as a workflow map: cards on a trunk, one branch per executor; only a running branch animates. Built for demos and social sharing. Shown in the dark theme; the light theme uses electric-blue lines.
 
-Switch under **Settings → Leader Agent → Task board**; the choice is stored per browser. Work-mode shot is a real session; cinematic shot is the browser e2e fixture (real host + local mock).
+Switch under **Settings → Leader Agent → Task board**; stored per browser; does not modify projects or cards. Work-mode shot is a real session; cinematic shot is the browser e2e fixture (real host + local mock).
 
 ## How it runs
 

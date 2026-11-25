@@ -44,4 +44,9 @@ export const PROJECT_REMOTE_METHODS = Object.freeze({
   detachSession: Object.freeze({ sessionId: 'string' }),
   updateCardLinks: Object.freeze({ id: 'string', links: 'links' }),
   deleteCard: Object.freeze({ id: 'string' }),
+  // 设置页也走这条通道：浏览器侧没有文件系统，护栏必须由宿主读写。命名空间
+  // 仍是 projects，它是本插件唯一的 client→host RPC 面；方法名带 Settings
+  // 以示与业务数据分开。
+  readSettings: Object.freeze({}),
+  updateSettings: Object.freeze({ autoResumeLimit: 'number' }),
 })

@@ -1,12 +1,18 @@
 /**
- * 看板的设置页：注册到宿主的 `settings.section`，提供「工作 / 炫酷」两种模式。
+ * 插件设置页：注册到宿主的 `settings.section`。
  *
- * 宿主的设置导航是把槽位里的注册项直接列出来，没有官方白名单（见
- * `dsh-client-ui-settings-general` 的 `useSections`）；官方「模型」页也是普通注册。
- * 因此这里不需要宿主改动，也不需要 companion package。
+ * 页面按「显示偏好 / 运行护栏」分两块，不把两类配置混在同一组控件里：
  *
- * `ctx.slots.inject` 在槽位不存在时不会执行回调：旧宿主上没有这一节，设置页
- * 自然不出现，不会让插件在启动路径上抛错；看板按默认模式走。
+ * - **任务看板**：工作 / 炫酷两种呈现方式，只存在当前浏览器 localStorage；
+ * - **自动续行**：leader 无人值守时最多被自动唤醒多少次，存在宿主侧，
+ *   所有项目共用，改完立即影响下一次回报投递。
+ *
+ * 两块的范围说明分开写：看板模式换浏览器就回到默认，自动续行改的是实例级
+ * 行为——把「只影响当前浏览器」和「写入项目数据」糊在一起，用户会误以为
+ * 看板模式是项目配置。
+ *
+ * 宿主的设置导航是把槽位里的注册项直接列出来，没有官方白名单；`ctx.slots.inject`
+ * 在槽位不存在时不会执行回调，旧宿主上没有这一节，设置页自然不出现。
  *
  * @module dsh-leader-agent/client/board-settings
  */
@@ -22,6 +28,13 @@ import {
 } from './board-mode.js'
 import { readLocalStorage } from './guide-card-logic.js'
 import { ensureBoardStyles } from './board-styles.js'
+import { callProjectRemote } from './project-remote.js'
+import {
+  AUTO_RESUME_LIMIT_DEFAULT,
+  AUTO_RESUME_LIMIT_MAX,
+  AUTO_RESUME_LIMIT_MIN,
+  parseAutoResumeLimit,
+} from '../shared/settings.js'
 
 /** 注册键：与插件 id 同值，宿主按它排序与定位。 */
 const SECTION_ID = 'dsh-leader-agent'
@@ -39,6 +52,19 @@ const MODE_KEYS = Object.freeze({
   [BOARD_MODE_CINEMA]: { title: 'board.mode.cinema.title', desc: 'board.mode.cinema.desc' },
   [BOARD_MODE_WORK]: { title: 'board.mode.work.title', desc: 'board.mode.work.desc' },
 })
+
+/**
+ * 把异常转成可放进提示的一句话。
+ *
+ * 远端错误自带 code / method 等技术细节，原样显示给用户；这里只做字符串化，
+ * 不在这里翻译宿主文案。
+ *
+ * @param {unknown} error - 捕获到的异常
+ * @returns {string} 提示正文
+ */
+function errorText(error) {
+  return error instanceof Error ? error.message : String(error)
+}
 
 /**
  * 模式选项的小预览图。
@@ -111,13 +137,13 @@ function ModeOption({ value, mode, onChoose, t }) {
 }
 
 /**
- * 设置页主体。
+ * 「任务看板」分区：只看呈现方式，设置留在当前浏览器。
  *
  * @param {object} props - 组件属性
  * @param {(key: string) => string} props.t - 翻译函数
  * @returns {object} React 元素
  */
-function BoardSettingsSection({ t }) {
+function BoardModeSection({ t }) {
   const storage = readLocalStorage(globalThis)
   const [mode, setMode] = useState(() => readBoardMode(storage))
   // 设置页打开期间，别的窗口或组件改了模式也要跟上。
@@ -125,8 +151,11 @@ function BoardSettingsSection({ t }) {
 
   return createElement(
     'section',
-    { className: 'dsh-leader-agent-settings' },
-    createElement('h3', { className: 'dsh-leader-agent-settings-title' }, t('board.settings.title')),
+    { className: 'dsh-leader-agent-settings-section', 'aria-labelledby': 'dsh-leader-agent-settings-board' },
+    createElement('h3', {
+      id: 'dsh-leader-agent-settings-board',
+      className: 'dsh-leader-agent-settings-title',
+    }, t('board.settings.title')),
     createElement('p', { className: 'dsh-leader-agent-settings-desc' }, t('board.settings.desc')),
     createElement(
       'div',
@@ -148,6 +177,184 @@ function BoardSettingsSection({ t }) {
 }
 
 /**
+ * 「自动续行」分区：宿主侧护栏，保存在当前 dsh 数据根，所有项目共用。
+ *
+ * 输入在提交时校验；保存成功后只更新本地快照，不做乐观更新——写盘失败时界面
+ * 必须显示旧值仍然生效，否则用户会以为改成功了。
+ *
+ * @param {object} props - 组件属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 翻译函数
+ * @param {(method: string, args?: unknown[]) => Promise<unknown>} props.callRemote - 远端调用
+ * @returns {object} React 元素
+ */
+function AutoResumeSection({ t, callRemote }) {
+  /** `loading` 时表单不可用；`error` 表示读不到宿主配置，需要重试。 */
+  const [phase, setPhase] = useState('loading')
+  /** 已生效的值：保存成功后由宿主返回，作为「是否有改动」的基线。 */
+  const [saved, setSaved] = useState(AUTO_RESUME_LIMIT_DEFAULT)
+  /** 输入框里的草稿（字符串），保留用户正在敲的原始形态。 */
+  const [draft, setDraft] = useState(String(AUTO_RESUME_LIMIT_DEFAULT))
+  /** `idle` / `saving` / `saved` / `error` */
+  const [status, setStatus] = useState('idle')
+  const [message, setMessage] = useState('')
+  /** 读取失败后的重试计数：+1 触发同一个 effect 再跑一遍。 */
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setPhase('loading')
+    setStatus('idle')
+    setMessage('')
+    callRemote('readSettings', []).then((value) => {
+      if (cancelled) return
+      const limit = parseAutoResumeLimit(value?.autoResumeLimit)
+      const effective = limit ?? AUTO_RESUME_LIMIT_DEFAULT
+      setSaved(effective)
+      setDraft(String(effective))
+      setPhase('ready')
+    }).catch((error) => {
+      if (cancelled) return
+      setPhase('error')
+      setMessage(t('settings.autoResume.loadFailed', { message: errorText(error) }))
+    })
+    return () => { cancelled = true }
+    // `t` 只用于失败文案，不进依赖：它随语言切换换引用时重跑会再发一次取数；
+    // 设置页打开期间切语言，错误文案下一次重试自然用新语言。
+  }, [attempt, callRemote])
+
+  const limit = parseAutoResumeLimit(draft)
+  const invalid = limit === undefined
+  const dirty = limit !== undefined && limit !== saved
+  const busy = phase !== 'ready' || status === 'saving'
+
+  /**
+   * 提交表单：Enter 与「保存」按钮走同一条路径。
+   * @param {object} event - 表单提交事件
+   * @returns {void}
+   */
+  function submit(event) {
+    event.preventDefault()
+    if (phase !== 'ready' || status === 'saving') return
+    if (limit === undefined) return
+    if (limit === saved) return
+    setStatus('saving')
+    setMessage('')
+    callRemote('updateSettings', [limit]).then((value) => {
+      const next = parseAutoResumeLimit(value?.autoResumeLimit) ?? limit
+      setSaved(next)
+      setDraft(String(next))
+      setStatus('saved')
+    }).catch((error) => {
+      setStatus('error')
+      setMessage(t('settings.autoResume.saveFailed', { message: errorText(error) }))
+    })
+  }
+
+  const describedBy = invalid
+    ? 'dsh-leader-agent-auto-resume-hint dsh-leader-agent-auto-resume-error'
+    : 'dsh-leader-agent-auto-resume-hint'
+
+  return createElement(
+    'section',
+    { className: 'dsh-leader-agent-settings-section', 'aria-labelledby': 'dsh-leader-agent-settings-auto-resume' },
+    createElement('h3', {
+      id: 'dsh-leader-agent-settings-auto-resume',
+      className: 'dsh-leader-agent-settings-subtitle',
+    }, t('settings.autoResume.title')),
+    createElement('p', { className: 'dsh-leader-agent-settings-desc' }, t('settings.autoResume.desc')),
+    createElement(
+      'form',
+      { className: 'dsh-leader-agent-settings-field', onSubmit: submit, noValidate: true },
+      createElement('label', {
+        className: 'dsh-leader-agent-settings-label',
+        htmlFor: 'dsh-leader-agent-auto-resume',
+      }, t('settings.autoResume.label')),
+      createElement(
+        'div',
+        { className: 'dsh-leader-agent-settings-field-row' },
+        createElement('input', {
+          id: 'dsh-leader-agent-auto-resume',
+          className: 'dsh-leader-agent-settings-input',
+          type: 'number',
+          min: AUTO_RESUME_LIMIT_MIN,
+          max: AUTO_RESUME_LIMIT_MAX,
+          step: 1,
+          inputMode: 'numeric',
+          value: draft,
+          disabled: busy,
+          'aria-invalid': invalid,
+          'aria-describedby': describedBy,
+          onChange: (event) => {
+            setDraft(event.target.value)
+            setStatus('idle')
+            setMessage('')
+          },
+        }),
+        createElement('button', {
+          type: 'submit',
+          className: 'dsh-leader-agent-settings-button',
+          disabled: busy || !dirty || invalid,
+        }, t(status === 'saving' ? 'settings.autoResume.saving' : 'settings.autoResume.save')),
+      ),
+      createElement('p', {
+        id: 'dsh-leader-agent-auto-resume-hint',
+        className: 'dsh-leader-agent-settings-hint',
+      }, t('settings.autoResume.hint', {
+        default: AUTO_RESUME_LIMIT_DEFAULT,
+        min: AUTO_RESUME_LIMIT_MIN,
+        max: AUTO_RESUME_LIMIT_MAX,
+      })),
+      invalid
+        ? createElement('p', {
+          id: 'dsh-leader-agent-auto-resume-error',
+          className: 'dsh-leader-agent-settings-error',
+          role: 'alert',
+        }, t('settings.autoResume.invalid', {
+          min: AUTO_RESUME_LIMIT_MIN,
+          max: AUTO_RESUME_LIMIT_MAX,
+        }))
+        : null,
+      status === 'saved'
+        ? createElement('p', {
+          className: 'dsh-leader-agent-settings-saved',
+          role: 'status',
+        }, t('settings.autoResume.saved'))
+        : null,
+      status === 'error'
+        ? createElement('p', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message)
+        : null,
+      phase === 'error'
+        ? createElement('div', { className: 'dsh-leader-agent-settings-retry-row' },
+          createElement('span', { className: 'dsh-leader-agent-settings-error' }, message),
+          createElement('button', {
+            type: 'button',
+            className: 'dsh-leader-agent-settings-button',
+            onClick: () => setAttempt((value) => value + 1),
+          }, t('settings.autoResume.retry')))
+        : null,
+    ),
+    createElement('p', { className: 'dsh-leader-agent-settings-scope' }, t('settings.autoResume.scope')),
+  )
+}
+
+/**
+ * 设置页主体：两块分区共享页面外壳，不混在同一组控件里。
+ *
+ * @param {object} props - 组件属性
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 翻译函数
+ * @param {(method: string, args?: unknown[]) => Promise<unknown>} props.callRemote - 远端调用
+ * @returns {object} React 元素
+ */
+function BoardSettingsSection({ t, callRemote }) {
+  return createElement(
+    'section',
+    { className: 'dsh-leader-agent-settings' },
+    createElement(BoardModeSection, { t }),
+    createElement(AutoResumeSection, { t, callRemote }),
+  )
+}
+
+/**
  * 注册设置页。
  *
  * 样式表在这里一并注入：设置页可能先于看板被打开，等看板挂载再注入会闪一下
@@ -159,11 +366,13 @@ function BoardSettingsSection({ t }) {
  */
 export function mountBoardSettings(ctx, t) {
   ensureBoardStyles()
+  // 保持同一个函数引用：设置页的读取 effect 依赖它，槽位重渲染不该反复重读配置。
+  const callRemote = (method, args = []) => callProjectRemote(ctx, method, args)
   ctx.effect(() => ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: SECTION_ID,
     order: SECTION_ORDER,
     label: () => t('board.settings.nav'),
-    inject: () => ({ t }),
+    inject: () => ({ t, callRemote }),
   }, BoardSettingsSection)), 'dsh-leader-agent 设置页')
 }

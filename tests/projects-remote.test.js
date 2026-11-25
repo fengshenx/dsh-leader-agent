@@ -138,6 +138,41 @@ test('漏传卡片库或登记表时装配直接报错，不等到归档才炸',
   )
 })
 
+test('设置方法读写宿主设置存储；缺存储时明确报错', async () => {
+  const { ctx } = fakeCtx()
+  const calls = []
+  const settings = {
+    get() {
+      calls.push(['get'])
+      return { autoResumeLimit: 200 }
+    },
+    async update(value) {
+      calls.push(['update', value])
+      return { autoResumeLimit: value }
+    },
+  }
+  const remote = createProjectRemote({
+    service: fakeService(),
+    cards: fakeCards(),
+    workers: fakeWorkers(),
+    settings,
+    ctx,
+  })
+  assert.deepEqual(await remote.readSettings(), { autoResumeLimit: 200 })
+  assert.deepEqual(await remote.updateSettings(500), { autoResumeLimit: 500 })
+  assert.deepEqual(calls, [['get'], ['update', 500]])
+
+  const { ctx: bareCtx } = fakeCtx()
+  const bare = createProjectRemote({
+    service: fakeService(),
+    cards: fakeCards(),
+    workers: fakeWorkers(),
+    ctx: bareCtx,
+  })
+  await assert.rejects(() => bare.readSettings(), /没有设置存储/)
+  await assert.rejects(() => bare.updateSettings(500), /没有设置存储/)
+})
+
 test('原型上的方法标记覆盖契约里的每个方法', () => {
   const { ctx } = fakeCtx()
   const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), ctx })

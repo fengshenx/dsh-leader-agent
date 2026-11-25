@@ -136,9 +136,21 @@
     "board.mode.work.title": "Mode travail",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} en cours · {total} tâches",
-    "board.settings.desc": "Choisissez l'apparence du tableau. Le réglage est enregistré dans ce navigateur.",
+    "board.settings.desc": "Choisissez l'apparence du tableau dans ce navigateur.",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "Ne concerne que ce navigateur ; les données du projet ne changent pas.",
-    "board.settings.title": "Tableau des tâches"
+    "board.settings.scope": "Enregistré uniquement dans ce navigateur. Ne modifie ni les projets, ni les cartes, ni le contenu des sessions ; changer de navigateur ou effacer les données du site rétablit la valeur par défaut.",
+    "board.settings.title": "Tableau des tâches",
+    "settings.autoResume.title": "Reprise automatique",
+    "settings.autoResume.desc": "Pendant votre absence, nombre de fois où le Leader peut être réveillé automatiquement pour traiter les rapports des workers et les vérifications en arrière-plan.",
+    "settings.autoResume.label": "Limite de reprise automatique (fois)",
+    "settings.autoResume.hint": "Par défaut {default} ; plage {min}–{max}. Une fois la limite atteinte, les nouveaux rapports restent en file jusqu'à ce que vous envoyiez un message dans la session du Leader.",
+    "settings.autoResume.scope": "Enregistré dans cette instance DSH et partagé par tous les projets. Ne modifie ni les cartes, ni les projets, ni le contenu des sessions.",
+    "settings.autoResume.save": "Enregistrer",
+    "settings.autoResume.saving": "Enregistrement…",
+    "settings.autoResume.saved": "Enregistré",
+    "settings.autoResume.invalid": "Saisissez un nombre entier entre {min} et {max}.",
+    "settings.autoResume.loadFailed": "Impossible de lire les réglages : {message}",
+    "settings.autoResume.saveFailed": "Échec de l'enregistrement : {message}",
+    "settings.autoResume.retry": "Réessayer"
   }
 }

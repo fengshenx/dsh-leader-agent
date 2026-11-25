@@ -136,9 +136,21 @@
     "board.mode.work.title": "Рабочий",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} в работе · {total} задач",
-    "board.settings.desc": "Выберите вид доски. Настройка сохраняется в этом браузере.",
+    "board.settings.desc": "Выберите, как отображать доску в этом браузере.",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "Действует только в этом браузере; данные проекта не меняются.",
-    "board.settings.title": "Доска задач"
+    "board.settings.scope": "Сохраняется только в этом браузере. Не изменяет проекты, карточки и содержимое сессий; при смене браузера или очистке данных сайта восстанавливается значение по умолчанию.",
+    "board.settings.title": "Доска задач",
+    "settings.autoResume.title": "Автопродолжение",
+    "settings.autoResume.desc": "Сколько раз Leader может быть автоматически разбужен в ваше отсутствие для обработки отчётов worker и фоновых проверок.",
+    "settings.autoResume.label": "Предел автопродолжения (раз)",
+    "settings.autoResume.hint": "По умолчанию {default}; диапазон {min}–{max}. После достижения предела новые отчёты остаются в очереди, пока вы не отправите сообщение в сессии Leader.",
+    "settings.autoResume.scope": "Сохраняется в этом экземпляре DSH и используется всеми проектами. Не изменяет карточки, проекты и содержимое сессий.",
+    "settings.autoResume.save": "Сохранить",
+    "settings.autoResume.saving": "Сохранение…",
+    "settings.autoResume.saved": "Сохранено",
+    "settings.autoResume.invalid": "Введите целое число от {min} до {max}.",
+    "settings.autoResume.loadFailed": "Не удалось прочитать настройки: {message}",
+    "settings.autoResume.saveFailed": "Не удалось сохранить: {message}",
+    "settings.autoResume.retry": "Повторить"
   }
 }

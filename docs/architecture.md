@@ -112,8 +112,9 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
 | `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属；最后一轮回报时刻是巡查与 `list_cards` 槽位行的活性事实 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
+| `settings.json` | 自动续行上限；实例级，设置页写、派工器读 |
 
-浏览器侧的项目标签打开集合存在 localStorage 的 `dsh-leader-agent.session-tabs.v1` 下，按项目 id 分组，不进数据根；它只是导航快捷方式，清掉不影响任何会话。
+浏览器侧只存偏好：看板显示模式（`dsh-leader-agent.board.mode`）与项目标签打开集合（`dsh-leader-agent.session-tabs.v1`）。它们不进数据根，清掉不影响会话；自动续行上限不在浏览器，必须让宿主读到，落在 `settings.json`。
 
 会话本体是宿主的 JSONL（`$DSH_HOME/sessions/`），不在本 bundle 手里。仓外插件不能新增 session event 类型（[capability-gaps 第 8 条](capability-gaps.md)），卡片与通知状态因此走独立存储域 + session projection。
 

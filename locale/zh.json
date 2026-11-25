@@ -136,9 +136,21 @@
     "board.mode.work.title": "工作模式",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} 执行中 · {total} 个任务",
-    "board.settings.desc": "选择看板的呈现方式。设置保存在当前浏览器。",
+    "board.settings.desc": "选择看板在当前浏览器里的显示方式。",
     "board.settings.nav": "Leader Agent",
-    "board.settings.scope": "只影响当前浏览器，不写入项目数据。",
-    "board.settings.title": "任务看板"
+    "board.settings.scope": "只保存在当前浏览器，不改动项目、卡片或会话内容；换浏览器或清缓存后回到默认。",
+    "board.settings.title": "任务看板",
+    "settings.autoResume.title": "自动续行",
+    "settings.autoResume.desc": "Leader 无人值守时，机制侧最多自动唤醒它多少次来处理 Worker 回报与后台巡查提醒。",
+    "settings.autoResume.label": "自动续行上限（次）",
+    "settings.autoResume.hint": "默认 {default}，范围 {min}–{max}。达到上限后，新的回报会留在队列里，直到你在 Leader 会话里发一句话。",
+    "settings.autoResume.scope": "保存在当前 DSH 实例，所有项目共用；不改动卡片、项目或会话内容。",
+    "settings.autoResume.save": "保存",
+    "settings.autoResume.saving": "保存中…",
+    "settings.autoResume.saved": "已保存",
+    "settings.autoResume.invalid": "请输入 {min}–{max} 之间的整数。",
+    "settings.autoResume.loadFailed": "读取设置失败：{message}",
+    "settings.autoResume.saveFailed": "保存失败：{message}",
+    "settings.autoResume.retry": "重试"
   }
 }

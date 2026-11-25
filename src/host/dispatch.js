@@ -39,6 +39,7 @@
 
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from './message.js'
+import { AUTO_RESUME_LIMIT_DEFAULT } from '../shared/settings.js'
 import { messageText } from '../shared/message-text.js'
 import { foldTurns, renderTranscript } from './worker-transcript.js'
 import { workerReportSource } from '../shared/worker-report.js'
@@ -52,7 +53,6 @@ import {
 } from './worker-stall.js'
 import { readWorkerTaskSource } from '../shared/worker-task.js'
 
-const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
  * 每个项目未归档 worker 的数量上限。
  *
@@ -152,7 +152,7 @@ export function buildWorkerReport(outcome) {
  * @param {object} options.workers - worker 登记表（见 `worker-registry.js`）
  * @param {object} options.workerSessions - worker 会话管理器（见 `worker-sessions.js`）
  * @param {object} options.leaderIndex - 项目注册表（提供 `awaitIndex` 与 `isLeaderSession`）
- * @param {number} [options.autoResumeLimit] - 连续自动续行上限
+ * @param {() => number} [options.getAutoResumeLimit] - 连续自动续行上限的取值函数（每次投递时现取，设置页改完即时生效）
  * @param {number} [options.activeWorkerLimit] - 每个项目未归档 worker 数量上限
  * @param {(parentSessionId: string) => string | undefined} [options.resolveWorkerCwd] - 取 worker 的工作目录
  * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
@@ -173,7 +173,7 @@ export function createDispatcher({
   workers,
   workerSessions,
   leaderIndex,
-  autoResumeLimit = DEFAULT_AUTO_RESUME_LIMIT,
+  getAutoResumeLimit = () => AUTO_RESUME_LIMIT_DEFAULT,
   activeWorkerLimit = DEFAULT_ACTIVE_WORKER_LIMIT,
   resolveWorkerCwd,
   archivedSessionIds,
@@ -298,7 +298,8 @@ export function createDispatcher({
    */
   async function deliverOnce(notification, agent) {
     const used = resumeCounts.get(notification.parentSessionId) ?? 0
-    if (used >= autoResumeLimit) {
+    const limit = getAutoResumeLimit()
+    if (used >= limit) {
       // 不可重试：上限不会自己涨，再试一次也是同一个结果。写盘与日志交给调用方，
       // 那里知道还有多少条在等。
       return EXHAUSTED
@@ -354,7 +355,7 @@ export function createDispatcher({
    * @returns {Promise<void>} 写盘完成
    */
   async function markExhausted(notification, pendingCount) {
-    const reason = `连续自动续行已达上限 ${autoResumeLimit}，当前有 ${pendingCount} 条完成通知待投`
+    const reason = `连续自动续行已达上限 ${getAutoResumeLimit()}，当前有 ${pendingCount} 条完成通知待投`
     await store.markUndelivered(notification.id, reason)
     logger(
       `dsh-leader-agent: 父会话 ${notification.parentSessionId} 的${reason}，`
@@ -1488,6 +1489,31 @@ export function createDispatcher({
       if (!released) return
       waiting.set(parentSessionId, next)
       ensureIdleTimer()
+    },
+
+    /**
+     * 上限调高后释放被挡下的回报。
+     *
+     * 设置页保存一个更大的上限也是一次人工介入：被旧上限挡下、标了 `exhausted`
+     * 的条目如果继续跳过，用户会以为「改了设置也没用」。这里只清标记、不重置
+     * 已用次数——新上限仍要覆盖已经消耗掉的自动唤醒；降低上限时条目继续等待，
+     * 直到用户开口。
+     *
+     * @param {number} [limit] - 新上限；省略时取当前配置
+     * @returns {number} 被释放的条目数
+     */
+    releaseExhausted(limit = getAutoResumeLimit()) {
+      let released = 0
+      for (const [parentSessionId, list] of waiting) {
+        if ((resumeCounts.get(parentSessionId) ?? 0) >= limit) continue
+        for (const item of list) {
+          if (item.exhausted !== true) continue
+          item.exhausted = false
+          released += 1
+        }
+      }
+      if (released > 0) ensureIdleTimer()
+      return released
     },
 
     /**
