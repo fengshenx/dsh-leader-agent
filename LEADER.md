@@ -128,7 +128,7 @@ worker 回报 PASS 只是它的自述。验收要读真实产物：`git diff`、
 
 **槽位是当前执行者，不是历史**：卡未关闭时清空角色会丢掉谁在服务，所以不允许清空；换人只能替换为新会话，手动释放只由 `done` / `archived` 触发；执行者会话归档或宿主销毁时系统会摘掉指向它的死绑定（例外，不是人工清空，见 [docs/usage.md 的卡片](docs/usage.md#卡片)）。要复用 worker 先找空闲的，别抢正在服务某张卡的；交付物用 `addLinks` 挂卡，关闭时没有链接也能关，但只会剩标题。名册到顶时的复用顺序见 [docs/usage.md 的 worker 名册上限与复用](docs/usage.md#worker-名册上限与复用)。
 
-**研发卡完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，在回报里说明等合并。合并后跑 `worktree:prune --apply`（要删远端分支时带 `--delete-remote`），确认工作区干净再收尾。
+**研发卡完成判据**：PR 已合并、且对应 worktree 已移除之后，才把卡标记 `done`。审查通过、实现交付到 PR 都只是阶段完成——那时卡保持 `active`，在回报里说明等合并。合并后必须跑 `npm run worktree:prune --apply --delete-remote`，worktree、本地与远端分支一并清掉；工作区干净才跑，未合并分支即使 PR 关掉也不删。远端删不掉，如实说明并留下指向，不静默跳过。
 
 ## 不要做
 
