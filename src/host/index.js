@@ -29,7 +29,6 @@ import { applyCardContext } from './cards/card-context.js'
 import { createProjectStore } from './projects/store.js'
 import { createProjectService, sessionExistsWithCtx } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
-import { resolveBoardDefaults } from './board-defaults.js'
 import { createDispatcher } from './dispatch.js'
 import { createLeaderHandover } from './leader-handover.js'
 import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
@@ -152,13 +151,6 @@ export function apply(ctx) {
     ctx.logger?.warn?.(message)
   }
 
-  // 看板默认模式要在任何项目/卡片写入之前判一次：升级前已有数据 → 工作，新装
-  // → 炫酷。标记写进数据根，之后不再随数据增删变化。
-  const boardDefaults = resolveBoardDefaults({ home: resolveDshHome() })
-  void boardDefaults.catch((error) => {
-    logger(`dsh-leader-agent: 计算看板默认模式失败：${error instanceof Error ? error.message : String(error)}`)
-  })
-
   ctx.skills.registerProvider(() =>
     createSkillProvider({
       skillsRoot: join(bundleRoot, SKILLS_DIR),
@@ -232,7 +224,6 @@ export function apply(ctx) {
     cards,
     workers,
     workerSessions,
-    boardDefaults: () => boardDefaults,
     ctx,
   })
 

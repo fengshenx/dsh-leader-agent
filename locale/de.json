@@ -130,14 +130,14 @@
     "tabs.close": "Tab schließen",
     "tabs.list": "Sitzungs-Tabs des Projekts",
     "tabs.more": "Mehr",
-    "board.mode.cinema.desc": "Workflow-Karte mit leuchtender Schiene. Für Demos und Aufnahmen.",
+    "board.mode.cinema.desc": "Nur Demo, für Social Media.",
     "board.mode.cinema.title": "Kino",
     "board.mode.work.desc": "Schlichte Liste ohne Bewegung. Zum Überfliegen von Aufgaben.",
     "board.mode.work.title": "Arbeit",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} laufen · {total} Aufgaben",
     "board.settings.desc": "Wähle die Darstellung des Boards. Die Einstellung wird in diesem Browser gespeichert.",
-    "board.settings.nav": "Aufgabenboard",
+    "board.settings.nav": "Leader Agent",
     "board.settings.scope": "Gilt nur für diesen Browser; Projektdaten bleiben unverändert.",
     "board.settings.title": "Aufgabenboard"
   }
