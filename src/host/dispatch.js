@@ -1358,13 +1358,13 @@ export function createDispatcher({
    * @returns {void}
    */
   function observeClaim(payload = {}) {
-    const agent = payload.agent
+    const agent = payload?.agent
     const sessionId = typeof agent?.id === 'string' ? agent.id : agent?.session?.id
     if (typeof sessionId !== 'string') return
     const turn = openTurns.get(sessionId)
     if (turn === undefined) return
-    if (typeof payload.turn === 'number' && turn.turn !== undefined && turn.turn !== payload.turn) return
-    const input = payload.message
+    if (typeof payload?.turn === 'number' && turn.turn !== undefined && turn.turn !== payload.turn) return
+    const input = payload?.message
     if (typeof input?.id !== 'string') return
     // leader 任务消息自带 parentSessionId 凭证；用户输入没有这个 kind。这里只记
     // claim，不把 leader 消息直接算成已消费——真正的消费仍以 `user/message` 为准。
