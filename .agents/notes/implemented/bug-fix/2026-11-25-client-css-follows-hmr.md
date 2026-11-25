@@ -12,7 +12,7 @@ Status: implemented
 
 样式注入统一收进 `src/client/style-sheet.js`：`ensureStyleSheet(id, text)` 在同 id 节点已存在时按内容同步 `textContent`，不存在才创建，内容相同不碰 DOM。九个样式模块的 `ensure*` 只保留 id、文本与调用，判重逻辑不再各写一份。
 
-不清理旧版本残留的样式表节点：0.8 只是往同一个 id 里加规则，旧页面不会留下多余的块；要支持「删掉一整块」得有一份跨模块的 id 注册表，宿主又没有插件级的 DOM 卸载点，代价大于收益。
+不清理旧版本残留的样式表节点：0.8 只是往同一个 id 里加规则，旧页面不会留下多余的块；要支持「删掉一整块」得有一份跨模块的 id 注册表。宿主侧有 `ui-renderer` 的 `meta.stylesheets` 与 client-modules 的 `removeOwnedStyles` 这类通道，但本仓 esbuild 产物不走它们，对本包没有可用的公开/稳定卸载点，代价大于收益。
 
 ## Alternatives considered
 
@@ -29,4 +29,6 @@ Status: implemented
 
 ## Testing
 
-`tests/client-styles.test.js`：document 桩里预置一张旧文本的同 id 样式表，调用 `ensureBoardStyles()`；修复前文本保持旧值（红），修复后替换为新文本且 head 仍只有一张（绿）。宿主真实的 HMR 换插件行为单测覆盖不到，注入逻辑本身已钉住。
+`tests/client-styles.test.js`：document 桩里预置一张旧文本的同 id 样式表，调用 `ensureBoardStyles()`；修复前文本保持旧值（红），修复后替换为新文本且 head 仍只有一张（绿）。另一条用例用 `textContent` setter 计数钉住「内容相同不重写」，删掉 `if` 守卫后会红。
+
+真机 HMR（审查侧补跑）：基线 6 张样式表、看板文本 37487；插入 marker 后 500ms 读到 37530、marker 存在、节点数仍 6；还原后回到 37487。对照组把 `ensureStyleSheet` 改回无条件 `return`，20s 内 marker 一直不存在。
