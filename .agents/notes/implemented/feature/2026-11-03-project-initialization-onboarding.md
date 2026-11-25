@@ -17,6 +17,7 @@ Status: implemented
 - **默认槽位从三角色改为两角色**：`DEFAULT_SLOT_NAMES` 去掉 `discuss`，只留 `dev` / `review`——需求讨论是 leader 派工前自己做的判断，不值得占一个执行者槽位。只影响零合法槽位时的回落：显式 `## discuss` 照常解析注入，内置翻译也保留。
 - **骨架随包分发**，放在 `init-leader-agent` skill 的 `references/`（`LEADER.md` 与 `SLOTS.md`），随 `.agents/skills/**` 进包、不用改 `files`；模型拿到 `resourceBase` 直接读。否决新增 `read_manual_template` 工具——它只为递两段静态文本，却给每个会话的工具面永久加一项，而初始化是一次性动作，skill 的按需加载才是对的载体。
 - **不自动写文件**：插件不在项目注册时写任何文件；用户确认后由 skill 写，先把 `AGENTS.md` 的受管区块并入，再按项目实际改写两份手册。目录为空就写带 TODO 的骨架，并把还缺的三个问题（项目做什么、什么算交付、有哪些硬约束）问清楚——比生成一份看起来完整、实际是通用道理的 `LEADER.md` 有用。
+- **示例卡是否关卡交给用户**：worker 回报后 leader 只汇报，并说一句「你想结束任务、关卡的话跟我说」，不自动 `done` / `archived`；用户明确决定后再按用户选择处理。失败路径也一样，先告诉用户实情并问是否归档/关闭，不替用户做终态决定。与 `LEADER.md`「合并 / approve 需用户明确指令」同一口径：关卡也是用户的决定。代价是用户回答前卡可能停在 `active`、占着槽位，提示要求把这一点讲清楚。
 - **skill 从 `init-project` 改名 `init-leader-agent`**：旧名太通用，容易和其他插件的同名 skill 撞。它是 bundled provider，不落 `~/.dsh/skills`，项目内同名副本仍优先；改名只影响模型发现，不影响已写入项目的文件。
 
 ## Alternatives considered
@@ -37,10 +38,10 @@ Status: implemented
 - 提示不打断正常派工：用户直接下任务时模型按常规流程干活，不主动兜售初始化。
 - 拒绝只在本会话生效，新会话会再问一次（`docs/limitations.md` 有同一条）。
 - 引导卡的 `blank` 判据不变：消息发出后卡片消失，关闭状态按 leader 会话 id 存 localStorage。
-- **项目还没初始化时，第一个「怎么用」问题会建一张示例卡并派一个 worker**；worker 说一句「你好」后唤醒 leader，leader 确认回报并把卡标 `done`。示例流程只走一次，唤醒轮不再建卡或派工。已有手册的项目不注入初始化提示，引导点击只讲用法，不建卡派工。
+- **项目还没初始化时，第一个「怎么用」问题会建一张示例卡并派一个 worker**；worker 说一句「你好」后唤醒 leader，leader 向用户汇报并询问是否关卡，不自行标 `done` / `archived`。示例流程只走一次，唤醒轮不再建卡或派工。已有手册的项目不注入初始化提示，引导点击只讲用法，不建卡派工。
 - **查重覆盖 `active` / `done` / `archived`**：只挡「建卡」不够——步骤 3 无条件要求把 worker 绑到这张卡上，而 `dispatch.js` 对 done 卡直接拒绝（关闭即释放执行者）。用户点过一次没初始化、再开一个 leader 会话又点一次时，提示会让 leader 撞工具错误。所以先用 `list_cards({ "status": "all", "limit": 100 })` 查同名卡（三种状态都算演示过），查到就整段跳过建卡派工，只讲用法；返回还有未显示的就按 `offset` 继续翻。「只走一次」也因此不靠模型自觉。
-- **示例产物有意保留**：卡标 `done` 是终态、不删除，worker 会话归档后仍在会话列表——用户看板上会长期有一张 `Hello World`、项目树里有一个 `hello-world`。这是演示的代价，提示与 `docs/usage.md` 都写明，不按「泄漏」处理。
-- **失败路径有收尾动作**：worker 没跑成、被中断或 `spawn_worker` 直接失败（名册上限 50）时，提示要求把示例卡标 `archived` 并告诉用户示例没跑完，不重试第二次。否则卡停在 `active`、槽位绑着那个 worker，`dispatch.js` 的「空闲但挂着未完成卡的 worker 不能接新活」会让后续派工一并卡住。
+- **示例产物有意保留**：用户决定关卡后卡标 `done` 是终态、不删除，worker 会话归档后仍在会话列表——用户看板上会长期有一张 `Hello World`、项目树里有一个 `hello-world`。这是演示的代价，提示与 `docs/usage.md` 都写明，不按「泄漏」处理。
+- **失败路径也把终态决定交给用户**：worker 没跑成、被中断或 `spawn_worker` 直接失败（名册上限 50）时，提示要求把情况告诉用户、问是否归档/关闭，不自动归档、不重试第二次。用户回答前卡可能停在 `active`、槽位绑着那个 worker，`dispatch.js` 的「空闲但挂着未完成卡的 worker 不能接新活」会让后续派工一并卡住；这是把终态决定交还用户的代价，提示要求把这一点讲清楚，让用户当场决定。
 - **提示文案变长只影响注入，不影响引导语**：`guide.intro.prompt` 仍是一句话（用户消息），保持 `< 300` 字符上限；示例步骤与查重参数都放在初始化提示里。
 - 空目录的骨架带 `TODO`，是给人填的；skill 明确不要用通用道理填满。
 
@@ -48,4 +49,4 @@ Status: implemented
 
 ## Testing
 
-`tests/leader-context.test.js`（解析 `list_cards` 参数并跑 `parseListQuery` / `selectCards`，验证 `done` / `archived` 示例卡能被看见；有 `LEADER.md` 时提示与 8 语言引导语都不再点名建卡派工）、`tests/guide-card-logic.test.js`（8 语言等价：通用触发语 + 不读 / 不改 / 不建）与 `tests/slots.test.js`；e2e 的 guide-card 场景还断言初始化提示确实进了模型请求——锚在提示正文独有句上（示例卡规格「不读取、不修改、不创建任何文件」、worker 名 `hello-world`、`"status": "all"` / `"limit": 100`、查重跳过、投递回报）。**不要拿工具名做锚**：请求体含 tools Schema，`create_card` 出现 8 次，删掉整段提示也照样绿；`Hello World` 现在只在提示正文里，不再来自用户消息。双向：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；让空的新版遮蔽旧名 → 回落用例红；把 `status: "all"` 改回缺省 `active` → 查重用例红；删掉示例卡或派工那一步 → 提示用例红。还原后全绿。
+`tests/leader-context.test.js`（解析 `list_cards` 参数并跑 `parseListQuery` / `selectCards`，验证 `done` / `archived` 示例卡能被看见；有 `LEADER.md` 时提示与 8 语言引导语都不再点名建卡派工；不自动关卡的正负断言）、`tests/guide-card-logic.test.js`（8 语言等价：通用触发语 + 不读 / 不改 / 不建，且不承诺自动关卡）与 `tests/slots.test.js`；e2e 的 guide-card 场景还断言初始化提示确实进了模型请求——锚在提示正文独有句上（示例卡规格「不读取、不修改、不创建任何文件」、worker 名 `hello-world`、`"status": "all"` / `"limit": 100`、查重跳过、投递回报、「你想结束任务、关卡的话跟我说」，并负向断言不含旧的自动 `done` / `archived` 必做句）。**不要拿工具名做锚**：请求体含 tools Schema，`create_card` 出现 8 次，删掉整段提示也照样绿；`Hello World` 现在只在提示正文里，不再来自用户消息。双向：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；让空的新版遮蔽旧名 → 回落用例红；把 `status: "all"` 改回缺省 `active` → 查重用例红；删掉示例卡或派工那一步 → 提示用例红；把「不要自动关卡」改回「标 `done`」→ e2e 的自动关卡断言红。还原后全绿。

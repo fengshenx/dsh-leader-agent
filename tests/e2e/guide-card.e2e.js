@@ -222,8 +222,8 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   // 照做由真实 provider 决定，mock 不模拟这一层。
   //
   // 断言必须落在提示正文自己的句子上：请求体是完整模型请求，工具名（`create_card`
-  // / `spawn_worker` / `message_worker` / `list_cards`）与 `Hello World` 分别在
-  // tools Schema 与用户消息里恒现——拿它们做锚，删掉整段建卡派工提示也照样绿。
+  // / `spawn_worker` / `message_worker` / `list_cards`）在 tools Schema 里恒现；
+  // `Hello World` 现在只在提示正文里，删掉整段提示它也会消失，但正文独有句仍更稳。
   const introRequest = mock.requests.filter((request) => request.kind === 'scenario').at(-1)
   assert.ok(introRequest !== undefined, '点击后应有一条场景模型请求')
   assert.match(introRequest.body, /不读取、不修改、不创建任何文件/, '请求里应带示例卡的规格约束')
@@ -233,6 +233,10 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   assert.match(introRequest.body, /`active` \/ `done` \/ `archived`/, '请求里应说明三种状态都算已演示')
   assert.match(introRequest.body, /整段跳过第 2–4 步/, '请求里应写明已有同名示例卡时跳过建卡派工')
   assert.match(introRequest.body, /worker 跑完会唤醒你/, '请求里应带投递与回报的步骤')
+  assert.doesNotMatch(introRequest.body, /确认它说了「你好」就把这张示例卡标 `done`/, '请求里不应再把回报后自动 done 写成必做步骤')
+  assert.doesNotMatch(introRequest.body, /把这张示例卡标 `archived` 并告诉用户示例没跑完/, '请求里不应再把失败后自动归档写成必做步骤')
+  assert.match(introRequest.body, /你想结束任务、关卡的话跟我说/, '请求里应请用户决定是否关卡')
+  assert.match(introRequest.body, /不要自行把示例卡标 `done` 或 `archived`/, '请求里应禁止 leader 自动 done/archived')
   assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')

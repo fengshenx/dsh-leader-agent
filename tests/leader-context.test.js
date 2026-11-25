@@ -121,14 +121,18 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、建�
     assert.match(text, /init-leader-agent/)
     assert.match(text, /目录是空的就写带 TODO 的骨架/)
     assert.match(text, /不要创建或修改任何文件/)
-    // 示例卡要真的派出去：建卡 → 绑 worker → 投递任务；worker 回报后收工。
+    // 示例卡要真的派出去：建卡 → 绑 worker → 投递任务；worker 回报后汇报给用户，
+    // 是否关卡由用户决定，leader 不自动关闭。
     assert.match(text, /`create_card`.*`Hello World`/)
     assert.match(text, /回复一句『你好』即可/)
     assert.match(text, /不读取、不修改、不创建任何文件/)
     assert.match(text, /`spawn_worker`.*`cardId`.*`slot`/)
     assert.match(text, /`message_worker`.*`sessionId`.*`childId`/)
     assert.match(text, /worker 回报唤醒你时/)
-    assert.match(text, /标 `done`/)
+    assert.match(text, /向用户汇报/)
+    assert.match(text, /你想结束任务、关卡的话跟我说/)
+    assert.match(text, /不要自行把示例卡标 `done` 或 `archived`/)
+    assert.doesNotMatch(text, /确认它说了「你好」就把这张示例卡标 `done`/)
     assert.match(text, /`list_cards\(/)
     // 查重要覆盖 active / done / archived；参数必须真能解析出来，不能只匹配文案。
     const call = text.match(/`list_cards\((\{[^`]+\})\)`/)
@@ -138,8 +142,10 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、建�
     assert.equal(args.limit, 100)
     assert.match(text, /`active` \/ `done` \/ `archived`/)
     assert.match(text, /整段跳过第 2–4 步/)
-    // 失败路径：worker 没跑成或派工直接失败时收尾，而不是留一张 active 卡占槽。
-    assert.match(text, /标 `archived` 并告诉用户示例没跑完/)
+    // 失败路径：告诉用户实情，但同样不自动归档；等用户决定后再处理。
+    assert.match(text, /把情况告诉用户/)
+    assert.match(text, /也不要自行归档或关卡/)
+    assert.doesNotMatch(text, /把这张示例卡标 `archived` 并告诉用户示例没跑完/)
     assert.match(text, /不要重试第二次/)
     // 示例产物是有意保留：卡与 worker 会话都留在项目里。
     assert.match(text, /示例卡与 worker 会话会留在项目里/)

@@ -134,6 +134,7 @@ test('8 语言引导语等价：通用触发语，且不读 / 不改 / 不建', 
     const prompt = LOCALE_UI[code]['guide.intro.prompt']
     assert.match(prompt, /dsh-leader-agent/)
     assert.doesNotMatch(prompt, /Hello World|worker/i, `${code} 引导语不该再要求建卡派工`)
+    assert.doesNotMatch(prompt, /标 `?done`?|archived|自动关卡/i, `${code} 引导语不该承诺自动关卡`)
     assert.doesNotMatch(prompt, /\n/, `${code} 引导语应是一句话`)
     assert.ok(prompt.length < 300, `${code} 引导语应保持短句`)
     for (const needle of needles) {
