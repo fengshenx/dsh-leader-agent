@@ -30,6 +30,6 @@ Status: implemented
 
 ## Testing
 
-- `tests/board-mode.test.js` 钉默认工作、未知值回工作、显式 cinema 读取、写失败回退与订阅。
+- `tests/board-mode.test.js` 钉默认工作、未知值回工作、显式 cinema 读取、写失败回退与订阅；旧 `board.default` 缓存键被忽略、显式选择仍优先的迁移回归也在这一文件。
 - `board-cinema` e2e 钉默认工作、设置页入口 `Leader Agent`、块标题「任务看板」、默认选中工作、炫酷说明，以及切换后的 rail 几何与 reload 两条路径。
 - `npm run check` 通过。

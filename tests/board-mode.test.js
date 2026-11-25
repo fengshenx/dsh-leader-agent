@@ -56,6 +56,36 @@ test('显式选择读得回来', () => {
   assert.equal(readBoardMode(createStorage({ [BOARD_MODE_KEY]: BOARD_MODE_WORK })), BOARD_MODE_WORK)
 })
 
+// 迁移回归：上一版把宿主判定的默认值缓存在 board.default，它不是用户选择；
+// 默认统一为 work 后这个键必须被彻底忽略，否则旧浏览器的 cinema 缓存会把用户留在炫酷。
+test('旧默认缓存键不再读取', () => {
+  assert.equal(
+    readBoardMode(createStorage({ 'dsh-leader-agent.board.default': BOARD_MODE_CINEMA })),
+    BOARD_MODE_WORK,
+  )
+  assert.equal(
+    readBoardMode(createStorage({ 'dsh-leader-agent.board.default': BOARD_MODE_WORK })),
+    BOARD_MODE_WORK,
+  )
+})
+
+test('显式选择压过旧默认缓存', () => {
+  assert.equal(
+    readBoardMode(createStorage({
+      [BOARD_MODE_KEY]: BOARD_MODE_CINEMA,
+      'dsh-leader-agent.board.default': BOARD_MODE_WORK,
+    })),
+    BOARD_MODE_CINEMA,
+  )
+  assert.equal(
+    readBoardMode(createStorage({
+      [BOARD_MODE_KEY]: BOARD_MODE_WORK,
+      'dsh-leader-agent.board.default': BOARD_MODE_CINEMA,
+    })),
+    BOARD_MODE_WORK,
+  )
+})
+
 test('存储读不出来时回到工作模式', () => {
   const throwing = {
     getItem: () => { throw new Error('privacy mode') },
