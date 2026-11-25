@@ -134,7 +134,15 @@ async function listWorkerModels(ctx, request, signal) {
 
   signal?.throwIfAborted()
   if (modelId === undefined) {
-    const models = await llm.listModels(provider.id)
+    let models
+    try {
+      models = await llm.listModels(provider.id)
+    } catch (error) {
+      throw new Error(
+        `list_worker_models: 读取 provider「${provider.id}」的模型失败：${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      )
+    }
     signal?.throwIfAborted()
     if (models.length === 0) return `provider「${provider.id}」没有公布模型。`
     return `${models.map((model) => modelLine(provider.id, model)).join('\n')}\n用 provider + model 查该模型的 reasoning effort。`

@@ -109,6 +109,14 @@ test('list_worker_models：provider 没有公布模型时明说，不返回空�
   )
 })
 
+test('list_worker_models：给 provider 时发现失败带 provider 报错', async () => {
+  const { ctx } = makeCtx({ providers: PROVIDERS, failures: { alpha: new Error('boom') } })
+  await assert.rejects(
+    () => createListWorkerModelsTool({ ctx }).execute({ provider: 'alpha' }, EXEC),
+    /读取 provider「alpha」的模型失败：boom/,
+  )
+})
+
 test('list_worker_models：未注册 provider 报出可用列表', async () => {
   const { ctx } = makeCtx({ providers: PROVIDERS })
   await assert.rejects(
