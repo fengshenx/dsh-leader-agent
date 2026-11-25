@@ -219,9 +219,36 @@ function runDesktop({ tree, home, env: extraEnv = {}, args = [] }) {
 const LAUNCH_WAIT_ATTEMPTS = 300
 /** capture 已落盘后等 sessions 文件的预算：60 × 100ms，正常只需 1–3 秒。 */
 const WRITE_WAIT_ATTEMPTS = 60
+/** 探测 `open --env` 是否投递的预算：50 × 100ms，不投递时 open 会静默返回 0。 */
+const PROBE_WAIT_ATTEMPTS = 50
 const WAIT_INTERVAL_MS = 100
 const LAUNCH_WAIT_SECONDS = (LAUNCH_WAIT_ATTEMPTS * WAIT_INTERVAL_MS) / 1000
 const WRITE_WAIT_SECONDS = (WRITE_WAIT_ATTEMPTS * WAIT_INTERVAL_MS) / 1000
+
+/**
+ * 探一次本机 LaunchServices 是否真的把 `open --env` 传给被拉起的 .app。
+ *
+ * 沙箱、无 GUI 会话或部分系统版本上，`open --env` 会静默丢掉变量：退出码仍是 0，
+ * 被拉起的进程拿不到 `DSH_HOME`。真实启动用例在这种环境里只会白等 30 秒，所以
+ * 先探一次；探不通就跳过并说明去桌面会话复核，而不是把环境限制记成用例失败。
+ *
+ * @param {string} root - 临时根；探针 .app 建在它的子目录里
+ * @returns {Promise<boolean>} 变量是否投递成功
+ */
+async function launchServicesDeliversEnv(root) {
+  const probeRoot = join(root, 'open-env-probe')
+  mkdirSync(probeRoot, { recursive: true })
+  const capture = join(probeRoot, 'captured-home.txt')
+  const app = writeFakeApp(probeRoot, capture)
+  const sentinel = join(probeRoot, 'probe-home')
+  const result = spawnSync('open', ['--env', `DSH_HOME=${sentinel}`, '-n', '-a', app], { encoding: 'utf8' })
+  if (result.status !== 0) return false
+  for (let attempt = 0; attempt < PROBE_WAIT_ATTEMPTS; attempt += 1) {
+    if (existsSync(capture) && readFileSync(capture, 'utf8') === sentinel) return true
+    await new Promise((resolve) => setTimeout(resolve, WAIT_INTERVAL_MS))
+  }
+  return false
+}
 
 /**
  * 超时文案：把系统异步窗口与复核步骤写进错误本身，避免并发下的超时被误读成 main 回归。
@@ -418,6 +445,11 @@ test('prod 建影子后跑 dev --remove：日常数据与 prod 影子都不动',
 
 test('假 .app 启动：dev 写 dev 根，prod 写日常根，再跑 dev 日常数据不变', { skip: process.platform !== 'darwin' ? '假 .app 启动只在 macOS 上可验证' : false }, async (t) => {
   const { tree, home, root } = makeFixture(t, { gitMarker: 'dir' })
+  // open 退出码为 0 不代表 --env 送到了：探不通就别把系统限制记成用例失败。
+  if (!await launchServicesDeliversEnv(root)) {
+    t.skip('本机 LaunchServices 不投递 open --env（沙箱、无 GUI 会话或系统限制）；真实启动用例跳过，请在桌面会话单跑本用例复核 npm run desktop')
+    return
+  }
   const daily = seedDailyProfile(home)
   const capture = join(root, 'captured-home.txt')
   const fakeApp = writeFakeApp(root, capture)
