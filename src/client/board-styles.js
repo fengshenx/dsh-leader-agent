@@ -1568,8 +1568,9 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   width: 72px;
   height: 36px;
   padding: 0 10px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--dsw-radius-md);
+  outline: none;
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
   font: inherit;
@@ -1580,8 +1581,7 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 }
 
 .dsh-leader-agent-settings-input:focus-visible {
-  outline: var(--dsw-focus-ring-width, 2px) auto var(--dsw-alias-state-business-primary);
-  outline-offset: 0;
+  border-color: var(--dsw-alias-state-business-primary);
 }
 
 .dsh-leader-agent-settings-input:disabled {

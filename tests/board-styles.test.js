@@ -141,15 +141,18 @@ test('自动续行输入框自带焦点环，单位「次」在框外', () => {
   const input = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input')
   assert.equal(input?.declarations.background, 'var(--dsw-alias-interactive-bg-hover)')
   assert.equal(input?.declarations['border-radius'], 'var(--dsw-radius-md)')
+  assert.equal(input?.declarations.outline, 'none', '输入框要压掉浏览器默认 outline')
   const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input:focus-visible')
   assert.equal(
-    focus?.declarations.outline,
-    'var(--dsw-focus-ring-width, 2px) auto var(--dsw-alias-state-business-primary)',
+    focus?.declarations['border-color'],
+    'var(--dsw-alias-state-business-primary)',
+    '焦点只用 1px 边框，不画粗 outline',
   )
+  assert.equal(focus?.declarations.outline, undefined, '输入框不应再有粗 outline')
   assert.equal(
     rules.some((rule) => rule.selector === '.dsh-leader-agent-settings-control:focus-within'),
     false,
-    '焦点环不能画在外层 control 上',
+    '焦点样式不能画在外层 control 上',
   )
 })
 
