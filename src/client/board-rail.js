@@ -13,6 +13,7 @@
 
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { planRailLanes, railNodeState, RAIL_LANE_HOT, RAIL_LANE_WARN } from './board-rail-plan.js'
+import { railSignature } from './board-rail-signature.js'
 import { prefersReducedMotion, watchReducedMotion } from './motion-preference.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -196,7 +197,8 @@ function drawRail(svg, options = {}) {
  * 线路图覆盖层。
  *
  * `railKey` 是行身份与状态的签名：卡片轮询每 2 秒会换一个新数组，但签名不变时
- * 不必重画——重画会让光点从头再跑一遍。
+ * 不必重画——重画会让光点从头再跑一遍。几何（尺寸、行高、行位置）另由
+ * `railSignature` 并入绘制签名，见 `board-rail-signature.js`。
  *
  * @param {object} props - 组件属性
  * @param {string} props.railKey - 行与状态的签名
@@ -205,9 +207,9 @@ function drawRail(svg, options = {}) {
 export function BoardRail({ railKey, orthogonal, theme }) {
   const ref = useRef(null)
   const reduced = usePrefersReducedMotion()
-  // 最近一次真正画上去的签名。隐藏/显示只改可见性，不改内容与几何；用它把
-  // 「右栏重新可见」的 0 → N 尺寸变化挡在重画之外——重画会重建 SVG，SMIL
-  // 光点跟着从头起跑。
+  // 最近一次真正画上去的完整签名（内容 + 几何）。隐藏/显示只改可见性，不改
+  // 内容与几何；用它把「右栏重新可见」的 0 → N 尺寸变化挡在重画之外——重画会
+  // 重建 SVG，SMIL 光点跟着从头起跑。
   const drawnKey = useRef('')
 
   useLayoutEffect(() => {
@@ -219,9 +221,17 @@ export function BoardRail({ railKey, orthogonal, theme }) {
     const draw = () => {
       // 宿主用 display:none 隐藏非当前会话的右栏：尺寸归零不是布局变化
       if (stage.clientWidth === 0 || stage.clientHeight === 0) return
-      // 宽度决定卡片换行与行高，是线路几何的唯一外部变量；宽度没变、内容签名
-      // 没变时，重画的结果与现在这层 SVG 相同，不必重建动画节点。
-      const key = `${railKey}|${orthogonal}|${theme}|${reduced}|${stage.clientWidth}`
+      // 覆盖层的 y 坐标全部来自实测的卡片矩形：标题换行、locale/字体加载都会
+      // 移动行中心，而 railKey 不含标题与行高。几何必须一起进签名，否则尺寸变了
+      // 签名没变，线路图会停在旧位置。
+      const rect = stage.getBoundingClientRect()
+      const rows = [...stage.querySelectorAll('[data-rail-row]')].map((row) => {
+        const rowRect = row.getBoundingClientRect()
+        return { top: rowRect.top - rect.top, height: rowRect.height }
+      })
+      const key = railSignature({
+        railKey, orthogonal, theme, reduced, width: rect.width, height: rect.height, rows,
+      })
       if (key === drawnKey.current) return
       drawnKey.current = key
       drawRail(svg, { orthogonal, theme, reduced })
@@ -229,7 +239,8 @@ export function BoardRail({ railKey, orthogonal, theme }) {
     draw()
     if (typeof ResizeObserver === 'undefined') return undefined
     const observer = new ResizeObserver(() => {
-      // 面板过渡期间尺寸可能连续变化：等稳定后只画一次，避免每帧重建
+      // 尾防抖：连续拖拽期间每次回调都重置计时，整个拖拽过程中线路图停在旧宽度上
+      // （错位），停手 80ms 后只画最后一次。换来的是不逐帧重建 SMIL 节点。
       clearTimeout(timer)
       timer = setTimeout(draw, 80)
     })
