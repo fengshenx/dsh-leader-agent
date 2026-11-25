@@ -36,7 +36,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 ## 测试与构建
 
-测试用 `node:test`，lint 用 oxlint（`npm run lint`，已接进 `npm run check` 最前面；配置在 `.oxlintrc.json`，`--deny-warnings` 让 warning 也判失败）：未使用的 import 与死代码由 lint 拦住，拼写错误仍靠人工。可判定逻辑抽成纯函数模块再测；IO 与 React 组件不硬测，判据在宿主 UI 里的行为用 `npm run e2e` 证明——真实 `dsh` 实例 + 本地 Messages mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生：两边组合必须一致，否则 e2e 测到的不是用户实际拿到的实例。
+测试用 `node:test`，lint 用 oxlint（`npm run lint`，已接进 `npm run check` 最前面；配置在 `.oxlintrc.json`，`--deny-warnings` 让 warning 也判失败）：未用 import 与死代码由 lint 拦住，拼写错误靠人工。可判定逻辑抽成纯函数再测；IO 与 React 组件不硬测，UI 行为用 `npm run e2e` 证明——真实 `dsh` + 本地 mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生；组合必须一致，否则测到的不是用户实际实例。
 
 `desktop-remove.integration` 并发超时先单跑（LaunchServices）。
 
