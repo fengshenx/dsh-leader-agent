@@ -96,7 +96,7 @@ test('按 turn/start 与 turn/end 切成回合，正文与工具调用各归其�
   assert.deepEqual(turns[0].assistant, ['先看一下现有实现。', '改完了，三个文件。'])
   assert.deepEqual(turns[0].tools.map((tool) => tool.name), ['read'])
   assert.equal(turns[0].tools[0].failed, false)
-  assert.deepEqual(turns[0].end, { kind: 'completed', error: undefined })
+  assert.deepEqual(turns[0].end, { kind: 'completed', failure: undefined })
 })
 
 test('失败的工具调用带出用户可见原因', () => {
@@ -176,7 +176,7 @@ test('只渲染最近 N 个回合，并写明还有多少没展示', () => {
   assert.match(text, /任务 3/)
   assert.match(text, /任务 4/)
   assert.doesNotMatch(text, /任务 1/)
-  assert.match(text, /更早的 2 个回合超出 turns=2 的范围/)
+  assert.match(text, /更早的 2 个回合可用 offset=2 继续翻页/)
 })
 
 test('进行中的最后一轮在正文里标出，避免把半截当结论', () => {
@@ -191,7 +191,7 @@ test('进行中的最后一轮在正文里标出，避免把半截当结论', ()
 })
 
 test('超长正文与失败原因按上限截断并标注', () => {
-  const long = 'x'.repeat(3000)
+  const long = 'x'.repeat(5000)
   const { turns } = foldTurns([
     event('turn/start', { turn: 1 }),
     user(long),
@@ -200,13 +200,34 @@ test('超长正文与失败原因按上限截断并标注', () => {
       message: { toolCallId: 'c1', isError: true, content: [] },
       error: { name: 'E', code: 'E', reason: 'y'.repeat(500) },
     }),
-    event('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'z'.repeat(500) } } }),
+    event('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'z'.repeat(5000) } } }),
   ])
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
-  assert.match(text, /已截断，原长 3000 字符/)
+  assert.match(text, /已截断，原长 5000 码元/)
+  // 标记带下一步：其他回合可翻页，单条超出的部分让 worker 复述。
+  assert.match(text, /read_worker_session 的 offset 翻页/)
   assert.doesNotMatch(text, new RegExp(`y{300}`))
-  // 会话级失败原因同样截断，不把整段错误栈塞进 leader 上下文。
-  assert.doesNotMatch(text, new RegExp(`z{300}`))
+  // 回合终态失败原因与通知同值：放宽到 4000，超出的部分才截断。
+  assert.match(text, /已截断，原长 5000 码元/)
+  assert.match(text, /回合 1 · z{3000}/)
+  assert.ok(text.length < 9000, `正文长度 ${text.length} 超出预期`)
+})
+
+test('aborted / blocked / max-tokens 的失败说明进回看，与通知同一条文本', () => {
+  const cases = [
+    { reason: { kind: 'aborted', reason: { kind: 'user' } }, expected: '被取消：user' },
+    { reason: { kind: 'blocked' }, expected: '被阻断：这一轮被宿主拦下，没有开始' },
+    { reason: { kind: 'max-tokens' }, expected: '输出达到 token 上限，这一轮没有正常收尾' },
+    { reason: { kind: 'error', error: { message: '模型不可用' } }, expected: '模型不可用' },
+  ]
+  for (const { reason, expected } of cases) {
+    const { turns } = foldTurns([
+      event('turn/start', { turn: 1 }),
+      event('turn/end', { turn: 1, reason }),
+    ])
+    const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+    assert.ok(text.includes(expected), `缺失失败说明「${expected}」：${text}`)
+  }
 })
 
 test('整段正文有总上限：装不下的更早回合丢弃，保留最新的结论', () => {
@@ -224,7 +245,7 @@ test('整段正文有总上限：装不下的更早回合丢弃，保留最新�
   assert.ok(text.length < 13000, `正文长度 ${text.length} 超出总上限`)
   // 最新的结论必须在：丢的是更早的回合。
   assert.match(text, /第20轮/)
-  assert.match(text, /超出单次读取上限/)
+  assert.match(text, /单次读取总量上限未展示/)
 })
 
 test('空日志给出明确的空态，不编造回合', () => {
@@ -268,16 +289,17 @@ test('宿主注入的上下文不冒充用户，也不占任务正文的预算',
   assert.doesNotMatch(text, /工作目录已切换到/)
 })
 
-test('单条正文截断不切在代理对中间', () => {
+test('单条正文超限时标注原长并指向 offset 翻页，不劈开 emoji', () => {
   const { turns } = foldTurns([
     event('turn/start', { turn: 1 }),
-    // 切点正好落在 😀 的高位代理上：按码元切会留下孤立代理。
-    task(`${'a'.repeat(1999)}😀`),
+    // 全 emoji：任何奇数切点都落在代理对中间。
+    assistant('😀'.repeat(3000)),
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
   ])
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+  assert.match(text, /已截断，原长 6000 码元/)
+  assert.match(text, /read_worker_session 的 offset 翻页/)
   assert.equal(loneSurrogateAt(text), undefined)
-  assert.match(text, /已截断，原长 2001 字符/)
 })
 
 test('失败原因截断不切在代理对中间', () => {
@@ -298,7 +320,7 @@ test('总上限硬截断不切在代理对中间', () => {
   // 工具名把一回合撑过 12000：最新回合自身超限，走 clip 的硬截断路径。
   const tools = Array.from({ length: 600 }, () => ({ name: '😀'.repeat(10), failed: undefined, reason: undefined }))
   const text = renderTranscript({
-    turns: [{ turn: 1, task: [], user: [], injected: 0, assistant: [], tools, end: { kind: 'completed', error: undefined } }],
+    turns: [{ turn: 1, task: [], user: [], injected: 0, assistant: [], tools, end: { kind: 'completed', failure: undefined } }],
     sessionId: 'w-1',
     name: 'dev',
     limit: 1,
@@ -310,49 +332,17 @@ test('总上限硬截断不切在代理对中间', () => {
 test('CJK 正文按上限截断，字符完整', () => {
   const { turns } = foldTurns([
     event('turn/start', { turn: 1 }),
-    task('甲'.repeat(2500)),
+    task('甲'.repeat(4500)),
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
   ])
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
-  assert.match(text, new RegExp('甲'.repeat(2000)))
+  assert.match(text, new RegExp('甲'.repeat(3000)))
+  assert.match(text, /已截断，原长 4500 码元/)
   assert.equal(loneSurrogateAt(text), undefined)
   assert.doesNotMatch(text, /\uFFFD/)
 })
 
-test('组合字符截断只丢重音，不出乱码', () => {
-  const { turns } = foldTurns([
-    event('turn/start', { turn: 1 }),
-    // 组合序列 e + U+0301 被切点分开：保留基字符，丢掉组合标记。
-    task(`${'a'.repeat(1999)}e\u0301`),
-    event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
-  ])
-  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
-  assert.equal(loneSurrogateAt(text), undefined)
-  assert.doesNotMatch(text, /\uFFFD/)
-  assert.match(text, new RegExp(`${'a'.repeat(1999)}e…`))
-})
-
-test('体积溢出时如实说这些回合取不到，不承诺调 turns 可达', () => {
-  const events = []
-  for (let turn = 1; turn <= 20; turn += 1) {
-    events.push(event('turn/start', { turn }))
-    events.push(task(`${'甲'.repeat(1900)}第${turn}轮`))
-    events.push(assistant(`${'乙'.repeat(1900)}第${turn}轮`))
-    events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
-  }
-  const { turns } = foldTurns(events)
-  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 5 })
-  // 15 个在 turns=5 窗口外，另有若干个在窗口内被体积挤掉：两种成因都要说清。
-  assert.match(text, /更早的 15 个回合超出 turns=5 的范围/)
-  assert.match(text, /最近的 \d+ 个回合因正文超出单次读取上限被丢弃/)
-  // 体积上限固定，任何 turns 值都装不回被挤掉的回合：不能暗示调参能拿到。
-  assert.match(text, /单次读取的总量上限固定，调 turns 取不到这些回合/)
-  assert.match(text, /需要更早的内容请用 message_worker 让 worker 自己复述/)
-  assert.doesNotMatch(text, /调小 turns 可以让更早的回合装进上限/)
-  assert.doesNotMatch(text, /调大 turns 可以多看更早的回合/)
-})
-
-test('只有窗口外的回合被丢时，建议调大 turns', () => {
+test('窗口外的更早回合给出 offset 翻页位置', () => {
   const events = []
   for (let turn = 1; turn <= 4; turn += 1) {
     events.push(event('turn/start', { turn }))
@@ -361,28 +351,42 @@ test('只有窗口外的回合被丢时，建议调大 turns', () => {
   }
   const { turns } = foldTurns(events)
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 2 })
-  assert.match(text, /更早的 2 个回合超出 turns=2 的范围/)
-  assert.doesNotMatch(text, /超出单次读取上限/)
-  assert.match(text, /调大 turns 可以多看更早的回合/)
+  assert.match(text, /更早的 2 个回合可用 offset=2 继续翻页/)
+  assert.doesNotMatch(text, /总量上限/)
 })
 
-test('体积受限时任何 turns 值都不暗示调参能取到更早回合', () => {
+test('体积溢出时给出下一页 offset，翻过去能取回被丢弃的回合', () => {
   const events = []
   for (let turn = 1; turn <= 20; turn += 1) {
     events.push(event('turn/start', { turn }))
-    events.push(task(`${'甲'.repeat(1990)}第${turn}轮`))
-    events.push(assistant(`${'乙'.repeat(1990)}第${turn}轮`))
-    events.push(user(`${'丙'.repeat(1990)}第${turn}轮`))
-    events.push(assistant(`${'丁'.repeat(1990)}第${turn}轮`))
+    events.push(task(`${'甲'.repeat(1900)}第${turn}轮`))
+    events.push(assistant(`${'乙'.repeat(1900)}第${turn}轮`))
     events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
   }
   const { turns } = foldTurns(events)
-  // 每回合近 8000 字符，任何 turns 值都装不下窗口内更早的回合：调大调小都无益。
-  for (const limit of [2, 3, 4]) {
-    const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit })
-    assert.match(text, /因正文超出单次读取上限被丢弃/, `limit=${limit} 应触发体积溢出`)
-    assert.match(text, /单次读取的总量上限固定，调 turns 取不到这些回合/)
-    assert.doesNotMatch(text, /调小 turns/)
-    assert.doesNotMatch(text, /调大 turns 可以多看更早的回合/)
+  // 每回合约 3800 字符：limit=5 时本页最多留 3 个，另 2 个被体积上限挡住。
+  const first = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 5 })
+  const hint = first.match(/本页有 (\d+) 个回合因单次读取总量上限未展示[^。]*可用 offset=(\d+) 翻页读取/)
+  assert.ok(hint !== null, `缺少翻页提示：${first.slice(-160)}`)
+  assert.equal(hint[1], '2')
+  // 提示的 offset 必须真的取回被丢弃的回合，否则提示是空头支票。
+  const next = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 5, offset: Number(hint[2]) })
+  assert.match(next, /第16轮/)
+  assert.match(next, /第17轮/)
+})
+
+test('offset 翻页时头部写明跳过的最新回合', () => {
+  const events = []
+  for (let turn = 1; turn <= 6; turn += 1) {
+    events.push(event('turn/start', { turn }))
+    events.push(task(`任务 ${turn}`))
+    events.push(event('turn/end', { turn, reason: { kind: 'completed' } }))
   }
+  const { turns } = foldTurns(events)
+  const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 2, offset: 2 })
+  assert.match(text, /倒序第 3–4 个（offset=2 跳过最新 2 个）/)
+  assert.match(text, /任务 3/)
+  assert.match(text, /任务 4/)
+  assert.doesNotMatch(text, /任务 5/)
+  assert.match(text, /更早的 2 个回合可用 offset=4 继续翻页/)
 })

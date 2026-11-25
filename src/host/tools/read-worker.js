@@ -23,7 +23,7 @@ export function createReadWorkerTool({ dispatcher }) {
   return {
     name: 'read_worker_session',
     description:
-      '读一个已派出 worker 的会话回合：它的任务正文、说过的正文、调过哪些工具、哪一步失败与原因，以及每轮的终态。只读、不唤醒 worker、不产生模型调用，worker 正在跑也能读（读到的是当前已落盘的部分）。完成通知只给产物摘要，需要回看过程或排查失败时用它。',
+      '读一个已派出 worker 的会话回合：它的任务正文、说过的正文、调过哪些工具、哪一步失败与原因，以及每轮的终态。只读、不唤醒 worker、不产生模型调用，worker 正在跑也能读（读到的是当前已落盘的部分，最后一轮会标「进行中」）。完成通知只给产物摘要，需要回看过程或排查失败时用它；正文超长可按 turns/offset 翻页。',
     parameters: {
       type: 'object',
       properties: {
@@ -33,7 +33,11 @@ export function createReadWorkerTool({ dispatcher }) {
         },
         turns: {
           type: 'number',
-          description: `可选：回看最近几个回合，默认 ${DEFAULT_TURNS}，上限 ${MAX_TURNS}。工具调用只列名字与失败原因，正文按条截断。`,
+          description: `可选：本页回看几个回合，默认 ${DEFAULT_TURNS}，上限 ${MAX_TURNS}。工具调用只列名字与失败原因，正文按条截断。`,
+        },
+        offset: {
+          type: 'number',
+          description: '可选：翻页偏移，跳过最新的几个回合，默认 0。往后看更早的回合时，用上一页末尾给出的 offset 继续；翻页期间 worker 新增回合会让页框后移、内容可能重复，最终仍可读全。超出总回合数会报错。',
         },
       },
       required: ['sessionId'],
@@ -56,7 +60,7 @@ export function createReadWorkerTool({ dispatcher }) {
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ sessionId?: unknown, turns?: unknown }} */ (args)
+      const input = /** @type {{ sessionId?: unknown, turns?: unknown, offset?: unknown }} */ (args)
       if (typeof input.sessionId !== 'string' || input.sessionId.trim() === '') {
         throw new Error('read_worker_session: sessionId 不能为空')
       }
@@ -70,6 +74,13 @@ export function createReadWorkerTool({ dispatcher }) {
         }
         turns = input.turns
       }
+      let offset = 0
+      if (input.offset !== undefined) {
+        if (typeof input.offset !== 'number' || !Number.isInteger(input.offset) || input.offset < 0) {
+          throw new Error('read_worker_session: offset 必须是非负整数')
+        }
+        offset = input.offset
+      }
       const parent = exec.agent
       if (parent === undefined) {
         throw new Error('read_worker_session: 需要调用方 agent 才能读 worker 的会话')
@@ -78,6 +89,7 @@ export function createReadWorkerTool({ dispatcher }) {
         parent,
         sessionId: input.sessionId.trim(),
         turns,
+        offset,
       })
     },
   }

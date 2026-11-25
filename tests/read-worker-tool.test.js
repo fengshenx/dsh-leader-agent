@@ -228,7 +228,49 @@ test('turns 只影响渲染的回合数，不影响读取', async () => {
   assert.equal(result.totalTurns, 3)
   assert.match(result.text, /第 3 轮任务/)
   assert.doesNotMatch(result.text, /第 2 轮任务/)
-  assert.match(result.text, /更早的 2 个回合超出 turns=1 的范围/)
+  assert.match(result.text, /更早的 2 个回合可用 offset=1 继续翻页/)
+})
+
+test('offset 跳过最新的回合，翻到更早的一页', async () => {
+  const fixture = await fixtureWithWorker({
+    sessionQuery: {
+      async readSession(sessionId) {
+        return { session: { id: sessionId }, inheritedEventCount: 0, events: [...fullTurn(1), ...fullTurn(2), ...fullTurn(3)] }
+      },
+    },
+  })
+  const result = await fixture.tool.execute({ sessionId: WORKER_ID, turns: 1, offset: 1 }, { agent: parent })
+  assert.equal(result.totalTurns, 3)
+  assert.match(result.text, /第 2 轮任务/)
+  assert.doesNotMatch(result.text, /第 3 轮任务/)
+  assert.match(result.text, /倒序第 2 个（offset=1 跳过最新 1 个）/)
+  assert.match(result.text, /更早的 1 个回合可用 offset=2 继续翻页/)
+})
+
+test('offset 超出总回合数时报错，不静默返回空页', async () => {
+  const fixture = await fixtureWithWorker({
+    sessionQuery: {
+      async readSession(sessionId) {
+        return { session: { id: sessionId }, inheritedEventCount: 0, events: [...fullTurn(1), ...fullTurn(2)] }
+      },
+    },
+  })
+  await assert.rejects(
+    () => fixture.tool.execute({ sessionId: WORKER_ID, offset: 2 }, { agent: parent }),
+    /offset=2 超出范围，会话共 2 个回合/,
+  )
+})
+
+test('offset 只收非负整数，不在 schema 层蒙混过关', async () => {
+  const fixture = await fixtureWithWorker({
+    sessionQuery: { async readSession() { throw new Error('不该被调用') } },
+  })
+  for (const offset of [-1, 1.5, '1', null]) {
+    await assert.rejects(
+      () => fixture.tool.execute({ sessionId: WORKER_ID, offset }, { agent: parent }),
+      /offset 必须是非负整数/,
+    )
+  }
 })
 
 test('退役或非项目 leader 不能读（工具面不会重裁，身份在调用时再判一次）', async () => {

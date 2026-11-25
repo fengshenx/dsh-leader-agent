@@ -41,6 +41,8 @@ import { randomUUID } from 'node:crypto'
 import { createUserMessage } from './message.js'
 import { AUTO_RESUME_LIMIT_DEFAULT } from '../shared/settings.js'
 import { messageText } from '../shared/message-text.js'
+import { clipText } from '../shared/truncate.js'
+import { describeTurnFailure } from '../shared/turn-failure.js'
 import { foldTurns, renderTranscript } from './worker-transcript.js'
 import { workerReportSource } from '../shared/worker-report.js'
 import { stallNoticeSummary, workerStallSource } from '../shared/worker-stall.js'
@@ -66,6 +68,35 @@ import { normalizeModelSelection, resolveWorkerModel } from './worker-model.js'
  */
 const DEFAULT_ACTIVE_WORKER_LIMIT = 50
 const NOTIFICATION_LIMIT = 4000
+/**
+ * 截断标记之后的下一步：回报被压短时必须告诉 leader 去哪儿读全文。
+ *
+ * 指向 `read_worker_session` 而不是「让 worker 复述」——前者只读、不产生模型
+ * 调用，也不会把 worker 再推进一轮。
+ */
+const REPORT_TRUNCATED_HINT = '；完整内容用 read_worker_session 回看该 worker 的回合，可按 turns/offset 翻页'
+
+/**
+ * 通知头部里的 worker 名上限。
+ *
+ * `name` 由 `spawn_worker` / `message_worker` 的调用方给，没有长度约束；整段拼完
+ * 再切会把「状态」「下一步」一起切掉，所以先把这一个无界字段压到小上限。
+ */
+const HEAD_NAME_LIMIT = 120
+
+/**
+ * 头部展示用的 worker 名：只压展示，`子会话` 等协议字段不动。
+ *
+ * @param {unknown} name - 登记表里的名字
+ * @returns {unknown} 不超过 {@link HEAD_NAME_LIMIT} 的名字
+ */
+function headName(name) {
+  if (typeof name !== 'string' || name.length <= HEAD_NAME_LIMIT) return name
+  // 切点落在代理对中间会留下半个字符，退一位再截。
+  const last = name.charCodeAt(HEAD_NAME_LIMIT - 1)
+  const end = last >= 0xd800 && last <= 0xdbff ? HEAD_NAME_LIMIT - 1 : HEAD_NAME_LIMIT
+  return `${name.slice(0, end)}…`
+}
 
 /**
  * worker 最近一次被使用的时刻。
@@ -125,41 +156,73 @@ function describeRecordModel(record) {
 
 /**
  * 构造完成通知正文。
+ *
+ * 产物摘要与失败原因没有长度上限（worker 写多少都可能），所以正文按
+ * `NOTIFICATION_LIMIT` 截断；但协议字段（任务、子会话、状态、下一步）必须先占住
+ * 预算再截内容——整段拼完再切会把「下一步」和重投提示一起切掉。
+ *
  * @param {object} record - 派工记录
  * @param {{ ok: boolean, result?: object, error?: unknown }} outcome - 终态
  * @returns {string} 通知正文
  */
 export function buildNotificationText(record, outcome) {
-  const lines = []
   const status = outcome.ok ? outcome.result?.stopReason ?? 'completed' : 'failed'
   // 正文不带「谁在说话」的前缀：说话人由消息的 source 标记，客户端渲染成
   // 带头像与身份的气泡。前缀写进正文会同时污染模型读的事实与用户看到的界面。
-  lines.push(record.unattributed === true
-    ? record.claimed === true
-      ? `worker「${record.name}」有一轮执行失败；任务消息已被取走，但还没落成 user/message。`
-      : `worker「${record.name}」有一轮执行失败，且无法确认是否消费了你的任务。`
-    : `任务「${record.name}」已结束。`)
-  lines.push(`子会话：${record.childId}`)
-  lines.push(`状态：${status}`)
+  const name = headName(record.name)
+  const head = [
+    record.unattributed === true
+      ? record.claimed === true
+        ? `worker「${name}」有一轮执行失败；任务消息已被取走，但还没落成 user/message。`
+        : `worker「${name}」有一轮执行失败，且无法确认是否消费了你的任务。`
+      : `任务「${name}」已结束。`,
+    `子会话：${record.childId}`,
+    `状态：${status}`,
+  ]
+  const tail = []
   if (!outcome.ok) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
     const model = describeRecordModel(record)
-    if (model !== undefined) lines.push(`模型：${model}`)
-    lines.push(`失败原因：${reason}`)
+    if (model !== undefined) head.push(`模型：${model}`)
     if (record.unattributed === true) {
-      lines.push(record.claimed === true
+      tail.push(record.claimed === true
         ? '注意：这一轮在你的任务消息落成 user/message 前失败；消息已被取走，不在收件箱里。先 read_worker_session 查看，再决定重投或换模型。'
         : '注意：这一轮在你的任务消息被记录进会话前失败；先 read_worker_session 查看，再决定重投或换模型。')
     }
-  } else {
-    const summary = messageText(outcome.result?.output ?? [])
-    lines.push(summary === '' ? '产物摘要：（worker 未产出文本）' : `产物摘要：\n${summary}`)
+    tail.push('下一步：按 leader 协议判断验收、返工或派新工。')
+    if (record.model !== undefined) {
+      tail.push('若怀疑模型或凭据不可用，用 list_worker_models 换 route 重新派工；瞬时故障可 message_worker 重试。')
+    }
+    const reasonBody = `失败原因：${reason}`
+    return joinNotification(head, reasonBody, tail)
   }
-  lines.push('下一步：按 leader 协议判断验收、返工或派新工。')
-  if (!outcome.ok && record.model !== undefined) {
-    lines.push('若怀疑模型或凭据不可用，用 list_worker_models 换 route 重新派工；瞬时故障可 message_worker 重试。')
+  const summary = messageText(outcome.result?.output ?? [])
+  const body = `产物摘要：\n${summary === '' ? '（worker 未产出文本）' : summary}`
+  tail.push('下一步：按 leader 协议判断验收、返工或派新工。')
+  return joinNotification(head, body, tail)
+}
+
+/**
+ * 把固定段与可截断的中段拼成受 `NOTIFICATION_LIMIT` 约束的正文。
+ *
+ * @param {string[]} head - 固定头部行
+ * @param {string} body - 可截断的中段（产物摘要或失败原因）
+ * @param {string[]} tail - 固定尾部行
+ * @returns {string} 通知正文
+ */
+function joinNotification(head, body, tail) {
+  const headText = head.join('\n')
+  const tailText = tail.join('\n')
+  // 两个换行也要计入：截断后的正文加上固定段不能超上限。
+  const budget = NOTIFICATION_LIMIT - headText.length - tailText.length - 2
+  // 固定段自己就超限（名字已压到 120，剩下的只能是会话 id 之类异常长的字段）：
+  // 先保住尾部协议字段，再压头部，别把「下一步」和重投提示一起切掉。
+  if (budget < 1) {
+    const room = NOTIFICATION_LIMIT - tailText.length - 1
+    if (room < 1) return clipText(tailText, NOTIFICATION_LIMIT, REPORT_TRUNCATED_HINT)
+    return `${clipText(headText, room, REPORT_TRUNCATED_HINT)}\n${tailText}`
   }
-  return lines.join('\n').slice(0, NOTIFICATION_LIMIT)
+  return `${headText}\n${clipText(body, budget, REPORT_TRUNCATED_HINT)}\n${tailText}`
 }
 
 /**
@@ -176,11 +239,15 @@ export function buildWorkerReport(outcome, record) {
   if (!outcome.ok) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
     const model = describeRecordModel(record)
-    return `${model === undefined ? '失败' : `失败（模型 ${model}）`}：${reason}`.slice(0, NOTIFICATION_LIMIT)
+    return clipText(
+      `${model === undefined ? '失败' : `失败（模型 ${model}）`}：${reason}`,
+      NOTIFICATION_LIMIT,
+      REPORT_TRUNCATED_HINT,
+    )
   }
   // 气泡按 Markdown 渲染：块间要空行，单个 \n 是软换行，多块会被折成一段。
   const summary = messageText(outcome.result?.output ?? [], '\n\n')
-  return (summary === '' ? '（worker 未产出文本）' : summary).slice(0, NOTIFICATION_LIMIT)
+  return clipText(summary === '' ? '（worker 未产出文本）' : summary, NOTIFICATION_LIMIT, REPORT_TRUNCATED_HINT)
 }
 
 /**
@@ -863,9 +930,10 @@ export function createDispatcher({
    * @param {object} options.parent - 调用方 agent
    * @param {string} options.sessionId - worker 会话 id
    * @param {number} options.turns - 保留的最近回合数
+   * @param {number} [options.offset] - 跳过最新的几个回合（翻页用），默认 0
    * @returns {Promise<{ sessionId: string, name: string, totalTurns: number, running: boolean, text: string }>} 回合视图
    */
-  async function transcript({ parent, sessionId, turns }) {
+  async function transcript({ parent, sessionId, turns, offset = 0 }) {
     await assertLeader(parent, {
       pending: 'read_worker_session: 项目注册表尚未读出，无法确认 leader 身份，暂不能读 worker 的会话',
       refused: 'read_worker_session: 只有项目 leader 能读 worker 的会话——这个会话已不是任何项目的 leader（换下的 leader 降级为项目里的普通会话）',
@@ -894,13 +962,18 @@ export function createDispatcher({
       throw new Error(`read_worker_session: 会话查询后端返回的日志形状不符（缺 events 数组），无法读 worker ${sessionId} 的会话`)
     }
     const { turns: list, running } = foldTurns(snapshot.events)
+    // offset 要对着真实回合数判：负数与类型错误在工具层拦，这里只拦越界。
+    // 越界不静默返回空正文——那会让 leader 以为 worker 没有更早的回合。
+    if (offset > 0 && offset >= list.length) {
+      throw new Error(`read_worker_session: offset=${offset} 超出范围，会话共 ${list.length} 个回合`)
+    }
     const displayName = typeof worker.name === 'string' ? worker.name : sessionId
     return {
       sessionId,
       name: displayName,
       totalTurns: list.length,
       running,
-      text: renderTranscript({ turns: list, sessionId, name: displayName, limit: turns, running }),
+      text: renderTranscript({ turns: list, sessionId, name: displayName, limit: turns, offset, running }),
     }
   }
 
@@ -1074,27 +1147,6 @@ export function createDispatcher({
       logger(`dsh-leader-agent: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
     }
     return record
-  }
-
-  /**
-   * 把宿主的轮次结束原因写成一句能读的失败原因。
-   *
-   * 失败时摘要用终态原因而不是产物：失败轮次里的 assistant 文本往往只写到一半，
-   * 拿它当摘要会让 leader 以为这一轮做了不少事。
-   *
-   * @param {object} reason - `turn/end` 的 `reason`
-   * @returns {string} 失败原因
-   */
-  function describeTurnFailure(reason) {
-    switch (reason?.kind) {
-      // `aborted.reason` 是对象（`{ kind: 'user' | 'parent' | 'hook' | … }`），
-      // 直接插值会渲染成 `[object Object]`——给 leader 看的就是这句原因。
-      case 'aborted': return `被取消：${reason.reason?.kind ?? '未说明原因'}`
-      case 'blocked': return '被阻断：这一轮被宿主拦下，没有开始'
-      case 'max-tokens': return '输出达到 token 上限，这一轮没有正常收尾'
-      case 'error': return reason.error?.message ?? '未知错误'
-      default: return `这一轮没有正常结束（${reason?.kind ?? '未知原因'}）`
-    }
   }
 
   /**
