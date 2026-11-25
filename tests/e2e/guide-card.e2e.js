@@ -159,6 +159,37 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const freshPage = await fresh.newPage()
   await openLeader(freshPage)
   await waitForLocator(card(freshPage), { description: '新浏览器里引导卡出现', timeoutMs: 15_000 })
+
+  // 窄窗口下引导条曾按整条 seat 宽度铺满，而宿主输入框按
+  // --dsh-composer-side-clearance 两侧内缩，两块左右边缘对不上。这是已修 bug
+  // 的最小几何守卫：只钉左右边缘与不塌成零宽，不测颜色/圆角/内部排版。
+  await freshPage.setViewportSize({ width: 640, height: 900 })
+  await waitFor({
+    description: '窄窗口下引导条与输入框都已布局',
+    check: () => freshPage.evaluate(() => {
+      const widthOf = (selector) => document.querySelector(selector)?.getBoundingClientRect().width ?? 0
+      return widthOf('.dsh-leader-agent-guide-card') > 100 && widthOf('[data-composer-card]') > 100
+    }),
+  })
+  const narrowGeometry = await freshPage.evaluate(() => {
+    const rect = (selector) => {
+      const box = document.querySelector(selector).getBoundingClientRect()
+      return { left: box.left, right: box.right, width: box.width }
+    }
+    return {
+      guide: rect('.dsh-leader-agent-guide-card'),
+      input: rect('[data-composer-card]'),
+    }
+  })
+  const leftDiff = Math.abs(narrowGeometry.guide.left - narrowGeometry.input.left)
+  const rightDiff = Math.abs(narrowGeometry.guide.right - narrowGeometry.input.right)
+  assert.ok(
+    leftDiff <= 0.5 && rightDiff <= 0.5,
+    `引导条左右边缘应与输入框对齐：${JSON.stringify({ leftDiff, rightDiff, ...narrowGeometry })}`,
+  )
+  await freshPage.screenshot({ path: join(artifacts, 'narrow-640.png') })
+  await freshPage.setViewportSize({ width: 1440, height: 900 })
+
   const beforeRequests = mock.requests.length
   await freshPage.screenshot({ path: join(artifacts, 'before-click.png') })
   await freshPage.getByRole('button', { name: zh['guide.action.intro'] }).click()
@@ -175,7 +206,7 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   )
   assert.equal(bubbleText, true, '气泡里应是按钮发出去的那句话')
   await freshPage.screenshot({ path: join(artifacts, 'after-click.png') })
-  console.log(`[e2e] 截图 ${join(artifacts, 'before-click.png')} / ${join(artifacts, 'after-click.png')}`)
+  console.log(`[e2e] 截图 ${join(artifacts, 'narrow-640.png')} / ${join(artifacts, 'before-click.png')} / ${join(artifacts, 'after-click.png')}`)
   await waitFor({
     description: '会话日志里出现引导发出的那条消息',
     check: () => readSessionLogs(second.home).some((text) => text.includes(INTRO_PROMPT)),

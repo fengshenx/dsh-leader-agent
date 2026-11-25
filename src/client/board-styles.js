@@ -1110,17 +1110,19 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 
 /* leader 会话的一次性引导条：与输入框同一套几何——宽度共用宿主给输入框外壳的
    --dsh-composer-card-max-width（同一个 token，窗口变窄时一起收），圆角同取
-   --dsw-radius-panel。材质刻意比输入框轻一档：输入框是白面 + elevation-soft，
-   引导条取交互悬停档的浅底、不叠投影，两块叠在一起才不会被读成两个输入框。
-   文字档对齐宿主正文：标题 14/22 500，步骤 13/20（宿主里 11/12 只用于元信息，
-   提示正文不该比它更小）。 */
+   --dsw-radius-panel。宿主输入条在外层 root 上按 --dsh-composer-side-clearance
+   左右内缩；本条的槽位在 padding 之外，必须自己减掉同一条 clearance，否则窄窗口
+   下会比输入框两边各宽一截、看起来没对齐。材质刻意比输入框轻一档：输入框是白面 +
+   elevation-soft，引导条取交互悬停档的浅底、不叠投影，两块叠在一起才不会被读成
+   两个输入框。文字档对齐宿主正文：标题 14/22 500，步骤 13/20（宿主里 11/12 只
+   用于元信息，提示正文不该比它更小）。 */
 .dsh-leader-agent-guide-card {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px 10px;
   box-sizing: border-box;
-  width: 100%;
+  width: calc(100% - 2 * var(--dsh-composer-side-clearance, 16px));
   max-width: var(--dsh-composer-card-max-width, 952px);
   margin: 0 auto 8px;
   padding: 10px 14px;

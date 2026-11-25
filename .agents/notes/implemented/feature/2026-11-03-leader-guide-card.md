@@ -13,7 +13,7 @@ Status: implemented
 - **文案走 `ctx.locale.register` 的同一命名空间**（`src/client/locales.js`），不往 `locale/*.json` 里塞：宿主只从那里读插件显示名 title / description，界面字符串走 locale 注册。
 - **唯一动作是「替用户发一条消息」**：`setDraft(prompt)` + `submit()`，与手敲回车等价——点下去会话里多一条 user 消息、走一轮标准模型回合，卡片随后因 `blank` 翻假消失。不是预填、不是复制、不是 toast；输入机缺失时不渲染按钮，而不是画一个点了没反应的按钮。
 - **按钮只发一句触发语**，作答要求（先解释怎么工作、再问是否初始化两份手册、确认前不写文件）进 leader 运行时上下文的初始化提示，理由与取舍见 [2026-11-03-project-initialization-onboarding.md](2026-11-03-project-initialization-onboarding.md)：用户消息只该是一句人话，长约束进提示词。
-- **形态取单行提示条，几何与输入框同源**：取输入框外壳同一个宽度 token 并居中，两块宽度与左右边界逐像素一致；圆角同取面板圆角，材质刻意比输入框轻一档且不叠投影（叠在一起才不会被读成两个输入框）；字号回到宿主正文档（首版的元信息字号做提示正文偏小）；布局是「图标 + 标题 / 步骤 + 右侧动作」三段 flex，窄窗口下正文先换行、动作不被挤出；动作换宿主 `Button`，图标用 `productIcon('checklist-outline')`（rc.2 的 primitives 没有通用图标族，内联宿主 artwork 是下限版本唯一稳妥的来源）；文案折成一行并用 `·` 分隔，删掉给 leader 看的执行细节。
+- **形态取单行提示条，几何与输入框同源**：宽度取输入框外壳同一个 `--dsh-composer-card-max-width` token 并居中，同时减掉宿主的 `--dsh-composer-side-clearance`——输入框在外层 root 上按这条 clearance 内缩，而 dock 槽位在 padding 之外，不减就会在窄窗口比输入框两边各宽一截；圆角同取面板圆角，材质刻意比输入框轻一档且不叠投影（叠在一起才不会被读成两个输入框）；字号回到宿主正文档（首版的元信息字号做提示正文偏小）；布局是「图标 + 标题 / 步骤 + 右侧动作」三段 flex，窄窗口下正文先换行、动作不被挤出；动作换宿主 `Button`，图标用 `productIcon('checklist-outline')`（rc.2 的 primitives 没有通用图标族，内联宿主 artwork 是下限版本唯一稳妥的来源）；文案折成一行并用 `·` 分隔，删掉给 leader 看的执行细节。
 - **独立 dock 条目 `dsh-leader-agent-guide`**：与 leader 视图入口共用 `conversation.input.dock`，不满足条件时返回 null、不占空间；官方空会话形态与第三方视图目标的行为都不改。
 - **文档入口整条去掉**：只保留一个开场动作，不做复制路径、也不做外链；`docs/limitations.md` 里描述已删行为的限制一并删除——留着只会误导。
 
@@ -37,4 +37,4 @@ Status: implemented
 
 ## Testing
 
-`tests/guide-card-logic.test.js` 与 `tests/e2e/guide-card.e2e.js`。双向：把 `dismiss` 的 `setItem` 改成空操作 → e2e「重载后不该再出现」当场红；把 `sendIntroPrompt` 改成空实现 → 用户气泡断言超时红。还原后全绿。
+`tests/guide-card-logic.test.js` 与 `tests/e2e/guide-card.e2e.js`；e2e 在 640px 视口下用最小几何守卫钉住引导条与宿主输入框的左右边缘（容差 0.5px），只守已修的对齐 bug，不测颜色/圆角。双向：把 `dismiss` 的 `setItem` 改成空操作 → e2e「重载后不该再出现」当场红；把 `sendIntroPrompt` 改成空实现 → 用户气泡断言超时红；把宽度改回 `100%` → 窄窗口几何守卫红。还原后全绿。
