@@ -150,7 +150,9 @@ function describeRecordModel(record) {
       ? '（槽位默认）'
       : record.modelSource === 'leader'
         ? '（leader 当前模型）'
-        : ''
+        : record.modelSource === 'message'
+          ? '（续聊指定）'
+          : ''
   return `${record.model}${effort}${source}`
 }
 
@@ -191,7 +193,7 @@ export function buildNotificationText(record, outcome) {
     }
     tail.push('下一步：按 leader 协议判断验收、返工或派新工。')
     if (record.model !== undefined) {
-      tail.push('若怀疑模型或凭据不可用，用 list_worker_models 换 route 重新派工；瞬时故障可 message_worker 重试。')
+      tail.push('若怀疑模型或凭据不可用，用 list_worker_models 查 route 后用 message_worker 带 model / effort 重投（或重新派工）；瞬时故障可 message_worker 重试。')
     }
     const reasonBody = `失败原因：${reason}`
     return joinNotification(head, reasonBody, tail)
@@ -333,7 +335,7 @@ export function createDispatcher({
    * 登记表。登记失败（磁盘满等）时会话已经建好、同一轮里还要立刻投递，不能因为
    * 落盘失败就拒绝这次投递。登记表仍是跨进程的真源，这里只补本进程的窗口。
    *
-   * @type {Map<string, { parentSessionId: string, name: string }>}
+   * @type {Map<string, { parentSessionId: string, name: string, model?: string, effort?: string, modelSource?: string }>}
    */
   const owners = new Map()
   /** @type {Map<string, number>} 每个父会话的连续自动续行次数 */
@@ -823,10 +825,12 @@ export function createDispatcher({
    * @param {string} options.message - 消息正文
    * @param {string} [options.name] - 顺手改的 worker 显示名
    * @param {string} [options.cardId] - 本次投递声明的卡；worker 挂着未完成的卡时必填
+   * @param {string} [options.model] - 同次切换 worker 的模型
+   * @param {string} [options.effort] - 同次切换 worker 的 reasoning effort
    * @param {AbortSignal} options.signal - 取消信号
-   * @returns {Promise<{ code: 'merged' | 'sent', name: string }>} 投递结果与 worker 显示名
+   * @returns {Promise<{ code: 'merged' | 'sent', name: string, model?: string, effort?: string }>} 投递结果与 worker 显示名；切换过模型时带新 route
    */
-  async function message({ parent, sessionId, message, name, cardId, signal }) {
+  async function message({ parent, sessionId, message, name, cardId, model, effort, signal }) {
     // 退役会话不能借「我是它的父会话」继续下指令：换人时登记表里的归属已经改投
     // 新 leader（见 `leader-handover`），这道身份校验挡的是「换人之前就在飞」
     // 的那个会话本身。
@@ -849,11 +853,11 @@ export function createDispatcher({
     const displayName = name ?? (typeof worker.name === 'string' ? worker.name : sessionId)
     // 续聊记录也带上模型：失败回报要能直接说出 worker 跑在哪个 route 上。
     // 登记表是跨进程真源；`owners` 兜住本次进程里登记落盘失败的会话。
-    const selection = normalizeModelSelection(worker.agentOptions)
-    const model = selection === undefined
+    const knownSelection = normalizeModelSelection(worker.agentOptions)
+    const knownModel = knownSelection === undefined
       ? worker.model
-      : `${selection.provider}/${selection.model}`
-    const effort = selection?.reasoningEffort ?? worker.effort
+      : `${knownSelection.provider}/${knownSelection.model}`
+    const knownEffort = knownSelection?.reasoningEffort ?? worker.effort
     // 消息 id 先于投递生成并记进在飞表：worker 可能在本轮收尾时立刻取走这条消息，
     // 等 `send` 返回再登记就赶不上那次 `turn/end` 了。投递失败把记录退回去。
     const messageId = randomUUID()
@@ -863,9 +867,9 @@ export function createDispatcher({
       parentSessionId: parent.id,
       parent,
       name: displayName,
-      ...model === undefined ? {} : {
-        model,
-        ...effort === undefined ? {} : { effort },
+      ...knownModel === undefined ? {} : {
+        model: knownModel,
+        ...knownEffort === undefined ? {} : { effort: knownEffort },
         ...typeof worker.modelSource === 'string' ? { modelSource: worker.modelSource } : {},
       },
       task: message,
@@ -877,15 +881,18 @@ export function createDispatcher({
     // 一轮；先等落盘会让 `turn/end` 找不到在飞记录，消息发出去了却不结算。
     inflight.set(sessionId, record)
     // worker 活着就直接投，不在内存就冷恢复后再投——两种形态对调用方是同一步。
-    let form
+    // 模型切换与投递同一次完成：切在消息之前，这一轮的首步就用新 route。
+    let delivered
     try {
-      form = await workerSessions.send({
+      delivered = await workerSessions.send({
         sessionId,
         text: message,
         name,
         parentSessionId: parent.id,
         messageId,
         signal,
+        ...model === undefined ? {} : { model },
+        ...effort === undefined ? {} : { effort },
       })
     } catch (error) {
       // 没投出去的消息没有「属于它的回合」，留着记录会让下一轮结束时的结算
@@ -896,6 +903,28 @@ export function createDispatcher({
         else inflight.set(sessionId, previous)
       }
       throw error
+    }
+    const switched = delivered.selection
+    if (switched !== undefined) {
+      // 在飞记录先改：本轮结束的完成通知要报实际跑完的 route，而不是切换前那条。
+      record.model = `${switched.provider}/${switched.model}`
+      if (switched.reasoningEffort === undefined) delete record.effort
+      else record.effort = switched.reasoningEffort
+      record.modelSource = 'message'
+      const owned = owners.get(sessionId)
+      if (owned !== undefined) {
+        owned.model = record.model
+        if (record.effort === undefined) delete owned.effort
+        else owned.effort = record.effort
+        owned.modelSource = 'message'
+      }
+      // 登记表是 rc.2 冷恢复的 route 真源；新宿主还会从会话日志的 model/selection
+      // 还原。落盘失败时 worker 已经切过去了，只记日志——不能让投递回头变成失败。
+      try {
+        await workers.setModel(sessionId, { agentOptions: { ...switched }, modelSource: 'message' })
+      } catch (error) {
+        logger(`dsh-leader-agent: worker ${sessionId} 的模型切换落盘失败，重启后可能回到旧 route：${error instanceof Error ? error.message : String(error)}`)
+      }
     }
     // 投递成功才算一次使用；失败/回滚不动 LRU。落盘失败只影响候选顺序，不能让
     // 已经投出的消息回头变成失败。
@@ -912,7 +941,14 @@ export function createDispatcher({
         logger(`dsh-leader-agent: worker ${sessionId} 登记表改名失败：${error instanceof Error ? error.message : String(error)}`)
       }
     }
-    return { code: form === 'resumed' ? 'sent' : 'merged', name: displayName }
+    return {
+      code: delivered.form === 'resumed' ? 'sent' : 'merged',
+      name: displayName,
+      ...switched === undefined ? {} : {
+        model: `${switched.provider}/${switched.model}`,
+        ...switched.reasoningEffort === undefined ? {} : { effort: switched.reasoningEffort },
+      },
+    }
   }
 
   /**

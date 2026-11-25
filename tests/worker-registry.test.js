@@ -213,3 +213,47 @@ test('记录回报时刻时没有这条记录就不写盘、不补登记', async
   assert.equal(await registry.markReported('missing', 1), undefined)
   assert.equal(await registry.get('missing'), undefined)
 })
+
+test('续聊换模型：写 agentOptions 与来源，不动名字与父会话，跨实例读得到', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
+
+  const updated = await registry.setModel('child-1', {
+    agentOptions: { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' },
+    modelSource: 'message',
+  })
+
+  assert.deepEqual(updated.agentOptions, {
+    provider: 'deepseek',
+    model: 'deepseek-reasoner',
+    reasoningEffort: 'high',
+  })
+  assert.equal(updated.modelSource, 'message')
+  assert.equal(updated.name, '工')
+  assert.equal(updated.parentSessionId, 'parent-1')
+  // 冷恢复读登记表：另一个实例必须拿到新 route。
+  assert.deepEqual(
+    (await createWorkerRegistry({ home }).get('child-1')).agentOptions,
+    { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'high' },
+  )
+})
+
+test('续聊换模型时没有这条记录就不写盘、不补登记', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
+
+  assert.equal(await registry.setModel('child-别的', { agentOptions: { provider: 'p', model: 'm' } }), undefined)
+  assert.equal(await registry.get('child-别的'), undefined)
+})
+
+test('续聊换模型不带 modelSource 时保留原来源', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工', modelSource: 'slot' })
+
+  const updated = await registry.setModel('child-1', { agentOptions: { provider: 'p', model: 'm' } })
+
+  assert.equal(updated.modelSource, 'slot')
+})

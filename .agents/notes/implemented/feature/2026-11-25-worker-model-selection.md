@@ -8,6 +8,8 @@ worker 建会话时只能拿 `agentDefaultModel` 的部署默认值，leader 无
 
 ## Decision
 
+> **后续被 [worker 续聊换模型](2026-11-25-worker-model-switch-on-message.md) 部分取代**：模型不再只在建会话时定下，`message_worker` 可在续聊时换 route。本节的派工来源优先级、槽位默认与建会话预检仍然成立。
+
 - **派工参数优先**：`spawn_worker` 新增可选 `model` 与 `effort`。`model` 写 `provider/model`；只写模型 id 时沿用 leader 的 provider（模型 id 自身含斜杠时必须写全 route）。只给 `effort` 时套在最终模型上；若最终没有任何可用 route，直接报错而不是静默丢掉 effort。
 - **槽位默认其次**：`SLOTS.md` frontmatter 的 `slots.<名字>` 可写 `model` / `effort`。派工绑到该槽位且未显式指定模型时使用它；槽位没写 model 时才回落到 leader 当前模型。
 - **effort 跟随模型来源**：显式换模型但没给 effort 时用新模型的默认 effort，不把槽位 effort 跨模型套用；模型回落到 leader 时槽位 effort 仍可覆盖 leader 的 effort。

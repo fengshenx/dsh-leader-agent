@@ -15,7 +15,7 @@ import { createWorkerSessions } from '../src/host/worker-sessions.js'
  * @param {{ missingAgents?: boolean, missingModel?: boolean, missingPresets?: boolean, brokenPresets?: boolean, missingProjections?: boolean, brokenProjections?: boolean, createError?: Error, steerError?: Error, renameError?: Error, permissions?: { sandbox?: Record<string, string>, approval?: Record<string, string> } }} [options] - 夹具选项
  * @returns {object} 上下文与记录
  */
-function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, createError, steerError, renameError, permissions } = {}) {
+function createFixture({ missingAgents = false, missingModel = false, missingPresets = false, brokenPresets = false, missingProjections = false, brokenProjections = false, legacyAgent = false, bareAgent = false, getterOptions = false, createError, steerError, renameError, permissions } = {}) {
   const created = []
   const resumed = []
   /** 宿主的活 agent 表：`agents.get()` 读它，dispose 后移除 */
@@ -34,6 +34,43 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
   /** 传给 `agents.create` 的会话 id，含没建成的那些 */
   const requested = []
   let sequence = 0
+
+  /**
+   * 给假 agent 装上模型入口。
+   *
+   * 默认照 0.2.2+ 的 `agent.model`（`current` / `select`）；`legacyAgent` 只留 rc.2
+   * 的 live `options`，用来验退回路径。
+   *
+   * @param {object} entry - 夹具里的会话条目，记录选择调用
+   * @param {object} agent - 假 agent
+   * @param {object} [agentOptions] - 建会话时给的模型选择
+   * @returns {object} 同一个 agent
+   */
+  function attachModel(entry, agent, agentOptions = {}) {
+    entry.agent = agent
+    entry.selections = []
+    entry.selection = { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low', ...agentOptions }
+    // 既没有 model.select() 也没有 options 的宿主：切模型必须报错，不能假装成功。
+    if (bareAgent) return agent
+    // 回落部署默认时 options 是只有 getter 的对象：逐字段赋值会抛 TypeError。
+    agent.options = getterOptions
+      ? Object.fromEntries(Object.entries(entry.selection).map(([key, value]) => [key, { get: () => value, enumerable: true }]))
+      : { ...entry.selection }
+    if (getterOptions) {
+      for (const [key, descriptor] of Object.entries(agent.options)) {
+        Object.defineProperty(agent.options, key, descriptor)
+      }
+    }
+    if (legacyAgent) return agent
+    agent.model = {
+      current: () => entry.selection,
+      select(selection) {
+        entry.selections.push({ ...selection })
+        entry.selection = { ...selection }
+      },
+    }
+    return agent
+  }
 
   const agents = {
     async create(options) {
@@ -65,6 +102,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
           entry.methods.push('followup')
         },
       }
+      attachModel(entry, agent, options.agentOptions)
       hostAgents.set(sessionId, agent)
       return {
         agent,
@@ -81,7 +119,13 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       created.push(entry)
       const agent = {
         id: entry.sessionId,
-        session: { id: entry.sessionId, header: { id: entry.sessionId } },
+        session: {
+          id: entry.sessionId,
+          header: { id: entry.sessionId },
+          append(type, data) {
+            appended.push({ id: entry.sessionId, type, data })
+          },
+        },
         steer(message) {
           entry.methods.push('steer')
           entry.messages.push(message)
@@ -90,6 +134,7 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
           entry.methods.push('followup')
         },
       }
+      attachModel(entry, agent, options.agentOptions)
       hostAgents.set(entry.sessionId, agent)
       return {
         agent,
@@ -109,6 +154,15 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       if (key === 'agents') return missingAgents ? undefined : agents
       if (key === 'agentDefaultModel' && !missingModel) {
         return { currentSelection: () => ({ provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' }) }
+      }
+      // 续聊换模型的预检假件：只认一个「解析不了」的模型，其余原样通过。
+      if (key === 'llm') {
+        return {
+          async resolveCallConfig(selection) {
+            if (selection.model === 'missing') throw new Error('unknown model')
+            return selection
+          },
+        }
       }
       if (key === 'sessionTitle') {
         return {
@@ -168,11 +222,14 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
    */
   function openHostSession(sessionId, { title } = {}) {
     const entry = { sessionId, messages: [], methods: [] }
-    hostAgents.set(sessionId, {
+    const agent = {
       id: sessionId,
       session: {
         id: sessionId,
         header: { id: sessionId, ...(title === undefined ? {} : { title }) },
+        append(type, data) {
+          appended.push({ id: sessionId, type, data })
+        },
       },
       steer(message) {
         entry.methods.push('steer')
@@ -181,7 +238,9 @@ function createFixture({ missingAgents = false, missingModel = false, missingPre
       followup() {
         entry.methods.push('followup')
       },
-    })
+    }
+    attachModel(entry, agent)
+    hostAgents.set(sessionId, agent)
     return entry
   }
 
@@ -624,7 +683,7 @@ test('活着时续聊直接投到当前会话，不算冷恢复', async () => {
     signal: new AbortController().signal,
   })
 
-  const form = await sessions.send({
+  const { form } = await sessions.send({
     sessionId,
     text: '续聊',
     parentSessionId: 'c',
@@ -641,7 +700,7 @@ test('不在内存时续聊走冷恢复，并重新算作 worker', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const form = await sessions.send({
+  const { form } = await sessions.send({
     sessionId: 'worker-from-last-run',
     text: '接着做',
     name: '新名字',
@@ -661,7 +720,7 @@ test('插件活表未命中但宿主里有活 agent 时直接投递，不冷恢�
   const host = fixture.openHostSession('worker-gui', { title: '旧工' })
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const form = await sessions.send({
+  const { form } = await sessions.send({
     sessionId: 'worker-gui',
     text: '接着做',
     parentSessionId: 'c',
@@ -683,7 +742,7 @@ test('宿主里也没有活 agent 时才走冷恢复', async () => {
   const fixture = createFixture()
   const sessions = createWorkerSessions({ ctx: fixture.ctx })
 
-  const form = await sessions.send({
+  const { form } = await sessions.send({
     sessionId: 'worker-cold',
     text: '接着做',
     parentSessionId: 'c',
@@ -925,7 +984,7 @@ test('同一会话并发续聊只冷恢复一次，不泄漏第二个 agent', as
   ])
 
   assert.equal(resumeCalls, 1)
-  assert.deepEqual(results, ['resumed', 'resumed'])
+  assert.deepEqual(results.map((result) => result.form), ['resumed', 'resumed'])
   // 两次恢复会建出两个作用域，被 live 覆盖的那个没人 dispose——这里只能有一个。
   const resumedEntries = fixture.created.filter((entry) => entry.options.resumeSessionId === 'worker-1')
   assert.equal(resumedEntries.length, 1)
@@ -1061,4 +1120,140 @@ test('冷恢复解析不出模型时不塞空的 agentOptions', async () => {
   })
 
   assert.equal('agentOptions' in fixture.resumeOptions[0], false)
+})
+
+test('0.2.2+ 宿主用 agent.model.select() 切模型，并返回新选择', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({ name: 'w', parentSessionId: 'c', signal: new AbortController().signal })
+  const worker = fixture.created[0]
+
+  const { form, selection } = await sessions.send({
+    sessionId,
+    text: '换强模型再来一轮',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    model: 'deepseek/deepseek-reasoner',
+    effort: 'max',
+  })
+
+  assert.equal(form, 'live')
+  assert.deepEqual(selection, { provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'max' })
+  assert.deepEqual(worker.selections, [{ provider: 'deepseek', model: 'deepseek-reasoner', reasoningEffort: 'max' }])
+  // 投递仍是同一次动作：消息已经进了这个 worker 的收件箱。
+  assert.equal(worker.messages.at(-1).content[0].text, '换强模型再来一轮')
+})
+
+test('rc.2 退回改 live options 并补一条 model/selection 事件', async () => {
+  const fixture = createFixture({ legacyAgent: true })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    selection: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' },
+  })
+  const worker = fixture.created[0]
+
+  const { selection } = await sessions.send({
+    sessionId,
+    text: '继续',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    model: 'mock-strong',
+  })
+
+  assert.deepEqual(selection, { provider: 'mock', model: 'mock-strong' })
+  // 换模型没给 effort：新模型默认，旧 effort 不跨模型套用。
+  assert.deepEqual(worker.agent.options, { provider: 'mock', model: 'mock-strong' })
+  assert.deepEqual(
+    fixture.appended.find((event) => event.type === 'model/selection').data,
+    { provider: 'mock', model: 'mock-strong' },
+  )
+})
+
+test('只换 effort：套在当前模型上；不变则仍是当前 route', async () => {
+  const fixture = createFixture({ legacyAgent: true })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    selection: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' },
+  })
+  const worker = fixture.created[0]
+
+  const { selection } = await sessions.send({
+    sessionId,
+    text: '再想深一点',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    effort: 'high',
+  })
+
+  assert.deepEqual(selection, { provider: 'mock', model: 'mock-echo', reasoningEffort: 'high' })
+  assert.deepEqual(worker.agent.options, { provider: 'mock', model: 'mock-echo', reasoningEffort: 'high' })
+})
+
+test('冷恢复后再切模型：新选择装在恢复出来的 agent 上', async () => {
+  const fixture = createFixture()
+  const sessions = createWorkerSessions({
+    ctx: fixture.ctx,
+    resolveSessionSelection: async () => ({ provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' }),
+  })
+
+  const { form, selection } = await sessions.send({
+    sessionId: 'worker-cold',
+    text: '接着做',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    model: 'mock-strong',
+    effort: 'high',
+  })
+
+  const worker = fixture.created.at(-1)
+  assert.equal(form, 'resumed')
+  assert.deepEqual(selection, { provider: 'mock', model: 'mock-strong', reasoningEffort: 'high' })
+  assert.deepEqual(worker.selections, [{ provider: 'mock', model: 'mock-strong', reasoningEffort: 'high' }])
+  assert.equal(worker.messages.at(-1).content[0].text, '接着做')
+})
+
+test('宿主 agent 没有 model.select() 也没有 options 时切模型报错', async () => {
+  const fixture = createFixture({ bareAgent: true })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({ name: 'w', parentSessionId: 'c', signal: new AbortController().signal })
+
+  await assert.rejects(
+    () => sessions.send({
+      sessionId,
+      text: '继续',
+      parentSessionId: 'c',
+      signal: new AbortController().signal,
+      model: 'mock/mock-strong',
+    }),
+    /缺少 model\.select\(\) 与 options/,
+  )
+})
+
+test('rc.2 的 options 只有 getter 时也能切模型：整体换对象而不是逐字段赋值', async () => {
+  const fixture = createFixture({ legacyAgent: true, getterOptions: true })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({ name: 'w', parentSessionId: 'c', signal: new AbortController().signal })
+  const worker = fixture.created[0]
+
+  const { selection } = await sessions.send({
+    sessionId,
+    text: '继续',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    model: 'mock-strong',
+    effort: 'max',
+  })
+
+  assert.deepEqual(selection, { provider: 'mock', model: 'mock-strong', reasoningEffort: 'max' })
+  assert.deepEqual({ ...worker.agent.options }, {
+    provider: 'mock',
+    model: 'mock-strong',
+    reasoningEffort: 'max',
+  })
 })

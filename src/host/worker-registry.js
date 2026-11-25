@@ -213,6 +213,29 @@ export function createWorkerRegistry({
     },
 
     /**
+     * 记录一次续聊时的模型切换。
+     *
+     * 登记表是 rc.2 冷恢复的 route 真源（新宿主也会从会话日志的 `model/selection`
+     * 还原，但两个都要有）。没有这条记录时返回 undefined 且不补登记：续聊本来就
+     * 不该走到一个查不到的 worker 上。
+     *
+     * @param {string} childId - 子会话 id
+     * @param {{ agentOptions: { provider: string, model: string, reasoningEffort?: string }, modelSource?: string }} change -
+     *   新的 agentOptions 与来源标记
+     * @returns {Promise<object | undefined>} 更新后的记录；没有这条时 undefined
+     */
+    async setModel(childId, { agentOptions, modelSource }) {
+      return serializeDeferredWrite(async (registry, flush) => {
+        const existing = registry.workers.find((item) => item.childId === childId)
+        if (existing === undefined) return undefined
+        existing.agentOptions = { ...agentOptions }
+        if (modelSource !== undefined) existing.modelSource = modelSource
+        await flush()
+        return existing
+      })
+    },
+
+    /**
      * 把一个父会话派出的工改绑到另一个父会话（换 leader 后的接管）。
      *
      * 只改「现在还归它」的记录：`parentSessionId` 等于 `fromId` 的那些。改过的

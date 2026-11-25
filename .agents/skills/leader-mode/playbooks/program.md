@@ -10,7 +10,7 @@
 |---|---|
 | 建 worker 会话（不开工，立即返回） | `spawn_worker` |
 | 查 worker 可用的模型 route 与 effort | `list_worker_models` |
-| 投递任务 / 续聊 / 改名（第一条消息即开工） | `message_worker` |
+| 投递任务 / 续聊 / 改名 / 换模型（第一条消息即开工） | `message_worker` |
 | 读 worker 回报 | 完成通知（无需轮询） |
 | 回看 worker 的会话过程（不唤醒它） | `read_worker_session` |
 | 建卡 | `create_card` |
@@ -19,7 +19,7 @@
 
 派工分两步：`spawn_worker` 只建常驻 worker 会话并立即返回会话 id，**不产生模型调用**；`message_worker` 投递第一条消息时才开工。分两步是为了让槽位绑定先落盘——第一条任务请求组装时角色槽位与卡片事实就已经在上下文里。worker 那一轮结束时自动唤醒你并附完成通知，同一轮里可连派多个工。
 
-建 worker 必须给 `name`：它是 worker 的显示名，也直接成为它的会话标题——侧栏与项目树里看到的就是这个名字，所以用角色-任务短名（如 `research-sources`），不要写成长句。要挂卡就在同一次调用里给 `cardId` 与 `slot`（两者成对），卡必须是本项目的、状态为 `active`（跨项目、已关闭或已归档的卡会被拒绝）；绑定在返回前完成。不确定有哪些模型 route 时先用 `list_worker_models` 查（不传参列 provider，给 provider 列模型，再给 model 看 effort）。需要该 worker 跑在别的模型上时，同一次调用带 `model`（`provider/model`，只写模型 id 时沿用你的 provider）与可选的 `effort`；省略时按槽位在 `SLOTS.md` 的默认模型回落，再回落你当前用的模型。只是给 effort 也可以，套在最终模型上。模型在建会话时定下，事后改 `SLOTS.md` 只影响新派的工；回执里的「模型」一行写明最终 route 与来源。worker 换了角色用 `message_worker` 的 `rename` 顺手改名，不必为此另派新工。
+建 worker 必须给 `name`：它是 worker 的显示名，也直接成为它的会话标题——侧栏与项目树里看到的就是这个名字，所以用角色-任务短名（如 `research-sources`），不要写成长句。要挂卡就在同一次调用里给 `cardId` 与 `slot`（两者成对），卡必须是本项目的、状态为 `active`（跨项目、已关闭或已归档的卡会被拒绝）；绑定在返回前完成。不确定有哪些模型 route 时先用 `list_worker_models` 查（不传参列 provider，给 provider 列模型，再给 model 看 effort）。需要该 worker 跑在别的模型上时，同一次调用带 `model`（`provider/model`，只写模型 id 时沿用你的 provider）与可选的 `effort`；省略时按槽位在 `SLOTS.md` 的默认模型回落，再回落你当前用的模型。只是给 effort 也可以，套在最终模型上。模型在派工时可指定，之后也能用 `message_worker` 的 `model` / `effort` 换（写进登记表，冷恢复沿用）；事后改 `SLOTS.md` 只影响新派的工。回执里的「模型」一行写明最终 route 与来源。worker 换了角色用 `message_worker` 的 `rename` 顺手改名，不必为此另派新工。
 
 建完立刻投递：`spawn_worker` 之后不投任务的 worker 只是一条空闲会话，占名册也可能被误当成在跑。投递用 `message_worker`（worker 挂着未完成卡时 `cardId` 必填且必须一致），消息只写「做什么、边界、验收与指针」；卡片规格、链接与 revision 由宿主注入，不要抄进消息。
 

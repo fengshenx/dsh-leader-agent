@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto'
 import { agentPresetOptions, agentPresetResumeSetup } from './agent-preset.js'
 import { inheritPermission } from './permission-inherit.js'
 import { createUserMessage } from './message.js'
+import { normalizeModelSelection, resolveWorkerModelSwitch } from './worker-model.js'
 import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 
 /**
@@ -155,6 +156,52 @@ export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSel
    */
   function presentOne(handle, sessionId, name) {
     if (typeof name === 'string' && name !== '') renameTitle(handle.agent, name)
+  }
+
+  /**
+   * 读 worker 当前使用的模型选择。
+   *
+   * 0.2.2 起 `agent.model.current()` 是权威入口（待生效的选择优先于上一次请求）；
+   * rc.2 没有它，live route 在 `agent.options` 上。两者都读不到时返回 undefined，
+   * 由调用方决定是报错还是只换完整 route。
+   *
+   * @param {object} agent - 宿主的活 Agent
+   * @returns {{ provider: string, model: string, reasoningEffort?: string } | undefined} 当前选择
+   */
+  function currentAgentSelection(agent) {
+    const live = typeof agent.model?.current === 'function' ? agent.model.current() : undefined
+    return normalizeModelSelection(live) ?? normalizeModelSelection(agent.options)
+  }
+
+  /**
+   * 把新的模型选择装到活 Agent 上。
+   *
+   * 优先走宿主自己的 `model.select()`：它追加 `model/selection`、让下一步请求换 route，
+   * 也与模型选择器共用同一份持久投影。rc.2 没有这个入口，只能改 `agent.options`
+   * （那个版本的 loop 每次请求都读它）并手工补一条 `model/selection` 事件——不碰
+   * `sessionController.selectModel()`，那会把 worker 的 route 存成用户的全局默认模型。
+   *
+   * @param {object} agent - 宿主的活 Agent
+   * @param {{ provider: string, model: string, reasoningEffort?: string }} selection - 新选择
+   * @returns {void}
+   */
+  function applyAgentSelection(agent, selection) {
+    if (typeof agent.model?.select === 'function') {
+      agent.model.select(selection)
+      return
+    }
+    const options = agent.options
+    if (options === null || typeof options !== 'object') {
+      throw new Error('message_worker: 宿主 agent 缺少 model.select() 与 options，无法切换模型')
+    }
+    // 整体换一个普通对象而不是逐字段赋值：回落部署默认时 `options` 可能是只有
+    // getter 的对象（本 bundle 自己造的 `agentOptionsFromDefaults`），赋值会抛
+    // TypeError。先改 live route 再落事件，改不动时不要留下「日志说换了、实际没换」。
+    const next = { ...options, provider: selection.provider, model: selection.model }
+    if (selection.reasoningEffort === undefined) delete next.reasoningEffort
+    else next.reasoningEffort = selection.reasoningEffort
+    agent.options = next
+    agent.session.append('model/selection', { ...selection })
   }
 
   /**
@@ -392,27 +439,50 @@ export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSel
      * @param {string} [options.name] - 顺手改的显示名
      * @param {string} options.parentSessionId - leader 会话 id
      * @param {string} [options.messageId] - 调用方预生成的消息 id
+     * @param {string} [options.model] - 同次切换到的模型（`provider/model` 或裸模型 id）
+     * @param {string} [options.effort] - 同次切换到的 reasoning effort
      * @param {AbortSignal} options.signal - 取消信号
-     * @returns {Promise<'live' | 'resumed'>} 投递形态
+     * @returns {Promise<{ form: 'live' | 'resumed', selection: { provider: string, model: string, reasoningEffort?: string } | undefined }>}
+     *   投递形态与本次实际装上的新模型选择
      */
-    async send({ sessionId, text, name, parentSessionId, messageId, signal }) {
+    async send({ sessionId, text, name, parentSessionId, messageId, signal, model, effort }) {
+      let agent
+      let form
       const current = live.get(sessionId)
       if (current !== undefined) {
-        return deliver(current.agent, 'live', { sessionId, text, name, parentSessionId, messageId })
+        agent = current.agent
+        form = 'live'
+      } else {
+        // 复用宿主 agent 但不登记进 live：dispose 是持有句柄那一方的所有权，这里
+        // 只是借它的作用域投递，不能替宿主收掉一个被人打开着的会话。
+        const active = ctx.get('agents')?.get(sessionId)
+        if (active !== undefined) {
+          agent = active
+          form = 'live'
+        } else {
+          let handle
+          try {
+            handle = await resumeOnce(sessionId, signal)
+          } catch (error) {
+            throw explainOccupiedError(error, sessionId)
+          }
+          agent = handle.agent
+          form = 'resumed'
+        }
       }
-      // 复用宿主 agent 但不登记进 live：dispose 是持有句柄那一方的所有权，这里
-      // 只是借它的作用域投递，不能替宿主收掉一个被人打开着的会话。
-      const active = ctx.get('agents')?.get(sessionId)
-      if (active !== undefined) {
-        return deliver(active, 'live', { sessionId, text, name, parentSessionId, messageId })
+      let selection
+      if (model !== undefined || effort !== undefined) {
+        selection = await resolveWorkerModelSwitch({
+          ctx,
+          current: currentAgentSelection(agent),
+          model,
+          effort,
+          signal,
+        })
+        if (selection !== undefined) applyAgentSelection(agent, selection)
       }
-      let handle
-      try {
-        handle = await resumeOnce(sessionId, signal)
-      } catch (error) {
-        throw explainOccupiedError(error, sessionId)
-      }
-      return deliver(handle.agent, 'resumed', { sessionId, text, name, parentSessionId, messageId })
+      deliver(agent, form, { sessionId, text, name, parentSessionId, messageId })
+      return { form, selection }
     },
 
     /**
