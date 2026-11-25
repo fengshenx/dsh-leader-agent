@@ -904,6 +904,52 @@ test('多块产物摘要按空行连接，交给 Markdown 渲染时不被折成�
   assert.equal(text.includes('产物摘要：\n第一段\n第二段'), true)
 })
 
+test('超长产物按上限截断，协议字段与下一步不被挤掉', () => {
+  const output = [{ type: 'text', text: '产'.repeat(6000) }]
+  const text = buildNotificationText({ name: '实现派工', childId: 'child-1' }, { ok: true, result: { output } })
+  assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
+  // 截断要说清原长与去哪儿读全文：静默截断会被当成 worker 只写了这么多。
+  assert.match(text, /已截断，原长 \d+ 字符/)
+  assert.match(text, /read_worker_session 回看该 worker 的回合/)
+  // 摘要再长也不能把「下一步」挤掉：它决定 leader 收到之后做什么。
+  assert.match(text, /状态：completed/)
+  assert.match(text, /下一步：按 leader 协议判断验收、返工或派新工。/)
+})
+
+test('失败原因超长时同样保留下一步与换模型提示', () => {
+  const text = buildNotificationText(
+    { name: '实现派工', childId: 'child-1', model: 'deepseek/reasoner' },
+    { ok: false, error: new Error('错'.repeat(5000)) },
+  )
+  assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
+  assert.match(text, /已截断，原长 \d+ 字符/)
+  assert.match(text, /下一步：按 leader 协议判断验收、返工或派新工。/)
+  assert.match(text, /list_worker_models/)
+  assert.match(text, /message_worker 重试/)
+})
+
+test('回报气泡超长时标注原长并指向回看入口', () => {
+  const report = buildWorkerReport({ ok: true, result: { output: [{ type: 'text', text: '乙'.repeat(5000) }] } })
+  assert.ok(report.length <= 4000, `气泡正文长度 ${report.length} 超出上限`)
+  assert.match(report, /已截断，原长 5000 字符/)
+  assert.match(report, /read_worker_session/)
+})
+
+test('worker 名长到固定段自己超限时仍守住 4000 上限', () => {
+  const text = buildNotificationText(
+    { name: '名'.repeat(5000), childId: 'child-1' },
+    { ok: true, result: { output: [{ type: 'text', text: '完成' }] } },
+  )
+  assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
+  assert.match(text, /已截断/)
+})
+
+test('失败气泡超长时也标注原长，不把错误栈整段塞进界面', () => {
+  const report = buildWorkerReport({ ok: false, error: new Error('错'.repeat(5000)) })
+  assert.ok(report.length <= 4000)
+  assert.match(report, /已截断，原长 \d+ 字符/)
+})
+
 test('父会话已销毁时通知留在队列等待补投', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')

@@ -10,19 +10,27 @@
  */
 
 import { messageText } from '../shared/message-text.js'
+import { clipText } from '../shared/truncate.js'
 import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 
-/** 单条消息正文的保留上限。 */
-const MESSAGE_LIMIT = 2000
+/**
+ * 单条消息正文的保留上限。
+ *
+ * 与完成通知的回报上限（4000）同值：通知里能看到的整段产物，回看视图也装得下，
+ * 不会出现「通知被截断、去回看反而更短」的倒挂。
+ */
+const MESSAGE_LIMIT = 4000
 /** 单条工具失败原因的保留上限。 */
 const REASON_LIMIT = 200
 /**
  * 整段正文的总上限。
  *
- * 回合数与单条上限都挡不住体积：20 个回合 × 每轮两条消息 × 2000 字符仍有八万。
- * 这是给 leader 读的视图，不是导出，超过这个量就该改用别的手段。
+ * 回合数与单条上限都挡不住体积：20 个回合 × 每轮两条消息 × 4000 字符仍有十六万。
+ * 这是给 leader 读的视图，不是导出；超出的回合丢给翻页，不是静默消失。
  */
 const TOTAL_LIMIT = 12000
+/** 单条正文截断后的下一步：其他回合能翻页读回，这条超出的部分只能让 worker 复述。 */
+const MESSAGE_TRUNCATED_HINT = '；其他回合可用 read_worker_session 的 offset 翻页，本条超出的部分请让 worker 复述'
 
 /**
  * 把会话事件折成回合列表。
@@ -141,47 +149,31 @@ export function foldTurns(events) {
  */
 function describeToolFailure(data) {
   const reason = data.error?.reason ?? data.error?.name ?? messageText(data.message?.content)
-  return clip(typeof reason === 'string' && reason !== '' ? reason : '未说明原因', REASON_LIMIT)
-}
-
-/**
- * 按字符数截断并标注。
- *
- * 切点落在 UTF-16 代理对中间时会留下孤立代理，渲染成 U+FFFD；回退一个码元到
- * 码点边界。只保证码点完整，不切字素簇：丢掉组合标记只影响重音，不是乱码。
- *
- * @param {string} text - 原文
- * @param {number} limit - 上限（UTF-16 码元数）
- * @returns {string} 截断后的文本
- */
-function clip(text, limit) {
-  if (text.length <= limit) return text
-  let end = limit
-  const last = text.charCodeAt(end - 1)
-  if (last >= 0xd800 && last <= 0xdbff) end -= 1
-  return `${text.slice(0, end)}…（已截断，原长 ${text.length} 字符）`
+  return clipText(typeof reason === 'string' && reason !== '' ? reason : '未说明原因', REASON_LIMIT)
 }
 
 /**
  * 把回合列表渲染成给 leader 读的正文。
  *
- * 只渲染最近 `limit` 个回合，且整段正文再受 {@link TOTAL_LIMIT} 约束：按「最新
- * 优先」累加，放不下的更早回合直接丢弃并标注条数。回合数上限挡不住体积——20 个
- * 回合 × 每轮两条消息 × 单条上限，仍能拼出十万字符，塞进 leader 上下文会挤掉它
- * 自己的工作记忆。最新那一段单独超限时按 {@link TOTAL_LIMIT} 硬截断。
+ * 只渲染指定窗口内的回合，且整段正文再受 {@link TOTAL_LIMIT} 约束：按「最新
+ * 优先」累加，放不下的更早回合直接丢弃并标注条数与翻页位置。回合数上限挡不住
+ * 体积——20 个回合 × 每轮两条消息 × 单条上限，仍能拼出十几万字符，塞进 leader
+ * 上下文会挤掉它自己的工作记忆。窗口内最新那一段单独超限时按 {@link TOTAL_LIMIT}
+ * 硬截断。
  *
- * @param {object} options - 渲染参数
  * @param {object[]} options.turns - `foldTurns().turns`
  * @param {string} options.sessionId - worker 会话 id
  * @param {string} options.name - worker 显示名
- * @param {number} options.limit - 保留的最近回合数
+ * @param {number} options.limit - 保留的回合数
+ * @param {number} [options.offset] - 跳过最新的几个回合（翻页用），默认 0
  * @param {boolean} [options.running] - 最后一轮是否还在跑
  * @returns {string} 正文
  */
-export function renderTranscript({ turns, sessionId, name, limit, running = false }) {
+export function renderTranscript({ turns, sessionId, name, limit, offset = 0, running = false }) {
   const header = `worker「${name}」会话 ${sessionId}：共 ${turns.length} 个回合`
   if (turns.length === 0) return `${header}，日志里还没有任何回合。`
-  const selected = turns.slice(-limit)
+  const windowEnd = Math.max(0, turns.length - offset)
+  const selected = turns.slice(Math.max(0, windowEnd - limit), windowEnd)
   const blocks = selected.map(renderTurn)
   // 从最新往回装：放不下的更早回合丢掉，保证读者先看到最近的结论。
   const kept = []
@@ -191,7 +183,7 @@ export function renderTranscript({ turns, sessionId, name, limit, running = fals
     if (size + block.length > TOTAL_LIMIT) {
       if (kept.length > 0) break
       // 最新一回合自己就超限：截断它，否则整次读取拿不到任何内容。
-      const clipped = clip(block, TOTAL_LIMIT)
+      const clipped = clipText(block, TOTAL_LIMIT, '；用 read_worker_session 加大 offset 翻页')
       kept.unshift(clipped)
       size = clipped.length
       break
@@ -200,22 +192,21 @@ export function renderTranscript({ turns, sessionId, name, limit, running = fals
     size += block.length
   }
   const shown = kept.length
-  const outsideTurns = turns.length - selected.length
-  const overflowTurns = selected.length - shown
+  const range = shown === 1 ? `倒序第 ${offset + 1} 个` : `倒序第 ${offset + 1}–${offset + shown} 个`
+  const windowLabel = offset === 0
+    ? `以下是最新的 ${shown} 个`
+    : `以下是${range}（offset=${offset} 跳过最新 ${offset} 个）`
   const lines = [
-    `${header}，以下是最新的 ${shown} 个${running ? '（最后一轮仍在执行中，内容可能不完整）' : ''}：`,
+    `${header}，${windowLabel}${running ? '（最后一轮仍在执行中，内容可能不完整）' : ''}：`,
     ...kept,
   ]
-  if (outsideTurns > 0 || overflowTurns > 0) {
-    const facts = []
-    if (outsideTurns > 0) facts.push(`更早的 ${outsideTurns} 个回合超出 turns=${limit} 的范围`)
-    if (overflowTurns > 0) facts.push(`最近的 ${overflowTurns} 个回合因正文超出单次读取上限被丢弃`)
-    // 体积上限固定：被挤掉的回合在任何 turns 值下都装不回来（调小只是少几个候选，
-    // 调大仍超限），提示不能暗示调参可达。窗口外的部分调大 turns 仍然有效。
-    const hint = overflowTurns > 0
-      ? '单次读取的总量上限固定，调 turns 取不到这些回合；需要更早的内容请用 message_worker 让 worker 自己复述。'
-      : '调大 turns 可以多看更早的回合。'
-    lines.push('', `${facts.join('；')}，未展示。${hint}`)
+  const overflowTurns = selected.length - shown
+  const olderRemaining = turns.length - offset - shown
+  const nextOffset = offset + shown
+  if (overflowTurns > 0) {
+    lines.push('', `本页有 ${overflowTurns} 个回合因单次读取总量上限未展示（连同更早的 ${olderRemaining} 个），可用 offset=${nextOffset} 翻页读取。`)
+  } else if (olderRemaining > 0) {
+    lines.push('', `更早的 ${olderRemaining} 个回合可用 offset=${nextOffset} 继续翻页。`)
   }
   return lines.join('\n')
 }
@@ -230,13 +221,13 @@ function renderTurn(turn) {
   const label = typeof turn.turn === 'number' ? `回合 ${turn.turn}` : '回合（未标号）'
   const outcome = turn.end === undefined
     ? '进行中'
-    : turn.end.error === undefined ? turn.end.kind : `${turn.end.kind}：${clip(turn.end.error, REASON_LIMIT)}`
+    : turn.end.error === undefined ? turn.end.kind : `${turn.end.kind}：${clipText(turn.end.error, REASON_LIMIT)}`
   const lines = ['', `## ${label} · ${outcome}`]
-  if (turn.task.length > 0) lines.push(`任务：${clip(turn.task.join('\n\n'), MESSAGE_LIMIT)}`)
-  if (turn.user.length > 0) lines.push(`用户：${clip(turn.user.join('\n\n'), MESSAGE_LIMIT)}`)
+  if (turn.task.length > 0) lines.push(`任务：${clipText(turn.task.join('\n\n'), MESSAGE_LIMIT, MESSAGE_TRUNCATED_HINT)}`)
+  if (turn.user.length > 0) lines.push(`用户：${clipText(turn.user.join('\n\n'), MESSAGE_LIMIT, MESSAGE_TRUNCATED_HINT)}`)
   if (turn.task.length === 0 && turn.user.length === 0) lines.push('用户：（无）')
   if (turn.injected > 0) lines.push(`（另有 ${turn.injected} 条注入上下文，已省略）`)
-  lines.push(`助手：${turn.assistant.length === 0 ? '（无）' : clip(turn.assistant.join('\n\n'), MESSAGE_LIMIT)}`)
+  lines.push(`助手：${turn.assistant.length === 0 ? '（无）' : clipText(turn.assistant.join('\n\n'), MESSAGE_LIMIT, MESSAGE_TRUNCATED_HINT)}`)
   if (turn.tools.length > 0) {
     const tools = turn.tools.map((tool) => {
       if (tool.failed === true) return `${tool.name}（失败：${tool.reason ?? '未说明原因'}）`
