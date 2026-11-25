@@ -129,8 +129,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 |---|---|---|---|---|
 | `guide-card` | 项目行选中后 15 秒内引导卡未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/guide-card.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-20 |
 | `board-done-paging` | 已完成区折叠开关/计数 15 秒内未出现；高 load 时复现 | 空载单跑通过；看 `.dev/e2e-artifacts/board-done-paging-<pid>/` | 否（登记，根因未定位） | 2026-11-20 |
-| `board-cinema` | 曾在全量 `e2e:report` 下失败（失败断言未留存）；空载单跑通过 | 空载 `npm run e2e:one tests/e2e/board-cinema.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-24 |
-| `board-cinema` | `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败）；全量/单跑均偶发 | 重跑即过、失败点在看板挂载前、无 pageerror | 否（登记，根因未定位） | 2026-11-25 |
+| `board-cinema` | 全量/单跑均偶发 `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败） | 重跑即过、失败点在看板挂载前、无 pageerror；失败时主区域是会话视图（无面板页），再点一次项目行立刻选中——启动时首次点击可能被重渲染丢掉，e2e 已补点 | 否（e2e 重试兜住；宿主启动竞态未定位） | 2026-11-25 |
 | `avatar` | worker 回报气泡 15 秒内未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/avatar.e2e.js` 通过 | 否（登记，根因未定位） | 2026-11-20 |
 | `session-tabs`（多会话） | `instance.logs` 出现 `sessions.retain: unknown session`，切换/清理后常伴随等待失败 | 空载单跑通过且日志不再复现才算环境 flake；日志仍在则不是「已修」 | 否（宿主生命周期，待确认） | 2026-11-20 |
 
