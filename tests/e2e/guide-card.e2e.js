@@ -8,7 +8,8 @@
  *
  * 引导期间会话事件数必须为 0：断言落在「模型请求数为 0」与「会话日志里没有
  * user/message」上，不看界面上的字。卡片与输入框的对齐、字号、圆角属于样式，
- * 不写进 e2e。
+ * 不写进 e2e；唯一例外是窄窗左右边缘的已修回归，用最小几何守卫只钉左右
+ * 边缘（容差 0.5px），不测颜色 / 圆角 / 内部排版，见文末。
  */
 
 import assert from 'node:assert/strict'
@@ -159,7 +160,38 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   const freshPage = await fresh.newPage()
   await openLeader(freshPage)
   await waitForLocator(card(freshPage), { description: '新浏览器里引导卡出现', timeoutMs: 15_000 })
-  const beforeRequests = mock.requests.length
+
+  // 窄窗口下引导条曾按整条 seat 宽度铺满，而宿主输入框按
+  // --dsh-composer-side-clearance 两侧内缩，两块左右边缘对不上。这是已修 bug
+  // 的最小几何守卫：只钉左右边缘与不塌成零宽，不测颜色/圆角/内部排版。
+  await freshPage.setViewportSize({ width: 640, height: 900 })
+  await waitFor({
+    description: '窄窗口下引导条与输入框都已布局',
+    check: () => freshPage.evaluate(() => {
+      const widthOf = (selector) => document.querySelector(selector)?.getBoundingClientRect().width ?? 0
+      return widthOf('.dsh-leader-agent-guide-card') > 100 && widthOf('[data-composer-card]') > 100
+    }),
+  })
+  const narrowGeometry = await freshPage.evaluate(() => {
+    const rect = (selector) => {
+      const box = document.querySelector(selector).getBoundingClientRect()
+      return { left: box.left, right: box.right, width: box.width }
+    }
+    return {
+      guide: rect('.dsh-leader-agent-guide-card'),
+      input: rect('[data-composer-card]'),
+    }
+  })
+  const leftDiff = Math.abs(narrowGeometry.guide.left - narrowGeometry.input.left)
+  const rightDiff = Math.abs(narrowGeometry.guide.right - narrowGeometry.input.right)
+  assert.ok(
+    leftDiff <= 0.5 && rightDiff <= 0.5,
+    `引导条左右边缘应与输入框对齐：${JSON.stringify({ leftDiff, rightDiff, ...narrowGeometry })}`,
+  )
+  await freshPage.screenshot({ path: join(artifacts, 'narrow-640.png') })
+  await freshPage.setViewportSize({ width: 1440, height: 900 })
+
+  const beforeRequests = mock.requests.filter((request) => request.kind === 'scenario').length
   await freshPage.screenshot({ path: join(artifacts, 'before-click.png') })
   await freshPage.getByRole('button', { name: zh['guide.action.intro'] }).click()
   // 用户消息的容器是宿主 chat 节点的 data-chat-flow-kind="user"；不用「文本包含
@@ -175,16 +207,36 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   )
   assert.equal(bubbleText, true, '气泡里应是按钮发出去的那句话')
   await freshPage.screenshot({ path: join(artifacts, 'after-click.png') })
-  console.log(`[e2e] 截图 ${join(artifacts, 'before-click.png')} / ${join(artifacts, 'after-click.png')}`)
+  console.log(`[e2e] 截图 ${join(artifacts, 'narrow-640.png')} / ${join(artifacts, 'before-click.png')} / ${join(artifacts, 'after-click.png')}`)
   await waitFor({
     description: '会话日志里出现引导发出的那条消息',
     check: () => readSessionLogs(second.home).some((text) => text.includes(INTRO_PROMPT)),
   })
   // 模型请求在日志写入之后才发出：等它到 mock，别紧接着断言时序。
   await waitFor({
-    description: `点击后应走一轮模型请求（此前 ${beforeRequests} 次）`,
-    check: () => mock.requests.length > beforeRequests,
+    description: `点击后应走一轮场景模型请求（此前 ${beforeRequests} 次）`,
+    check: () => mock.requests.filter((request) => request.kind === 'scenario').length > beforeRequests,
   })
+  // 示例卡的规格与派工步骤不能只写在界面上：它们要随初始化提示进真正的模型
+  // 请求，leader 才知道建什么卡、绑谁、怎么投递。这里只看请求体，模型能不能
+  // 照做由真实 provider 决定，mock 不模拟这一层。
+  //
+  // 断言必须落在提示正文自己的句子上：请求体是完整模型请求，工具名（`create_card`
+  // / `spawn_worker` / `message_worker` / `list_cards`）在 tools Schema 里恒现；
+  // `Hello World` 现在只在提示正文里，删掉整段提示它也会消失，但正文独有句仍更稳。
+  const introRequest = mock.requests.filter((request) => request.kind === 'scenario').at(-1)
+  assert.ok(introRequest !== undefined, '点击后应有一条场景模型请求')
+  assert.match(introRequest.body, /不读取、不修改、不创建任何文件/, '请求里应带示例卡的规格约束')
+  assert.match(introRequest.body, /hello-world/, '请求里应带示例 worker 的名字')
+  assert.match(introRequest.body, /\\?"status\\?":\s*\\?"all\\?"/, '请求里应带覆盖全部状态的查重参数')
+  assert.match(introRequest.body, /\\?"limit\\?":\s*100/, '请求里应带查重页大小')
+  assert.match(introRequest.body, /`active` \/ `done` \/ `archived`/, '请求里应说明三种状态都算已演示')
+  assert.match(introRequest.body, /整段跳过第 2–4 步/, '请求里应写明已有同名示例卡时跳过建卡派工')
+  assert.match(introRequest.body, /worker 跑完会唤醒你/, '请求里应带投递与回报的步骤')
+  assert.doesNotMatch(introRequest.body, /确认它说了「你好」就把这张示例卡标 `done`/, '请求里不应再把回报后自动 done 写成必做步骤')
+  assert.doesNotMatch(introRequest.body, /把这张示例卡标 `archived` 并告诉用户示例没跑完/, '请求里不应再把失败后自动归档写成必做步骤')
+  assert.match(introRequest.body, /你想结束任务、关卡的话跟我说/, '请求里应请用户决定是否关卡')
+  assert.match(introRequest.body, /不要自行把示例卡标 `done` 或 `archived`/, '请求里应禁止 leader 自动 done/archived')
   assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')

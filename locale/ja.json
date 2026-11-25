@@ -71,7 +71,7 @@
     "common.saving": "保存中…",
     "guide.action.dismiss": "了解",
     "guide.action.intro": "使い方を見る",
-    "guide.intro.prompt": "このプロジェクトはまだ設定されていません。dsh-leader-agent の使い方を教えてください。",
+    "guide.intro.prompt": "dsh-leader-agent の使い方を教えてください。説明するときは、ファイルを読んだり、変更したり、作成したりしないでください。",
     "guide.steps": "タスクカードを作成し、エージェントに作業を任せ、ボードで進捗を確認できます",
     "guide.title": "このディレクトリには Leader がいます",
     "markdown.code": "コード",
