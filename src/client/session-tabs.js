@@ -351,8 +351,6 @@ export function SessionTabsAnchor(props) {
       column?.removeAttribute(COLUMN_ATTR)
       mainBody?.removeAttribute(MAIN_ATTR)
       created.remove()
-      // 热重载后样式表要跟着新实现换一份。
-      document.getElementById(STYLE_ID)?.remove()
     }
   }, [])
 
