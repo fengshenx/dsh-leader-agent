@@ -19,6 +19,7 @@ import { createSkillProvider } from './skills.js'
 import { createSpawnWorkerTool } from './tools/spawn-worker.js'
 import { createMessageWorkerTool } from './tools/message-worker.js'
 import { createReadWorkerTool } from './tools/read-worker.js'
+import { createListWorkerModelsTool } from './tools/list-worker-models.js'
 import { createCreateCardTool, createUpdateCardTool, createListCardsTool, createReadCardTool } from './tools/cards.js'
 import { createNotificationStore } from './notification-store.js'
 import { resolveDshHome } from './home-paths.js'
@@ -67,6 +68,7 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  *
  * @param {object} [options] - 工具依赖
  * @param {object} [options.dispatcher] - 派工器
+ * @param {object} [options.ctx] - Cordis 上下文；`list_worker_models` 执行时用它取 `llm`
  * @param {object} [options.cards] - 卡片存储
  * @param {(sessionId: string | undefined) => Promise<object | undefined>} [options.resolveProject] - 卡片归属解析
  * @param {(sessionId: string | undefined) => boolean | Promise<boolean>} [options.canWriteCards] -
@@ -82,6 +84,7 @@ export const inject = ['skills', 'tools', 'systemPrompt']
  */
 export function createBundleTools({
   dispatcher,
+  ctx,
   cards,
   resolveProject,
   canWriteCards,
@@ -104,6 +107,7 @@ export function createBundleTools({
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
     createReadWorkerTool({ dispatcher }),
+    createListWorkerModelsTool({ ctx }),
     createCreateCardTool({
       store: cards,
       resolveProject,
@@ -278,6 +282,7 @@ export function apply(ctx) {
   // 同样只给 leader。
   for (const tool of createBundleTools({
     dispatcher,
+    ctx,
     cards,
     resolveProject,
     canWriteCards,

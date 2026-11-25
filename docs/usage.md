@@ -6,9 +6,9 @@ README 给最短路径，[上手](getting-started.md) 把整条路径串一遍�
 
 派工分两步。先调 `spawn_worker`，`name` 必填，可带 `cardId` + `slot`（成对）把卡槽位绑到新会话。`name` 是 worker 的显示名（角色-任务短名，如 `research-sources`），同时钉成它的会话标题：不钉的话宿主按首条消息自动起名，侧栏看到的是任务正文前几个字。
 
-工具立即返回会话 id，但 worker **还没开工**——它不产生模型调用，等 `message_worker` 投递第一条消息才开始跑。分两步是为了让绑定先落盘：第一条任务请求组装时，角色槽位与卡片事实（规格、链接、revision）就已经在上下文里。`cardId` 必须是**本项目**的、状态为 `active` 的卡：跨项目的卡会被拒绝（否则 A 项目能把 worker 绑到 B 项目的卡上，每轮读到 B 的 spec），已关闭（`done`）或归档的卡也会被拒绝（关闭即释放执行者，再绑会让投递门禁看不见它）。绑定失败会销毁刚建的会话；改名在绑定成功之后才做，所以磁盘上不会留下一条空会话。
+工具立即返回会话 id，但 worker **还没开工**——它不产生模型调用，等 `message_worker` 投递首条消息才开始跑。分两步是为了让绑定先落盘：第一条请求组装时，角色槽位与卡片事实（规格、链接、revision）已在上下文里。`cardId` 必须是**本项目**的、状态为 `active` 的卡：跨项目的卡会被拒绝（否则 A 项目能把 worker 绑到 B 的卡上，每轮读到 B 的 spec），已关闭或归档的卡也会被拒绝（关闭即释放执行者，再绑会让投递门禁看不见它）。绑定失败会销毁刚建的会话；改名在绑定成功后才做，磁盘上不会留下空会话。
 
-worker 的模型按 **`spawn_worker` 参数 → `SLOTS.md` 的槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸模型 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；显式换模型却没给 effort 时用新模型默认。指定模型/effort 时，在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。
+worker 的模型按 **`spawn_worker` 参数 → `SLOTS.md` 的槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸模型 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；显式换模型却没给 effort 时用新模型默认。派工前可先用 `list_worker_models` 查 route（provider → 模型 → effort）。指定模型/effort 时，在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。
 
 worker 是**常驻根会话**——它在左栏项目树下有自己的会话行，你能像开别的会话一样打开它、直接输入新指令，也能在 `message_worker` 里给它续聊。worker 那一轮结束时 leader 随即被唤醒，收到一条完成通知——回报由机制侧从会话事件结算，worker 不需要调用任何工具。
 
