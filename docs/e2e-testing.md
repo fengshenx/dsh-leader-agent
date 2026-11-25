@@ -127,7 +127,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 | 场景 | 症状 / 触发 | 判定方法 | 是否已修 | 最后确认 |
 |---|---|---|---|---|
-| `guide-card` | 项目行选中后 15 秒内引导卡未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/guide-card.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-20 |
+| `guide-card` | 项目行选中后 15 秒内引导卡未出现；高 load 时复现。2026-11-25 复测 1 红 2 绿 | 空载 `npm run e2e:one tests/e2e/guide-card.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-25 |
 | `board-done-paging` | 已完成区折叠开关/计数 15 秒内未出现；高 load 时复现 | 空载单跑通过；看 `.dev/e2e-artifacts/board-done-paging-<pid>/` | 否（登记，根因未定位） | 2026-11-20 |
 | `board-cinema` | 全量/单跑均偶发 `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败） | 失败时主区域是会话视图（无面板页）；启动期侧栏还在刷新，首点被重渲染丢掉——`openBoard` 等侧栏 500ms 无变化后只点一次，点不中即红。真实用户路径关 worker 看板标签会抛 `sessions.retain: unknown session`（#200），e2e 绕开 | 否（不重试；稳定后仍丢按产品问题处理） | 2026-11-25 |
 | `avatar` | worker 回报气泡 15 秒内未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/avatar.e2e.js` 通过 | 否（登记，根因未定位） | 2026-11-20 |

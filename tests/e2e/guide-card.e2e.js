@@ -219,13 +219,16 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   // 示例卡的规格与派工步骤不能只写在界面上：它们要随初始化提示进真正的模型
   // 请求，leader 才知道建什么卡、绑谁、怎么投递。这里只看请求体，模型能不能
   // 照做由真实 provider 决定，mock 不模拟这一层。
+  //
+  // 断言必须落在提示正文自己的句子上：请求体是完整模型请求，工具名（`create_card`
+  // / `spawn_worker` / `message_worker` / `list_cards`）与 `Hello World` 分别在
+  // tools Schema 与用户消息里恒现——拿它们做锚，删掉整段建卡派工提示也照样绿。
   const introRequest = mock.requests.filter((request) => request.kind === 'scenario').at(-1)
   assert.ok(introRequest !== undefined, '点击后应有一条场景模型请求')
-  assert.match(introRequest.body, /create_card/, '请求里应带建示例卡的指令')
-  assert.match(introRequest.body, /spawn_worker/, '请求里应带派工指令')
-  assert.match(introRequest.body, /message_worker/, '请求里应带投递任务的指令')
-  assert.match(introRequest.body, /Hello World/, '请求里应点名 Hello World 示例卡')
-  assert.match(introRequest.body, /list_cards/, '请求里应要求先查重')
+  assert.match(introRequest.body, /不读取、不修改、不创建任何文件/, '请求里应带示例卡的规格约束')
+  assert.match(introRequest.body, /hello-world/, '请求里应带示例 worker 的名字')
+  assert.match(introRequest.body, /整段跳过第 2–4 步/, '请求里应写明已有同名示例卡时跳过建卡派工')
+  assert.match(introRequest.body, /worker 跑完会唤醒你/, '请求里应带投递与回报的步骤')
   assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')

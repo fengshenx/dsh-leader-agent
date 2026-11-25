@@ -128,6 +128,14 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、建�
     assert.match(text, /worker 回报唤醒你时/)
     assert.match(text, /标 `done`/)
     assert.match(text, /`list_cards`/)
+    // 查重要覆盖已 done 的示例卡：只挡建卡会把二次触发引到 done 卡上绑 worker 报错。
+    assert.match(text, /`done` 的也算/)
+    assert.match(text, /整段跳过第 2–4 步/)
+    // 失败路径：worker 没跑成或派工直接失败时收尾，而不是留一张 active 卡占槽。
+    assert.match(text, /标 `archived` 并告诉用户示例没跑完/)
+    assert.match(text, /不要重试第二次/)
+    // 示例产物是有意保留：卡与 worker 会话都留在项目里。
+    assert.match(text, /示例卡与 worker 会话会留在项目里/)
     // 用户直接派活时不打断：提示自己限定触发面。
     assert.match(text, /用户直接派活时不要打断/)
   } finally {

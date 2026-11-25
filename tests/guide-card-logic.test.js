@@ -130,6 +130,9 @@ test('开场正文发一句触发语，同时点名 Hello World 示例卡与派�
     assert.match(dict['guide.intro.prompt'], /派给|assign/)
     assert.doesNotMatch(dict['guide.intro.prompt'], /LEADER\.md/)
     assert.doesNotMatch(dict['guide.intro.prompt'], /\n/, '引导语应是一句话')
+    // 提示条只有一行，超出会被省略号截断。演示建卡派工让这句话变长了（最长的是
+    // 德语 239 字符），但不能再往回长成一段话：上限按现有最长文案留出两成余量。
+    assert.ok(dict['guide.intro.prompt'].length < 300, '引导语应是一句话，不超过 300 字符')
   }
 })
 

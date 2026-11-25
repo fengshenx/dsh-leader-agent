@@ -36,11 +36,15 @@ Status: implemented
 - 提示不打断正常派工：用户直接下任务时模型按常规流程干活，不主动兜售初始化。
 - 拒绝只在本会话生效，新会话会再问一次（`docs/limitations.md` 有同一条）。
 - 引导卡的 `blank` 判据不变：消息发出后卡片消失，关闭状态按 leader 会话 id 存 localStorage。
-- **第一个「怎么用」问题会建一张示例卡并派一个 worker**；worker 说一句「你好」后唤醒 leader，leader 确认回报并把卡标 `done`。提示要求先 `list_cards` 查重，重复问不会重复建；示例流程只走一次，唤醒轮不再建卡或派工。
+- **第一个「怎么用」问题会建一张示例卡并派一个 worker**；worker 说一句「你好」后唤醒 leader，leader 确认回报并把卡标 `done`。示例流程只走一次，唤醒轮不再建卡或派工。
+- **查重覆盖已 `done` 的示例卡**：只挡「建卡」不够——步骤 3 无条件要求把 worker 绑到这张卡上，而 `dispatch.js` 对 done 卡直接拒绝（关闭即释放执行者）。用户点过一次没初始化、再开一个 leader 会话又点一次时，提示会让 leader 撞工具错误。所以查到同名卡（`done` 也算）就整段跳过建卡派工，只讲用法；「只走一次」也因此不靠模型自觉。
+- **示例产物有意保留**：卡标 `done` 是终态、不删除，worker 会话归档后仍在会话列表——用户看板上会长期有一张 `Hello World`、项目树里有一个 `hello-world`。这是演示的代价，提示与 `docs/usage.md` 都写明，不按「泄漏」处理。
+- **失败路径有收尾动作**：worker 没跑成、被中断或 `spawn_worker` 直接失败（名册上限 50）时，提示要求把示例卡标 `archived` 并告诉用户示例没跑完，不重试第二次。否则卡停在 `active`、槽位绑着那个 worker，`dispatch.js` 的「空闲但挂着未完成卡的 worker 不能接新活」会让后续派工一并卡住。
+- **提示文案变长只影响注入，不影响引导语**：`guide.intro.prompt` 仍是一句话（用户消息），长度守卫从「不含换行」补回 `< 300` 字符上限（现有最长德语 239）。
 - 空目录的骨架带 `TODO`，是给人填的；skill 明确不要用通用道理填满。
 
 收益：新项目先讲清怎么用，再问是否初始化；确认后由 skill 写出项目自己的两份手册，而不是通用模板。
 
 ## Testing
 
-`tests/leader-context.test.js`、`tests/guide-card-logic.test.js` 与 `tests/slots.test.js`；e2e 的 guide-card 场景还断言初始化提示（含 `create_card` / `spawn_worker` / `message_worker` / `Hello World` / `list_cards`）确实进了模型请求。双向：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；让空的新版遮蔽旧名 → 回落用例红；删掉示例卡或派工那一步 → 提示用例红。还原后全绿。
+`tests/leader-context.test.js`、`tests/guide-card-logic.test.js` 与 `tests/slots.test.js`；e2e 的 guide-card 场景还断言初始化提示确实进了模型请求——锚在提示正文独有句上（示例卡规格「不读取、不修改、不创建任何文件」、worker 名 `hello-world`、查重跳过、投递回报）。**不要拿工具名或 `Hello World` 做锚**：请求体含 tools Schema，`create_card` 出现 8 次、`Hello World` 来自用户消息本身，删掉整段提示也照样绿。双向：把「空白/缺失」判定改回只说「还没有」→ 仅空白用例红；让空的新版遮蔽旧名 → 回落用例红；删掉示例卡或派工那一步 → 提示用例红。还原后全绿。
