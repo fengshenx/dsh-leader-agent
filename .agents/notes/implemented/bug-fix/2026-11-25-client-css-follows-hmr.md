@@ -6,6 +6,8 @@ Status: implemented
 
 0.7 升到 0.8 后用户看到「样式丢了不少」：新组件的类名没有规则，旧组件的样式还在，刷新或重启才恢复。宿主 `client-hmr` 换插件只拆旧 fiber 重新 `apply`，不刷新页面；本仓样式由各模块在组件挂载时按 id 自注入 `<style>`，见到同 id 已存在就直接 return，于是 0.8 新增的看板样式块停在 0.7 的文本上。
 
+这不是 0.7 引入的：按 id 判重的注入从 0.1.0 就在，0.6→0.7 也往同一个 id 里加过新规则（如标签栏 action），同样会缺样式；0.8.0 一次加了 409 行（rail、设置）才让它普遍可见。
+
 ## Decision
 
 样式注入统一收进 `src/client/style-sheet.js`：`ensureStyleSheet(id, text)` 在同 id 节点已存在时按内容同步 `textContent`，不存在才创建，内容相同不碰 DOM。九个样式模块的 `ensure*` 只保留 id、文本与调用，判重逻辑不再各写一份。
