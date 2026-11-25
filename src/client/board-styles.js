@@ -181,18 +181,18 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   color: var(--dsw-alias-label-tertiary);
 }
 
-/* 标题独占一行：窄栏单行截断看不清任务内容，两行覆盖绝大多数标题；左缘与
-   下方链接/会话一致。medium 而非 semibold——信号灯与状态色已承担强调 */
+/* 标题固定单行：行高恒定，rail 的行中心与整卡高度不随标题长度变；长标题用
+   省略号收尾，完整文本在 title 属性里悬停可读。左缘与下方链接/会话一致。
+   medium 而非 semibold——信号灯与状态色已承担强调 */
 .dsh-leader-agent-board-card-title {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   font-size: 13px;
   line-height: 20px;
   font-weight: 500;
   color: var(--dsw-alias-label-primary);
-  overflow: hidden;
-  overflow-wrap: anywhere;
 }
 
 /* 链接行：与标题同左缘（卡面 padding）。默认一行，放不下的由「+N」收起；

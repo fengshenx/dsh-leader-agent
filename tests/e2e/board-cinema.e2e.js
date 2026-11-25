@@ -30,6 +30,10 @@ const RAIL_SLOT = '[data-rail-slot]'
 const CARD_SLOT = '.dsh-leader-agent-board-slot'
 const SETTINGS_DIALOG = '[data-shortcut-modal="settings"]'
 const GUIDE_ENTRY = '.dsh-leader-agent-guide-entry[data-sidebar-right-guide-entry="dsh-leader-agent-board"]'
+const SETUP_LEADER = 'MOCK-CINEMA-LEADER'
+const SETUP_WORKER = 'MOCK-CINEMA-WORKER'
+const SETUP_LEADER_REPLY = '看板场景：leader 就绪。'
+const SETUP_WORKER_REPLY = '看板场景：worker 就绪。'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -46,6 +50,54 @@ function firstSession(home) {
   return null
 }
 
+/** 读页面上当前被选中的宿主会话 id。 */
+async function currentSessionId(page) {
+  return page.evaluate(() => {
+    const row = document.querySelector('[data-row-key^="session:"][aria-selected="true"]')
+    return row?.getAttribute('data-row-key')?.slice('session:'.length) ?? null
+  })
+}
+
+/**
+ * 等侧栏 DOM 连续 quietMs 没有变化。
+ *
+ * 启动时项目/会话列表还在刷新，点太早会落在重渲染中间被丢掉；这里等的是「没有
+ * 变化」这个状态，不是睡一段固定时间。自带 10 秒上限：侧栏若一直有 DOM 变化，
+ * 失败读数要能指到「最后几次变化、data-dead、行数」，别只留场景级 90 秒超时。
+ */
+async function waitForSidebarStable(page, quietMs = 500, timeoutMs = 10_000) {
+  const state = await page.evaluate(({ quiet, timeout }) => new Promise((resolve) => {
+    const root = document.querySelector('.dsh-leader-agent-project-section')?.parentElement ?? document.body
+    let timer = 0
+    let finished = false
+    let mutations = 0
+    function finish(stable) {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      clearTimeout(deadline)
+      observer.disconnect()
+      resolve({
+        stable,
+        mutations,
+        project: document.querySelector('.dsh-leader-agent-project-row')?.getAttribute('data-dead') ?? null,
+        rows: root.querySelectorAll('[data-row-key]').length,
+      })
+    }
+    const observer = new MutationObserver(() => {
+      mutations += 1
+      clearTimeout(timer)
+      timer = setTimeout(() => finish(true), quiet)
+    })
+    timer = setTimeout(() => finish(true), quiet)
+    const deadline = setTimeout(() => finish(false), timeout)
+    observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true })
+  }), { quiet: quietMs, timeout: timeoutMs })
+  if (!state.stable) {
+    throw new Error(`侧栏在 ${timeoutMs}ms 内没有稳定：最后 ${state.mutations} 次 DOM 变化（观察 .dsh-leader-agent-project-section 的父级），data-dead=${state.project}，[data-row-key] 行数 ${state.rows}`)
+  }
+}
+
 /** 把该会话登记成项目。 */
 function seedProject(home, session) {
   mkdirSync(join(home, 'dsh-leader-agent'), { recursive: true })
@@ -58,6 +110,19 @@ function seedProject(home, session) {
       leaderSessionId: session.id,
       createdAt: Date.now(),
       updatedAt: Date.now(),
+    }],
+  }, null, 2)}\n`)
+}
+
+/** 把第二段要切过去的 worker 会话登记进项目。 */
+function seedWorkers(home, leader, worker) {
+  writeFileSync(join(home, 'dsh-leader-agent', 'workers.json'), `${JSON.stringify({
+    version: 1,
+    workers: [{
+      childId: worker.id,
+      parentSessionId: leader.id,
+      name: worker.name,
+      registeredAt: Date.now(),
     }],
   }, null, 2)}\n`)
 }
@@ -141,6 +206,10 @@ async function openBoard(page, session) {
     check: async () => (await projectRow.getAttribute('data-dead')) === null,
     timeoutMs: 20_000,
   })
+  // 启动时宿主还在建空白会话、项目/会话列表也在刷新：先等侧栏 DOM 连续 500ms
+  // 没有变化再点，避免首次点击落在重渲染中间被丢掉。只点一次——点不中就照常
+  // 红，是产品问题就 fail loud，不在这里重试。
+  await waitForSidebarStable(page)
   await projectRow.click()
   await waitFor({
     description: '项目行进入选中态',
@@ -218,7 +287,12 @@ async function boardFacts(page) {
 
 test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reload 保留显式选择', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-cinema-'))
-  const mock = await startMockProvider({})
+  const mock = await startMockProvider({
+    scripts: {
+      [SETUP_LEADER]: [{ text: SETUP_LEADER_REPLY }],
+      [SETUP_WORKER]: [{ text: SETUP_WORKER_REPLY }],
+    },
+  })
   const problems = []
   let browser = null
   let instance = null
@@ -242,10 +316,39 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
     check: () => firstSession(first.home),
     timeoutMs: 5_000,
   })
+  // 第二条会话用于「切走再切回」：先把空白草稿变成真会话，否则「新建会话」会
+  // 复用它，拿不到第二个 id。
+  const composer = bootstrapPage.locator('div[role="textbox"][contenteditable="true"]').first()
+  await composer.fill(`${SETUP_LEADER} 就绪`)
+  await composer.press('Enter')
+  await waitForLocator(bootstrapPage.getByText(SETUP_LEADER_REPLY).first(), {
+    description: 'leader 就绪回复',
+    timeoutMs: 15_000,
+  })
+  const workspaceRow = bootstrapPage.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
+  await waitForLocator(workspaceRow, { description: '默认工作区行', timeoutMs: 20_000 })
+  await workspaceRow.hover()
+  await workspaceRow.locator('button[aria-label*="新建会话"]').first().click({ force: true })
+  const workerId = await waitFor({
+    description: '新建 worker 会话',
+    check: async () => {
+      const current = await currentSessionId(bootstrapPage)
+      return typeof current === 'string' && current !== session.id ? current : null
+    },
+    timeoutMs: 15_000,
+  })
+  await composer.fill(`${SETUP_WORKER} 待命`)
+  await composer.press('Enter')
+  await waitForLocator(bootstrapPage.getByText(SETUP_WORKER_REPLY).first(), {
+    description: 'worker 就绪回复',
+    timeoutMs: 15_000,
+  })
+  const worker = { id: workerId, name: '看板 worker' }
   await bootstrap.close()
   await first.stop({ keepRoot: true })
 
   seedProject(first.home, session)
+  seedWorkers(first.home, session, worker)
   seedCards(first.home, session)
 
   const second = await startInstanceIn({ root, baseUrl: mock.url })
@@ -335,6 +438,105 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
   await waitFor({
     description: '设置面板关闭',
     check: async () => !(await page.locator(SETTINGS_DIALOG).isVisible()),
+    timeoutMs: 10_000,
+  })
+
+  // 主诉常驻守卫：切到另一个会话再切回，leader 的 rail 必须复用同一层。判定用
+  // 主干节点本身（标记还在，说明节点没被替换），不是看 d 值相同。
+  await page.evaluate((leaderId) => {
+    window.__railClears = 0
+    const proto = Element.prototype
+    if (proto.__railClearsHooked !== true) {
+      const original = proto.replaceChildren
+      proto.replaceChildren = function patched(...args) {
+        if (this instanceof Element
+          && this.classList?.contains('dsh-leader-agent-board-rail')
+          && this.closest('[data-sidebar-right-session]')?.getAttribute('data-sidebar-right-session') === leaderId) {
+          window.__railClears += 1
+        }
+        return original.apply(this, args)
+      }
+      proto.__railClearsHooked = true
+    }
+  }, session.id)
+  const leaderTrunk = page.locator(`[data-sidebar-right-session="${session.id}"] .dsh-leader-agent-board-rail-trunk`)
+  // SVG path 的几何盒宽为 0（竖向主干），Playwright 会判 `visible=false`；这里只认
+  // 节点本身，用 attached。
+  await waitForLocator(leaderTrunk, { description: 'leader 的 rail 主干', state: 'attached', timeoutMs: 10_000 })
+  await leaderTrunk.evaluate((node) => node.setAttribute('data-rail-keep', 'switch'))
+  // 标记挂在 svg 上：drawRail 只换子节点，svg 本身会在重画后留下——用它读防抖
+  // 跑完的信号；主干节点上的标记则用来判「节点有没有被替换」。
+  await page.evaluate(() => {
+    document.querySelector('[data-rail-keep="switch"]')?.closest('svg')?.setAttribute('data-rail-probe', 'switch')
+  })
+  // 用 svg 上的探针量 stage：主干被重画时标记会丢，stage 读数仍要稳（svg 本身
+  // 不随 drawRail 替换），否则先卡在「stage 归零」而不是「节点被替换」。
+  const markedStage = () => page.evaluate(() => {
+    const stage = document.querySelector('[data-rail-probe="switch"]')?.closest('.dsh-leader-agent-board-stage')
+    return stage === null || stage === undefined ? null : { w: stage.clientWidth, h: stage.clientHeight }
+  })
+  const settled = () => page.evaluate(() => Number(
+    document.querySelector('[data-rail-probe="switch"]')?.getAttribute('data-rail-settled') ?? 0,
+  ))
+  const clearCount = () => page.evaluate(() => window.__railClears)
+  const projectRow = page.locator('.dsh-leader-agent-project-row').first()
+  const expandSessions = projectRow.locator('button[aria-label="展开会话"]')
+  if ((await expandSessions.count()) > 0) await expandSessions.click()
+  const workerRow = page.locator(`.dsh-leader-agent-session-row[data-session-id="${worker.id}"]`)
+  await waitForLocator(workerRow, { description: '项目树里的 worker 会话行', timeoutMs: 10_000 })
+  const settleBeforeHide = await settled()
+  await workerRow.click()
+  await waitFor({
+    description: '切到另一个会话',
+    check: async () => (await currentSessionId(page)) === worker.id,
+    timeoutMs: 15_000,
+  })
+  await waitFor({
+    description: 'leader 的 stage 归零',
+    check: async () => (await markedStage())?.w === 0,
+    timeoutMs: 10_000,
+  })
+  // 等防抖真正跑完（settle 递增）再断言：不睡固定时间，重画即使发生也已经做完。
+  await waitFor({
+    description: '切走后的防抖已跑完',
+    check: async () => (await settled()) > settleBeforeHide,
+    timeoutMs: 10_000,
+  })
+  // 撤掉签名比较时主要红在这条 away 计数；下面切回后的 identity 断言是兜底，
+  // 只有把这条临时删掉时才会先红（{"count":0,"inDom":false}）。
+  assert.equal(await clearCount(), 0, '隐藏到 0 尺寸不应重画')
+  const leaderTab = page.locator(`.dsh-leader-agent-tab[data-session-id="${session.id}"]`)
+  await waitForLocator(leaderTab, { description: 'leader 会话标签', timeoutMs: 10_000 })
+  const settleBeforeBack = await settled()
+  await leaderTab.click()
+  await waitFor({
+    description: '切回 leader 会话',
+    check: async () => (await currentSessionId(page)) === session.id,
+    timeoutMs: 15_000,
+  })
+  await waitFor({
+    description: 'leader 的 stage 恢复尺寸',
+    check: async () => (await markedStage())?.w > 0,
+    timeoutMs: 10_000,
+  })
+  await waitFor({
+    description: '切回后的防抖已跑完',
+    check: async () => (await settled()) > settleBeforeBack,
+    timeoutMs: 10_000,
+  })
+  await waitForLocator(
+    page.locator(`[data-sidebar-right-session="${session.id}"] .dsh-leader-agent-board-rail-trunk[data-rail-keep="switch"]`),
+    { description: '切回后 rail 主干仍是同一个节点', state: 'attached', timeoutMs: 10_000 },
+  )
+  assert.equal(await clearCount(), 0, '切会话不应重建 leader 的 rail')
+  // 看板跟到了 worker 的右栏；在 leader 上程序化关掉那个隐藏标签，绕开 issue #200
+  // （切到 worker 再关的真实用户路径会触发 pageerror: sessions.retain: unknown session）。
+  await page.evaluate((workerId) => {
+    document.querySelector(`[data-sidebar-right-session="${workerId}"] [data-dockkit-tab-close]`)?.click()
+  }, worker.id)
+  await waitFor({
+    description: 'worker 右栏的看板标签已关闭',
+    check: async () => (await page.locator(BOARD).count()) === 1,
     timeoutMs: 10_000,
   })
 

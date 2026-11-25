@@ -196,7 +196,7 @@ function drawRail(svg, options = {}) {
  * 线路图覆盖层。
  *
  * `railKey` 是行身份与状态的签名：卡片轮询每 2 秒会换一个新数组，但签名不变时
- * 不必重画——重画会让光点从头再跑一遍。
+ * 不必重画——重画会让光点从头再跑一遍。stage 宽高另并入绘制签名。
  *
  * @param {object} props - 组件属性
  * @param {string} props.railKey - 行与状态的签名
@@ -205,22 +205,43 @@ function drawRail(svg, options = {}) {
 export function BoardRail({ railKey, orthogonal, theme }) {
   const ref = useRef(null)
   const reduced = usePrefersReducedMotion()
+  // 最近一次真正画上去的完整签名（内容 + 几何）。隐藏/显示只改可见性，不改
+  // 内容与几何；用它把「右栏重新可见」的 0 → N 尺寸变化挡在重画之外——重画会
+  // 重建 SVG，SMIL 光点跟着从头起跑。
+  const drawnKey = useRef('')
 
   useLayoutEffect(() => {
     const svg = ref.current
     if (svg === null) return undefined
     const stage = svg.parentElement
-    drawRail(svg, { orthogonal, theme, reduced })
-    if (stage === null || typeof ResizeObserver === 'undefined') return undefined
-    let frame = 0
+    if (stage === null) return undefined
+    let timer = 0
+    const draw = () => {
+      // 宿主用 display:none 隐藏非当前会话的右栏：尺寸归零不是布局变化
+      if (stage.clientWidth === 0 || stage.clientHeight === 0) return
+      // 卡面标题固定单行后，行中心只随行高变化；宽度决定换行，高度覆盖 locale/
+      // 字体与链接行导致的整卡高度变化，两者合起来就够，不必逐行量几何。
+      const key = `${railKey}|${orthogonal}|${theme}|${reduced}|${stage.clientWidth}x${stage.clientHeight}`
+      if (key === drawnKey.current) return
+      drawnKey.current = key
+      drawRail(svg, { orthogonal, theme, reduced })
+    }
+    draw()
+    if (typeof ResizeObserver === 'undefined') return undefined
     const observer = new ResizeObserver(() => {
-      // 观测回调里直接改 DOM 会打断布局；推到下一帧再量
-      cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(() => { drawRail(svg, { orthogonal, theme, reduced }) })
+      // 尾防抖：连续拖拽期间每次回调都重置计时，整个拖拽过程中线路图停在旧宽度上
+      // （错位），停手 80ms 后只画最后一次。换来的是不逐帧重建 SMIL 节点。
+      clearTimeout(timer)
+      timer = setTimeout(() => {
+        draw()
+        // 防抖真正跑完的信号：e2e 等它递增后再断言，不用睡固定时间——重画即使
+        // 发生也已经在 draw() 里做完了。
+        svg.dataset.railSettled = String(Number(svg.dataset.railSettled ?? '0') + 1)
+      }, 80)
     })
     observer.observe(stage)
     return () => {
-      cancelAnimationFrame(frame)
+      clearTimeout(timer)
       observer.disconnect()
     }
   }, [railKey, orthogonal, theme, reduced])
