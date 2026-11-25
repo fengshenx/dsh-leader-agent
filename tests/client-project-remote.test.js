@@ -42,6 +42,7 @@ test('未知类型一律抛错，原型链键也不会静默退回某个 codec',
     assert.throws(() => codecFor(type), TypeError)
   }
   assert.equal(codecFor('string').mode, 'strict')
+  assert.equal(codecFor('number').mode, 'strict')
 })
 
 test('每个入参都有严格 codec：宿主拒绝没有严格 codec 的描述符', () => {
@@ -52,6 +53,11 @@ test('每个入参都有严格 codec：宿主拒绝没有严格 codec 的描述�
         const links = [{ label: 'PR', url: 'https://example.com/pull/1' }]
         assert.deepEqual(parameter.codec.create().parse(links), links)
         assert.throws(() => parameter.codec.create().parse('不是数组'), /期望链接数组/)
+        continue
+      }
+      if (PROJECT_REMOTE_METHODS[descriptor.method][parameter.name] === 'number') {
+        assert.equal(parameter.codec.create().parse(3), 3)
+        assert.throws(() => parameter.codec.create().parse('3'), /期望数字/)
         continue
       }
       assert.equal(parameter.codec.create().parse('值'), '值')

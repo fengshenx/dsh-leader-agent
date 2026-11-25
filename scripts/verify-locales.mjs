@@ -51,6 +51,7 @@ const INTERNAL_CJK = new Set([
   "src/client/project-changes.js\x00dsh-leader-agent: 项目变更订阅回调抛错",
   "src/client/project-panel.js\x00dsh-leader-agent: 10 秒内没有等到会话列表服务，项目区块将没有运行态与会话行",
   "src/client/project-remote.js\x00期望字符串，收到 ",
+  "src/client/project-remote.js\x00期望数字，收到 ",
   "src/client/project-remote.js\x00期望链接数组，收到 ",
   "src/client/ready-signal.js\x00dsh-leader-agent: 就绪订阅回调抛错",
   "src/client/session-tabs.js\x00dsh-leader-agent: 读取项目标签数据失败",
