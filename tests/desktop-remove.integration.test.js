@@ -229,7 +229,7 @@ const WAIT_BUDGET_SECONDS = (WAIT_ATTEMPTS * WAIT_INTERVAL_MS) / 1000
 function waitTimeoutMessage(subject) {
   return `等了 ${WAIT_BUDGET_SECONDS} 秒仍没等到${subject}。\n`
     + '假 .app 由 macOS LaunchServices 拉起，落盘有一段系统异步窗口；并发/高负载下会明显变慢。\n'
-    + '先 `node --test tests/desktop-remove.integration.test.js` 单跑复核：单跑通过说明不是 main 失败，也不代表这次改动引入回归。'
+    + '先 `node --test tests/desktop-remove.integration.test.js` 单跑复核：单跑通过不代表 main 失败，也不代表这次改动引入回归。'
 }
 
 /**
