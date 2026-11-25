@@ -96,7 +96,7 @@ test('按 turn/start 与 turn/end 切成回合，正文与工具调用各归其�
   assert.deepEqual(turns[0].assistant, ['先看一下现有实现。', '改完了，三个文件。'])
   assert.deepEqual(turns[0].tools.map((tool) => tool.name), ['read'])
   assert.equal(turns[0].tools[0].failed, false)
-  assert.deepEqual(turns[0].end, { kind: 'completed', error: undefined })
+  assert.deepEqual(turns[0].end, { kind: 'completed', failure: undefined })
 })
 
 test('失败的工具调用带出用户可见原因', () => {
@@ -200,16 +200,34 @@ test('超长正文与失败原因按上限截断并标注', () => {
       message: { toolCallId: 'c1', isError: true, content: [] },
       error: { name: 'E', code: 'E', reason: 'y'.repeat(500) },
     }),
-    event('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'z'.repeat(500) } } }),
+    event('turn/end', { turn: 1, reason: { kind: 'error', error: { message: 'z'.repeat(5000) } } }),
   ])
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
-  assert.match(text, /已截断，原长 5000 字符/)
+  assert.match(text, /已截断，原长 5000 码元/)
   // 标记带下一步：其他回合可翻页，单条超出的部分让 worker 复述。
   assert.match(text, /read_worker_session 的 offset 翻页/)
   assert.doesNotMatch(text, new RegExp(`y{300}`))
-  // 会话级失败原因同样截断，不把整段错误栈塞进 leader 上下文。
-  assert.match(text, /已截断，原长 500 字符/)
-  assert.doesNotMatch(text, new RegExp(`z{300}`))
+  // 回合终态失败原因与通知同值：放宽到 4000，超出的部分才截断。
+  assert.match(text, /已截断，原长 5000 码元/)
+  assert.match(text, /回合 1 · z{3000}/)
+  assert.ok(text.length < 9000, `正文长度 ${text.length} 超出预期`)
+})
+
+test('aborted / blocked / max-tokens 的失败说明进回看，与通知同一条文本', () => {
+  const cases = [
+    { reason: { kind: 'aborted', reason: { kind: 'user' } }, expected: '被取消：user' },
+    { reason: { kind: 'blocked' }, expected: '被阻断：这一轮被宿主拦下，没有开始' },
+    { reason: { kind: 'max-tokens' }, expected: '输出达到 token 上限，这一轮没有正常收尾' },
+    { reason: { kind: 'error', error: { message: '模型不可用' } }, expected: '模型不可用' },
+  ]
+  for (const { reason, expected } of cases) {
+    const { turns } = foldTurns([
+      event('turn/start', { turn: 1 }),
+      event('turn/end', { turn: 1, reason }),
+    ])
+    const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
+    assert.ok(text.includes(expected), `缺失失败说明「${expected}」：${text}`)
+  }
 })
 
 test('整段正文有总上限：装不下的更早回合丢弃，保留最新的结论', () => {
@@ -279,7 +297,7 @@ test('单条正文超限时标注原长并指向 offset 翻页，不劈开 emoji
     event('turn/end', { turn: 1, reason: { kind: 'completed' } }),
   ])
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
-  assert.match(text, /已截断，原长 6000 字符/)
+  assert.match(text, /已截断，原长 6000 码元/)
   assert.match(text, /read_worker_session 的 offset 翻页/)
   assert.equal(loneSurrogateAt(text), undefined)
 })
@@ -302,7 +320,7 @@ test('总上限硬截断不切在代理对中间', () => {
   // 工具名把一回合撑过 12000：最新回合自身超限，走 clip 的硬截断路径。
   const tools = Array.from({ length: 600 }, () => ({ name: '😀'.repeat(10), failed: undefined, reason: undefined }))
   const text = renderTranscript({
-    turns: [{ turn: 1, task: [], user: [], injected: 0, assistant: [], tools, end: { kind: 'completed', error: undefined } }],
+    turns: [{ turn: 1, task: [], user: [], injected: 0, assistant: [], tools, end: { kind: 'completed', failure: undefined } }],
     sessionId: 'w-1',
     name: 'dev',
     limit: 1,
@@ -319,7 +337,7 @@ test('CJK 正文按上限截断，字符完整', () => {
   ])
   const text = renderTranscript({ turns, sessionId: 'w-1', name: 'dev', limit: 1 })
   assert.match(text, new RegExp('甲'.repeat(3000)))
-  assert.match(text, /已截断，原长 4500 字符/)
+  assert.match(text, /已截断，原长 4500 码元/)
   assert.equal(loneSurrogateAt(text), undefined)
   assert.doesNotMatch(text, /\uFFFD/)
 })

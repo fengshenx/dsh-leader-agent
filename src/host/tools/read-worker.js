@@ -37,7 +37,7 @@ export function createReadWorkerTool({ dispatcher }) {
         },
         offset: {
           type: 'number',
-          description: '可选：翻页偏移，跳过最新的几个回合，默认 0。往后看更早的回合时，用上一页末尾给出的 offset 继续；超出总回合数会报错。',
+          description: '可选：翻页偏移，跳过最新的几个回合，默认 0。往后看更早的回合时，用上一页末尾给出的 offset 继续；翻页期间 worker 新增回合会让页框后移、内容可能重复，最终仍可读全。超出总回合数会报错。',
         },
       },
       required: ['sessionId'],

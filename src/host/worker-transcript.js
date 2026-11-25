@@ -11,16 +11,17 @@
 
 import { messageText } from '../shared/message-text.js'
 import { clipText } from '../shared/truncate.js'
+import { describeTurnFailure } from '../shared/turn-failure.js'
 import { WORKER_TASK_SOURCE_KIND } from '../shared/worker-task.js'
 
 /**
- * 单条消息正文的保留上限。
+ * 单条消息正文与回合终态失败原因的保留上限。
  *
- * 与完成通知的回报上限（4000）同值：通知里能看到的整段产物，回看视图也装得下，
- * 不会出现「通知被截断、去回看反而更短」的倒挂。
+ * 与完成通知的回报上限（4000）同值：通知里能看到的产物摘要或失败原因，回看视图
+ * 也装得下，不会出现「通知被截断、去回看反而更短」的倒挂。
  */
 const MESSAGE_LIMIT = 4000
-/** 单条工具失败原因的保留上限。 */
+/** 单条工具失败原因的保留上限；回合终态走 `MESSAGE_LIMIT`，与通知里的失败原因同值。 */
 const REASON_LIMIT = 200
 /**
  * 整段正文的总上限。
@@ -77,9 +78,11 @@ export function foldTurns(events) {
       case 'turn/end': {
         if (current === undefined || current.end !== undefined) open()
         current.turn ??= data.turn
+        const kind = typeof data.reason?.kind === 'string' ? data.reason.kind : 'unknown'
         current.end = {
-          kind: typeof data.reason?.kind === 'string' ? data.reason.kind : 'unknown',
-          error: typeof data.reason?.error?.message === 'string' ? data.reason.error.message : undefined,
+          kind,
+          // 与完成通知共用同一条说明：只存 kind 会让回看只剩「aborted」这种裸标签。
+          failure: kind === 'completed' ? undefined : describeTurnFailure(data.reason),
         }
         current = undefined
         break
@@ -219,9 +222,12 @@ export function renderTranscript({ turns, sessionId, name, limit, offset = 0, ru
  */
 function renderTurn(turn) {
   const label = typeof turn.turn === 'number' ? `回合 ${turn.turn}` : '回合（未标号）'
+  // 失败说明与通知里的「失败原因」同源同上限：通知能显示的那段，回看必须读得到。
   const outcome = turn.end === undefined
     ? '进行中'
-    : turn.end.error === undefined ? turn.end.kind : `${turn.end.kind}：${clipText(turn.end.error, REASON_LIMIT)}`
+    : turn.end.failure === undefined
+      ? turn.end.kind
+      : clipText(turn.end.failure, MESSAGE_LIMIT)
   const lines = ['', `## ${label} · ${outcome}`]
   if (turn.task.length > 0) lines.push(`任务：${clipText(turn.task.join('\n\n'), MESSAGE_LIMIT, MESSAGE_TRUNCATED_HINT)}`)
   if (turn.user.length > 0) lines.push(`用户：${clipText(turn.user.join('\n\n'), MESSAGE_LIMIT, MESSAGE_TRUNCATED_HINT)}`)

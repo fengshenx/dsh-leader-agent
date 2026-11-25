@@ -4,6 +4,8 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 import { createDispatcher, buildNotificationText, buildWorkerReport } from '../src/host/dispatch.js'
+import { foldTurns, renderTranscript } from '../src/host/worker-transcript.js'
+import { describeTurnFailure } from '../src/shared/turn-failure.js'
 import { createNotificationStore } from '../src/host/notification-store.js'
 import { createCardStore } from '../src/host/cards/store.js'
 import { createWorkerRegistry } from '../src/host/worker-registry.js'
@@ -909,7 +911,7 @@ test('超长产物按上限截断，协议字段与下一步不被挤掉', () =>
   const text = buildNotificationText({ name: '实现派工', childId: 'child-1' }, { ok: true, result: { output } })
   assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
   // 截断要说清原长与去哪儿读全文：静默截断会被当成 worker 只写了这么多。
-  assert.match(text, /已截断，原长 \d+ 字符/)
+  assert.match(text, /已截断，原长 \d+ 码元/)
   assert.match(text, /read_worker_session 回看该 worker 的回合/)
   // 摘要再长也不能把「下一步」挤掉：它决定 leader 收到之后做什么。
   assert.match(text, /状态：completed/)
@@ -922,7 +924,7 @@ test('失败原因超长时同样保留下一步与换模型提示', () => {
     { ok: false, error: new Error('错'.repeat(5000)) },
   )
   assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
-  assert.match(text, /已截断，原长 \d+ 字符/)
+  assert.match(text, /已截断，原长 \d+ 码元/)
   assert.match(text, /下一步：按 leader 协议判断验收、返工或派新工。/)
   assert.match(text, /list_worker_models/)
   assert.match(text, /message_worker 重试/)
@@ -931,23 +933,74 @@ test('失败原因超长时同样保留下一步与换模型提示', () => {
 test('回报气泡超长时标注原长并指向回看入口', () => {
   const report = buildWorkerReport({ ok: true, result: { output: [{ type: 'text', text: '乙'.repeat(5000) }] } })
   assert.ok(report.length <= 4000, `气泡正文长度 ${report.length} 超出上限`)
-  assert.match(report, /已截断，原长 5000 字符/)
+  assert.match(report, /已截断，原长 5000 码元/)
   assert.match(report, /read_worker_session/)
 })
 
-test('worker 名长到固定段自己超限时仍守住 4000 上限', () => {
+test('worker 名超长时压名字，协议字段与下一步不被挤掉', () => {
   const text = buildNotificationText(
     { name: '名'.repeat(5000), childId: 'child-1' },
     { ok: true, result: { output: [{ type: 'text', text: '完成' }] } },
   )
   assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
-  assert.match(text, /已截断/)
+  assert.match(text, /状态：completed/)
+  assert.match(text, /子会话：child-1/)
+  assert.match(text, /下一步：按 leader 协议判断验收、返工或派新工。/)
+  assert.doesNotMatch(text, /名{200}/)
+})
+
+test('长名 + 失败 + model：重投提示与协议字段仍在', () => {
+  const text = buildNotificationText(
+    { name: '名'.repeat(5000), childId: 'child-1', model: 'deepseek/reasoner' },
+    { ok: false, error: new Error('错'.repeat(5000)) },
+  )
+  assert.ok(text.length <= 4000, `正文长度 ${text.length} 超出上限`)
+  assert.match(text, /状态：failed/)
+  assert.match(text, /下一步：按 leader 协议判断验收、返工或派新工。/)
+  assert.match(text, /list_worker_models/)
+  assert.match(text, /message_worker 重试/)
+  assert.match(text, /失败原因：错+/)
 })
 
 test('失败气泡超长时也标注原长，不把错误栈整段塞进界面', () => {
   const report = buildWorkerReport({ ok: false, error: new Error('错'.repeat(5000)) })
   assert.ok(report.length <= 4000)
-  assert.match(report, /已截断，原长 \d+ 字符/)
+  assert.match(report, /已截断，原长 \d+ 码元/)
+})
+
+test('失败原因超长时，通知里可见的那段在回看里是子串', () => {
+  const message = `错误：${'错'.repeat(5000)}`
+  const reason = { kind: 'error', error: { message } }
+  const notification = buildNotificationText(
+    { name: '实现派工', childId: 'child-1' },
+    { ok: false, error: new Error(describeTurnFailure(reason)) },
+  )
+  const start = notification.indexOf('失败原因：') + '失败原因：'.length
+  const end = notification.indexOf('…（已截断')
+  const visible = notification.slice(start, end)
+  assert.ok(visible.length > 3000, `通知里可见的失败原因只有 ${visible.length} 码元`)
+  assert.ok(visible.startsWith('错误：错'), '取失败原因前缀时定位错了')
+  const { turns } = foldTurns([
+    { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
+    { type: 'turn/end', seq: 1, time: 1, data: { turn: 1, reason } },
+  ])
+  const read = renderTranscript({ turns, sessionId: 'child-1', name: '实现派工', limit: 1 })
+  assert.ok(read.includes(visible), `回看里没有通知可见的 ${visible.length} 码元失败原因`)
+})
+
+test('完成通知的产物摘要也在回看里读得到', () => {
+  const output = [{ type: 'text', text: '产'.repeat(5000) }]
+  const notification = buildNotificationText({ name: '实现派工', childId: 'child-1' }, { ok: true, result: { output } })
+  const start = notification.indexOf('产物摘要：\n') + '产物摘要：\n'.length
+  const end = notification.indexOf('…（已截断')
+  const visible = notification.slice(start, end)
+  const { turns } = foldTurns([
+    { type: 'turn/start', seq: 0, time: 0, data: { turn: 1 } },
+    { type: 'assistant/message', seq: 1, time: 1, data: { message: { content: [{ type: 'text', text: '产'.repeat(5000) }] } } },
+    { type: 'turn/end', seq: 2, time: 2, data: { turn: 1, reason: { kind: 'completed' } } },
+  ])
+  const read = renderTranscript({ turns, sessionId: 'child-1', name: '实现派工', limit: 1 })
+  assert.ok(read.includes(visible), `回看里没有通知可见的 ${visible.length} 码元产物`)
 })
 
 test('父会话已销毁时通知留在队列等待补投', async () => {

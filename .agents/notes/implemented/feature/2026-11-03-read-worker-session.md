@@ -2,6 +2,8 @@
 
 Status: implemented
 
+> **已被 [worker 回报的截断标注与分页回看](2026-11-25-worker-report-truncation.md) 部分取代**：单条 2000、失败原因 200 与 `turns` 窗口语义已改为 4000 / 4000 / `offset` 翻页（翻页期间新增回合会重复）；身份判据、只读路径与回合折叠形状仍成立。
+
 ## Problem
 
 协调者此前只能拿到 worker 每轮结束的一条完成通知，要看过程只能 `message_worker` 追问——那会真的唤醒 worker 开新回合，消耗模型调用换取一段它自己的复述。`capability-gaps` 第 16 条曾认为读子会话无法零依赖复刻，但宿主 `sessionQuery.readSession(sessionId)` 在 rc.2 就是公开服务方法、实现内没有身份校验，官方实验工具加的唯一判据是「调用方与目标同 cwd」，而本仓 worker 的目录取自项目、与协调者必然同 cwd。

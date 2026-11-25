@@ -42,6 +42,7 @@ import { createUserMessage } from './message.js'
 import { AUTO_RESUME_LIMIT_DEFAULT } from '../shared/settings.js'
 import { messageText } from '../shared/message-text.js'
 import { clipText } from '../shared/truncate.js'
+import { describeTurnFailure } from '../shared/turn-failure.js'
 import { foldTurns, renderTranscript } from './worker-transcript.js'
 import { workerReportSource } from '../shared/worker-report.js'
 import { stallNoticeSummary, workerStallSource } from '../shared/worker-stall.js'
@@ -74,6 +75,28 @@ const NOTIFICATION_LIMIT = 4000
  * 调用，也不会把 worker 再推进一轮。
  */
 const REPORT_TRUNCATED_HINT = '；完整内容用 read_worker_session 回看该 worker 的回合，可按 turns/offset 翻页'
+
+/**
+ * 通知头部里的 worker 名上限。
+ *
+ * `name` 由 `spawn_worker` / `message_worker` 的调用方给，没有长度约束；整段拼完
+ * 再切会把「状态」「下一步」一起切掉，所以先把这一个无界字段压到小上限。
+ */
+const HEAD_NAME_LIMIT = 120
+
+/**
+ * 头部展示用的 worker 名：只压展示，`子会话` 等协议字段不动。
+ *
+ * @param {unknown} name - 登记表里的名字
+ * @returns {unknown} 不超过 {@link HEAD_NAME_LIMIT} 的名字
+ */
+function headName(name) {
+  if (typeof name !== 'string' || name.length <= HEAD_NAME_LIMIT) return name
+  // 切点落在代理对中间会留下半个字符，退一位再截。
+  const last = name.charCodeAt(HEAD_NAME_LIMIT - 1)
+  const end = last >= 0xd800 && last <= 0xdbff ? HEAD_NAME_LIMIT - 1 : HEAD_NAME_LIMIT
+  return `${name.slice(0, end)}…`
+}
 
 /**
  * worker 最近一次被使用的时刻。
@@ -146,12 +169,13 @@ export function buildNotificationText(record, outcome) {
   const status = outcome.ok ? outcome.result?.stopReason ?? 'completed' : 'failed'
   // 正文不带「谁在说话」的前缀：说话人由消息的 source 标记，客户端渲染成
   // 带头像与身份的气泡。前缀写进正文会同时污染模型读的事实与用户看到的界面。
+  const name = headName(record.name)
   const head = [
     record.unattributed === true
       ? record.claimed === true
-        ? `worker「${record.name}」有一轮执行失败；任务消息已被取走，但还没落成 user/message。`
-        : `worker「${record.name}」有一轮执行失败，且无法确认是否消费了你的任务。`
-      : `任务「${record.name}」已结束。`,
+        ? `worker「${name}」有一轮执行失败；任务消息已被取走，但还没落成 user/message。`
+        : `worker「${name}」有一轮执行失败，且无法确认是否消费了你的任务。`
+      : `任务「${name}」已结束。`,
     `子会话：${record.childId}`,
     `状态：${status}`,
   ]
@@ -191,9 +215,13 @@ function joinNotification(head, body, tail) {
   const tailText = tail.join('\n')
   // 两个换行也要计入：截断后的正文加上固定段不能超上限。
   const budget = NOTIFICATION_LIMIT - headText.length - tailText.length - 2
-  // 病态输入（worker 名长到固定段自己就超限）没有中段预算可用：退回整段硬截断，
-  // 至少守住上限，不让一条通知把 leader 的上下文吃穿。
-  if (budget < 1) return clipText(`${headText}\n${body}\n${tailText}`, NOTIFICATION_LIMIT, REPORT_TRUNCATED_HINT)
+  // 固定段自己就超限（名字已压到 120，剩下的只能是会话 id 之类异常长的字段）：
+  // 先保住尾部协议字段，再压头部，别把「下一步」和重投提示一起切掉。
+  if (budget < 1) {
+    const room = NOTIFICATION_LIMIT - tailText.length - 1
+    if (room < 1) return clipText(tailText, NOTIFICATION_LIMIT, REPORT_TRUNCATED_HINT)
+    return `${clipText(headText, room, REPORT_TRUNCATED_HINT)}\n${tailText}`
+  }
   return `${headText}\n${clipText(body, budget, REPORT_TRUNCATED_HINT)}\n${tailText}`
 }
 
@@ -1119,27 +1147,6 @@ export function createDispatcher({
       logger(`dsh-leader-agent: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
     }
     return record
-  }
-
-  /**
-   * 把宿主的轮次结束原因写成一句能读的失败原因。
-   *
-   * 失败时摘要用终态原因而不是产物：失败轮次里的 assistant 文本往往只写到一半，
-   * 拿它当摘要会让 leader 以为这一轮做了不少事。
-   *
-   * @param {object} reason - `turn/end` 的 `reason`
-   * @returns {string} 失败原因
-   */
-  function describeTurnFailure(reason) {
-    switch (reason?.kind) {
-      // `aborted.reason` 是对象（`{ kind: 'user' | 'parent' | 'hook' | … }`），
-      // 直接插值会渲染成 `[object Object]`——给 leader 看的就是这句原因。
-      case 'aborted': return `被取消：${reason.reason?.kind ?? '未说明原因'}`
-      case 'blocked': return '被阻断：这一轮被宿主拦下，没有开始'
-      case 'max-tokens': return '输出达到 token 上限，这一轮没有正常收尾'
-      case 'error': return reason.error?.message ?? '未知错误'
-      default: return `这一轮没有正常结束（${reason?.kind ?? '未知原因'}）`
-    }
   }
 
   /**

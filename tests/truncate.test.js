@@ -43,13 +43,13 @@ test('上限为 0 或负数时返回空串，不越界', () => {
 test('超限时截断并标注原长，标记计入上限', () => {
   const text = clipText('甲'.repeat(200), 120, '；完整内容用 read_worker_session 回看')
   assert.ok(text.length <= 120, `正文长度 ${text.length} 超过上限`)
-  assert.match(text, /^甲+…（已截断，原长 200 字符；完整内容用 read_worker_session 回看）$/)
+  assert.match(text, /^甲+…（已截断，原长 200 码元；完整内容用 read_worker_session 回看）$/)
 })
 
 test('不传提示时标记只给原长', () => {
   const text = clipText('x'.repeat(100), 60)
   assert.ok(text.length <= 60)
-  assert.match(text, /…（已截断，原长 100 字符）$/)
+  assert.match(text, /…（已截断，原长 100 码元）$/)
 })
 
 test('上限装不下标记时退化成省略号，仍不超限', () => {
@@ -69,10 +69,28 @@ test('按码点边界退让：切点落在代理对中间时不劈开 emoji', ()
 })
 
 test('组合字符被切点分开时只丢重音，不出乱码', () => {
-  const text = `${'a'.repeat(50)}e\u0301`
-  for (let limit = 15; limit <= 30; limit += 1) {
-    const clipped = clipText(text, limit)
-    assert.doesNotMatch(clipped, /\uFFFD/)
-    assert.equal(loneSurrogateAt(clipped), undefined)
-  }
+  // 切点正好落在 e 与组合标记 U+0301 之间：退让只保证码点完整，组合标记会丢。
+  const text = `${'a'.repeat(50)}e\u0301${'b'.repeat(50)}`
+  const marker = `…（已截断，原长 ${text.length} 码元）`
+  const clipped = clipText(text, 51 + marker.length)
+  assert.equal(clipped, `${'a'.repeat(50)}e${marker}`)
+  assert.doesNotMatch(clipped, /\uFFFD/)
+  assert.equal(loneSurrogateAt(clipped), undefined)
+})
+
+test('零宽字符原样保留，不产生乱码', () => {
+  const text = `a\u200b\u200d${'b'.repeat(20)}`
+  const clipped = clipText(text, 10)
+  assert.ok(clipped.length <= 10)
+  assert.doesNotMatch(clipped, /\uFFFD/)
+  assert.equal(loneSurrogateAt(clipped), undefined)
+})
+
+test('只保证码点完整，不切字素簇：ZWJ 家族会被切开（已声明边界）', () => {
+  // 👨‍👩‍👧‍👦 = 4 个 emoji + 3 个 ZWJ，共 11 个码元；切点落在第一个 emoji 之后。
+  const family = '👨‍👩‍👧‍👦'
+  const clipped = clipText(`${'a'.repeat(10)}${family.repeat(4)}`, 13)
+  assert.equal(clipped, `aaaaaaaaaa👨…`)
+  assert.equal(loneSurrogateAt(clipped), undefined)
+  assert.doesNotMatch(clipped, /\uFFFD/)
 })
