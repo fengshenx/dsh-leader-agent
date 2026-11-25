@@ -144,7 +144,7 @@ test('自动续行输入框自带焦点环，单位「次」在框外', () => {
   const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input:focus-visible')
   assert.equal(
     focus?.declarations.outline,
-    'var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary)',
+    'var(--dsw-focus-ring-width, 2px) auto var(--dsw-alias-state-business-primary)',
   )
   assert.equal(
     rules.some((rule) => rule.selector === '.dsh-leader-agent-settings-control:focus-within'),

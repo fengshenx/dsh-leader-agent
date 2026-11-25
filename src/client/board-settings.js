@@ -47,8 +47,8 @@ const SECTION_ORDER = 90
  * 「哪些键被引用」，拼出来的键会被判成没人用。
  */
 const MODE_KEYS = Object.freeze({
-  [BOARD_MODE_CINEMA]: 'board.mode.cinema.title',
-  [BOARD_MODE_WORK]: 'board.mode.work.title',
+  [BOARD_MODE_CINEMA]: { title: 'board.mode.cinema.title', desc: 'board.mode.cinema.desc' },
+  [BOARD_MODE_WORK]: { title: 'board.mode.work.title', desc: 'board.mode.work.desc' },
 })
 
 /**
@@ -124,7 +124,8 @@ function ModeOption({ value, mode, onChoose, disabled, t }) {
       { className: 'dsh-leader-agent-settings-option-icon' },
       createElement(ModeIcon, { cinema: value === BOARD_MODE_CINEMA }),
     ),
-    createElement('span', { className: 'dsh-leader-agent-settings-option-label' }, t(MODE_KEYS[value])),
+    createElement('span', { className: 'dsh-leader-agent-settings-option-label' }, t(MODE_KEYS[value].title)),
+    createElement('span', { className: 'dsh-leader-agent-settings-option-desc' }, t(MODE_KEYS[value].desc)),
   )
 }
 
