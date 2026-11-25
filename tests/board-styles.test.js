@@ -143,15 +143,11 @@ test('自动续行输入框自带焦点环，单位「次」在框外', () => {
   assert.equal(input?.declarations['border-radius'], 'var(--dsw-radius-md)')
   assert.equal(input?.declarations.outline, 'none', '输入框要压掉浏览器默认 outline')
   const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input:focus-visible')
-  assert.equal(
-    focus?.declarations['border-color'],
-    'var(--dsw-alias-state-business-primary)',
-    '焦点用 1px 边框',
-  )
+  assert.equal(focus?.declarations['border-color'], undefined, '焦点只靠 1px 光晕，不再加边框')
   assert.equal(
     focus?.declarations['box-shadow'],
-    '0 0 0 4px color-mix(in srgb, var(--dsw-alias-state-business-primary) 24%, transparent)',
-    '焦点用宿主同款蓝色柔光，不画粗 outline',
+    '0 0 0 1px var(--dsw-alias-state-business-primary)',
+    '焦点用 1px 蓝色柔光，不画粗 outline',
   )
   assert.equal(focus?.declarations.outline, undefined, '输入框不应再有粗 outline')
   assert.equal(
