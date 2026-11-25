@@ -140,18 +140,19 @@ test('自动续行输入框自带焦点环，单位「次」在框外', () => {
   assert.equal(control?.declarations.background, undefined, '控件容器不应有底色，否则「次」会被包进输入框')
   const input = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input')
   assert.equal(input?.declarations.background, 'var(--dsw-alias-interactive-bg-hover)')
+  assert.equal(input?.declarations.border, '0.5px solid var(--dsw-alias-border-l4)', '边框粗细和颜色取宿主搜索框的 0.5px 黑灰线')
   assert.equal(input?.declarations['border-radius'], 'var(--dsw-radius-md)')
   assert.equal(input?.declarations.outline, 'none', '输入框要压掉浏览器默认 outline')
   const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-control input.dsh-leader-agent-settings-input:focus-visible')
   assert.equal(
     focus?.declarations['border-color'],
-    'var(--dsw-alias-label-secondary)',
-    '焦点边框是宿主黑灰色',
+    'var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))',
+    '焦点边框颜色取宿主 focus-ring-color',
   )
   assert.equal(
     focus?.declarations['box-shadow'],
-    '0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent)',
-    '焦点用蓝色柔光',
+    '0 0 0 2px color-mix(in srgb, var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)) 18%, transparent)',
+    '焦点柔光取宿主 focus-ring-color',
   )
   assert.equal(focus?.declarations.outline, 'none', '焦点规则要压掉浏览器默认 outline')
   assert.equal(
