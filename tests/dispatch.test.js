@@ -2573,6 +2573,181 @@ test('名册已归档的记录不占名额', async () => {
   assert.equal(fixture.spawned.length, 1)
 })
 
+test('listWorkers 列出本项目未归档 worker 的模型与 effort，最近使用在前', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({
+    childId: 'child-a',
+    parentSessionId: 'parent-1',
+    name: 'dev-a',
+    agentOptions: { provider: 'deepseek', model: 'chat', reasoningEffort: 'high' },
+    modelSource: 'slot',
+    lastUsedAt: 100,
+  })
+  await fixture.workers.register({
+    childId: 'child-b',
+    parentSessionId: 'parent-1',
+    name: 'dev-b',
+    agentOptions: { provider: 'qwen', model: 'coder' },
+    modelSource: 'spawn',
+    lastUsedAt: 300,
+  })
+  await fixture.workers.register({ childId: 'child-other', parentSessionId: 'parent-2', name: '别的 leader' })
+  await fixture.workers.register({
+    childId: 'child-archived',
+    parentSessionId: 'parent-1',
+    name: '已归档',
+    lastUsedAt: 400,
+  })
+  await fixture.workers.register({ childId: 'child-old', parentSessionId: 'parent-1', name: '旧工', lastUsedAt: 50 })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => ['child-archived'],
+  })
+
+  const roster = await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) })
+  assert.equal(roster.archivedKnown, true)
+  assert.deepEqual(roster.workers.map((worker) => worker.sessionId), ['child-b', 'child-a', 'child-old'])
+  assert.deepEqual(roster.workers[0], {
+    sessionId: 'child-b',
+    name: 'dev-b',
+    model: 'qwen/coder',
+    modelSource: 'spawn',
+    running: false,
+    cards: [],
+    lastUsedAt: 300,
+  })
+  assert.equal(roster.workers[1].effort, 'high')
+  assert.equal(roster.workers[1].modelSource, 'slot')
+  // 旧登记没有 agentOptions：模型是「未记录」，不能拿部署默认冒充。
+  assert.equal(roster.workers[2].model, undefined)
+  assert.equal(roster.workers[2].modelSource, undefined)
+})
+
+test('listWorkers 优先读活 agent 的当前模型，并标出在跑', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => [],
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    name: 'dev-live',
+    model: 'deepseek/chat',
+    initialMessage: '干活',
+    signal: new AbortController().signal,
+  })
+  // 用户在 worker 会话里换了模型：活 agent 的 route 与登记表的派工 route 不一致。
+  fixture.agents.get(record.childId).options = { provider: 'qwen', model: 'coder', reasoningEffort: 'low' }
+
+  const roster = await dispatcher.listWorkers({ parent })
+  assert.equal(roster.workers[0].model, 'qwen/coder')
+  assert.equal(roster.workers[0].effort, 'low')
+  assert.equal(roster.workers[0].modelSource, 'live')
+  assert.equal(roster.workers[0].running, true)
+  assert.equal(typeof roster.workers[0].runningSince, 'number')
+})
+
+test('listWorkers 带上挂着的未完成卡，并支持逐会话读取回退', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-bound', parentSessionId: 'parent-1', name: 'dev-bound' })
+  const cards = createCardStore({ home })
+  const card = await cards.create({ title: '看板上的活', slots: { dev: { sessionId: 'child-bound' } } })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => [],
+    // 只有逐会话读取的旧提供方：名册要能退回这条路。
+    listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
+  })
+
+  const roster = await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) })
+  assert.equal(roster.workers[0].cards.length, 1)
+  assert.equal(roster.workers[0].cards[0].cardId, card.id)
+  assert.equal(roster.workers[0].cards[0].title, '看板上的活')
+  assert.equal(roster.workers[0].cards[0].slot, 'dev')
+  assert.equal(typeof roster.workers[0].cards[0].number, 'number')
+})
+
+test('listWorkers 读不到归档集合时列出全部登记并标明 archivedKnown=false', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({ childId: 'child-a', parentSessionId: 'parent-1', name: 'dev-a' })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+
+  const roster = await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) })
+  assert.equal(roster.archivedKnown, false)
+  assert.deepEqual(roster.workers.map((worker) => worker.sessionId), ['child-a'])
+})
+
+test('listWorkers 在没派过工的项目里返回空名册', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => [],
+  })
+  assert.deepEqual(
+    await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) }),
+    { workers: [], archivedKnown: true },
+  )
+})
+
+test('listWorkers 拒绝非 leader 与索引未就绪，避免把别人的 worker 列出去', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const parent = createParent('parent-1', fixture.delivered)
+  const notLeader = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => [],
+    leaderIndex: {
+      async awaitIndex() {
+        return true
+      },
+      isLeaderSession: () => false,
+    },
+  })
+  await assert.rejects(
+    () => notLeader.listWorkers({ parent }),
+    /只有项目 leader 能列本项目的 worker/,
+  )
+
+  const pending = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => [],
+    leaderIndex: {
+      async awaitIndex() {
+        return false
+      },
+      isLeaderSession: () => true,
+    },
+  })
+  await assert.rejects(
+    () => pending.listWorkers({ parent }),
+    /项目注册表尚未读出/,
+  )
+})
+
 test('名册上限按项目算：别的项目攒满不占本项目名额', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')

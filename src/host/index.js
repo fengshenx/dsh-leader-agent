@@ -1,9 +1,10 @@
 /**
  * dsh-leader-agent 的宿主侧插件。
  *
- * 贡献九件事：bundle 内置 skill 的发现（协议层）、后台派工工具、worker 会话的
- * 创建与续聊（常驻根会话 + 登记表落盘 + `message_worker` 工具）、按回合回看 worker
- * 会话（`read_worker_session`）、轮次结束时由会话事件自动结算回报并唤醒 leader、
+ * 贡献这些能力：bundle 内置 skill 的发现（协议层）、后台派工工具、worker 会话的
+ * 创建与续聊（常驻根会话 + 登记表落盘 + `message_worker` 工具）、列 worker 名册
+ * （`list_workers`）、按回合回看 worker 会话（`read_worker_session`）、轮次结束时由
+ * 会话事件自动结算回报并唤醒 leader、
  * 任务看板卡片存储与卡片工具、项目注册表、项目数据的 Typert 远程通道、角色槽位
  * 到系统提示词的注入，以及项目 leader 手册（`LEADER.md`）的注入。
  *
@@ -19,6 +20,7 @@ import { createSkillProvider } from './skills.js'
 import { createSpawnWorkerTool } from './tools/spawn-worker.js'
 import { createMessageWorkerTool } from './tools/message-worker.js'
 import { createReadWorkerTool } from './tools/read-worker.js'
+import { createListWorkersTool } from './tools/list-workers.js'
 import { createListWorkerModelsTool } from './tools/list-worker-models.js'
 import { createCreateCardTool, createUpdateCardTool, createListCardsTool, createReadCardTool } from './tools/cards.js'
 import { createNotificationStore } from './notification-store.js'
@@ -108,6 +110,7 @@ export function createBundleTools({
     createSpawnWorkerTool({ dispatcher }),
     createMessageWorkerTool({ dispatcher }),
     createReadWorkerTool({ dispatcher }),
+    createListWorkersTool({ dispatcher }),
     createListWorkerModelsTool({ ctx }),
     createCreateCardTool({
       store: cards,

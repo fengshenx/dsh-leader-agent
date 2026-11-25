@@ -10,6 +10,8 @@ README 给最短路径，[上手](getting-started.md) 把整条路径串一遍�
 
 worker 的模型按 **`spawn_worker` 参数 → `SLOTS.md` 的槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸模型 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；显式换模型却没给 effort 时用新模型默认。派工前可先用 `list_worker_models` 查 route（provider → 模型 → effort；查 effort 必须同时给 provider，只给 model 会报错）。指定模型/effort 时，在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。只给 effort 但没有任何可用模型 route 会直接报错。
 
+`list_workers` 盘点本项目未归档的 worker：会话 id、名字、模型与 effort、是否在跑、挂着的未完成卡，按最近使用排序。模型优先读活会话的当前选择，进程重启后回落到派工登记表的 route；旧登记没有模型记录时标「未记录」。只读、不唤醒 worker、不产生模型调用。
+
 worker 是**常驻根会话**——它在左栏项目树下有自己的会话行，你能像开别的会话一样打开它、直接输入新指令，也能在 `message_worker` 里给它续聊。worker 那一轮结束时 leader 随即被唤醒，收到一条完成通知——回报由机制侧从会话事件结算，worker 不需要调用任何工具。
 
 通知在会话里渲染成 **worker 的发言**：左侧气泡，气泡上方是头像与 worker 名字；头像以内联 SVG 渲染，鼠标悬停时会眨一次眼（`prefers-reduced-motion` 下不动），正文里没有「谁在说话」的前缀——和用户自己的输入（右侧气泡）区分得开。气泡里只显示 worker 最后一次回报的内容（产物摘要或失败原因），协议字段（会话、状态、下一步）留给模型读；气泡下方是时间与复制按钮，点 worker 名字可跳到它的会话。通知排进 inbox 的 **next-turn** 边界（下一个 turn 的一次输入），且**父会话正忙时先不投**——它留在落盘队列里，等父会话空闲后再投，因此不会挂在宿主输入框上方的「消息队列」面板上。

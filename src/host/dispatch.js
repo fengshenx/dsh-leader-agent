@@ -55,7 +55,7 @@ import {
 } from './worker-stall.js'
 import { readWorkerTaskSource } from '../shared/worker-task.js'
 import { loadSlotTemplates } from './slots/slot-templates.js'
-import { normalizeModelSelection, resolveWorkerModel } from './worker-model.js'
+import { liveModelSelection, normalizeModelSelection, resolveWorkerModel } from './worker-model.js'
 
 /**
  * 每个项目未归档 worker 的数量上限。
@@ -666,6 +666,23 @@ export function createDispatcher({
   }
 
   /**
+   * 取「按会话查卡绑定」的读函数。
+   *
+   * 优先一次读盘取全量再分组：逐 worker 读 `cards.json` 会让一次列表付
+   * O(N × 文件体积)。两个提供方都没有时返回 undefined，调用方不做卡分类。
+   *
+   * @returns {Promise<((sessionId: string) => Promise<object[]>) | undefined>} 读函数
+   */
+  async function cardBindingsResolver() {
+    if (typeof cardBindingsBySession === 'function') {
+      const all = await cardBindingsBySession()
+      return async (sessionId) => all.get(sessionId) ?? []
+    }
+    if (typeof listCardBindings === 'function') return (sessionId) => listCardBindings(sessionId)
+    return undefined
+  }
+
+  /**
    * 未归档 worker 的名册概况，只算调用方会话所属项目。
    *
    * @param {string} scopeSessionId - 调用方会话 id（派工的 leader）
@@ -679,13 +696,7 @@ export function createDispatcher({
       && (leaders === undefined || leaders.has(item.parentSessionId)))
     // 绑定一次读盘取全量再分组：逐 worker 读 `cards.json` 会让一次派工付 O(N × 文件体积)。
     // 两个提供方都没有时不做分类，与投递门禁的降级口径一致。
-    let bindingsFor
-    if (typeof cardBindingsBySession === 'function') {
-      const all = await cardBindingsBySession()
-      bindingsFor = (sessionId) => all.get(sessionId) ?? []
-    } else if (typeof listCardBindings === 'function') {
-      bindingsFor = (sessionId) => listCardBindings(sessionId)
-    }
+    const bindingsFor = await cardBindingsResolver()
     /** 空闲但挂着未完成卡的 worker：不能接新活，关闭卡后槽位才会释放。 */
     const bound = []
     const idle = []
@@ -717,6 +728,73 @@ export function createDispatcher({
       return best
     }, undefined)
     return { total: active.length, idle, bound, newest }
+  }
+
+  /**
+   * 列本项目 leader 派出的、未归档的 worker，附模型、状态与挂卡。
+   *
+   * 模型真源分两层：会话还在内存时读活 agent 的当前选择（用户可能在模型选择器
+   * 里换过），否则用登记表里建会话时落盘的 `agentOptions`。后者也是冷恢复会
+   * 还原的 route，所以进程重启后两者一致。
+   *
+   * 归属按 `parentSessionId` 精确匹配，与 `message_worker` 的投递校验同一口径：
+   * 列出来的每条都能直接续聊，不会出现「看得见、投不进」。
+   *
+   * @param {object} options - 列名参数
+   * @param {object} options.parent - 调用方 leader agent
+   * @returns {Promise<{ workers: object[], archivedKnown: boolean }>} 名册（最近使用在前）
+   */
+  async function listWorkers({ parent }) {
+    await assertLeader(parent, {
+      pending: 'list_workers: 项目注册表尚未读出，无法确认 leader 身份，暂不能列 worker',
+      refused: 'list_workers: 只有项目 leader 能列本项目的 worker——这个会话已不是任何项目的 leader',
+    })
+    const archivedKnown = typeof archivedSessionIds === 'function'
+    const archived = archivedKnown ? new Set(archivedSessionIds()) : undefined
+    const records = (await workers.list()).filter((record) => record.parentSessionId === parent.id
+      && (archived === undefined || !archived.has(record.childId)))
+    const bindingsFor = await cardBindingsResolver()
+    const liveAgents = ctx.get('agents')
+    const rows = []
+    for (const record of records) {
+      const agent = workerSessions.get(record.childId)?.agent
+        ?? (typeof liveAgents?.get === 'function' ? liveAgents.get(record.childId) : undefined)
+      const recorded = normalizeModelSelection(record.agentOptions)
+      const liveSelection = liveModelSelection(agent)
+      const selection = liveSelection ?? recorded
+      // 活 agent 换过模型时以它为准；来源标成「当前会话」而不是派工来源，
+      // 否则列表会把一个后来改过的 route 说成是派工时选的。
+      const moved = liveSelection !== undefined && recorded !== undefined
+        && (liveSelection.provider !== recorded.provider
+          || liveSelection.model !== recorded.model
+          || liveSelection.reasoningEffort !== recorded.reasoningEffort)
+      const cards = bindingsFor === undefined
+        ? []
+        : (await bindingsFor(record.childId)).filter((binding) => binding.status === 'active')
+      const run = inflight.get(record.childId)
+      const running = run !== undefined && run.summary === undefined
+      rows.push({
+        sessionId: record.childId,
+        name: typeof record.name === 'string' && record.name !== '' ? record.name : record.childId,
+        ...selection === undefined ? {} : {
+          model: `${selection.provider}/${selection.model}`,
+          ...selection.reasoningEffort === undefined ? {} : { effort: selection.reasoningEffort },
+        },
+        ...moved ? { modelSource: 'live' } : typeof record.modelSource === 'string' ? { modelSource: record.modelSource } : {},
+        running,
+        ...running ? { runningSince: run.startedAt } : {},
+        cards: cards.map((card) => ({
+          number: card.number,
+          title: card.title,
+          slot: card.slot,
+          cardId: card.cardId,
+        })),
+        lastUsedAt: lastUsedAtOf(record),
+      })
+    }
+    rows.sort((left, right) => right.lastUsedAt - left.lastUsedAt
+      || left.sessionId.localeCompare(right.sessionId))
+    return { workers: rows, archivedKnown }
   }
 
   /**
@@ -1509,6 +1587,7 @@ export function createDispatcher({
     dispatch,
     message,
     transcript,
+    listWorkers,
 
     /**
      * 立刻扫一遍巡查（不等下一拍）。

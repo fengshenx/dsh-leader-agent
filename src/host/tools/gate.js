@@ -18,10 +18,11 @@
  * 结算。
  */
 
-/** 只有 leader 能用的工具：worker 编排、会话回看、全库卡片查询与模型目录。 */
+/** 只有 leader 能用的工具：worker 编排、名册与会话回看、全库卡片查询与模型目录。 */
 export const LEADER_ONLY_TOOLS = Object.freeze([
   'list_cards',
   'list_worker_models',
+  'list_workers',
   'spawn_worker',
   'message_worker',
   'read_worker_session',
