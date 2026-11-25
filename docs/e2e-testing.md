@@ -110,7 +110,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 ### 负载卫生：全量 e2e 独占机器
 
-全量 e2e 会同时起宿主、chromium 与本地 mock，**不要**和 `npm run check`、别的 worker 的 e2e 或 `e2e:report` 并发跑；并发会把 15 秒等待变成环境噪声，把「等待超时」误读成回归。**同一台机器同一时刻只允许一个 e2e 车道**；多个 worker 需要推进时，用 `--files` 拆成互不重叠的场景集合后**错峰**执行（同一时刻仍只跑一个），或排队等前一个结束。2026-11-20 两个 worker 并发跑 e2e 时，另一个 i18n 验证的场景在 15 秒等待上反复超时，就是这条规则的现场依据。
+全量 e2e 会同时起宿主、chromium 与本地 mock，**不要**和 `npm run check`、别的 worker 的 e2e 或 `e2e:report` 并发跑；并发会把 15 秒等待变成环境噪声，把「等待超时」误读成回归。**同一台机器同一时刻只允许一个 e2e 车道**；多个 worker 需要推进时，用 `--files` 拆成互不重叠的场景集合后**错峰**执行（同一时刻仍只跑一个），或排队等前一个结束。2026-11-20 两个 worker 并发跑 e2e，另一条 i18n 场景在 15 秒等待上反复超时，就是现场依据。
 
 开跑前先 `uptime`：1 分钟 load 已经高于核数时先停，等负载降下来；本机 load ~54 时实测 `guide-card`、`board-done-paging`、`avatar` 都会 15 秒超时，空载单跑才恢复。
 
@@ -121,7 +121,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 1. 记下失败文件、退出码、`TimeoutError` 的 locator 与目标/页面读数；保留完整输出，别用 `grep` / `head` 过滤。
 2. **先看截图**：`.dev/e2e-artifacts/<场景>-<pid>/final.png`（关闭前最后一帧）与场景自己的步骤图，确认界面到底停在哪。
 3. 再看断言与 `problems`（pageerror / console.error）、`instance.logs`、`mock.requests`；按[技能的失败诊断](../.agents/skills/e2e-scenarios/SKILL.md#失败诊断)区分「数据没到」与「渲染错了」。
-4. 空载下 `npm run e2e:one <场景>`。**单跑通过不等于修好**：必须把场景、症状、单跑结果和日期登记到下面的已知 flake 表，并追根因；没有根因就不能把「调大等待」当成修复。等待预算只在确认是慢机冷启动时按「超时口径」整体放大，不能按单个失败点加秒数。
+4. 空载下 `npm run e2e:one <场景>`。**单跑通过不等于修好**：必须把场景、症状、单跑结果和日期登记到下面的已知 flake 表，并追根因；没有根因就不能把「调大等待」当成修复。等待预算见[超时口径](#超时口径)。
 
 ### 已知 flake
 
@@ -130,6 +130,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 | `guide-card` | 项目行选中后 15 秒内引导卡未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/guide-card.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-20 |
 | `board-done-paging` | 已完成区折叠开关/计数 15 秒内未出现；高 load 时复现 | 空载单跑通过；看 `.dev/e2e-artifacts/board-done-paging-<pid>/` | 否（登记，根因未定位） | 2026-11-20 |
 | `board-cinema` | 曾在全量 `e2e:report` 下失败（失败断言未留存）；空载单跑通过 | 空载 `npm run e2e:one tests/e2e/board-cinema.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-24 |
+| `board-cinema` | `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败）；全量/单跑均偶发 | 重跑即过、失败点在看板挂载前、无 pageerror | 否（登记，根因未定位） | 2026-11-25 |
 | `avatar` | worker 回报气泡 15 秒内未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/avatar.e2e.js` 通过 | 否（登记，根因未定位） | 2026-11-20 |
 | `session-tabs`（多会话） | `instance.logs` 出现 `sessions.retain: unknown session`，切换/清理后常伴随等待失败 | 空载单跑通过且日志不再复现才算环境 flake；日志仍在则不是「已修」 | 否（宿主生命周期，待确认） | 2026-11-20 |
 
