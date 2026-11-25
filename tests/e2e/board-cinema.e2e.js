@@ -1,11 +1,10 @@
 /**
- * 看板线路图（炫酷模式）：默认进 cinema、rail 的行/槽位由卡片数据驱动、切到
- * 工作模式后 rail 消失。
+ * 看板两种模式：默认工作列表，设置页切到炫酷后 rail 的行/槽位由卡片数据驱动。
  *
  * 线路图的几何由渲染后实测决定，单测只能钉住路径规划，钉不住「DOM 里真的画了
  * 几条线、几个执行者节点」。这条场景用真实宿主 + 种子卡片把数据驱动的结论
  * 落到可观测量上：行数 = 进行中的卡、槽位数 = 已绑定的会话、路径数 = 主干 +
- * tick + 支线；再经设置页切到工作模式，验证同一块看板换模式后 rail 不渲染。
+ * tick + 支线；同时钉住设置页的入口名、块标题、默认选中项与炫酷说明文案。
  *
  * 断言只读插件自己的 DOM（`data-mode`、`data-rail-*`、class、aria-label）与
  * localStorage，不读宿主内部状态。
@@ -17,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
-import { BOARD_DEFAULT_KEY, BOARD_MODE_KEY, BOARD_MODE_WORK } from '../../src/client/board-mode.js'
+import { BOARD_MODE_KEY } from '../../src/client/board-mode.js'
 import { readSessionLogs } from './session-logs.mjs'
 import { startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
@@ -247,15 +246,15 @@ async function openBoard(page, session) {
   return route
 }
 
-/** 工作模式的可观测事实：模式、rail/槽位与存储。 */
-async function assertWorkBoard(page) {
-  assert.equal(await page.locator(`${BOARD}[data-mode="work"]`).count(), 1, '看板应处于工作模式')
-  assert.equal(await page.locator(RAIL).count(), 0, '工作模式不该渲染 rail')
-  assert.equal(await page.locator(RAIL_SLOT).count(), 0, '工作模式不该有 rail 槽位')
-  assert.equal(await page.locator(CARD_SLOT).count(), 3, '工作模式应把会话入口放回卡内')
+/** 炫酷模式的可观测事实：模式、rail/槽位与存储。 */
+async function assertCinemaBoard(page) {
+  assert.equal(await page.locator(`${BOARD}[data-mode="cinema"]`).count(), 1, '看板应处于炫酷模式')
+  assert.equal(await page.locator(RAIL).count(), 1, '炫酷模式应渲染 rail')
+  assert.equal(await page.locator(RAIL_SLOT).count(), 3, 'rail 槽位数应等于已绑定的会话')
+  assert.equal(await page.locator(CARD_SLOT).count(), 0, '炫酷模式不该把会话入口留在卡内')
   assert.equal(
     await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
-    BOARD_MODE_WORK,
+    'cinema',
     '显式选择应留在 localStorage',
   )
 }
@@ -269,7 +268,7 @@ async function boardFacts(page) {
   }
 }
 
-test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消失', { timeout: scenarioTimeout() }, async (t) => {
+test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reload 保留显式选择', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-cinema-'))
   const mock = await startMockProvider({
     scripts: {
@@ -337,29 +336,63 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
 
   const second = await startInstanceIn({ root, baseUrl: mock.url })
   instance = second
-  // 不钉模式：这条场景要验证「新装默认炫酷」本身。bootstrap 的空数据实例已经
-  // 写下 fresh 标记，第二次启动按新装默认走 cinema。
+  // 不钉模式：验证默认就是工作列表。
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const page = await context.newPage()
   watchProblems(page, problems)
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
 
   await openBoard(page, session)
-  await waitForLocator(page.locator(`${BOARD}[data-mode="cinema"]`), {
-    description: '看板默认进入炫酷模式',
+  await waitForLocator(page.locator(`${BOARD}[data-mode="work"]`), {
+    description: '看板默认进入工作模式',
     timeoutMs: 15_000,
   })
-  // 偏好没有任何显式依据，宿主判定的默认值缓存为 cinema——两者合起来才是「新装
-  // 默认炫酷」，只看 data-mode 分不出「用户选的」还是「默认来的」。
-  const stored = await waitFor({
-    description: '宿主默认模式缓存为 cinema',
-    check: () => page.evaluate(({ defaultKey, modeKey }) => {
-      if (localStorage.getItem(modeKey) !== null) return null
-      return localStorage.getItem(defaultKey) === 'cinema' ? { mode: null, fallback: 'cinema' } : null
-    }, { defaultKey: BOARD_DEFAULT_KEY, modeKey: BOARD_MODE_KEY }),
-    timeoutMs: 15_000,
+  // 没有显式选择：默认模式不冒充用户选择，不写 mode key。
+  assert.equal(
+    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
+    null,
+    '默认模式不该写显式选择',
+  )
+  assert.equal(await page.locator(RAIL).count(), 0, '工作模式不该渲染 rail')
+  assert.equal(await page.locator(RAIL_SLOT).count(), 0, '工作模式不该有 rail 槽位')
+  assert.equal(await page.locator(CARD_SLOT).count(), 3, '工作模式应把会话入口放在卡内')
+
+  // 设置页：入口叫 Leader Agent，块标题仍是任务看板，两个模式都在这一块里。
+  const dialog = await openSettings(page)
+  await dialog.getByRole('button', { name: 'Leader Agent', exact: true }).click()
+  const blockTitle = dialog.locator('.dsh-leader-agent-settings-title')
+  await waitForLocator(blockTitle, { description: '任务看板块标题', timeoutMs: 10_000 })
+  assert.equal((await blockTitle.innerText()).trim(), '任务看板', '块标题应为任务看板')
+  const workOption = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '工作模式' }).first()
+  const cinemaOption = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '炫酷模式' }).first()
+  await waitForLocator(cinemaOption, { description: '设置页里的炫酷模式选项', timeoutMs: 10_000 })
+  assert.equal(await workOption.getAttribute('aria-checked'), 'true', '默认应选中工作模式')
+  assert.match(await cinemaOption.innerText(), /纯演示，社交媒体传播用/, '炫酷模式说明应写明纯演示用途')
+
+  // 设置页预览圆点取主题强调色（浅色宿主的 accent 是蓝的，固定琥珀会误导）。
+  const colors = await dialog.evaluate((node) => {
+    const dot = node.querySelector('.dsh-leader-agent-settings-preview-dot')
+    const radio = node.querySelector('.dsh-leader-agent-settings-option-selected .dsh-leader-agent-settings-radio')
+    return {
+      dot: dot === null ? null : getComputedStyle(dot).fill,
+      radio: radio === null ? null : getComputedStyle(radio).borderTopColor,
+    }
   })
-  assert.deepEqual(stored, { mode: null, fallback: 'cinema' })
+  assert.notEqual(colors.dot, null, '缺设置页预览圆点')
+  assert.equal(colors.dot, colors.radio, `预览圆点应取主题强调色，实际 fill=${colors.dot} / accent=${colors.radio}`)
+
+  // 切炫酷：看板同运行时即时换模式，rail 由卡片数据驱动。
+  await cinemaOption.click()
+  await waitFor({
+    description: '看板切到炫酷模式',
+    check: async () => (await page.locator(`${BOARD}[data-mode="cinema"]`).count()) === 1,
+    timeoutMs: 10_000,
+  })
+  assert.equal(
+    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
+    'cinema',
+    '显式选择应留在 localStorage',
+  )
 
   // 行数 = 进行中的卡；rail 槽位数 = 已绑定的会话；完成卡不进拓扑。
   await waitFor({
@@ -376,6 +409,7 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
   assert.deepEqual(rows.map((row) => row.slots).sort(), [1, 2], 'rail 槽位应只数已绑定的会话')
   assert.equal(await page.locator(RAIL_SLOT).count(), 3)
   assert.equal(await page.locator(`${RAIL_SLOT}[data-rail-state="empty"]`).count(), 0)
+  assert.equal(await page.locator(CARD_SLOT).count(), 0, '炫酷模式会把会话入口移到 rail')
 
   // 支线停在执行者圆点旁，圆点本身是独立节点；aria-label 必须带上状态，
   // 不能只把状态塞进 title（读屏拿不到悬停提示）。
@@ -394,6 +428,13 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
   assert.equal(states.includes('running'), false, `种子会话是空闲的，不应出现 running：${states.join(',')}`)
   const pathCount = await page.locator(`${RAIL} path`).count()
   assert.equal(pathCount, 1 + 2 + 3, `线路应为主干 + tick + 支线，实际 ${pathCount} 条路径`)
+
+  await page.keyboard.press('Escape')
+  await waitFor({
+    description: '设置面板关闭',
+    check: async () => !(await page.locator(SETTINGS_DIALOG).isVisible()),
+    timeoutMs: 10_000,
+  })
 
   // 主诉常驻守卫：切到另一个会话再切回，leader 的 rail 必须复用同一层。判定用
   // 主干节点本身（标记还在，说明节点没被替换），不是看 d 值相同。
@@ -491,49 +532,9 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
     timeoutMs: 10_000,
   })
 
-  // 设置页：预览圆点取主题强调色（浅色宿主的 accent 是蓝的，固定琥珀会误导）。
-  const dialog = await openSettings(page)
-  await dialog.getByRole('button', { name: '任务看板', exact: true }).click()
-  const preview = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '炫酷模式' }).first()
-  await waitForLocator(preview, { description: '设置页里的炫酷模式选项', timeoutMs: 10_000 })
-  const colors = await dialog.evaluate((node) => {
-    const dot = node.querySelector('.dsh-leader-agent-settings-preview-dot')
-    const radio = node.querySelector('.dsh-leader-agent-settings-option-selected .dsh-leader-agent-settings-radio')
-    return {
-      dot: dot === null ? null : getComputedStyle(dot).fill,
-      radio: radio === null ? null : getComputedStyle(radio).borderTopColor,
-    }
-  })
-  assert.notEqual(colors.dot, null, '缺设置页预览圆点')
-  assert.equal(colors.dot, colors.radio, `预览圆点应取主题强调色，实际 fill=${colors.dot} / accent=${colors.radio}`)
-
-  // 切工作：看板同运行时即时换模式，rail 不再渲染，卡内会话入口回来。
-  const workOption = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '工作模式' }).first()
-  await workOption.click()
-  await waitFor({
-    description: '看板切到工作模式',
-    check: async () => (await page.locator(`${BOARD}[data-mode="work"]`).count()) === 1,
-    timeoutMs: 10_000,
-  })
-  assert.equal(await page.locator(RAIL).count(), 0, '工作模式不该渲染 rail')
-  assert.equal(await page.locator(RAIL_SLOT).count(), 0, '工作模式不该有 rail 槽位')
-  assert.equal(await page.locator(CARD_SLOT).count(), 3, '工作模式应把会话入口放回卡内')
-  assert.equal(
-    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
-    BOARD_MODE_WORK,
-    '切模式应把显式选择写进 localStorage',
-  )
-
-  await page.keyboard.press('Escape')
-  await waitFor({
-    description: '设置面板关闭',
-    check: async () => !(await page.locator(SETTINGS_DIALOG).isVisible()),
-    timeoutMs: 10_000,
-  })
-
   // 路径 A：右栏保持展开直接 reload，宿主恢复看板 tab → 不需要再导航。
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await waitForLocator(page.locator(`${BOARD}[data-mode="work"]`), {
+  await waitForLocator(page.locator(`${BOARD}[data-mode="cinema"]`).first(), {
     description: '刷新后宿主恢复看板',
     timeoutMs: 15_000,
   })
@@ -543,7 +544,7 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
   }
   const routeA = await openBoard(page, session)
   assert.equal(routeA, 'board-restored', `右栏展开着 reload 应由宿主恢复看板，实际走了 ${routeA}`)
-  await assertWorkBoard(page)
+  await assertCinemaBoard(page)
   console.log(`[e2e] path A ${JSON.stringify({ beforeA, routeA, ...(await boardFacts(page)) })}`)
 
   // 路径 B：先把右栏切到 guide 页再收起，reload 后必须重新点 guide 入口才能回来。
@@ -576,11 +577,11 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
   assert.equal(beforeB.board, 0, '右栏收起时看板不应可见')
   const routeB = await openBoard(page, session)
   assert.notEqual(routeB, 'board-restored', `收起右栏后 reload 必须重新导航，实际走了 ${routeB}`)
-  await waitForLocator(page.locator(`${BOARD}[data-mode="work"]`), {
-    description: '收起右栏 reload 后看板仍是工作模式',
+  await waitForLocator(page.locator(`${BOARD}[data-mode="cinema"]`).first(), {
+    description: '收起右栏 reload 后看板仍是炫酷模式',
     timeoutMs: 15_000,
   })
-  await assertWorkBoard(page)
+  await assertCinemaBoard(page)
   console.log(`[e2e] path B ${JSON.stringify({ beforeB, routeB, ...(await boardFacts(page)) })}`)
 
   await closeBrowser(browser)

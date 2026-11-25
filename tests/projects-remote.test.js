@@ -115,18 +115,9 @@ function fakeWorkers() {
   }
 }
 
-/**
- * 造一个看板默认模式取值器。
- * @param {{ defaultMode: string, legacy: boolean }} [result] - 返回值
- * @returns {() => Promise<{ defaultMode: string, legacy: boolean }>} 取值器
- */
-function fakeBoardDefaults(result = { defaultMode: 'cinema', legacy: false }) {
-  return async () => result
-}
-
 test('远程服务注册进 Cordis，服务键与命名空间对齐契约', () => {
   const { ctx, provided } = fakeCtx()
-  const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), ctx })
 
   assert.equal(provided.get(PROJECT_REMOTE_SERVICE_KEY), remote)
   assert.equal(remote.typertRemote.serviceKey, PROJECT_REMOTE_SERVICE_KEY)
@@ -138,34 +129,18 @@ test('远程服务注册进 Cordis，服务键与命名空间对齐契约', () =
 test('漏传卡片库或登记表时装配直接报错，不等到归档才炸', () => {
   const { ctx } = fakeCtx()
   assert.throws(
-    () => createProjectRemote({ service: fakeService(), workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx }),
+    () => createProjectRemote({ service: fakeService(), workers: fakeWorkers(), ctx }),
     /cards/,
   )
   assert.throws(
-    () => createProjectRemote({ service: fakeService(), cards: fakeCards(), boardDefaults: fakeBoardDefaults(), ctx }),
+    () => createProjectRemote({ service: fakeService(), cards: fakeCards(), ctx }),
     /workers/,
   )
-  assert.throws(
-    () => createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), ctx }),
-    /boardDefaults/,
-  )
-})
-
-test('boardDefaults 返回宿主判定的默认模式', async () => {
-  const { ctx } = fakeCtx()
-  const remote = createProjectRemote({
-    service: fakeService(),
-    cards: fakeCards(),
-    workers: fakeWorkers(),
-    boardDefaults: fakeBoardDefaults({ defaultMode: 'work', legacy: true }),
-    ctx,
-  })
-  assert.deepEqual(await remote.boardDefaults(), { defaultMode: 'work', legacy: true })
 })
 
 test('原型上的方法标记覆盖契约里的每个方法', () => {
   const { ctx } = fakeCtx()
-  const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), ctx })
   const descriptor = Object.getOwnPropertyDescriptor(
     Object.getPrototypeOf(remote),
     DESCRIPTOR_PROPERTY,
@@ -183,7 +158,7 @@ test('原型上的方法标记覆盖契约里的每个方法', () => {
 
 test('方法的形参名与契约一致——宿主按源码里的形参名建 wire 字段', () => {
   const { ctx } = fakeCtx()
-  const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards: fakeCards(), workers: fakeWorkers(), ctx })
 
   for (const [method, expected] of Object.entries(PROJECT_REMOTE_METHODS)) {
     const source = Function.prototype.toString.call(remote[method])
@@ -199,7 +174,7 @@ test('方法把调用转给项目服务', async () => {
   const service = fakeService()
   const cards = fakeCards()
   const workers = fakeWorkers()
-  const remote = createProjectRemote({ service, cards, workers, boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service, cards, workers, ctx })
 
   assert.deepEqual(await remote.list(), [
     { id: 'p1', name: 'demo', directory: '/tmp/demo', leaderSessionId: 's1' },
@@ -253,7 +228,7 @@ test('项目的槽位显示名来自 SLOTS.md 的 label，未声明的槽位不�
         return id === 'p1' ? { id, name: 'demo', directory } : undefined
       },
     }
-    const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+    const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), ctx })
     assert.deepEqual(await remote.projectSlots('p1'), { dev: '开发' })
     // 项目不存在时返回空字典：标签是装饰信息，取不到不让看板报错。
     assert.deepEqual(await remote.projectSlots('missing'), {})
@@ -265,7 +240,7 @@ test('项目的槽位显示名来自 SLOTS.md 的 label，未声明的槽位不�
 test('删除项目只返回是否删掉，项目不存在时明确返回未删除', async () => {
   const { ctx } = fakeCtx()
   const service = fakeService()
-  const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service, cards: fakeCards(), workers: fakeWorkers(), ctx })
 
   assert.deepEqual(await remote.deleteProject('p1'), { removed: true })
   service.remove = async () => undefined
@@ -291,7 +266,6 @@ test('归档 worker 会话时顺带销毁常驻 agent', async () => {
     cards: fakeCards(),
     workers: fakeWorkers(),
     workerSessions,
-    boardDefaults: fakeBoardDefaults(),
     ctx,
   })
 
@@ -305,7 +279,7 @@ test('归档 worker 会话时顺带销毁常驻 agent', async () => {
 test('改链接：trim、丢空行、补 id 后整体替换', async () => {
   const { ctx } = fakeCtx()
   const cards = fakeCards()
-  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
 
   const updated = await remote.updateCardLinks('c1', [
     { id: 'l1', label: ' PR ', url: ' https://github.com/o/r/pull/1 ', purpose: ' 交付 ' },
@@ -330,7 +304,7 @@ test('改链接：trim、丢空行、补 id 后整体替换', async () => {
 test('改链接把非规范 http(s) 地址归一化后落盘', async () => {
   const { ctx } = fakeCtx()
   const cards = fakeCards()
-  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
 
   await remote.updateCardLinks('c1', [
     { label: '简写', url: 'http:example.test/mr/1' },
@@ -349,7 +323,7 @@ test('改链接把非规范 http(s) 地址归一化后落盘', async () => {
 test('删卡：正常删除返回 removed，卡片已不在时按幂等 notFound 收尾', async () => {
   const { ctx } = fakeCtx()
   const cards = fakeCards()
-  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
 
   assert.deepEqual(await remote.deleteCard('c1'), { removed: true })
   assert.deepEqual(cards.calls.at(-1), ['remove', { id: 'c1' }])
@@ -364,7 +338,7 @@ test('删卡：正常删除返回 removed，卡片已不在时按幂等 notFound
 test('改链接拒绝空 id 与非 http(s) 的 URL，不碰卡片库', async () => {
   const { ctx } = fakeCtx()
   const cards = fakeCards()
-  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), boardDefaults: fakeBoardDefaults(), ctx })
+  const remote = createProjectRemote({ service: fakeService(), cards, workers: fakeWorkers(), ctx })
 
   await assert.rejects(() => remote.updateCardLinks('', []), /id 不能为空/)
   // 浏览器侧会先拦一次，但写通道不能把客户端校验当边界：javascript: 落到

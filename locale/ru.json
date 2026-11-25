@@ -130,14 +130,14 @@
     "tabs.close": "Закрыть вкладку",
     "tabs.list": "Вкладки сеансов проекта",
     "tabs.more": "Ещё",
-    "board.mode.cinema.desc": "Карта процесса со светящейся линией. Для демонстраций и записи экрана.",
+    "board.mode.cinema.desc": "Только для демонстрации и соцсетей.",
     "board.mode.cinema.title": "Кинематографичный",
     "board.mode.work.desc": "Простой список без анимации. Для быстрого просмотра задач.",
     "board.mode.work.title": "Рабочий",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} в работе · {total} задач",
     "board.settings.desc": "Выберите вид доски. Настройка сохраняется в этом браузере.",
-    "board.settings.nav": "Доска задач",
+    "board.settings.nav": "Leader Agent",
     "board.settings.scope": "Действует только в этом браузере; данные проекта не меняются.",
     "board.settings.title": "Доска задач"
   }

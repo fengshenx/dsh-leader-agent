@@ -184,10 +184,8 @@ test('卡面按导航目标组织：分类在头部、空槽不占位、停滞�
   const second = await startInstanceIn({ root, baseUrl: mock.url })
   instance = second
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
-  // 本场景测的是工作模式的卡内槽位。bootstrap 先起过一次空实例，已经写下
-  // `fresh` 标记；不钉住模式时第二次启动按新装默认的 cinema 走，执行者会被
-  // 移到卡面右侧的 rail 槽位，卡内槽位数自然是 0。模式是产品行为，测试要显式
-  // 声明自己站在哪一边。
+  // 本场景测的是工作模式的卡内槽位。默认已经是工作模式；这里仍显式钉住，
+  // 测试要声明自己站在哪一边，避免以后默认再变时执行者被移到 rail 槽位。
   await context.addInitScript(({ key, mode }) => {
     try {
       localStorage.setItem(key, mode)

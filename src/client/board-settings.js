@@ -1,5 +1,5 @@
 /**
- * 看板的设置页：注册到宿主的 `settings.section`，提供「炫酷 / 工作」两种模式。
+ * 看板的设置页：注册到宿主的 `settings.section`，提供「工作 / 炫酷」两种模式。
  *
  * 宿主的设置导航是把槽位里的注册项直接列出来，没有官方白名单（见
  * `dsh-client-ui-settings-general` 的 `useSections`）；官方「模型」页也是普通注册。
@@ -120,7 +120,7 @@ function ModeOption({ value, mode, onChoose, t }) {
 function BoardSettingsSection({ t }) {
   const storage = readLocalStorage(globalThis)
   const [mode, setMode] = useState(() => readBoardMode(storage))
-  // 宿主默认模式是异步补上的：设置页先打开时也要跟着换到判定后的模式
+  // 设置页打开期间，别的窗口或组件改了模式也要跟上。
   useEffect(() => subscribeBoardMode(setMode), [])
 
   return createElement(
