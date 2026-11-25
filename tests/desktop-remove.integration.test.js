@@ -215,33 +215,50 @@ function runDesktop({ tree, home, env: extraEnv = {}, args = [] }) {
   })
 }
 
+/** 假 .app 的落盘等待预算：300 × 100ms。 */
+const WAIT_ATTEMPTS = 300
+const WAIT_INTERVAL_MS = 100
+const WAIT_BUDGET_SECONDS = (WAIT_ATTEMPTS * WAIT_INTERVAL_MS) / 1000
+
 /**
- * 等文件出现且内容匹配，最多 8 秒。
+ * 超时文案：把系统异步窗口与复核步骤写进错误本身，避免并发下的超时被误读成 main 回归。
+ *
+ * @param {string} subject - 等的东西
+ * @returns {string} 失败信息
+ */
+function waitTimeoutMessage(subject) {
+  return `等了 ${WAIT_BUDGET_SECONDS} 秒仍没等到${subject}。\n`
+    + '假 .app 由 macOS LaunchServices 拉起，落盘有一段系统异步窗口；并发/高负载下会明显变慢。\n'
+    + '先 `node --test tests/desktop-remove.integration.test.js` 单跑复核：单跑通过说明不是 main 失败，也不代表这次改动引入回归。'
+}
+
+/**
+ * 等文件出现且内容匹配，最多 30 秒。
  *
  * @param {string} path - 文件路径
  * @param {string} expected - 期待内容
  * @returns {Promise<void>} 无返回
  */
 async function waitForContent(path, expected) {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  for (let attempt = 0; attempt < WAIT_ATTEMPTS; attempt += 1) {
     if (existsSync(path) && readFileSync(path, 'utf8') === expected) return
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, WAIT_INTERVAL_MS))
   }
-  throw new Error(`等不到 ${path} 的内容 ${JSON.stringify(expected)}`)
+  throw new Error(waitTimeoutMessage(`${path} 的内容 ${JSON.stringify(expected)}`))
 }
 
 /**
- * 等文件出现；LaunchServices 拉起假应用到落盘之间有一小段异步窗口。
+ * 等文件出现；LaunchServices 拉起假应用到落盘之间有一小段异步窗口，最多等 30 秒。
  *
  * @param {string} path - 文件路径
  * @returns {Promise<void>} 无返回
  */
 async function waitForPath(path) {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  for (let attempt = 0; attempt < WAIT_ATTEMPTS; attempt += 1) {
     if (existsSync(path)) return
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, WAIT_INTERVAL_MS))
   }
-  throw new Error(`等不到文件 ${path}`)
+  throw new Error(waitTimeoutMessage(`文件 ${path}`))
 }
 
 test('worktree 内 --remove 在派生根没建过时是空操作：不建目录、不复制凭据、不误报', (t) => {
