@@ -1572,7 +1572,6 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   border-radius: var(--dsw-radius-md);
   outline: none;
   background: var(--dsw-alias-interactive-bg-hover);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
   color: var(--dsw-alias-label-primary);
   font: inherit;
   font-size: 14px;
@@ -1581,9 +1580,10 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   font-variant-numeric: tabular-nums;
 }
 
-.dsh-leader-agent-settings-input:focus-visible {
-  border-color: var(--dsw-alias-state-business-primary);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent);
+.dsh-leader-agent-settings-control input.dsh-leader-agent-settings-input:focus-visible {
+  border-color: var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)) 18%, transparent);
+  outline: none;
 }
 
 .dsh-leader-agent-settings-input:disabled {
