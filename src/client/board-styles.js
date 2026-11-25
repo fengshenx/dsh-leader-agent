@@ -1582,7 +1582,8 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 }
 
 .dsh-leader-agent-settings-input:focus-visible {
-  box-shadow: 0 0 0 1px var(--dsw-alias-state-business-primary);
+  border-color: var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent);
 }
 
 .dsh-leader-agent-settings-input:disabled {
