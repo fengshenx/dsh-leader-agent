@@ -32,4 +32,4 @@ Status: implemented
 
 ## Testing
 
-`npm run check`；受影响的 e2e 场景用 `npm run e2e:one` 逐条跑，剩余场景用 `npm run e2e` 全量确认。五组守卫各自双向验证：改坏项目行行高/行首图标左缘/标题左缘、给项目区块 header 加 4px 左内边距（第 4 条小节标题左缘红）、把区块压到 4px、300px 窄窗关掉「更多」菜单、删掉可见时 `tabs-column`/`tabs-main` 标记，对应场景按各自断言变红；还原后全绿。隐藏 `tabs-main` 清理只作 smoke，不单独双验。读数见 PR。
+`npm run check`；受影响的 e2e 场景用 `npm run e2e:one` 逐条跑，剩余场景用 `npm run e2e` 全量确认。各条守卫逐项双向验证：改坏项目行行高/行首图标左缘/标题左缘、给项目区块 header 加 4px 左内边距（第 4 条小节标题左缘红）、把区块压到 4px、300px 窄窗关掉「更多」菜单、删掉可见时 `tabs-column`/`tabs-main` 标记，对应场景按各自断言变红；还原后全绿。隐藏 `tabs-main` 清理只作 smoke，不单独双验。读数见 PR。
