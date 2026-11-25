@@ -31,6 +31,7 @@ import { isProjectRemoteReady, onProjectRemoteReady } from './project-remote.js'
 import { BOARD_TAB_KIND } from './project-board-monitor.js'
 import { createSessionCompletionTracker } from './session-completion.js'
 import { signalStyleText } from './signal-styles.js'
+import { ensureStyleSheet } from './style-sheet.js'
 import {
   addOpenTab,
   emptyTabStore,
@@ -249,14 +250,9 @@ ${signalStyleText('dsh-leader-agent-tab-signal')}
 }
 `
 
-/** 注入标签栏样式表。同一页面只注入一次。 */
+/** 注入标签栏样式表；已存在时刷新为新版本内容（HMR 换插件不刷新页面）。 */
 function ensureStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById(STYLE_ID) !== null) return
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = STYLE_TEXT
-  document.head.append(style)
+  ensureStyleSheet(STYLE_ID, STYLE_TEXT)
 }
 
 /**

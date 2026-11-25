@@ -20,6 +20,7 @@ import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import { productIcon } from './icons.js'
 import { buildProjectMenuItems, isLeaderCurrent, isLeaderRunning, isProjectCurrent, isProjectOpenable, planProjectRename, projectDropPlan, projectSectionLayout, selectProjectSessionRows, showsProjectActivity } from './project-panel-logic.js'
 import { foldSessions, nextWatermark } from './session-watermark.js'
+import { ensureStyleSheet } from './style-sheet.js'
 
 const STYLE_ID = 'dsh-leader-agent-project-section'
 
@@ -473,16 +474,11 @@ const STYLE_TEXT = `
 `
 
 /**
- * 注入区块样式表。同一页面只注入一次。
+ * 注入区块样式表；已存在时刷新为新版本内容（HMR 换插件不刷新页面）。
  * @returns {void}
  */
 function ensureStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById(STYLE_ID) !== null) return
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = STYLE_TEXT
-  document.head.append(style)
+  ensureStyleSheet(STYLE_ID, STYLE_TEXT)
 }
 
 /**
