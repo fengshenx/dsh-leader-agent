@@ -71,7 +71,7 @@
     "common.saving": "Saving…",
     "guide.action.dismiss": "Got it",
     "guide.action.intro": "Show me how to use it",
-    "guide.intro.prompt": "This project isn't set up yet — show me how dsh-leader-agent works.",
+    "guide.intro.prompt": "This project isn't set up yet — show me how dsh-leader-agent works and create a Hello World sample card where a worker just says hi (no file changes).",
     "guide.steps": "Open task cards, hand work to Agents, track progress in the board",
     "guide.title": "This directory has a Leader",
     "markdown.code": "Code",

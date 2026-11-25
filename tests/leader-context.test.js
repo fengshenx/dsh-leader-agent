@@ -107,7 +107,7 @@ test('手册缺失或只有空白时 loadLeaderManual 返回空串（提示由�
   }
 })
 
-test('项目还没有手册时注入初始化提示：解释怎么工作、问是否初始化、确认后才写', async () => {
+test('项目还没有手册时注入初始化提示：解释怎么工作、建示例卡、问是否初始化、确认后才写', async () => {
   const project = await createProject(undefined)
   try {
     const { ctx, holder } = createFakeCtx()
@@ -119,6 +119,12 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、问�
     assert.match(text, /init-leader-agent/)
     assert.match(text, /目录是空的就写带 TODO 的骨架/)
     assert.match(text, /不要创建或修改任何文件/)
+    // 示例卡是看板动作：只建卡、不派工，规格里明确不碰文件。
+    assert.match(text, /`create_card`.*`Hello World`/)
+    assert.match(text, /回复一句『你好』即可/)
+    assert.match(text, /不读取、不修改、不创建任何文件/)
+    assert.match(text, /不要派工/)
+    assert.match(text, /`list_cards`/)
     // 用户直接派活时不打断：提示自己限定触发面。
     assert.match(text, /用户直接派活时不要打断/)
   } finally {

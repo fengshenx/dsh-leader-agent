@@ -119,14 +119,16 @@ test('了解怎么用：填进输入框并当场提交', () => {
   assert.deepEqual(calls, [['setDraft', '了解怎么用'], ['submit']])
 })
 
-test('开场正文只发一句触发语，作答要求交给运行时上下文', () => {
-  // 引导卡发的是用户消息，会显示在对话里：保持一句话，长约束（怎么解释、
-  // 确认前不写文件、空目录写骨架）放在 leader 上下文注入里，见
+test('开场正文发一句触发语，同时点名 Hello World 示例卡', () => {
+  // 引导卡发的是用户消息，会显示在对话里：保持一句话，长约束（示例卡规格、
+  // 怎么解释、确认前不写文件、空目录写骨架）放在 leader 上下文注入里，见
   // `renderInitializationHint`。
   for (const dict of [zh, en]) {
     assert.match(dict['guide.intro.prompt'], /dsh-leader-agent/)
+    assert.match(dict['guide.intro.prompt'], /Hello World/)
+    assert.match(dict['guide.intro.prompt'], /worker/)
     assert.doesNotMatch(dict['guide.intro.prompt'], /LEADER\.md/)
-    assert.ok(dict['guide.intro.prompt'].length < 80, '引导语应是一句话')
+    assert.doesNotMatch(dict['guide.intro.prompt'], /\n/, '引导语应是一句话')
   }
 })
 

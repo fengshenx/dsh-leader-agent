@@ -185,6 +185,14 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
     description: `点击后应走一轮模型请求（此前 ${beforeRequests} 次）`,
     check: () => mock.requests.length > beforeRequests,
   })
+  // 示例卡的规格不能只写在界面上：它要随初始化提示进真正的模型请求，
+  // leader 才知道该建什么卡、不能碰文件。这里只看请求体，模型能不能照做由
+  // 真实 provider 决定，mock 不模拟这一层。
+  const introRequest = mock.requests.filter((request) => request.kind === 'scenario').at(-1)
+  assert.ok(introRequest !== undefined, '点击后应有一条场景模型请求')
+  assert.match(introRequest.body, /create_card/, '请求里应带建示例卡的指令')
+  assert.match(introRequest.body, /Hello World/, '请求里应点名 Hello World 示例卡')
+  assert.match(introRequest.body, /list_cards/, '请求里应要求先查重')
   assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
