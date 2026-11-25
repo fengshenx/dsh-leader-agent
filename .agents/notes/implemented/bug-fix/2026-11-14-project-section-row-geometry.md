@@ -30,4 +30,4 @@ Status: implemented
 
 ## Testing
 
-`tests/e2e/project-alignment.e2e.js` 已随 [e2e 只测行为与逻辑，不测样式](../testing/2026-11-25-e2e-logic-only.md) 删除：行几何回归改走人工取证；`tests/project-panel.test.js` 钉住标题与字形断言。
+`tests/e2e/project-alignment.e2e.js` 保留最小 3 条相对几何守卫（项目行 vs 宿主工作区行：行高、行首图标左缘、标题左缘），不恢复内边距/边框/截图的像素级全量；其余样式走[人工取证](../../../../docs/e2e-testing.md#样式布局人工取证review-门禁)。`tests/project-panel.test.js` 钉住标题与字形断言。双向验证：把项目行行高改小、或给标题加几像素左偏移，场景按对应断言变红；读数见 PR。

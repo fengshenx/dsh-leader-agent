@@ -28,4 +28,4 @@ Status: implemented
 
 ## Testing
 
-`tests/e2e/project-panel-selection.e2e.js`：宽侧栏点项目行 → 点「插件」，断言项目行的 `data-selected` 与计算底色都回到未选中；再收起侧栏走窄导轨，断言浮层随面板页收起、入口底色回落、`aria-expanded` 在展开/收起两态分别为 `true` / `false`。在「插件」页手动展开浮层再切「自动化任务」，断言浮层收起、`aria-expanded` 回到 `false`（切换前 `sections: 1` → 切换后 0）。把选中口径退回「总是用当前会话」时第一段红（失败读数 `data-selected="true"`）；把浮层 effect 依赖退回 `panelActive` boolean 时面板页切换那段红（读数 `sections: 1`）；还原后绿。
+`tests/e2e/project-panel-selection.e2e.js`：宽侧栏点项目行 → 点「插件」，断言项目行的 `data-selected` 与 `aria-current` 回到未选中；再收起侧栏走窄导轨，断言浮层随面板页收起、`aria-expanded` 在展开/收起两态分别为 `true` / `false`。选中底色与入口高亮是样式，走[人工取证](../../../../docs/e2e-testing.md#样式布局人工取证review-门禁)。在「插件」页手动展开浮层再切「自动化任务」，断言浮层收起、`aria-expanded` 回到 `false`（切换前 `sections: 1` → 切换后 0）。把选中口径退回「总是用当前会话」时第一段红（失败读数 `data-selected="true"`）；把浮层 effect 依赖退回 `panelActive` boolean 时面板页切换那段红（读数 `sections: 1`）；还原后绿。

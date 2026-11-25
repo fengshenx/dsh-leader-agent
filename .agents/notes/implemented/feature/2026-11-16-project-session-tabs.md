@@ -52,7 +52,7 @@ Status: implemented
 ## Testing
 
 - 纯逻辑由 `tests/session-tabs-logic.test.js` 钉住（解析容错、增删上限、归属与标签顺序、关闭回退）；组件归 `tests/e2e/session-tabs.e2e.js`，在真实宿主里验证项目标签、点 worker 出标签、状态灯、关标签后会话行仍在、重开回来、普通会话整条栏消失；右栏打开 leader 看板后切 worker，断言看板空态仍是项目看板（不是「不属于任何项目」）。
-- 同一场景断言右栏开关与「更多」的几何都落在标签栏这一行，标签 chip 与「更多」压在同一条内容带上，且 chip 下方留出分隔线位置；展开后标签栏与右栏面板的 chip 同底，「更多」到主列右缘的留白收紧，宿主 `[data-sidebar-right-toggle]` 的中心与展开前 `[data-sidebar-right-expand]` 的中心相差不超过 1px（开关不跳行），并且「更多」能打开宿主的 `[data-context-menu]`、`aria-expanded` 跟随 Escape / 点外部关闭。撤销内容带对齐或展开后右留白任一处修复，对应断言分别变红。删除 class 的降级探针保留；新增程序化切会话后 `menuCount=0 + aria-expanded=false` 的断言、900px 窄窗下两按钮同排不重叠，以及 300px 两标签溢出时「更多」仍可开关。
+- 同一场景保留行为断言：右栏开关与会话「更多」都挂标签栏、原会话头菜单按钮让位、「更多」能打开宿主的 `[data-context-menu]`、`aria-expanded` 跟随 Escape / 点外部关闭；栏可见时 `tabs-column` 为 1、栏隐藏后 `tabs-column` / `tabs-main` 归 0；300px 窄窗下「更多」仍能打开、Escape 关闭。栏高、控件坐标、同排/右缘间距与展开后留白是样式，改走[人工取证](../../../../docs/e2e-testing.md#样式布局人工取证review-门禁)。
 - 看板访问权的登记表兜底由 `tests/project-board-data.test.js` 覆盖（索引查不到、退役 leader、登记表无此会话、项目列表读不到）。
 - 切换前挂 `MutationObserver`，e2e 断言第一次切 worker、切回 leader、重开 worker 都没有重新插入 `.dsh-leader-agent-board-skeleton`；同一场景还覆盖方向键/Home/End 切换、右栏收起时不跟随、隐藏时浮层随会话切换卸载，以及普通会话不残留 flex 标记。浮层那条用程序化 click 走「切会话」状态路径：真实交互被遮罩挡指针，`session.new` 快捷键又被宿主的 `aria-modal` modal 规则挡下，触发路径本身不可达（见[已知限制](../../../../docs/limitations.md#客户端与宿主耦合)）。
 - 手动双向验证：往 `THIRD_PARTY_LICENSE` 追加一行后 `npm run licenses:check` 失败，重新生成后通过；标签 e2e 在带 `DSH_PROFILE=desktop` 的 shell 里跑通，证明夹具的 profile 钉死有效。

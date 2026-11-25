@@ -6,7 +6,8 @@
  * 从项目行打开 leader，验证标签栏与真实会话切换。
  *
  * 断言只落在插件自己的 DOM（标签的 data-session-id / aria-selected / 状态灯）
- * 与交互后的状态上；栏高、控件坐标、滚动溢出这类样式与布局不写进 e2e。
+ * 与交互后的状态上；栏高、控件坐标、滚动溢出这类样式与布局不写进 e2e（300px
+ * 窄窗里「更多」菜单的开/关是交互行为，保留）。
  * 不读宿主内部状态，也不把「当前会话」委托给宿主会话行——
  * 项目会话恰好被左栏排除，宿主树里没有它们的行。
  */
@@ -251,6 +252,8 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   await waitForLocator(leaderTab, { description: '项目标签（leader 入口）', timeoutMs: 10_000 })
   assert.equal((await leaderTab.innerText()).trim(), '网站改版', '项目标签应当是项目名，不再单列 Leader')
   assert.equal(await bar.locator('.dsh-leader-agent-tab[data-kind="worker"]').count(), 0, '没点开的 worker 不该先出标签')
+  // 栏可见时才给主列加 flex 收缩标记；这是 DOM 属性，不是样式值。
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 1, '栏可见时应给主列加 flex 收缩标记')
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'session-tabs')
   mkdirSync(artifacts, { recursive: true })
@@ -475,6 +478,21 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     menuCount: await contextMenu.count(),
   })}`)
 
+  // 极窄窗且两个标签：标签滚动区溢出时「更多」仍可点、菜单能开能关。这是交互
+  // 行为，不是样式读数；滚动宽度与几何值交给人工取证。
+  await page.setViewportSize({ width: 300, height: 900 })
+  await moreButton.click()
+  await waitForLocator(contextMenu, { description: '300px 窄窗打开更多菜单', timeoutMs: 10_000 })
+  await page.keyboard.press('Escape')
+  await waitFor({
+    description: '300px 窄窗 Escape 关闭更多菜单',
+    check: async () => (await contextMenu.count()) === 0
+      && (await moreButton.getAttribute('aria-expanded')) === 'false',
+    timeoutMs: 10_000,
+  })
+  t.diagnostic('NARROW_300 menu=open-close')
+  await page.setViewportSize({ width: 1440, height: 900 })
+
   // 普通会话：同一工作区里新建，不属于项目，整条栏消失。
   const ordinaryWorkspaceRow = page.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
   await waitForLocator(ordinaryWorkspaceRow, { description: '第二段默认工作区行', timeoutMs: 20_000 })
@@ -490,6 +508,8 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   })
   await waitForLocator(bar, { description: '普通会话不显示标签栏', state: 'detached', timeoutMs: 15_000 })
   assert.equal(await page.locator('.dsh-leader-agent-tabs').count(), 0, '普通会话整条栏都不在')
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 0, '栏隐藏后不能常驻覆盖宿主布局')
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-main]').count(), 0, '栏隐藏后会话体的 flex 标记也要摘掉')
   await page.screenshot({ path: join(artifacts, 'ordinary-session.png') })
 
   assert.deepEqual(problems, [])
