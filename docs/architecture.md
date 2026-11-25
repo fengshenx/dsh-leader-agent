@@ -1,6 +1,6 @@
 # dsh-leader-agent 架构
 
-本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点。它只回答组成、接缝与牵动面；安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），每个动作的完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界的实测依据见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发环境与构建契约见[开发](development.md)。
+本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点；只回答组成、接缝与牵动面。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发与构建见[开发](development.md)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
@@ -27,15 +27,15 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 
 | 身份 | 判定 | 工具面 |
 |---|---|---|
-| leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，但摘掉 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` / `read_card` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 没有 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；保留 `update_card`（限自己挂着的卡，不能改状态、规格、标题、分类、排序与槽位）与 `read_card` |
-| 普通会话 | 其余会话 | 与 worker 相同，再少掉 `create_card` / `update_card` / `read_card`；保留宿主 subagent 四件工具 |
+| leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，摘掉 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` / `read_card` |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 无 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；有 `update_card`（限自己挂着的卡）与 `read_card` |
+| 普通会话 | 其余会话 | 同 worker，再少 `update_card` / `read_card`；有宿主 subagent 四件 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。普通会话保留的宿主 subagent 工具在 0.2.2 起为四件（含 `wait_agent`）；`engines.dsh` 下限 0.2.1-rc.2 只有前三件，`applyToolGate` 的逐件重试会跳过缺失项。
 
 ### 派工与唤醒
 
-worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走宿主 subagent 机制：生命周期由本 bundle 持有的 `AgentHandle` 决定，人可以直接打开它说话；会话各有一份独立 JSONL，进程重启后由 `agents.resume()` 冷恢复。选根会话的理由是**形态与归属**，不是 subagent 做不到：宿主的 subagent 同样是 durable Session、可冷恢复、浏览器可直接对话（continuable 地址；one-shot 仍只读），但它是树内子会话——进不了本 bundle 的项目树与看板，工具面受父级 preset 与 `maxDepth` 约束，驻留期由 subagent 运行时的回收策略决定。根会话把这三件事收回来：身份进项目树、工具面在 `agent/created` 上按身份裁、存活到显式销毁。
+worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走宿主 subagent 机制：生命周期由本 bundle 持有的 `AgentHandle` 决定，人可以直接打开它说话；会话各有一份独立 JSONL，进程重启后由 `agents.resume()` 冷恢复。选根会话的理由是**形态与归属**，不是 subagent 做不到：宿主 subagent 同样是 durable Session、可冷恢复、浏览器可直接对话（continuable 地址；one-shot 仍只读），但它是树内子会话——进不了项目树与看板，工具面受父级 preset 与 `maxDepth` 约束，驻留期由 subagent 运行时回收。根会话收回三件事：身份进项目树、工具面在 `agent/created` 按身份裁、存活到显式销毁。
 
 建 worker 与冷恢复都要显式把 `agentPresets.mount()` 交给 `setup` 并把 preset id 写进 `meta.agentPreset`，否则只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。挂上的是整个标准组合（persona、`agent-instructions`、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web`…），因此 worker 也能向用户提问。worker 的沙箱模式与审批策略在派工时从 leader 继承，回执写回读到的实际权限（[capability-gaps 第 41 条](capability-gaps.md)、[限制](limitations.md#worker-的控制面)）。
 
@@ -51,11 +51,11 @@ worker 长时间没有回报时另一条链路会说话：一个 60s 的**巡查
 
 工具面按角色在**会话创建时**裁剪，落在 `agent/created` 上：
 
-- leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent`——前三件对 worker 无效；`wait_agent` 只会阻塞空等，而 worker 跑完会自己唤醒 leader。也没有 `read_card`：它的单卡读走 `list_cards`（传 `cardId`），不必有两个等价入口；
-- 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里有哪些卡，也不该派工；普通会话也没有 `read_card`；
+- leader 拿到全部工具，但没有 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent`——前三件对 worker 无效；`wait_agent` 只会阻塞空等，而 worker 跑完会自己唤醒 leader。也没有 `read_card`：单卡读走 `list_cards`（传 `cardId`），不必两个等价入口；
+- 普通会话与 worker 都没有 `spawn_worker` / `message_worker` / `list_cards`——没进项目语境，看不到项目里的卡，也不该派工；普通会话也没有 `read_card`；
 - `create_card` 只给 leader：建卡与派工是 leader 的一条动作链（建卡 → `spawn_worker` 带卡槽位 → 投递），`SLOTS.md` 的各槽位没有让执行者建卡的步骤；worker 攒下的待办由它回报、leader 建卡（普通会话为什么一并收掉见[已知限制](limitations.md#看板与卡片)）。
-- `read_card` 只给 worker：读本项目的任意卡（读放开、写收窄），不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩、注入失效或冷恢复后找回任务的入口；多张绑定直接报错列候选，不替调用方猜。规格按 2000 字符分页，`specOffset` 续读到全文；长规格本身就是压缩对象，一次灌进上下文会挤掉真正的工作内容。
-- `update_card` 给 leader 与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。工具面在会话创建时一次裁完，换 leader 不重建旧会话，所以每次写入按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title` / `kind` / `sortOrder`——完成、重开与换执行者归 leader，规格与标题是验收锚点，分类与排序是 leader 对看板的归类与组织，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡两面都关。退役者的写卡边界见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/implemented/simplification/2026-11-02-card-write-tools-scope.md)。
+- `read_card` 只给 worker：读本项目的任意卡（读放开、写收窄），不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩、注入失效或冷恢复后找回任务的入口；多张绑定直接报错列候选，不替调用方猜。规格按 2000 字符分页，`specOffset` 续读全文；长规格是压缩对象，一次灌进上下文会挤掉工作内容。
+- `update_card` 给 leader 与 worker：worker 边干活边把产物链接与进展写回**自己挂着的卡**，普通会话没有。工具面在会话创建时一次裁完，换 leader 不重建旧会话，所以每次写入按当前身份再判一次（`src/host/tools/cards.js` 的 `assertCardWriter`，判定在 `tools/gate.js` 的 `canWriteCardsFor`，索引未就绪时问不出身份就拒绝）。worker 另有范围闸：只能改自己挂着的卡，不能改 `slots` / `status` / `spec` / `title` / `kind` / `sortOrder`——完成、重开与换执行者归 leader，规格与标题是验收锚点，分类与排序是 leader 的看板组织，进展与产物走回报与 `links`；`create_card` 同样在执行时再判一次，worker 建卡也关。退役者的写卡边界见[已知限制](limitations.md#看板与卡片)，推演见[决策笔记](../.agents/notes/implemented/simplification/2026-11-02-card-write-tools-scope.md)。
 
 实现在 `src/host/tools/gate.js`，用宿主的 `tools.restrict({ deny })`，对 `agent.ctx` 调一次；已发布版本里 `tools.register()` 不接受按步条件，所以只能在会话创建时做。leader 身份来自项目注册表——**索引重建完成前不裁**，此时问不出谁是 leader，而少给工具会让 leader 首轮干不成活。
 
