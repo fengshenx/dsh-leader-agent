@@ -232,7 +232,12 @@ export function BoardRail({ railKey, orthogonal, theme }) {
       // 尾防抖：连续拖拽期间每次回调都重置计时，整个拖拽过程中线路图停在旧宽度上
       // （错位），停手 80ms 后只画最后一次。换来的是不逐帧重建 SMIL 节点。
       clearTimeout(timer)
-      timer = setTimeout(draw, 80)
+      timer = setTimeout(() => {
+        draw()
+        // 防抖真正跑完的信号：e2e 等它递增后再断言，不用睡固定时间——重画即使
+        // 发生也已经在 draw() 里做完了。
+        svg.dataset.railSettled = String(Number(svg.dataset.railSettled ?? '0') + 1)
+      }, 80)
     })
     observer.observe(stage)
     return () => {
