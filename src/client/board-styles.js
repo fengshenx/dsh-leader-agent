@@ -1553,30 +1553,29 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   display: flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   height: 36px;
-  padding: 0 12px;
-  border-radius: var(--dsw-radius-md);
-  background: var(--dsw-alias-interactive-bg-hover);
-}
-
-.dsh-leader-agent-settings-control:focus-within {
-  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary);
-  outline-offset: 1px;
 }
 
 .dsh-leader-agent-settings-input {
-  width: 52px;
-  padding: 0;
+  box-sizing: border-box;
+  width: 72px;
+  height: 36px;
+  padding: 0 10px;
   border: 0;
-  outline: none;
-  background: transparent;
+  border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
   font: inherit;
   font-size: 14px;
   line-height: 22px;
-  text-align: right;
+  text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.dsh-leader-agent-settings-input:focus-visible {
+  outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary);
+  outline-offset: 1px;
 }
 
 .dsh-leader-agent-settings-input:disabled {

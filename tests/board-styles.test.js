@@ -134,6 +134,25 @@ test('链路行的裁切带里，链接的焦点环内嵌绘制', () => {
   assert.ok(Number.isFinite(offset) && offset < 0, '链接的焦点环外扩时会被 .dsh-leader-agent-board-card-links 的 overflow 裁掉')
 })
 
+test('自动续行输入框自带焦点环，单位「次」在框外', () => {
+  // 底色和圆角必须落在 input 上：如果放在外层 control，焦点环会把「次」一起圈进去
+  const control = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-control')
+  assert.equal(control?.declarations.background, undefined, '控件容器不应有底色，否则「次」会被包进输入框')
+  const input = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input')
+  assert.equal(input?.declarations.background, 'var(--dsw-alias-interactive-bg-hover)')
+  assert.equal(input?.declarations['border-radius'], 'var(--dsw-radius-md)')
+  const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-input:focus-visible')
+  assert.equal(
+    focus?.declarations.outline,
+    'var(--dsw-focus-ring-width, 2px) solid var(--dsw-alias-state-business-primary)',
+  )
+  assert.equal(
+    rules.some((rule) => rule.selector === '.dsh-leader-agent-settings-control:focus-within'),
+    false,
+    '焦点环不能画在外层 control 上',
+  )
+})
+
 test('引用的 --dsw-* token 都在白名单里（未定义的 token 会静默回落成空值）', () => {
   // 白名单只收 dsh-v0.2.1-rc.2（engines.dsh 下限）里确实定义过的名字，逐条在宿主
   // tag 源码核过。名字打错时 CSS 不报错、只是取值变空，真机上表现为「样式没生效」

@@ -280,7 +280,6 @@ function AutoResumeSection({ t, callRemote }) {
   const limit = parseAutoResumeLimit(draft)
   const invalid = limit === undefined
   const dirty = limit !== undefined && limit !== saved
-  const busy = phase !== 'ready' || status === 'saving'
 
   /**
    * 提交当前草稿；同值、非法、读取中或保存中都不重复提交。
@@ -341,7 +340,8 @@ function AutoResumeSection({ t, callRemote }) {
           pattern: '[0-9]*',
           maxLength: 5,
           value: draft,
-          disabled: busy,
+          disabled: phase !== 'ready',
+          readOnly: status === 'saving',
           'aria-label': t('settings.autoResume.title'),
           'aria-invalid': invalid,
           'aria-describedby': describedBy,
