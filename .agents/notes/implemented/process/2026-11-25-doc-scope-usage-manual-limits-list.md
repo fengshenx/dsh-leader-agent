@@ -12,6 +12,7 @@ Status: implemented
 - limitations 只留限制：每条约一到两句，写清做不到什么与代价；机制与推演链回 architecture / capability-gaps / notes。
 - 外部锚点原样保留：limitations 的「宿主语义与运行形态」「worker 的控制面」「看板与卡片」「项目树与工作区」「客户端与宿主耦合」「发布」，usage 的「卡片」「worker 名册上限与复用」。
 - 同步 AGENTS.md 分层表与 README / getting-started / architecture 的指针措辞。
+- 在 AGENTS.md 补「用户文档的维护口径」：读者是人不是模型，usage 跟用户可见操作走，limitations 跟边界走，README 只留概览、长文只活在 GitHub。
 - 天花板按新体量重设：usage 1900、limitations 2380（约 8% 余量）。
 
 ## Alternatives considered
