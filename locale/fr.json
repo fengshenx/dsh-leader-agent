@@ -71,7 +71,7 @@
     "common.saving": "Enregistrement…",
     "guide.action.dismiss": "Compris",
     "guide.action.intro": "Montrez-moi comment l'utiliser",
-    "guide.intro.prompt": "Ce projet n'est pas encore configuré : montrez-moi comment fonctionne dsh-leader-agent, créez une carte d'exemple Hello World, assignez-la à un agent et faites-lui dire bonjour (aucune modification de fichier).",
+    "guide.intro.prompt": "Montrez-moi comment fonctionne dsh-leader-agent ; pendant l'explication, ne lisez, ne modifiez ni ne créez aucun fichier.",
     "guide.steps": "Créez des cartes de tâches, confiez le travail aux agents et suivez l'avancement dans le tableau",
     "guide.title": "Ce dossier a un Leader",
     "markdown.code": "Code",

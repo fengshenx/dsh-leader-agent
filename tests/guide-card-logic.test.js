@@ -12,9 +12,6 @@ import {
 } from '../src/client/guide-card-logic.js'
 import { LOCALE_UI } from '../src/client/locales.js'
 
-const zh = LOCALE_UI.zh
-const en = LOCALE_UI.en
-
 /**
  * 造一个够用的存储桩。
  * @param {Record<string, string>} [initial] - 初始内容
@@ -119,20 +116,29 @@ test('了解怎么用：填进输入框并当场提交', () => {
   assert.deepEqual(calls, [['setDraft', '了解怎么用'], ['submit']])
 })
 
-test('开场正文发一句触发语，同时点名 Hello World 示例卡与派工', () => {
-  // 引导卡发的是用户消息，会显示在对话里：保持一句话，长约束（示例卡规格、
-  // 派工步骤、怎么解释、确认前不写文件、空目录写骨架）放在 leader 上下文注入里，
-  // 见 `renderInitializationHint`。
-  for (const dict of [zh, en]) {
-    assert.match(dict['guide.intro.prompt'], /dsh-leader-agent/)
-    assert.match(dict['guide.intro.prompt'], /Hello World/)
-    assert.match(dict['guide.intro.prompt'], /worker/)
-    assert.match(dict['guide.intro.prompt'], /派给|assign/)
-    assert.doesNotMatch(dict['guide.intro.prompt'], /LEADER\.md/)
-    assert.doesNotMatch(dict['guide.intro.prompt'], /\n/, '引导语应是一句话')
-    // 提示条只有一行，超出会被省略号截断。演示建卡派工让这句话变长了（最长的是
-    // 德语 239 字符），但不能再往回长成一段话：上限按现有最长文案留出两成余量。
-    assert.ok(dict['guide.intro.prompt'].length < 300, '引导语应是一句话，不超过 300 字符')
+/** 8 语言的「不读 / 不改 / 不建」各自的最小词根；缺一个就说明该语言漏了约束。 */
+const GUIDE_NO_FILE_NEEDLES = {
+  de: ['lesen', 'ändern', 'erstellen'],
+  en: ['read', 'modify', 'create'],
+  es: ['lea', 'modifique', 'cree'],
+  fr: ['lisez', 'modifiez', 'créez'],
+  ja: ['読', '変更', '作成'],
+  pt: ['leia', 'modifique', 'crie'],
+  ru: ['читайте', 'изменяйте', 'создавайте'],
+  zh: ['读取', '修改', '创建'],
+}
+
+test('8 语言引导语等价：通用触发语，且不读 / 不改 / 不建', () => {
+  assert.deepEqual(Object.keys(LOCALE_UI).sort(), Object.keys(GUIDE_NO_FILE_NEEDLES).sort())
+  for (const [code, needles] of Object.entries(GUIDE_NO_FILE_NEEDLES)) {
+    const prompt = LOCALE_UI[code]['guide.intro.prompt']
+    assert.match(prompt, /dsh-leader-agent/)
+    assert.doesNotMatch(prompt, /Hello World|worker/i, `${code} 引导语不该再要求建卡派工`)
+    assert.doesNotMatch(prompt, /\n/, `${code} 引导语应是一句话`)
+    assert.ok(prompt.length < 300, `${code} 引导语应保持短句`)
+    for (const needle of needles) {
+      assert.ok(prompt.includes(needle), `${code} 引导语缺少「不读 / 不改 / 不建」中的 ${needle}`)
+    }
   }
 })
 

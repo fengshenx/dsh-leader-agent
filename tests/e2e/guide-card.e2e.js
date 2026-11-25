@@ -8,7 +8,8 @@
  *
  * 引导期间会话事件数必须为 0：断言落在「模型请求数为 0」与「会话日志里没有
  * user/message」上，不看界面上的字。卡片与输入框的对齐、字号、圆角属于样式，
- * 不写进 e2e。
+ * 不写进 e2e；唯一例外是窄窗左右边缘的已修回归，用最小几何守卫只钉左右
+ * 边缘（容差 0.5px），不测颜色 / 圆角 / 内部排版，见文末。
  */
 
 import assert from 'node:assert/strict'
@@ -190,7 +191,7 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   await freshPage.screenshot({ path: join(artifacts, 'narrow-640.png') })
   await freshPage.setViewportSize({ width: 1440, height: 900 })
 
-  const beforeRequests = mock.requests.length
+  const beforeRequests = mock.requests.filter((request) => request.kind === 'scenario').length
   await freshPage.screenshot({ path: join(artifacts, 'before-click.png') })
   await freshPage.getByRole('button', { name: zh['guide.action.intro'] }).click()
   // 用户消息的容器是宿主 chat 节点的 data-chat-flow-kind="user"；不用「文本包含
@@ -213,8 +214,8 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   })
   // 模型请求在日志写入之后才发出：等它到 mock，别紧接着断言时序。
   await waitFor({
-    description: `点击后应走一轮模型请求（此前 ${beforeRequests} 次）`,
-    check: () => mock.requests.length > beforeRequests,
+    description: `点击后应走一轮场景模型请求（此前 ${beforeRequests} 次）`,
+    check: () => mock.requests.filter((request) => request.kind === 'scenario').length > beforeRequests,
   })
   // 示例卡的规格与派工步骤不能只写在界面上：它们要随初始化提示进真正的模型
   // 请求，leader 才知道建什么卡、绑谁、怎么投递。这里只看请求体，模型能不能
@@ -227,6 +228,9 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   assert.ok(introRequest !== undefined, '点击后应有一条场景模型请求')
   assert.match(introRequest.body, /不读取、不修改、不创建任何文件/, '请求里应带示例卡的规格约束')
   assert.match(introRequest.body, /hello-world/, '请求里应带示例 worker 的名字')
+  assert.match(introRequest.body, /\\?"status\\?":\s*\\?"all\\?"/, '请求里应带覆盖全部状态的查重参数')
+  assert.match(introRequest.body, /\\?"limit\\?":\s*100/, '请求里应带查重页大小')
+  assert.match(introRequest.body, /`active` \/ `done` \/ `archived`/, '请求里应说明三种状态都算已演示')
   assert.match(introRequest.body, /整段跳过第 2–4 步/, '请求里应写明已有同名示例卡时跳过建卡派工')
   assert.match(introRequest.body, /worker 跑完会唤醒你/, '请求里应带投递与回报的步骤')
   assert.equal(await card(freshPage).count(), 0, '发出消息后引导卡应从界面上消失')

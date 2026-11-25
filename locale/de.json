@@ -71,7 +71,7 @@
     "common.saving": "Wird gespeichert…",
     "guide.action.dismiss": "Verstanden",
     "guide.action.intro": "Zeigen Sie mir, wie es funktioniert",
-    "guide.intro.prompt": "Dieses Projekt ist noch nicht eingerichtet – zeigen Sie mir, wie dsh-leader-agent funktioniert, legen Sie dann eine Hello-World-Beispielkarte an, weisen Sie sie einem Worker zu und lassen Sie den Worker Hallo sagen (keine Dateiänderungen).",
+    "guide.intro.prompt": "Zeigen Sie mir, wie dsh-leader-agent funktioniert; lesen, ändern oder erstellen Sie beim Erklären keine Dateien.",
     "guide.steps": "Aufgabenkarten anlegen, Arbeit an Agenten übergeben und den Fortschritt im Board verfolgen",
     "guide.title": "Dieses Verzeichnis hat einen Leader",
     "markdown.code": "Code",

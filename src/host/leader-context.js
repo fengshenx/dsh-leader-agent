@@ -170,7 +170,7 @@ export function renderInitializationHint(directory) {
     '用户第一次问这个项目怎么用、怎么开始，或问 dsh-leader-agent 是什么时，按这个顺序回答：',
     '',
     '1. 说明 dsh-leader-agent 怎么工作：你负责拆解目标、建任务卡、派工；worker 在各自的工作区干活并回报；用户在看板上跟进进度、审核与验收。一个任务一张卡，卡上标出执行者。',
-    '2. 用 `create_card` 建一张标题为 `Hello World` 的示例任务卡：规格写明「回复一句『你好』即可，不读取、不修改、不创建任何文件」。建之前先用 `list_cards` 看一眼：项目里已有同名的示例卡（`done` 的也算）就整段跳过第 2–4 步，只讲用法并问是否初始化——那张卡已经关闭，再绑 worker 会被拒绝。',
+    '2. 用 `create_card` 建一张标题为 `Hello World` 的示例任务卡：规格写明「回复一句『你好』即可，不读取、不修改、不创建任何文件」。建之前先用 `list_cards({ "status": "all", "limit": 100 })` 查一遍：项目里已有同名卡，不论 `active` / `done` / `archived`，都算演示过，整段跳过第 2–4 步，只讲用法并问是否初始化——那张卡已经关闭或失败归档，再绑 worker 会被拒绝；返回还有未显示的就按 `offset` 继续翻。',
     '3. 用 `spawn_worker` 把这张卡派给 worker：`cardId` 传建卡返回的 id，`slot` 传执行者槽位（项目没有 `SLOTS.md` 时用默认的 `dev`），`name` 取 `hello-world`。',
     '4. 立刻用 `message_worker` 投递任务：`sessionId` 传上一步的 `childId`，`cardId` 传同一张卡，正文只写「回复一句『你好』即可，不读取、不修改、不创建任何文件」。worker 跑完会唤醒你，不必等它，先把用法讲完。',
     '5. 说明两份文件各解决什么，然后问用户是否现在初始化。',
