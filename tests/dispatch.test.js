@@ -1064,11 +1064,12 @@ test('上限复位后被挡下的通知能重新投出', async () => {
   }
 })
 
-test('调高上限后释放被旧上限挡下的回报，调低不释放', async () => {
+test('调高上限后释放被旧上限挡下的回报', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
-  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => 1 })
+  let limit = 1
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => limit })
   try {
     const parent = createParent('parent-1', fixture.delivered, 'running')
     fixture.agents.set('parent-1', parent)
@@ -1093,15 +1094,73 @@ test('调高上限后释放被旧上限挡下的回报，调低不释放', async
     }, 5000)
 
     // 上限仍是 1：释放不动
-    assert.equal(dispatcher.releaseExhausted(1), 0)
+    assert.equal(dispatcher.releaseExhausted(), 0)
     await new Promise((resolve) => { setTimeout(resolve, 600) })
     assert.equal(fixture.delivered.length, 1)
 
     // 调高到 2：释放被挡下的那条，父会话空闲时投出；再调一次不应重复计数
-    assert.equal(dispatcher.releaseExhausted(2), 1)
-    assert.equal(dispatcher.releaseExhausted(2), 0, '释放后必须清掉 exhausted 标记，不能每次调用都算释放')
-    await waitFor(() => fixture.delivered.length === 2, 5000)
-    await waitFor(async () => (await store.listPending()).length === 0, 5000)
+    limit = 2
+    assert.equal(dispatcher.releaseExhausted(), 1)
+    assert.equal(dispatcher.releaseExhausted(), 0, '释放后必须清掉 exhausted 标记，不能每次调用都算释放')
+    assert.equal(await waitFor(() => fixture.delivered.length === 2, 5000), true, '调高后应投出第二条')
+    assert.equal(
+      await waitFor(async () => (await store.listPending()).length === 0, 5000),
+      true,
+      '投出后队列应清空',
+    )
+  } finally {
+    dispatcher.dispose()
+  }
+})
+
+test('调低上限不释放已挡下的回报', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  let limit = 2
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => limit })
+  try {
+    const parent = createParent('parent-1', fixture.delivered, 'running')
+    fixture.agents.set('parent-1', parent)
+
+    for (let index = 0; index < 3; index += 1) {
+      await dispatchAndStart(dispatcher, {
+        parent,
+        initialMessage: '做一件事',
+        name: `工 ${index}`,
+        signal: new AbortController().signal,
+      })
+      await finishWorker(dispatcher, fixture, { summary: '做完了' })
+    }
+    await waitFor(async () => (await store.listPending()).length === 3)
+
+    // 上限 2：前两条投出，第三条被挡下
+    parent.status = 'idle'
+    assert.equal(await waitFor(() => fixture.delivered.length === 2, 5000), true, '旧上限下应投出两条')
+    assert.equal(
+      await waitFor(async () => {
+        const pending = await store.listPending()
+        return pending.some((item) => typeof item.lastError === 'string' && item.lastError.includes('上限'))
+      }, 5000),
+      true,
+      '第三条应被上限挡下',
+    )
+
+    // 调低到 1：已用 2 次，新上限覆盖不了，释放不能放行
+    limit = 1
+    assert.equal(dispatcher.releaseExhausted(), 0)
+    await new Promise((resolve) => { setTimeout(resolve, 600) })
+    assert.equal(fixture.delivered.length, 2)
+    assert.equal((await store.listPending()).length, 1)
+
+    // 人工开口重置计数后才放行
+    dispatcher.resetResumeCount('parent-1')
+    assert.equal(await waitFor(() => fixture.delivered.length === 3, 5000), true, '人工开口后应投出第三条')
+    assert.equal(
+      await waitFor(async () => (await store.listPending()).length === 0, 5000),
+      true,
+      '投出后队列应清空',
+    )
   } finally {
     dispatcher.dispose()
   }

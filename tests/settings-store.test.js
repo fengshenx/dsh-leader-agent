@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -93,6 +93,54 @@ test('坏字段按字段退回默认值并留日志，不阻断插件启动', as
     const broken = createSettingsStore({ home, logger: (message) => logs.push(message) })
     assert.deepEqual(broken.get(), DEFAULTS)
     assert.match(logs.at(-1), /读取 settings\.json 失败/)
+
+    // 坏文件要在下次保存覆盖前留下原文备份，排障线索不能丢。
+    const backups = (await readdir(directory)).filter((name) => name.startsWith('settings.json.corrupt-'))
+    assert.equal(backups.length, 1)
+    const backup = join(directory, backups[0])
+    assert.equal(await readFile(backup, 'utf8'), '{ 不是 JSON')
+    await broken.update({ autoResumeLimit: 321 })
+    assert.equal(JSON.parse(await readFile(join(directory, 'settings.json'), 'utf8')).autoResumeLimit, 321)
+    assert.equal(await readFile(backup, 'utf8'), '{ 不是 JSON', '保存后备份仍保留原文')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('备份失败时仍按默认值启动并留下线索', {
+  // 用目录写权限逼 rename 失败；root 与 Windows 上权限语义不同，不装成失败。
+  skip: (process.platform === 'win32' || process.getuid?.() === 0) && '需要非 root 的 POSIX 目录权限',
+}, async () => {
+  const home = await makeHome()
+  const directory = join(home, 'dsh-leader-agent')
+  await mkdir(directory, { recursive: true })
+  await writeFile(join(directory, 'settings.json'), '{ 不是 JSON', 'utf8')
+  await chmod(directory, 0o500)
+  try {
+    const logs = []
+    const settings = createSettingsStore({ home, logger: (message) => logs.push(message) })
+    assert.deepEqual(settings.get(), DEFAULTS)
+    assert.match(logs.at(-1), /读取 settings\.json 失败，备份到 .* 失败/)
+    assert.equal(await readFile(join(directory, 'settings.json'), 'utf8'), '{ 不是 JSON')
+  } finally {
+    await chmod(directory, 0o700)
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('顶层不是对象时按坏文件备份并回默认', async () => {
+  const home = await makeHome()
+  try {
+    const directory = join(home, 'dsh-leader-agent')
+    await mkdir(directory, { recursive: true })
+    await writeFile(join(directory, 'settings.json'), '[]', 'utf8')
+    const logs = []
+    const settings = createSettingsStore({ home, logger: (message) => logs.push(message) })
+    assert.deepEqual(settings.get(), DEFAULTS)
+    assert.match(logs.at(-1), /读取 settings\.json 失败.*顶层必须是对象/)
+    const backups = (await readdir(directory)).filter((name) => name.startsWith('settings.json.corrupt-'))
+    assert.equal(backups.length, 1)
+    assert.equal(await readFile(join(directory, backups[0]), 'utf8'), '[]')
   } finally {
     await rm(home, { recursive: true, force: true })
   }

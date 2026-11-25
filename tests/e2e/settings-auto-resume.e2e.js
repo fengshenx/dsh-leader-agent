@@ -4,7 +4,7 @@
  * 断言的落点：
  * - 两个 `settings-section` 各自有标题与控件，不混在同一组；
  * - 看板模式默认 work、切到 cinema 后落盘，reload 后仍选中；
- * - 自动续行默认 200、非法值就地报错、停顿后自动落进 `settings.json`；
+ * - 自动续行默认 200、非法值就地报错且不写盘、停顿不足 600ms 不写、停顿后落盘；
  * - 设置行不再有 scope / hint 长说明，也没有保存按钮；
  * - reload 后重新读取配置仍是保存值。
  *
@@ -125,19 +125,29 @@ test('设置页：看板模式与自动续行都落宿主配置，保存后 relo
     timeoutMs: 10_000,
   })
 
-  // 非法值就地报错，不提交。
+  // 非法值就地报错，不提交；等到防抖窗口过去后文件仍未被写。
+  const beforeInvalid = await readSettingsFile(e2e)
+  assert.equal(beforeInvalid.autoResumeLimit, 200)
+  assert.equal(beforeInvalid.boardMode, 'cinema')
   await input.fill('0')
   await waitForLocator(autoSection.locator('.dsh-leader-agent-settings-error'), {
     description: '非法上限的就地报错',
     timeoutMs: 5_000,
   })
+  await new Promise((resolve) => { setTimeout(resolve, 700) })
+  assert.deepEqual(await readSettingsFile(e2e), beforeInvalid, '非法值不应写盘')
 
-  // 合法值：输入停顿后自动保存，行下方出现绿色「保存成功」。
+  // 合法值：停顿不足 600ms 不写，越过防抖窗口后自动保存并显示「保存成功」。
+  const fillAt = Date.now()
   await input.fill('350')
+  assert.equal((await readSettingsFile(e2e)).autoResumeLimit, 200, '刚输入时不应立刻写盘')
+  await new Promise((resolve) => { setTimeout(resolve, 300) })
+  assert.equal((await readSettingsFile(e2e)).autoResumeLimit, 200, '停顿不足 600ms 不应写盘')
   await waitForLocator(autoSection.locator('.dsh-leader-agent-settings-saved'), {
     description: '自动保存成功提示',
     timeoutMs: 10_000,
   })
+  assert.ok(Date.now() - fillAt >= 500, '保存应等完 600ms 防抖窗口')
   assert.equal((await autoSection.locator('.dsh-leader-agent-settings-saved').innerText()).trim(), '保存成功')
   assert.equal(await input.inputValue(), '350')
 

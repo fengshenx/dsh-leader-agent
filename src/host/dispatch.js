@@ -1637,10 +1637,10 @@ export function createDispatcher({
      * 已用次数——新上限仍要覆盖已经消耗掉的自动唤醒；降低上限时条目继续等待，
      * 直到用户开口。
      *
-     * @param {number} [limit] - 新上限；省略时取当前配置
      * @returns {number} 被释放的条目数
      */
-    releaseExhausted(limit = getAutoResumeLimit()) {
+    releaseExhausted() {
+      const limit = getAutoResumeLimit()
       let released = 0
       for (const [parentSessionId, list] of waiting) {
         if ((resumeCounts.get(parentSessionId) ?? 0) >= limit) continue

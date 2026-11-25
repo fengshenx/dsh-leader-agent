@@ -16,7 +16,7 @@
  */
 
 import { mkdir, rename, writeFile } from 'node:fs/promises'
-import { readFileSync } from 'node:fs'
+import { readFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AUTO_RESUME_LIMIT_DEFAULT,
@@ -96,14 +96,23 @@ export function createSettingsStore({ home, logger = () => {} }) {
   let current = { ...DEFAULT_SETTINGS }
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('设置文件结构非法：顶层必须是对象')
+    }
     current = {
       autoResumeLimit: readAutoResumeLimit(parsed, logger),
       boardMode: readBoardMode(parsed, logger),
     }
   } catch (error) {
-    // 文件缺失是正常的首次启动；其它读取 / 解析失败要留一行线索，但仍按默认值启动。
+    // 文件缺失是正常的首次启动；其它读取 / 解析失败要留一行线索，仍按默认值启动。
     if (error?.code !== 'ENOENT') {
-      logger(`dsh-leader-agent: 读取 settings.json 失败，使用默认设置：${error instanceof Error ? error.message : String(error)}`)
+      const backup = `${file}.corrupt-${Date.now()}`
+      try {
+        renameSync(file, backup)
+        logger(`dsh-leader-agent: 读取 settings.json 失败，已备份到 ${backup}，使用默认设置：${error instanceof Error ? error.message : String(error)}`)
+      } catch (backupError) {
+        logger(`dsh-leader-agent: 读取 settings.json 失败，备份到 ${backup} 失败，使用默认设置：${error instanceof Error ? error.message : String(error)}；备份错误：${backupError instanceof Error ? backupError.message : String(backupError)}`)
+      }
     }
   }
 

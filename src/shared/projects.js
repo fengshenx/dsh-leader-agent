@@ -24,8 +24,8 @@ export const MAX_PROJECT_NAME_LENGTH = 200
  *
  * 参数名同时是宿主侧方法的形参与浏览器侧 descriptor 的 wire 字段名——Typert 的
  * SRC 通道按宿主方法源码里的形参名建 wire 字段，两边必须逐字一致。类型只给
- * 浏览器侧的严格 codec 用：`string` 是标量，`links` 是链接条目数组（形状由
- * 共享的 `card-links.js` 校验）。
+ * 浏览器侧的严格 codec 用：`string` / `number` 是标量，`links` 是链接条目数组
+ * （形状由共享的 `card-links.js` 校验）。
  *
  * 方法名要避开官方命名空间服务保留的字（`ctx`、`name`、`methods` 等，以及
  * Cordis 服务原型的成员）：官方在挂载前会逐个检查，撞名即拒收整个命名空间。

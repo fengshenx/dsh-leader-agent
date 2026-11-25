@@ -134,7 +134,7 @@
     "project.rename": "重命名",
     "project.replaceLeader": "换新 Leader",
     "session.fold.expand": "展开其余 {count} 个会话",
-    "settings.autoResume.desc": "Leader Agent最多被Worker唤醒多少次。",
+    "settings.autoResume.desc": "Leader Agent 最多被 Worker 唤醒多少次。",
     "settings.autoResume.invalid": "请输入 {min}–{max} 之间的整数。",
     "settings.autoResume.loadFailed": "读取设置失败：{message}",
     "settings.autoResume.retry": "重试",

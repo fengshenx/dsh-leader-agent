@@ -116,7 +116,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
 | `settings.json` | 自动续行上限与看板显示模式；实例级 |
 
-浏览器侧只存项目标签集合（`dsh-leader-agent.session-tabs.v1`），不进数据根；看板模式与自动续行上限在 `settings.json`。
+浏览器侧只存项目标签集合（`dsh-leader-agent.session-tabs.v1`）与引导卡关闭标记（`dsh-leader-agent.guide.dismissed.*`），不进数据根；看板模式与自动续行上限在 `settings.json`。
 
 会话本体是宿主的 JSONL（`$DSH_HOME/sessions/`），不在本 bundle 手里。仓外插件不能新增 session event 类型（[capability-gaps 第 8 条](capability-gaps.md)），卡片与通知状态因此走独立存储域 + session projection。
 

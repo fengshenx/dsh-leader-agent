@@ -27,7 +27,7 @@ leader 无人值守时，机制侧每投一条 worker 回报就消耗一次自�
 - 默认无人值守窗口从 8 次拉长到 200 次；护栏仍在，但长时间无人时自动唤醒的成本更高，用户可以在设置页调低。
 - 设置页只显示上限，不显示当前已用次数与积压条数；撞上限的线索仍是 `notifications.json` 的 `lastError`。
 - `settings.json` 是新增的实例级文件；同一数据根下的多个项目共用，不同数据根各自独立。看板模式也写这份文件（`version` 2），见[看板模式改存宿主设置](2026-11-25-board-mode-host-settings.md)。
-- 坏配置退回默认而不是让插件启动失败；下一次在设置页保存会覆盖成合法值。
+- 坏配置退回默认而不是让插件启动失败；覆盖前把原文件改名成 `settings.json.corrupt-<timestamp>`，下次在设置页保存会写成合法值。
 - **不处理真正的丢失窗口**：同一 worker 上一轮未结算又投新消息造成的在飞覆盖、以及进程重启时正在跑的轮次，仍会丢回报；本次只把「看起来像丢」的护栏做成可配，见[投递语义提案](../../proposed/architecture/2026-11-03-worker-delivery-idempotency.md)。
 - `projects` 命名空间因此同时承载项目数据与设置方法；读设置与两个写方法用显式动词区分，语义在契约注释里写清。
 
@@ -35,4 +35,4 @@ leader 无人值守时，机制侧每投一条 worker 回报就消耗一次自�
 
 ## Testing
 
-`tests/settings-store.test.js` 钉住默认值、坏值回退、落盘、并发与订阅；`tests/settings-contract.test.js` 钉住范围解析；`tests/projects-remote.test.js` 与 `tests/client-project-remote.test.js` 钉住新方法与 codec；`tests/dispatch.test.js` 的「调高上限后释放被旧上限挡下的回报」钉住释放语义；`tests/leader-wiring.test.js` 钉住装配默认 200 与落盘；`tests/e2e/settings-auto-resume.e2e.js` 在真实宿主里断言两块分区、默认 200、非法值报错、保存 350 后 reload 仍生效。双向读数：把默认值改回 8，e2e 的默认值断言变红；去掉 `releaseExhausted` 里清 `exhausted` 标记的那一行，第二次调用仍返回 1，用例变红。
+`tests/settings-store.test.js` 钉住默认值、坏值回退、坏文件备份、落盘、并发与订阅；`tests/settings-contract.test.js` 钉住范围解析；`tests/projects-remote.test.js` 与 `tests/client-project-remote.test.js` 钉住新方法与 codec；`tests/dispatch.test.js` 的「调高上限后释放被旧上限挡下的回报」与「调低上限不释放已挡下的回报」钉住释放语义；`tests/leader-wiring.test.js` 钉住装配默认 200 与落盘；`tests/e2e/settings-auto-resume.e2e.js` 在真实宿主里断言两块分区、默认 200、非法值不写盘、600ms 防抖边界、保存 350 后 reload 仍生效。
