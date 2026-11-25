@@ -314,4 +314,3 @@ test('需注意的线只呼吸、不流动：与文案「不流动（会呼吸�
   const trail = rules.find((rule) => rule.selector === '.dsh-leader-agent-board-rail-trail')
   assert.match(trail?.declarations.animation ?? '', /^dsh-leader-agent-rail-flow /, '光流只属于执行中的线')
 })
-
