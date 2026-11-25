@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { railSignature } from '../src/client/board-rail-signature.js'
 
@@ -67,4 +68,14 @@ test('内容签名、走线、主题、减少动效各自改签名', () => {
   ]
   const signatures = new Set([railSignature(input), ...variants.map(railSignature)])
   assert.equal(signatures.size, variants.length + 1)
+})
+
+test('组件把几何接进签名：漏传高度/行几何就等于退回旧签名', () => {
+  const source = readFileSync(new URL('../src/client/board-rail.js', import.meta.url), 'utf8')
+  // 0 尺寸跳过与签名比较是主诉的两个前提，一并钉住
+  assert.match(source, /stage\.clientWidth === 0 \|\| stage\.clientHeight === 0/)
+  assert.match(source, /if \(key === drawnKey\.current\) return/)
+  // 签名必须拿到实测行几何与 stage 高度：只传宽度是这次回归的原始形态
+  assert.match(source, /\.\.\.stage\.querySelectorAll\('\[data-rail-row\]'\)/)
+  assert.match(source, /railSignature\(\{[\s\S]*?height: rect\.height[\s\S]*?rows,/)
 })

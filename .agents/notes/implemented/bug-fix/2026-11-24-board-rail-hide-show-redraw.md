@@ -36,7 +36,7 @@ Status: implemented
 
 ## Testing
 
-- `tests/board-rail-signature.test.js`：相同输入同签名；行高、行位置、stage 高、宽度、内容、走线、主题、减少动效各自改签名。
+- `tests/board-rail-signature.test.js`：相同输入同签名；行高、行位置、stage 高、宽度、内容、走线、主题、减少动效各自改签名；另有一条源码断言钉住组件把实测高度与行几何传进签名（删掉 `height` 即变红）。
 - 真机探针（临时脚本，不入库）：标题 1→2 行后 stageH 198→218、trunkD `M20,32 L20,156`→`M20,32 L20,176`、`replaceChildren` +1；leader↔worker 切换计数 delta 0、sameTrunk true。
 - 双向：签名回退成只带宽度 → 标题换行后 trunkD 不动（差 20px）；撤掉 0 尺寸跳过 → away `M0,0 L0,0`、切回重建；撤掉签名比较 → 切回重建。
 - 未验证：真实 running 槽位下 SMIL 光点跨隐藏/恢复的相位（种子槽位全空闲）。
