@@ -1,16 +1,15 @@
 /**
- * 项目区块的几何与宿主工作区树对齐。
+ * 项目区块的最小几何守卫：行高与小节标题/行首/标题左缘跟宿主一致。
  *
- * 守的是一组纯样式回归：宿主 0.2.2 把「工作区」行从 34px 压到 32px，并让内容行
- * 用 3px 透明边框吃掉 paint-inset（左内容起点 12px、行高 32px），小节标题的左内边距
- * 也从 4px 提到 `--dsh-sidebar-row-padding`（12px）。本区块原先照 0.2.1 的数值抄：
- * 行高 34、`padding: 0 8px`、标题前多一个 16px 图标槽，在 0.2.2 上「项目」比
- * 「工作区」右移 13px，项目行比它自己的会话行与工作区行左移 4px、高 2px。
+ * 这条场景只守 `2026-11-14-project-section-row-geometry` 修过的那个 bug：宿主 0.2.2
+ * 把工作区行压到 32px 并让内容行吃 paint-inset 后，项目区块照 0.2.1 的数值抄，
+ * 「项目」比「工作区」右移一截、项目行比宿主行矮 2px。e2e 不测样式，但这四条
+ * 读数量的是**两个宿主元素之间的相对偏移**，不是某个颜色/字号的具体值，换宿主
+ * 版本也不该漂移；全量像素对齐（内边距、边框、截图）改走人工取证。
  *
- * 断言把**宿主的同一元素**当基准：行高、左右内边距、边框、行首图标与标题的左边缘，
- * 读数两边一起报。宿主再改这两处几何时场景先红，而不是靠人眼在截图里找。
- *
- * 先种项目再起第二段实例：项目注册表只在启动时读回内存（同 board-done-paging）。
+ * 基准始终取宿主同一元素：行高对宿主工作区行、图标左缘对宿主行图标、标题左缘对
+ * 宿主行标题、小节标题左缘对宿主 section label。先种项目再起第二段实例：项目
+ * 注册表只在启动时读回内存。
  */
 
 import assert from 'node:assert/strict'
@@ -56,29 +55,16 @@ function seedProject(home, session) {
 }
 
 /**
- * 读一次两边的几何。宿主选择器用 CSS Module 类名的稳定子串（哈希前缀随构建变）。
+ * 读两边的行高与左缘。宿主选择器用 CSS Module 类名的稳定子串（哈希前缀随构建变）。
  *
  * @param {import('playwright').Page} page - 页面
- * @returns {Promise<object>} 左右两边的行高、内边距、边框与左边缘
+ * @returns {Promise<object>} 项目行、项目小节标题与宿主对应元素的四条读数
  */
 async function readGeometry(page) {
   return page.evaluate(() => {
-    /** 一个元素的行几何；缺失时返回 null。 */
-    const box = (element) => {
-      if (element === null) return null
-      const rect = element.getBoundingClientRect()
-      const style = getComputedStyle(element)
-      return {
-        left: Math.round(rect.left * 100) / 100,
-        height: Math.round(rect.height * 100) / 100,
-        paddingLeft: style.paddingLeft,
-        paddingRight: style.paddingRight,
-        borderLeftWidth: style.borderLeftWidth,
-        borderRightWidth: style.borderRightWidth,
-      }
-    }
     /** 元素左边缘；缺失时返回 null。 */
     const leftOf = (element) => (element === null ? null : Math.round(element.getBoundingClientRect().left * 100) / 100)
+    const heightOf = (element) => (element === null ? null : Math.round(element.getBoundingClientRect().height * 100) / 100)
 
     const ourRow = document.querySelector('.dsh-leader-agent-project-row')
     const ourLabel = document.querySelector('.dsh-leader-agent-project-header-label')
@@ -92,8 +78,8 @@ async function readGeometry(page) {
     const hostTitle = hostRow?.querySelector('[class*="title"]') ?? null
 
     return {
-      ourRow: box(ourRow),
-      hostRow: box(hostRow),
+      ourRowHeight: heightOf(ourRow),
+      hostRowHeight: heightOf(hostRow),
       ourIconLeft: leftOf(ourIcon),
       hostIconLeft: leftOf(hostIcon),
       ourTitleLeft: leftOf(ourTitle),
@@ -104,7 +90,7 @@ async function readGeometry(page) {
   })
 }
 
-test('项目区块的行高、内边距与左边缘跟宿主工作区树一致', { timeout: scenarioTimeout() }, async (t) => {
+test('项目区块的行高、小节标题与行首/标题左缘跟宿主一致', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-alignment-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -151,12 +137,12 @@ test('项目区块的行高、内边距与左边缘跟宿主工作区树一致',
     description: '宿主工作区行出现在左栏',
     timeoutMs: 20_000,
   })
-  // 项目行与标题是两次渲染（列表先到、展开态后到），等两边读数都落到同一形状再断言。
+  // 项目行、标题与小节标题是多次渲染（列表先到、展开态后到），等两边的四条读数都齐全再断言。
   const geometry = await waitFor({
-    description: '项目区块与工作区行的几何读数齐全',
+    description: '项目区块与工作区行的四条读数齐全',
     check: async () => {
       const reading = await readGeometry(page)
-      return reading.ourRow !== null && reading.hostRow !== null
+      return reading.ourRowHeight !== null && reading.hostRowHeight !== null
         && reading.ourIconLeft !== null && reading.hostIconLeft !== null
         && reading.ourTitleLeft !== null && reading.hostTitleLeft !== null
         && reading.ourLabelLeft !== null && reading.hostLabelLeft !== null
@@ -166,36 +152,12 @@ test('项目区块的行高、内边距与左边缘跟宿主工作区树一致',
   })
 
   const reading = JSON.stringify(geometry)
-  assert.ok(geometry.ourRow !== null, `项目行应有可读的盒模型；读数 ${reading}`)
-  assert.ok(geometry.hostRow !== null, `宿主工作区行应有可读的盒模型；读数 ${reading}`)
-  // 行高：本区块写死 0.2.2 的 32px——宿主没暴露行高的 CSS 变量可继承（只有
-  // row-padding 与 paint-inset）。0.2.1 的宿主行是 34px，本场景在那里会因这 2px
-  // 真实差异失败；那是正确报警，属已知下限版本差异，不为它加版本条件。
+  // 四条都是「本区块 vs 宿主同一元素」的相对读数；容差 1px 吃掉亚像素取整，
+  // 不放宽到「看起来差不多」。
   assert.ok(
-    Math.abs(geometry.ourRow.height - geometry.hostRow.height) <= 1,
+    Math.abs(geometry.ourRowHeight - geometry.hostRowHeight) <= 1,
     `项目行行高应与宿主工作区行一致；读数 ${reading}`,
   )
-  assert.equal(
-    geometry.ourRow.paddingLeft,
-    geometry.hostRow.paddingLeft,
-    `项目行左内边距应与宿主工作区行一致（0.2.2 起是 paint-inset 之外的 9px）；读数 ${reading}`,
-  )
-  assert.equal(
-    geometry.ourRow.paddingRight,
-    geometry.hostRow.paddingRight,
-    `项目行右内边距应与宿主工作区行一致；读数 ${reading}`,
-  )
-  assert.equal(
-    geometry.ourRow.borderLeftWidth,
-    geometry.hostRow.borderLeftWidth,
-    `项目行左透明边框应与宿主工作区行一致（paint-inset）；读数 ${reading}`,
-  )
-  assert.equal(
-    geometry.ourRow.borderRightWidth,
-    geometry.hostRow.borderRightWidth,
-    `项目行右透明边框应与宿主工作区行一致（paint-inset）；读数 ${reading}`,
-  )
-  // 左边缘：行首槽位与标题必须落在宿主行同一列，否则「项目」比「工作区」缩进一截。
   assert.ok(
     Math.abs(geometry.ourIconLeft - geometry.hostIconLeft) <= 1,
     `项目行行首图标应与宿主工作区行图标同一左边缘；读数 ${reading}`,

@@ -1,6 +1,6 @@
 # 实现、缺陷与重构
 
-共用前提：已有验收、设计/Issue、独占 worktree 和明确写入 owner；委派简报见 [并行协作](../references/parallel.md)。行为驱动、fixture、永久回归与覆盖率以项目约定为准，验证范围按项目既有门禁选择，结构判断按 [专项能力方法](../SKILL.md#按问题调用专项能力)。
+共用前提：已有验收、设计/Issue、独占 worktree 和明确写入 owner；委派简报见 [并行协作](../references/parallel.md)。行为驱动、fixture、永久回归与覆盖率以项目约定为准，测试方法见 [测试 playbook](testing.md)，验证范围按项目既有门禁选择，结构判断按 [专项能力方法](../SKILL.md#按问题调用专项能力)。
 
 本 playbook 可由普通单会话或 dev worker 直接使用，不要求加载 leader 入口、建卡或启动派工。共同工程要求相同；worker 的任务来源、交接对象与阶段归属由宿主身份和派单确定，普通会话直接向用户交付。
 

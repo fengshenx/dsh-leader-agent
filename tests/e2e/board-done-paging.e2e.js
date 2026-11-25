@@ -8,8 +8,8 @@
  * 省掉「首轮基线」与「新卡」的时间竞态（那条通路由 `project-board-monitor.test.js`
  * 单测守着）。
  *
- * 断言落在插件自己的 DOM 与计算样式上：done 行数、「展开其余 / 收起」的文案与
- * `aria-expanded`、done 标题与卡号的计算字号。
+ * 断言落在插件自己的 DOM 与 ARIA 状态上：done 行数、「展开其余 / 收起」的文案与
+ * `aria-expanded`。字号、宽度这类样式不写进 e2e。
  */
 
 import assert from 'node:assert/strict'
@@ -88,19 +88,15 @@ function seedDoneCards(home) {
  * 读「已完成」区的一次完整读数。
  *
  * @param {import('playwright').Page} page - 页面
- * @returns {Promise<object>} 行数、按钮文案与状态、done 标题与卡号的计算字号
+ * @returns {Promise<object>} 行数、按钮文案与 aria-expanded 状态
  */
 async function readDoneSection(page) {
   return page.evaluate(({ rowSelector, moreSelector }) => {
     const more = document.querySelector(moreSelector)
-    const title = document.querySelector('.dsh-leader-agent-board-done-title')
-    const number = document.querySelector('.dsh-leader-agent-board-card-number')
     return {
       rows: document.querySelectorAll(rowSelector).length,
       moreText: more?.textContent ?? null,
       moreExpanded: more?.getAttribute('aria-expanded') ?? null,
-      titleSize: title === null ? null : getComputedStyle(title).fontSize,
-      numberSize: number === null ? null : getComputedStyle(number).fontSize,
     }
   }, { rowSelector: DONE_ROW, moreSelector: MORE_BUTTON })
 }
@@ -209,10 +205,6 @@ test('已完成区默认 30 行，展开到 31 行变「收起」，收起回 30
   assert.equal(folded.rows, PAGE_SIZE, `默认应渲染 ${PAGE_SIZE} 行`)
   assert.equal(folded.moreText, '展开其余 1 张卡')
   assert.equal(folded.moreExpanded, 'false')
-  // 字号是本 PR 的另一半：done 标题与卡号同档（11px），展开前后都不变。
-  assert.equal(folded.titleSize, '11px', 'done 标题字号应是 11px')
-  assert.equal(folded.numberSize, '11px', '卡号字号应是 11px')
-  assert.equal(folded.titleSize, folded.numberSize, 'done 标题与卡号应同字号')
 
   // 展开：一次把剩下的 1 张放完，按钮变「收起」。
   await page.locator(MORE_BUTTON).click()
@@ -225,7 +217,6 @@ test('已完成区默认 30 行，展开到 31 行变「收起」，收起回 30
   assert.equal(expanded.rows, DONE_TOTAL, `展开后应渲染 ${DONE_TOTAL} 行`)
   assert.equal(expanded.moreText, '收起')
   assert.equal(expanded.moreExpanded, 'true')
-  assert.equal(expanded.titleSize, folded.titleSize, '展开不应改变 done 标题字号')
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', `board-done-paging-${process.pid}`)
   mkdirSync(artifacts, { recursive: true })

@@ -8,7 +8,9 @@ Status: implemented
 
 ## Decision
 
-- **只搬机制，实现黑盒化**：vitest + `playwright` 库 → `node:test` + `playwright` core；进程内 `launchWebScaffold()` → 黑盒 spawn `dsh web --port 0 --no-open` 并从就绪行取地址；replay 包回放 fixture → 本地 Messages mock 按 `MOCK-*` 标记出脚本；宿主 `whenIdle()` 轮次屏障 → 浏览器侧状态同步（DOM 稳定、落盘文件出现）；ariaSnapshot golden + refresh → 不做，断言锚是 class / 计算样式 / 落盘；`DSH_HOME` 隔离与端口 0 → 派生数据根。
+> **部分已被 [e2e 只测行为与逻辑，不测样式](2026-11-25-e2e-logic-only.md) 取代**：断言锚不再包含计算样式；确定性与黑盒化规则仍然成立。
+
+- **只搬机制，实现黑盒化**：vitest + `playwright` 库 → `node:test` + `playwright` core；进程内 `launchWebScaffold()` → 黑盒 spawn `dsh web --port 0 --no-open` 并从就绪行取地址；replay 包回放 fixture → 本地 Messages mock 按 `MOCK-*` 标记出脚本；宿主 `whenIdle()` 轮次屏障 → 浏览器侧状态同步（DOM 稳定、落盘文件出现）；ariaSnapshot golden + refresh → 不做，断言锚是 DOM class / 可见性 / 落盘（计算样式断言后由 [新笔记](2026-11-25-e2e-logic-only.md) 移除）；`DSH_HOME` 隔离与端口 0 → 派生数据根。
 - 等价物只保留宿主方案里**是测试判据**的部分（隔离、确定性、失败可见），不复制实现形态：宿主换 scaffold、换 replay 包、换快照工具都不影响本仓。
 - **禁 `networkidle`**：SSE 长连接下它永远不解析。
 - **禁单次瞬态 DOM 采样**：从流式输出到 React commit 的每一跳都可能合并 chunk，采样天然是竞态。

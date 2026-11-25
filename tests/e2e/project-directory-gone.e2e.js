@@ -6,7 +6,7 @@
  * 两棵树里都不可达——用户看到的就是「会话消失，卸载插件才回来」。
  *
  * 造状态走界面自己要走的动作（发一条消息、删工作区）加登记项目记录，不手改会话
- * 落盘。断言落在官方树里那一行的计算样式与项目行的失效标记上。
+ * 落盘。断言落在官方树里那一行的可见性与项目行的失效标记上，不读计算样式。
  */
 
 import assert from 'node:assert/strict'
@@ -98,7 +98,7 @@ test('项目目录被删后，它的会话回到官方树里可见', { timeout: 
   await waitFor({
     description: '删目录后会话行回到官方树里可见',
     check: async () => sessionRow.evaluate(
-      (node, cls) => !node.classList.contains(cls) && getComputedStyle(node).display !== 'none',
+      (node, cls) => !node.classList.contains(cls) && node.checkVisibility(),
       EXCLUDED_CLASS,
     ),
     timeoutMs: 30_000,

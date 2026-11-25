@@ -386,18 +386,6 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
   assert.equal(await workOption.getAttribute('aria-checked'), 'true', '默认应选中工作模式')
   assert.match(await cinemaOption.innerText(), /纯演示，社交媒体传播用/, '炫酷模式说明应写明纯演示用途')
 
-  // 设置页预览圆点取主题强调色（浅色宿主的 accent 是蓝的，固定琥珀会误导）。
-  const colors = await dialog.evaluate((node) => {
-    const dot = node.querySelector('.dsh-leader-agent-settings-preview-dot')
-    const radio = node.querySelector('.dsh-leader-agent-settings-option-selected .dsh-leader-agent-settings-radio')
-    return {
-      dot: dot === null ? null : getComputedStyle(dot).fill,
-      radio: radio === null ? null : getComputedStyle(radio).borderTopColor,
-    }
-  })
-  assert.notEqual(colors.dot, null, '缺设置页预览圆点')
-  assert.equal(colors.dot, colors.radio, `预览圆点应取主题强调色，实际 fill=${colors.dot} / accent=${colors.radio}`)
-
   // 切炫酷：看板同运行时即时换模式，rail 由卡片数据驱动。
   await cinemaOption.click()
   await waitFor({

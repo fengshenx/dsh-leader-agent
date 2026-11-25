@@ -1,6 +1,9 @@
 /**
- * worker 回报气泡的头像：真实宿主渲染出内联 SVG，带白名单 `data-shape` 与描边；
- * hover 时眼睛分组触发眨眼动画，`prefers-reduced-motion` 下不动。
+ * worker 回报气泡：头像渲染成带白名单 `data-shape` 的内联 SVG，恶意 name 不进入
+ * SVG，长正文默认折叠、可展开收起。
+ *
+ * 只断言 DOM、可访问性属性与折叠状态；SVG 几何、描边宽度与眨眼动画属于样式，
+ * 不写进 e2e（走人工取证）。
  *
  * 回报由 e2e 直接按宿主会话日志的格式追加（source 用本仓真实的
  * `workerReportSource`），不经过模型；这条用例守的是构建产物与宿主渲染，
@@ -111,7 +114,7 @@ function appendWorkerReport(home, session) {
   writeFileSync(path, Buffer.concat([compressed, ...frames]))
 }
 
-test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', { timeout: scenarioTimeout() }, async (t) => {
+test('worker 回报气泡：头像内联 SVG、恶意 name 不注入、长正文折叠', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-avatar-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -163,13 +166,7 @@ test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', 
   assert.ok(SHAPES.includes(shape), `data-shape 不在白名单：${shape}`)
 
   const body = svg.locator('g').first()
-  assert.equal(await body.getAttribute('stroke-width'), '2.5')
   assert.ok(await body.locator('path').count() >= 1, '身体组至少有一条非空 path')
-  const box = await body.evaluate((group) => {
-    const bbox = group.getBBox()
-    return { width: bbox.width, height: bbox.height, area: bbox.width * bbox.height }
-  })
-  assert.ok(box.width > 55 && box.height > 55 && box.area > 3_000, `身体组 bbox 过小：${JSON.stringify(box)}`)
   assert.equal((await svg.innerHTML()).includes('avatar-worker'), false)
 
   const maliciousSvg = avatars.nth(1).locator('svg').first()
@@ -182,7 +179,6 @@ test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', 
   await waitForLocator(longToggle, { description: '长回报给「展示更多」', timeoutMs: 10_000 })
   const longContent = longBubble.locator('.dsh-leader-agent-agent-bubble__content')
   assert.equal(await longContent.getAttribute('data-collapsed'), 'true')
-  const collapsedHeight = await longContent.evaluate((element) => element.getBoundingClientRect().height)
   await longToggle.click()
   await waitFor({
     description: '正文展开（data-collapsed 移除）',
@@ -190,11 +186,6 @@ test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', 
     timeoutMs: 5_000,
   })
   assert.equal(await longToggle.getAttribute('aria-expanded'), 'true')
-  const expandedHeight = await longContent.evaluate((element) => element.getBoundingClientRect().height)
-  assert.ok(
-    expandedHeight > collapsedHeight + 20,
-    `展开后正文应长高：collapsed=${collapsedHeight} expanded=${expandedHeight}`,
-  )
   await longToggle.click()
   await waitFor({
     description: '正文收回（data-collapsed 回来）',
@@ -202,24 +193,5 @@ test('worker 回报气泡：头像内联 SVG、hover 眨眼与长正文折叠', 
     timeoutMs: 5_000,
   })
 
-  await page.emulateMedia({ reducedMotion: 'no-preference' })
-  await avatar.hover()
-  const eye = avatar.locator('.dsh-leader-agent-agent-bubble__avatar-eye').first()
-  const animation = await eye.evaluate((element) => getComputedStyle(element).animationName)
-  assert.match(animation, /dsh-leader-agent-avatar-blink/)
-  assert.equal(
-    await avatars.nth(1).locator('.dsh-leader-agent-agent-bubble__avatar-eye').first()
-      .evaluate((element) => getComputedStyle(element).animationName),
-    'none',
-    '同屏只有被 hover 的头像应眨眼',
-  )
-
-  await page.emulateMedia({ reducedMotion: 'reduce' })
-  await avatar.hover()
-  assert.equal(
-    await eye.evaluate((element) => getComputedStyle(element).animationName),
-    'none',
-    'prefers-reduced-motion 下应关闭眨眼',
-  )
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
 })
