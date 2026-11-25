@@ -28,7 +28,7 @@
 ## Highlights
 
 1. **One Leader drives development and review** — You state the goal once. The Leader opens cards, dispatches workers, watches each one finish, verifies the deliverable and organizes review. Your attention goes back to "what do I want" instead of "which agent is stuck"; the target is ten features in flight at once.
-2. **A right SidePanel board: see who is working at a glance** — One board per project, in two presentations: **Cinematic** (default) draws it as a workflow map whose running branches animate, **Work** keeps the plain list; switch under Settings → Task board. Each card carries its executor slot and a live status light, its note renders as Markdown, its links are editable in place, and the detail footer can delete the card. Click a card for the spec (goal, scope, acceptance, links), click a slot to drill into that agent's session and keep talking; worker reports arrive as Markdown-rendered agent bubbles; dispatched task briefs arrive as user-style bubbles whose body uses the same Markdown pipeline as assistant content; single newlines merge per Markdown, so use blank lines or Markdown syntax for a line break.
+2. **A right SidePanel board: see who is working at a glance** — One board per project, in two presentations: **Work** (default) keeps the plain list, **Cinematic** draws it as a workflow map for demos and social sharing; switch under Settings → Leader Agent → Task board. Each card carries its executor slot and a live status light, its note renders as Markdown, its links are editable in place, and the detail footer can delete the card. Click a card for the spec (goal, scope, acceptance, links), click a slot to drill into that agent's session and keep talking; worker reports arrive as Markdown-rendered agent bubbles; dispatched task briefs arrive as user-style bubbles whose body uses the same Markdown pipeline as assistant content; single newlines merge per Markdown, so use blank lines or Markdown syntax for a line break.
 3. **Arrange your agents however you want** — Two files do the arranging. `LEADER.md` holds the Leader's prompt and this project's orchestration rules: boundaries, dispatch requirements, acceptance criteria. `SLOTS.md` gives each worker role its own rules (dev / review / …). Both are evaluated before every model request and appended only when their text changes, so editing a file changes behavior without recreating sessions.
 4. **Many projects in parallel, one Leader each** — Adding a project binds a leader session to it, and the project tree lists the workers that Leader spawned; rows can be dragged to reorder, and deleting a project only drops the record while keeping the folder and the sessions (dsh workspaces are untouched). Projects stay out of each other's way. Swap in a new Leader and the existing workers plus undelivered reports move over, so it can dispatch immediately.
 5. **The `leader-mode` skill: an orchestration protocol for the Leader** — Not "you are a tech lead". Staged playbooks across discussion → design → implementation and delivery → review → merge, plus guidance on parallel collaboration and handoff.
@@ -73,18 +73,18 @@ For pinning a version, removing it, development installs, or trying it without a
 ## Preview
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/ab19c6307736fc21675bbac2847dd9bce3bf7a81/docs/assets/readme/board-cinema.png" alt="Cinematic mode in the dark theme: the delivery board as a workflow map, with cards on a trunk and executors on animated branches" width="1200">
-</div>
-
-**Cinematic mode (default).** The same board as a workflow map: cards on a trunk, one branch per executor; only a running branch animates. Shown in the dark theme; the light theme uses electric-blue lines.
-
-<div align="center">
   <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="Work mode: the project tree on the left, the Leader's conversation in the middle, the delivery board as a list on the right" width="1200">
 </div>
 
-**Work mode.** The plain list, unchanged. Left: projects and their workers. Center: the Leader's session — task, dispatch, report, verdict. Right: the board; click an executor to open its session.
+**Work mode (default).** The plain list: one card per task with a slot chip per executor. Left: projects and their workers. Center: the Leader's session — task, dispatch, report, verdict. Right: the board; click an executor to open its session.
 
-Switch under **Settings → Task board**; the choice is stored per browser. Both screenshots are real working sessions.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/ab19c6307736fc21675bbac2847dd9bce3bf7a81/docs/assets/readme/board-cinema.png" alt="Cinematic mode in the dark theme: the delivery board as a workflow map, with cards on a trunk and executors on animated branches" width="1200">
+</div>
+
+**Cinematic mode.** The same board as a workflow map: cards on a trunk, one branch per executor; only a running branch animates. Built for demos and social sharing. Shown in the dark theme; the light theme uses electric-blue lines.
+
+Switch under **Settings → Leader Agent → Task board**; the choice is stored per browser. Both screenshots are real working sessions.
 
 ## How it runs
 
@@ -123,7 +123,7 @@ Three mechanisms make this more than "a smarter prompt":
 2. **Load the protocol.** In the leader session, have the model load `leader-mode`. It reads `playbooks/program.md` first, then the playbook for the current stage.
 3. **Dispatch.** `spawn_worker` requires `name` (a short role-task handle); `cardId` + `slot` optionally bind the card's executor slot in the same call. It returns a session id immediately and the worker has **not started yet**. Deliver the task body with `message_worker` (`sessionId` + `message`, optionally `rename`): the first message is what starts the turn, and a card-bound worker gets the card facts added to its request automatically, so you do not need to paste the spec. The worker's sandbox mode and approval policy are inherited from the Leader at dispatch time (an Auto Leader also passes on its review gate); the receipt states the permissions the worker actually runs with, and calls out full access by name. To see how it went about this turn — which tools it called, where it failed — use `read_worker_session` on it; that does not wake the worker.
 4. **Record task facts.** `create_card` opens a card (`title` required), `update_card` edits one (content changes carry `expectedRevision` for optimistic concurrency; links can be replaced wholesale with `links` or merged by id with `addLinks`), `list_cards` reads them. Links are deliverable entry points — PRs, issues, docs, assets — not comment or inline-comment anchors (`#issuecomment-` / `#discussion_r` / `#pullrequestreview-`). Comments are process evidence; write them in the report body. Cards belong to a project and are numbered globally; edits across projects are refused. `list_cards` and `create_card` are the Leader's alone, and plain sessions get neither; `update_card` is shared with workers. A worker may only edit a card it is bound to, and only derived fields such as `links` — `title` / `spec` / `status` / `kind` / `sortOrder` / `slots` belong to the Leader (the first two are the acceptance anchor and injected content, the rest organize the board and decide who executes). `read_card` is the worker's alone: it reads any card in the project, and with no `cardId` / `number` it reads the worker's single bound card — the way back to its task after compaction or a stale injection. Long specs come in 2000-character pages via `specOffset`.
-5. **Watch the board.** The Board tab in the right panel pulls cards for the project of the current session. It opens by itself when the leader creates a card; click a card for details (links editable, the card deletable, the rest read-only), click a slot chip to open the executor's session. Cinematic mode is the default; choose Work mode under Settings → Task board.
+5. **Watch the board.** The Board tab in the right panel pulls cards for the project of the current session. It opens by itself when the leader creates a card; click a card for details (links editable, the card deletable, the rest read-only), click a slot chip to open the executor's session. Work mode is the default; choose Cinematic under Settings → Leader Agent → Task board.
 
 ## Orchestration lives in files
 
