@@ -37,7 +37,8 @@ Status: implemented
 ## Testing
 
 - `npm run check`、`npm run build:client`、`npm run e2e:one board-cinema` 通过。
-- 常驻守卫在 `board-cinema` 场景：切到另一个会话再切回，主干节点上的 `data-rail-keep` 仍在（节点没被替换）且 `replaceChildren` delta 0；撤掉签名比较该断言变红（`count:0`）。等防抖用 `svg.dataset.railSettled`（防抖跑完递增），不睡固定时间。
+- 常驻守卫在 `board-cinema` 场景：切到另一个会话再切回，主干节点上的 `data-rail-keep` 仍在（节点没被替换）且 `replaceChildren` delta 0；等防抖用 `svg.dataset.railSettled`（防抖跑完递增），不睡固定时间。
+- 双向：撤掉签名比较时，**主要抓获点是切走段的 away 计数**（`隐藏到 0 尺寸不应重画：1 !== 0`）；切回后的 identity 断言是兜底，只有把 away 断言临时删掉时才会先红（`{"count":0,"inDom":false}`）。
 - 真机探针（临时脚本，不入库）：长标题 `clientHeight` 20、`scrollWidth` 876 > `clientWidth` 503、`text-overflow: ellipsis`、`title` 为完整文本；给卡片加链接行后 stageH 198→221、trunkD `M20,32 L20,156`→`M20,32 L20,179`、`replaceChildren` +1；leader↔worker 切换计数 delta 0、sameTrunk true。
 - 双向：只带宽度 → 链接行加高后 trunkD 不动；撤掉 0 尺寸跳过 → away `M0,0 L0,0`、切回重建；撤掉签名比较 → 切回重建。
 - 「链接行加高 → 重画」只在探针里验证（要改夹具结构，收益不抵成本），不是常驻回归。

@@ -121,7 +121,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 1. 记下失败文件、退出码、`TimeoutError` 的 locator 与目标/页面读数；保留完整输出，别用 `grep` / `head` 过滤。
 2. **先看截图**：`.dev/e2e-artifacts/<场景>-<pid>/final.png`（关闭前最后一帧）与场景自己的步骤图，确认界面到底停在哪。
 3. 再看断言与 `problems`（pageerror / console.error）、`instance.logs`、`mock.requests`；按[技能的失败诊断](../.agents/skills/e2e-scenarios/SKILL.md#失败诊断)区分「数据没到」与「渲染错了」。
-4. 空载下 `npm run e2e:one <场景>`。**单跑通过不等于修好**：必须把场景、症状、单跑结果和日期登记到下面的已知 flake 表，并追根因；没有根因就不能把「调大等待」当成修复。等待预算见[超时口径](#超时口径)。
+4. 空载下 `npm run e2e:one <场景>`。**单跑通过不等于修好**：必须把场景、症状、单跑结果和日期登记到下面的已知 flake 表，并追根因；没有根因就不能把「调大等待」当成修复。
 
 ### 已知 flake
 
@@ -129,9 +129,9 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 |---|---|---|---|---|
 | `guide-card` | 项目行选中后 15 秒内引导卡未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/guide-card.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-20 |
 | `board-done-paging` | 已完成区折叠开关/计数 15 秒内未出现；高 load 时复现 | 空载单跑通过；看 `.dev/e2e-artifacts/board-done-paging-<pid>/` | 否（登记，根因未定位） | 2026-11-20 |
-| `board-cinema` | 全量/单跑均偶发 `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败） | 失败时主区域是会话视图（无面板页）；启动时侧栏还在刷新，过早点击会被重渲染丢掉——`openBoard` 现等侧栏 500ms 无 DOM 变化后只点一次，点不中即红 | 否（不再重试；稳定后仍丢按产品问题处理） | 2026-11-25 |
+| `board-cinema` | 全量/单跑均偶发 `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败） | 失败时主区域是会话视图（无面板页）；启动期侧栏还在刷新，首点被重渲染丢掉——`openBoard` 等侧栏 500ms 无变化后只点一次，点不中即红。真实用户路径关 worker 看板标签会抛 `sessions.retain: unknown session`（#200），e2e 绕开 | 否（不重试；稳定后仍丢按产品问题处理） | 2026-11-25 |
 | `avatar` | worker 回报气泡 15 秒内未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/avatar.e2e.js` 通过 | 否（登记，根因未定位） | 2026-11-20 |
-| `session-tabs`（多会话） | `instance.logs` 出现 `sessions.retain: unknown session`，切换/清理后常伴随等待失败 | 空载单跑通过且日志不再复现才算环境 flake；日志仍在则不是「已修」 | 否（宿主生命周期，待确认） | 2026-11-20 |
+| `session-tabs`（多会话） | `instance.logs` 出现 `sessions.retain: unknown session`，切换/清理后常伴随等待失败 | 空载单跑通过且日志不再复现才算环境 flake；日志仍在则不是「已修」 | 否（#200，宿主生命周期，待确认） | 2026-11-20 |
 
 登记不等于放行：同一场景连续两次空载单跑都失败，按回归处理，不再引用本表。
 

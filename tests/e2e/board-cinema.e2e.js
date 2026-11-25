@@ -62,23 +62,40 @@ async function currentSessionId(page) {
  * 等侧栏 DOM 连续 quietMs 没有变化。
  *
  * 启动时项目/会话列表还在刷新，点太早会落在重渲染中间被丢掉；这里等的是「没有
- * 变化」这个状态，不是睡一段固定时间。
+ * 变化」这个状态，不是睡一段固定时间。自带 10 秒上限：侧栏若一直有 DOM 变化，
+ * 失败读数要能指到「最后几次变化、data-dead、行数」，别只留场景级 90 秒超时。
  */
-async function waitForSidebarStable(page, quietMs = 500) {
-  await page.evaluate((quiet) => new Promise((resolve) => {
+async function waitForSidebarStable(page, quietMs = 500, timeoutMs = 10_000) {
+  const state = await page.evaluate(({ quiet, timeout }) => new Promise((resolve) => {
     const root = document.querySelector('.dsh-leader-agent-project-section')?.parentElement ?? document.body
     let timer = 0
-    function finish() {
+    let finished = false
+    let mutations = 0
+    function finish(stable) {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      clearTimeout(deadline)
       observer.disconnect()
-      resolve()
+      resolve({
+        stable,
+        mutations,
+        project: document.querySelector('.dsh-leader-agent-project-row')?.getAttribute('data-dead') ?? null,
+        rows: root.querySelectorAll('[data-row-key]').length,
+      })
     }
     const observer = new MutationObserver(() => {
+      mutations += 1
       clearTimeout(timer)
-      timer = setTimeout(finish, quiet)
+      timer = setTimeout(() => finish(true), quiet)
     })
-    timer = setTimeout(finish, quiet)
+    timer = setTimeout(() => finish(true), quiet)
+    const deadline = setTimeout(() => finish(false), timeout)
     observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true })
-  }), quietMs)
+  }), { quiet: quietMs, timeout: timeoutMs })
+  if (!state.stable) {
+    throw new Error(`侧栏在 ${timeoutMs}ms 内没有稳定：最后 ${state.mutations} 次 DOM 变化（观察 .dsh-leader-agent-project-section 的父级），data-dead=${state.project}，[data-row-key] 行数 ${state.rows}`)
+  }
 }
 
 /** 把该会话登记成项目。 */
@@ -497,6 +514,8 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
     check: async () => (await settled()) > settleBeforeHide,
     timeoutMs: 10_000,
   })
+  // 撤掉签名比较时主要红在这条 away 计数；下面切回后的 identity 断言是兜底，
+  // 只有把这条临时删掉时才会先红（{"count":0,"inDom":false}）。
   assert.equal(await clearCount(), 0, '隐藏到 0 尺寸不应重画')
   const leaderTab = page.locator(`.dsh-leader-agent-tab[data-session-id="${session.id}"]`)
   await waitForLocator(leaderTab, { description: 'leader 会话标签', timeoutMs: 10_000 })
@@ -522,8 +541,8 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
     { description: '切回后 rail 主干仍是同一个节点', state: 'attached', timeoutMs: 10_000 },
   )
   assert.equal(await clearCount(), 0, '切会话不应重建 leader 的 rail')
-  // 看板跟到了 worker 的右栏；在 leader 上程序化关掉那个隐藏标签，避免再切过去
-  // （切过去再关会触发宿主的 sessions.retain 报错）。
+  // 看板跟到了 worker 的右栏；在 leader 上程序化关掉那个隐藏标签，绕开 issue #200
+  // （切到 worker 再关的真实用户路径会触发 pageerror: sessions.retain: unknown session）。
   await page.evaluate((workerId) => {
     document.querySelector(`[data-sidebar-right-session="${workerId}"] [data-dockkit-tab-close]`)?.click()
   }, worker.id)
