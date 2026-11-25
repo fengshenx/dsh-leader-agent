@@ -18,7 +18,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 | 任务 | 先读 |
 |---|---|
 | 理解整体架构、查模块归属 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、宿主契约落点） |
-| 查某处限制、为什么这样取舍 | [docs/limitations.md](docs/limitations.md)（完整限制清单） |
+| 查某处限制与代价 | [docs/limitations.md](docs/limitations.md)（完整限制清单） |
 | 改 host 侧、加工具、动 `agent/created` | [docs/capability-gaps.md](docs/capability-gaps.md)（宿主能力边界，每条都有实测依据） |
 | 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/implemented/architecture/2026-10-23-client-side-findings-and-build-constraints.md) |
 | 起开发实例、多 worktree 并行、构建与测试机制 | [docs/development.md](docs/development.md) |
@@ -137,10 +137,10 @@ npm run release:check             # 发版门禁：check + build:client + verify
 |---|---|---|
 | `AGENTS.md` | 每个任务都适用的铁律 + 按任务查阅入口 | 背景、实例、按场景的流程、已链接文档的复述 |
 | `docs/architecture.md` | 有序地图：分层、运行时模型、数据流、持久化布局、宿主契约落点 | 逐文件职责、决策理由、实现状态标注 |
-| `docs/limitations.md` | 限制是什么、为什么这样取舍 | 实现细节（链到代码或笔记） |
+| `docs/limitations.md` | 限制是什么、代价是什么 | 实现细节（链到代码或笔记） |
 | `docs/development.md` | 开发环境、实例、构建契约、测试机制 | 架构接缝与运行时语义 |
 | `docs/capability-gaps.md` | 宿主做不到什么，每条带实测依据 | 本仓自己的取舍 |
-| `docs/usage.md` | 使用者视角的完整交互 | 实现与取舍 |
+| `docs/usage.md` | 使用者视角的操作手册 | 实现与取舍 |
 | `.agents/notes/` | 永久决策与边界（why、放弃了什么、怎么验证） | 迁移计划、验收清单、状态播报 |
 
 - 文档体量由 `scripts/doc-budgets.json` 管，`npm run check` 里的 `scripts/verify-doc-budgets.mjs` 超限变红。`docs/`、根目录与 `growing/**` 的 Markdown 必须全部登记，漏登记同样变红。红了按顺序处理：**搬到对的层 → 压缩 → 抬天花板**；抬天花板要在 PR 里写明为什么，并按同一比例重算余量。（计数口径：CJK 字符逐个算 1，非 CJK 按空白分词，代码块与表格一并计入；天花板按当前值留 5–12% 余量：低于 5% 报 `tight`，超过 12% 报 `loose` 并按当前值重设；9 单位以下且非 `loose` 的文档标 `small`（下界豁免，5–12% 间无整数解）；每个任务都要改的 `AGENTS.md` 与高频追加的 `capability-gaps.md` 留 10%，不贴线。）
