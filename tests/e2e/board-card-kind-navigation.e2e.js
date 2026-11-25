@@ -15,7 +15,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
-import { BOARD_MODE_KEY, BOARD_MODE_WORK } from '../../src/client/board-mode.js'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
@@ -183,15 +182,8 @@ test('卡面按导航目标组织：分类在头部、空槽不占位、停滞�
   const second = await startInstanceIn({ root, baseUrl: mock.url })
   instance = second
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
-  // 本场景测的是工作模式的卡内槽位。默认已经是工作模式；这里仍显式钉住，
-  // 测试要声明自己站在哪一边，避免以后默认再变时执行者被移到 rail 槽位。
-  await context.addInitScript(({ key, mode }) => {
-    try {
-      localStorage.setItem(key, mode)
-    } catch {
-      // about:blank 等非 http 源没有存储；真正的页面加载时会再执行一次
-    }
-  }, { key: BOARD_MODE_KEY, mode: BOARD_MODE_WORK })
+  // 本场景测的是工作模式的卡内槽位。看板模式现在默认 work 且存在宿主设置，
+  // 新数据根没有 settings.json，直接按默认工作模式跑。
   const page = await context.newPage()
   watchProblems(page, problems)
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })

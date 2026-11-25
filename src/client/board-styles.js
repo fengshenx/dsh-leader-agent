@@ -1503,6 +1503,11 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
   outline-offset: 1px;
 }
 
+.dsh-leader-agent-settings-option:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .dsh-leader-agent-settings-option-selected {
   border-color: var(--dsw-alias-state-business-primary);
 }

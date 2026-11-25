@@ -298,10 +298,10 @@ export function createProjectRemote({ service, cards, workers, workerSessions, s
     /**
      * 读插件设置。
      *
-     * 返回的是设置快照，不是项目或卡片数据：设置页只改护栏，业务事实仍归
+     * 返回的是设置快照，不是项目或卡片数据：设置页只改显示与护栏，业务事实仍归
      * 各自的存储。缺设置存储时明确报错，避免界面静默显示一个假默认值。
      *
-     * @returns {Promise<{ autoResumeLimit: number }>} 设置快照
+     * @returns {Promise<{ autoResumeLimit: number, boardMode: string }>} 设置快照
      */
     async readSettings() {
       if (this.settings === undefined) throw new Error('readSettings: 当前装配没有设置存储')
@@ -309,16 +309,29 @@ export function createProjectRemote({ service, cards, workers, workerSessions, s
     }
 
     /**
-     * 更新插件设置。
+     * 更新自动续行上限。
      *
-     * 只接受自动续行上限；校验在设置存储里完成，这里不做第二套范围判断。
+     * 校验在设置存储里完成，这里不做第二套范围判断。
      *
      * @param {number} autoResumeLimit - 新的自动续行上限
-     * @returns {Promise<{ autoResumeLimit: number }>} 更新后的快照
+     * @returns {Promise<{ autoResumeLimit: number, boardMode: string }>} 更新后的快照
      */
-    async updateSettings(autoResumeLimit) {
-      if (this.settings === undefined) throw new Error('updateSettings: 当前装配没有设置存储')
-      return this.settings.update(autoResumeLimit)
+    async updateAutoResumeLimit(autoResumeLimit) {
+      if (this.settings === undefined) throw new Error('updateAutoResumeLimit: 当前装配没有设置存储')
+      return this.settings.update({ autoResumeLimit })
+    }
+
+    /**
+     * 更新看板显示模式。
+     *
+     * 模式值只允许 `work` / `cinema`，校验同样在设置存储里。
+     *
+     * @param {string} boardMode - `work` 或 `cinema`
+     * @returns {Promise<{ autoResumeLimit: number, boardMode: string }>} 更新后的快照
+     */
+    async setBoardMode(boardMode) {
+      if (this.settings === undefined) throw new Error('setBoardMode: 当前装配没有设置存储')
+      return this.settings.update({ boardMode })
     }
   }
 

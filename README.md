@@ -84,7 +84,7 @@ For pinning a version, removing it, development installs, or trying it without a
 
 **Cinematic mode.** The same board as a workflow map: cards on a trunk, one branch per executor; only a running branch animates. Built for demos and social sharing. Shown in the dark theme; the light theme uses electric-blue lines.
 
-Switch under **Settings → Leader Agent → Task board**; the choice is stored per browser. Work-mode shot is a real session; cinematic shot is the browser e2e fixture (real host + local mock).
+Switch under **Settings → Leader Agent → Task board**; the choice is stored per instance. Work-mode shot is a real session; cinematic shot is the browser e2e fixture (real host + local mock).
 
 ## How it runs
 

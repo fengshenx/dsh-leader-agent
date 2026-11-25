@@ -1,11 +1,12 @@
 /**
- * 设置页的两块分区：看板展示是浏览器偏好，自动续行是宿主侧实例配置。
+ * 设置页的两块分区：看板展示与自动续行都走宿主 `settings.json`。
  *
  * 断言的落点：
  * - 两个 `settings-section` 各自有标题与控件，不混在同一组；
+ * - 看板模式默认 work、切到 cinema 后落盘，reload 后仍选中；
  * - 自动续行默认 200、非法值就地报错、保存后落进 `settings.json`；
  * - reload 后重新读取配置仍是保存值；
- * - 看板展示的范围说明不再写「不写入项目数据」，改成能读懂的浏览器偏好。
+ * - 看板展示的范围说明写明实例级共用，不再写旧的浏览器偏好。
  *
  * 不测样式：颜色、间距、像素位置不在断言里。
  */
@@ -19,6 +20,19 @@ import { launchE2E, scenarioTimeout, waitFor, waitForLocator } from './harness.m
 const SETTINGS_DIALOG = '[data-shortcut-modal="settings"]'
 const SECTION = '.dsh-leader-agent-settings-section'
 const INPUT = '#dsh-leader-agent-auto-resume'
+
+/**
+ * 读宿主设置文件；文件还没落盘时返回 undefined。
+ * @param {object} e2e - e2e 夹具
+ * @returns {Promise<object | undefined>} 设置对象
+ */
+async function readSettingsFile(e2e) {
+  try {
+    return JSON.parse(await readFile(join(e2e.instance.home, 'dsh-leader-agent', 'settings.json'), 'utf8'))
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * 打开设置面板；入口在「账号菜单 → 设置」里。
@@ -52,7 +66,7 @@ async function openPluginSettings(page) {
   return dialog
 }
 
-test('设置页：看板展示与自动续行分区，保存 350 后 reload 仍生效', { timeout: scenarioTimeout() }, async (t) => {
+test('设置页：看板模式与自动续行都落宿主配置，保存后 reload 仍生效', { timeout: scenarioTimeout() }, async (t) => {
   const e2e = await launchE2E({ name: 'settings-auto-resume' })
   t.after(() => e2e.stop())
 
@@ -69,8 +83,31 @@ test('设置页：看板展示与自动续行分区，保存 350 后 reload 仍�
   )
   assert.equal(await boardSection.locator('.dsh-leader-agent-settings-option').count(), 2)
   const boardScope = (await boardSection.locator('.dsh-leader-agent-settings-scope').innerText()).trim()
-  assert.match(boardScope, /只保存在当前浏览器/)
+  assert.match(boardScope, /所有项目共用/)
+  assert.doesNotMatch(boardScope, /只保存在当前浏览器/, '看板模式已改存宿主，不能再写浏览器偏好')
   assert.doesNotMatch(boardScope, /不写入项目数据/, '看板范围的旧文案会被误读成项目配置，必须换掉')
+
+  // 看板模式：默认 work，切 cinema 后写宿主设置；不碰 localStorage。
+  const workOption = boardSection.locator('.dsh-leader-agent-settings-option').filter({ hasText: '工作模式' }).first()
+  const cinemaOption = boardSection.locator('.dsh-leader-agent-settings-option').filter({ hasText: '炫酷模式' }).first()
+  await waitFor({
+    description: '看板模式选项从宿主读到配置',
+    check: async () => !(await cinemaOption.isDisabled()),
+    timeoutMs: 10_000,
+  })
+  assert.equal(await workOption.getAttribute('aria-checked'), 'true', '默认应选中工作模式')
+  await cinemaOption.click()
+  await waitFor({
+    description: '看板模式落进 settings.json',
+    check: async () => (await readSettingsFile(e2e))?.boardMode === 'cinema',
+    timeoutMs: 10_000,
+  })
+  assert.equal(await cinemaOption.getAttribute('aria-checked'), 'true', '保存成功后选中炫酷模式')
+  assert.equal(
+    await e2e.page.evaluate(() => localStorage.getItem('dsh-leader-agent.board.mode')),
+    null,
+    '看板模式不应再写浏览器 localStorage',
+  )
 
   // 分区二：自动续行。输入框与保存按钮只在这一块里。
   assert.equal(
@@ -116,19 +153,24 @@ test('设置页：看板展示与自动续行分区，保存 350 后 reload 仍�
   const stored = await waitFor({
     description: '自动续行上限落进 settings.json',
     check: async () => {
-      try {
-        return JSON.parse(await readFile(join(e2e.instance.home, 'dsh-leader-agent', 'settings.json'), 'utf8'))
-      } catch {
-        return undefined
-      }
+      const value = await readSettingsFile(e2e)
+      return value?.autoResumeLimit === 350 ? value : undefined
     },
     timeoutMs: 10_000,
   })
   assert.equal(stored.autoResumeLimit, 350)
+  assert.equal(stored.boardMode, 'cinema', '保存自动续行不能把看板模式冲掉')
 
   // reload 后重新打开设置页：宿主侧配置被重新读出，不是回到 200。
   await e2e.page.reload({ waitUntil: 'domcontentloaded' })
   const reopened = await openPluginSettings(e2e.page)
+  const reloadedBoard = reopened.locator(SECTION).nth(0)
+  const reloadedCinema = reloadedBoard.locator('.dsh-leader-agent-settings-option').filter({ hasText: '炫酷模式' }).first()
+  await waitFor({
+    description: 'reload 后看板模式仍选中 cinema',
+    check: async () => (await reloadedCinema.getAttribute('aria-checked')) === 'true',
+    timeoutMs: 15_000,
+  })
   const reloadedInput = reopened.locator(SECTION).nth(1).locator(INPUT)
   await waitFor({
     description: 'reload 后仍读到 350',

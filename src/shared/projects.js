@@ -48,5 +48,6 @@ export const PROJECT_REMOTE_METHODS = Object.freeze({
   // 仍是 projects，它是本插件唯一的 client→host RPC 面；方法名带 Settings
   // 以示与业务数据分开。
   readSettings: Object.freeze({}),
-  updateSettings: Object.freeze({ autoResumeLimit: 'number' }),
+  updateAutoResumeLimit: Object.freeze({ autoResumeLimit: 'number' }),
+  setBoardMode: Object.freeze({ boardMode: 'string' }),
 })

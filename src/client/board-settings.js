@@ -3,13 +3,11 @@
  *
  * 页面按「显示偏好 / 运行护栏」分两块，不把两类配置混在同一组控件里：
  *
- * - **任务看板**：工作 / 炫酷两种呈现方式，只存在当前浏览器 localStorage；
- * - **自动续行**：leader 无人值守时最多被自动唤醒多少次，存在宿主侧，
- *   所有项目共用，改完立即影响下一次回报投递。
+ * - **任务看板**：工作 / 炫酷两种呈现方式；
+ * - **自动续行**：leader 无人值守时最多被自动唤醒多少次。
  *
- * 两块的范围说明分开写：看板模式换浏览器就回到默认，自动续行改的是实例级
- * 行为——把「只影响当前浏览器」和「写入项目数据」糊在一起，用户会误以为
- * 看板模式是项目配置。
+ * 两块都落在宿主侧 `settings.json`，所有项目共用；分区是因为一个管显示、一个
+ * 管机制护栏，不是两种存储域。范围说明分开写，避免用户把显示偏好读成项目配置。
  *
  * 宿主的设置导航是把槽位里的注册项直接列出来，没有官方白名单；`ctx.slots.inject`
  * 在槽位不存在时不会执行回调，旧宿主上没有这一节，设置页自然不出现。
@@ -22,11 +20,11 @@ import {
   BOARD_MODE_CINEMA,
   BOARD_MODE_WORK,
   BOARD_MODES,
-  readBoardMode,
-  subscribeBoardMode,
+  getBoardMode,
+  normalizeBoardMode,
   setBoardMode,
+  subscribeBoardMode,
 } from './board-mode.js'
-import { readLocalStorage } from './guide-card-logic.js'
 import { ensureBoardStyles } from './board-styles.js'
 import { callProjectRemote } from './project-remote.js'
 import {
@@ -105,10 +103,11 @@ function ModePreview({ cinema }) {
  * @param {string} props.value - 该选项的模式值
  * @param {string} props.mode - 当前生效的模式
  * @param {(value: string) => void} props.onChoose - 选择回调
+ * @param {boolean} props.disabled - 读配置或保存中禁用
  * @param {(key: string) => string} props.t - 翻译函数
  * @returns {object} React 元素
  */
-function ModeOption({ value, mode, onChoose, t }) {
+function ModeOption({ value, mode, onChoose, disabled, t }) {
   const selected = value === mode
   return createElement(
     'button',
@@ -119,6 +118,7 @@ function ModeOption({ value, mode, onChoose, t }) {
       className: selected
         ? 'dsh-leader-agent-settings-option dsh-leader-agent-settings-option-selected'
         : 'dsh-leader-agent-settings-option',
+      disabled,
       onClick: () => { onChoose(value) },
     },
     createElement(
@@ -137,17 +137,67 @@ function ModeOption({ value, mode, onChoose, t }) {
 }
 
 /**
- * 「任务看板」分区：只看呈现方式，设置留在当前浏览器。
+ * 「任务看板」分区：显示模式存在宿主设置，所有项目共用。
+ *
+ * 点击选项即保存，不做乐观更新：宿主写盘成功后才广播给看板并改选中态；失败时
+ * 保留原选择并就地报错，用户能看出这次没生效。
  *
  * @param {object} props - 组件属性
- * @param {(key: string) => string} props.t - 翻译函数
+ * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 翻译函数
+ * @param {(method: string, args?: unknown[]) => Promise<unknown>} props.callRemote - 远端调用
  * @returns {object} React 元素
  */
-function BoardModeSection({ t }) {
-  const storage = readLocalStorage(globalThis)
-  const [mode, setMode] = useState(() => readBoardMode(storage))
-  // 设置页打开期间，别的窗口或组件改了模式也要跟上。
+function BoardModeSection({ t, callRemote }) {
+  /** `loading` 时选项不可用；`error` 表示读不到宿主配置，需要重试。 */
+  const [phase, setPhase] = useState('loading')
+  const [mode, setMode] = useState(getBoardMode)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState('')
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setPhase('loading')
+    setMessage('')
+    callRemote('readSettings', []).then((value) => {
+      if (cancelled) return
+      const next = normalizeBoardMode(value?.boardMode)
+      setBoardMode(next)
+      setMode(next)
+      setPhase('ready')
+    }).catch((error) => {
+      if (cancelled) return
+      setPhase('error')
+      setMessage(t('board.settings.loadFailed', { message: errorText(error) }))
+    })
+    return () => { cancelled = true }
+    // `t` 只用于失败文案，不进依赖：语言切换时重跑会再发一次取数。
+  }, [attempt, callRemote])
+
+  // 其它看板实例读回宿主配置后也会广播，设置页的选中态跟着走。
   useEffect(() => subscribeBoardMode(setMode), [])
+
+  /**
+   * 选中一个模式并保存到宿主。
+   * @param {string} next - 目标模式
+   * @returns {void}
+   */
+  function choose(next) {
+    if (phase !== 'ready' || busy || next === mode) return
+    setBusy(true)
+    setMessage('')
+    callRemote('setBoardMode', [next]).then((value) => {
+      const applied = normalizeBoardMode(value?.boardMode)
+      setBoardMode(applied)
+      setMode(applied)
+      setBusy(false)
+    }).catch((error) => {
+      setBusy(false)
+      setMessage(t('board.settings.saveFailed', { message: errorText(error) }))
+    })
+  }
+
+  const disabled = phase !== 'ready' || busy
 
   return createElement(
     'section',
@@ -163,15 +213,29 @@ function BoardModeSection({ t }) {
         className: 'dsh-leader-agent-settings-options',
         role: 'radiogroup',
         'aria-label': t('board.settings.title'),
+        'aria-busy': busy,
       },
       BOARD_MODES.map((value) => createElement(ModeOption, {
         key: value,
         value,
         mode,
-        onChoose: (next) => setMode(setBoardMode(storage, next)),
+        disabled,
+        onChoose: choose,
         t,
       })),
     ),
+    phase === 'error'
+      ? createElement('div', { className: 'dsh-leader-agent-settings-retry-row' },
+        createElement('span', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message),
+        createElement('button', {
+          type: 'button',
+          className: 'dsh-leader-agent-settings-button',
+          onClick: () => setAttempt((value) => value + 1),
+        }, t('board.settings.retry')))
+      : null,
+    phase === 'ready' && message !== ''
+      ? createElement('p', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message)
+      : null,
     createElement('p', { className: 'dsh-leader-agent-settings-scope' }, t('board.settings.scope')),
   )
 }
@@ -239,7 +303,7 @@ function AutoResumeSection({ t, callRemote }) {
     if (limit === saved) return
     setStatus('saving')
     setMessage('')
-    callRemote('updateSettings', [limit]).then((value) => {
+    callRemote('updateAutoResumeLimit', [limit]).then((value) => {
       const next = parseAutoResumeLimit(value?.autoResumeLimit) ?? limit
       setSaved(next)
       setDraft(String(next))
@@ -349,7 +413,7 @@ function BoardSettingsSection({ t, callRemote }) {
   return createElement(
     'section',
     { className: 'dsh-leader-agent-settings' },
-    createElement(BoardModeSection, { t }),
+    createElement(BoardModeSection, { t, callRemote }),
     createElement(AutoResumeSection, { t, callRemote }),
   )
 }

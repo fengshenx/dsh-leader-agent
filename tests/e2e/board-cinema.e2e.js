@@ -7,16 +7,15 @@
  * tick + 支线；同时钉住设置页的入口名、块标题、默认选中项与炫酷说明文案。
  *
  * 断言只读插件自己的 DOM（`data-mode`、`data-rail-*`、class、aria-label）与
- * localStorage，不读宿主内部状态。
+ * 宿主 `settings.json`，不读宿主内部状态。
  */
 
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { chromium } from 'playwright'
-import { BOARD_MODE_KEY } from '../../src/client/board-mode.js'
 import { readSessionLogs } from './session-logs.mjs'
 import { startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
@@ -263,17 +262,26 @@ async function openBoard(page, session) {
   return route
 }
 
+/**
+ * 读宿主设置里的看板模式；文件还没落盘时返回 undefined。
+ * @param {string} home - 数据根
+ * @returns {string | undefined} boardMode
+ */
+function boardModeSetting(home) {
+  try {
+    return JSON.parse(readFileSync(join(home, 'dsh-leader-agent', 'settings.json'), 'utf8')).boardMode
+  } catch {
+    return undefined
+  }
+}
+
 /** 炫酷模式的可观测事实：模式、rail/槽位与存储。 */
-async function assertCinemaBoard(page) {
+async function assertCinemaBoard(page, home) {
   assert.equal(await page.locator(`${BOARD}[data-mode="cinema"]`).count(), 1, '看板应处于炫酷模式')
   assert.equal(await page.locator(RAIL).count(), 1, '炫酷模式应渲染 rail')
   assert.equal(await page.locator(RAIL_SLOT).count(), 3, 'rail 槽位数应等于已绑定的会话')
   assert.equal(await page.locator(CARD_SLOT).count(), 0, '炫酷模式不该把会话入口留在卡内')
-  assert.equal(
-    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
-    'cinema',
-    '显式选择应留在 localStorage',
-  )
+  assert.equal(boardModeSetting(home), 'cinema', '显式选择应落到宿主 settings.json')
 }
 
 /** 给日志用的读数快照。 */
@@ -364,11 +372,12 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
     description: '看板默认进入工作模式',
     timeoutMs: 15_000,
   })
-  // 没有显式选择：默认模式不冒充用户选择，不写 mode key。
+  // 没有显式选择：默认模式不冒充用户选择，不写设置文件。
+  assert.equal(boardModeSetting(second.home), undefined, '默认模式不该写显式选择')
   assert.equal(
-    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
+    await page.evaluate(() => localStorage.getItem('dsh-leader-agent.board.mode')),
     null,
-    '默认模式不该写显式选择',
+    '看板模式不该再写浏览器 localStorage',
   )
   assert.equal(await page.locator(RAIL).count(), 0, '工作模式不该渲染 rail')
   assert.equal(await page.locator(RAIL_SLOT).count(), 0, '工作模式不该有 rail 槽位')
@@ -386,17 +395,27 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
   assert.equal(await workOption.getAttribute('aria-checked'), 'true', '默认应选中工作模式')
   assert.match(await cinemaOption.innerText(), /纯演示，社交媒体传播用/, '炫酷模式说明应写明纯演示用途')
 
-  // 切炫酷：看板同运行时即时换模式，rail 由卡片数据驱动。
+  // 切炫酷：等宿主设置加载完、选项可用，保存成功后看板同运行时即时换模式。
+  await waitFor({
+    description: '看板模式选项从宿主读到配置',
+    check: async () => !(await cinemaOption.isDisabled()),
+    timeoutMs: 10_000,
+  })
   await cinemaOption.click()
   await waitFor({
     description: '看板切到炫酷模式',
     check: async () => (await page.locator(`${BOARD}[data-mode="cinema"]`).count()) === 1,
     timeoutMs: 10_000,
   })
+  await waitFor({
+    description: '看板模式落进 settings.json',
+    check: () => boardModeSetting(second.home) === 'cinema',
+    timeoutMs: 10_000,
+  })
   assert.equal(
-    await page.evaluate((key) => localStorage.getItem(key), BOARD_MODE_KEY),
-    'cinema',
-    '显式选择应留在 localStorage',
+    await page.evaluate(() => localStorage.getItem('dsh-leader-agent.board.mode')),
+    null,
+    '看板模式不该再写浏览器 localStorage',
   )
 
   // 行数 = 进行中的卡；rail 槽位数 = 已绑定的会话；完成卡不进拓扑。
@@ -552,7 +571,7 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
   }
   const routeA = await openBoard(page, session)
   assert.equal(routeA, 'board-restored', `右栏展开着 reload 应由宿主恢复看板，实际走了 ${routeA}`)
-  await assertCinemaBoard(page)
+  await assertCinemaBoard(page, second.home)
   console.log(`[e2e] path A ${JSON.stringify({ beforeA, routeA, ...(await boardFacts(page)) })}`)
 
   // 路径 B：先把右栏切到 guide 页再收起，reload 后必须重新点 guide 入口才能回来。
@@ -589,7 +608,7 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
     description: '收起右栏 reload 后看板仍是炫酷模式',
     timeoutMs: 15_000,
   })
-  await assertCinemaBoard(page)
+  await assertCinemaBoard(page, second.home)
   console.log(`[e2e] path B ${JSON.stringify({ beforeB, routeB, ...(await boardFacts(page)) })}`)
 
   await closeBrowser(browser)

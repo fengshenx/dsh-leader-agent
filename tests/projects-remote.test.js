@@ -141,14 +141,16 @@ test('漏传卡片库或登记表时装配直接报错，不等到归档才炸',
 test('设置方法读写宿主设置存储；缺存储时明确报错', async () => {
   const { ctx } = fakeCtx()
   const calls = []
+  let current = { autoResumeLimit: 200, boardMode: 'work' }
   const settings = {
     get() {
       calls.push(['get'])
-      return { autoResumeLimit: 200 }
+      return { ...current }
     },
-    async update(value) {
-      calls.push(['update', value])
-      return { autoResumeLimit: value }
+    async update(patch) {
+      calls.push(['update', patch])
+      current = { ...current, ...patch }
+      return { ...current }
     },
   }
   const remote = createProjectRemote({
@@ -158,9 +160,20 @@ test('设置方法读写宿主设置存储；缺存储时明确报错', async ()
     settings,
     ctx,
   })
-  assert.deepEqual(await remote.readSettings(), { autoResumeLimit: 200 })
-  assert.deepEqual(await remote.updateSettings(500), { autoResumeLimit: 500 })
-  assert.deepEqual(calls, [['get'], ['update', 500]])
+  assert.deepEqual(await remote.readSettings(), { autoResumeLimit: 200, boardMode: 'work' })
+  assert.deepEqual(await remote.updateAutoResumeLimit(500), {
+    autoResumeLimit: 500,
+    boardMode: 'work',
+  })
+  assert.deepEqual(await remote.setBoardMode('cinema'), {
+    autoResumeLimit: 500,
+    boardMode: 'cinema',
+  })
+  assert.deepEqual(calls, [
+    ['get'],
+    ['update', { autoResumeLimit: 500 }],
+    ['update', { boardMode: 'cinema' }],
+  ])
 
   const { ctx: bareCtx } = fakeCtx()
   const bare = createProjectRemote({
@@ -170,7 +183,8 @@ test('设置方法读写宿主设置存储；缺存储时明确报错', async ()
     ctx: bareCtx,
   })
   await assert.rejects(() => bare.readSettings(), /没有设置存储/)
-  await assert.rejects(() => bare.updateSettings(500), /没有设置存储/)
+  await assert.rejects(() => bare.updateAutoResumeLimit(500), /没有设置存储/)
+  await assert.rejects(() => bare.setBoardMode('cinema'), /没有设置存储/)
 })
 
 test('原型上的方法标记覆盖契约里的每个方法', () => {
