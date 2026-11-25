@@ -146,7 +146,12 @@ test('自动续行输入框自带焦点环，单位「次」在框外', () => {
   assert.equal(
     focus?.declarations['border-color'],
     'var(--dsw-alias-state-business-primary)',
-    '焦点只用 1px 边框，不画粗 outline',
+    '焦点用 1px 边框',
+  )
+  assert.equal(
+    focus?.declarations['box-shadow'],
+    '0 0 0 4px color-mix(in srgb, var(--dsw-alias-state-business-primary) 24%, transparent)',
+    '焦点用宿主同款蓝色柔光，不画粗 outline',
   )
   assert.equal(focus?.declarations.outline, undefined, '输入框不应再有粗 outline')
   assert.equal(
