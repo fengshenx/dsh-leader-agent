@@ -140,7 +140,7 @@
     "board.settings.retry": "Réessayer",
     "board.settings.saveFailed": "Impossible d’enregistrer le réglage du tableau : {message}",
     "board.settings.title": "Tableau des tâches",
-    "settings.autoResume.desc": "Nombre de fois où le Leader peut être réveillé automatiquement en votre absence.",
+    "settings.autoResume.desc": "Nombre de fois où le Leader Agent peut être réveillé par des Workers.",
     "settings.autoResume.invalid": "Saisissez un nombre entier entre {min} et {max}.",
     "settings.autoResume.loadFailed": "Impossible de lire les réglages : {message}",
     "settings.autoResume.retry": "Réessayer",

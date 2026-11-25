@@ -140,7 +140,7 @@
     "board.settings.retry": "Erneut versuchen",
     "board.settings.saveFailed": "Board-Einstellung konnte nicht gespeichert werden: {message}",
     "board.settings.title": "Aufgabenboard",
-    "settings.autoResume.desc": "Wie oft der Leader abwesend automatisch geweckt werden darf.",
+    "settings.autoResume.desc": "Wie oft der Leader Agent von Workern geweckt werden darf.",
     "settings.autoResume.invalid": "Gib eine ganze Zahl zwischen {min} und {max} ein.",
     "settings.autoResume.loadFailed": "Einstellungen konnten nicht gelesen werden: {message}",
     "settings.autoResume.retry": "Erneut versuchen",

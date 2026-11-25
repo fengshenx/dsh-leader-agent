@@ -140,7 +140,7 @@
     "board.settings.retry": "Повторить",
     "board.settings.saveFailed": "Не удалось сохранить настройку доски: {message}",
     "board.settings.title": "Доска задач",
-    "settings.autoResume.desc": "Сколько раз Leader может быть автоматически разбужен в ваше отсутствие.",
+    "settings.autoResume.desc": "Сколько раз Worker могут разбудить Leader Agent.",
     "settings.autoResume.invalid": "Введите целое число от {min} до {max}.",
     "settings.autoResume.loadFailed": "Не удалось прочитать настройки: {message}",
     "settings.autoResume.retry": "Повторить",

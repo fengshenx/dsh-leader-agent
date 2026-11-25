@@ -140,7 +140,7 @@
     "board.settings.retry": "Tentar novamente",
     "board.settings.saveFailed": "Falha ao salvar a configuração do quadro: {message}",
     "board.settings.title": "Quadro de tarefas",
-    "settings.autoResume.desc": "Quantas vezes o Leader pode ser despertado automaticamente enquanto você está fora.",
+    "settings.autoResume.desc": "Quantas vezes os Workers podem despertar o Leader Agent?",
     "settings.autoResume.invalid": "Digite um número inteiro entre {min} e {max}.",
     "settings.autoResume.loadFailed": "Falha ao ler as configurações: {message}",
     "settings.autoResume.retry": "Tentar novamente",

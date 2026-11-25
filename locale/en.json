@@ -140,7 +140,7 @@
     "board.settings.retry": "Retry",
     "board.settings.saveFailed": "Failed to save the board setting: {message}",
     "board.settings.title": "Task board",
-    "settings.autoResume.desc": "How many times the Leader may be woken automatically while you are away.",
+    "settings.autoResume.desc": "How many times can the Leader Agent be woken by Workers?",
     "settings.autoResume.invalid": "Enter a whole number between {min} and {max}.",
     "settings.autoResume.loadFailed": "Failed to read settings: {message}",
     "settings.autoResume.retry": "Retry",

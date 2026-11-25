@@ -140,7 +140,7 @@
     "board.settings.retry": "Reintentar",
     "board.settings.saveFailed": "No se pudo guardar la configuración del tablero: {message}",
     "board.settings.title": "Tablero de tareas",
-    "settings.autoResume.desc": "Cuántas veces se puede despertar al Leader automáticamente mientras no estás.",
+    "settings.autoResume.desc": "¿Cuántas veces pueden despertar los Workers al Leader Agent?",
     "settings.autoResume.invalid": "Introduce un número entero entre {min} y {max}.",
     "settings.autoResume.loadFailed": "No se pudo leer la configuración: {message}",
     "settings.autoResume.retry": "Reintentar",

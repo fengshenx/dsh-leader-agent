@@ -140,7 +140,7 @@
     "board.settings.retry": "再試行",
     "board.settings.saveFailed": "ボード設定の保存に失敗しました：{message}",
     "board.settings.title": "タスクボード",
-    "settings.autoResume.desc": "不在時に Leader を自動で起こす最大回数です。",
+    "settings.autoResume.desc": "Leader Agent が Worker から起こされる最大回数です。",
     "settings.autoResume.invalid": "{min}–{max} の整数を入力してください。",
     "settings.autoResume.loadFailed": "設定の読み込みに失敗しました：{message}",
     "settings.autoResume.retry": "再試行",
