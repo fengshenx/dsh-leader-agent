@@ -8,6 +8,10 @@ Status: implemented
 
 ## Decision
 
+> **已被 [影子数据根](2026-11-24-desktop-shadow-home.md) 部分取代**：主 checkout 不再把
+> `link:` 写进日常 profile，影子根只借用本文的 manifest 与链接机制；摘除、锁与启动
+> 探活的判定仍按本文。
+
 - **脚本直接改 manifest 与链接，不跑 pnpm**：往 desktop profile 写 `link:<当前目录>`、把包名追加进 `bundles`、在 `node_modules` 建符号链接（Windows 用 junction，不需要管理员）。桌面应用的包操作用自己的 pnpm 与 Electron Node 环境，复刻那套容易随宿主版本失效；宿主启动只按 `bundles` 解析包、不校验 `link:` 与磁盘是否一致。代价是 lockfile 与 manifest 短暂不一致，下次在应用里做安装/卸载由 pnpm 补齐。
 - **`DSH_HOME` 按宿主语义归一化**：先展开 `~` / `~\` 再 `resolve`；**相对路径直接拒绝**——应用由 `open` 经 LaunchServices 启动、cwd 不是这个 shell，应用拿相对值会算成另一个数据根。
 - **数据根显式传给应用**：启动时固定带 `--env DSH_HOME=<绝对路径>`（`open` 注入环境的唯一途径），默认根也照传，不依赖「默认值碰巧一致」。
@@ -33,7 +37,7 @@ Status: implemented
 ## Consequences
 
 - 同一时刻只能挂一个工作树版本；换版本先 `--remove`。worktree 里运行改用派生数据根，见 [worktree 派生数据根](2026-11-03-desktop-worktree-derived-home.md)，Windows 探活与启动见 [desktop-windows-launch](2026-11-03-desktop-windows-launch.md)。
-- macOS 的进程名在 `p_comm` 里截断到 16 字符，长应用名可能漏判；不用 `pgrep -f`（匹配整条命令行，编辑器开着同名路径会误判），宁可漏判时靠人退出应用。
+- macOS 的进程名在 `p_comm` 里截断到 16 字符，`pgrep -x` 对默认应用名 `DeepSeek Harness` 会漏判；已补 `pgrep -f` 按完整可执行文件与 helper 的 `Contents/Frameworks/` 路径兜底（模式都带子路径，不会命中只带 `.app` 路径的 `open -W` 等待进程；误判为在跑只会拒绝启动，方向安全）。
 - 不支持用 `DSH_HOME` 起隔离的桌面实例：Electron 的 userData（更新、账号、窗口状态）与 profile 数据根不是一回事；隔离验证继续走 web 形态开发实例。
 - 桌面版与 CLI 的包和激活状态分开，但会话、项目、卡片数据在同一 `$DSH_HOME` 下共享。
 
