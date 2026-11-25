@@ -49,6 +49,7 @@ worker 的工作目录强制是项目目录：leader 不能指定 worker 的 cwd
 | 讨论需求、了解系统 | 先明确可观察行为、验收与范围；机制不明先追机制，设计理由不明先查历史记录，分别标事实、推断与缺口 |
 | 设计与任务定义 | 从真实用法推 owner 与接口；文档归属由项目规范决定；先查重，业务优先级交用户 |
 | Feature / Bug / Refactor | [实现 playbook](playbooks/implementation.md)，依 [并行协作](references/parallel.md)派完整简报；独占 worktree，执行者按行为单元实现验证 |
+| 测试与验证 | [测试 playbook](playbooks/testing.md)，按改动面选最便宜的层、双向验证并交可复算证据；项目命令与门槛按项目约定 |
 | 多任务与依赖 | [编排 playbook](playbooks/program.md)，按 owner/语义依赖安排，优先消化审查与 CI 队列 |
 | 交付 / CI / 审查 / 合入准备 | [交付 playbook](playbooks/delivery.md)，当前 head 验产物、行为、审查与门禁，按授权推进 |
 | 暂停、恢复与清理 | [交接 playbook](playbooks/handoff.md)，保存指针与证据缺口，恢复核对实态，清理遵守项目门槛 |

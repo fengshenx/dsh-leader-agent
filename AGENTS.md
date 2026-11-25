@@ -27,6 +27,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 | 项目级提示词（`LEADER.md` / `SLOTS.md`；旧名 `COORDINATOR.md` 只是兼容入口） | [2026-10-29-coordinator-manual-injection.md](.agents/notes/implemented/feature/2026-10-29-coordinator-manual-injection.md)、`src/host/leader-context.js`、`src/host/slots/` |
 | 写浏览器 e2e 场景的断言与排查方法 | [e2e-scenarios](.agents/skills/e2e-scenarios/SKILL.md)（断言纪律、失败诊断、双向验证、搭场景；按任务加载） |
 | 跑 `npm run e2e`、查车道命令与夹具、截图取证 | [docs/e2e-testing.md](docs/e2e-testing.md)（车道命令、文件职责、场景模板、mock 标记约定、截图落点、人工取证） |
+| 决定测试层、写用例、交验证证据 | [testing playbook](.agents/skills/leader-mode/playbooks/testing.md)；本仓机制见 [development 的测试与构建](docs/development.md#测试与构建) |
 | 审查 PR、以 bot 身份发评论 | [用 bot 身份发评论](#用-bot-身份发评论)、`scripts/github-app-token.mjs` |
 | 增长资产、宣传片沉淀、OSS 媒体 | [growing/AGENTS.md](growing/AGENTS.md)（案例/源文件入库；视频/音频/standalone 与全尺寸封面走 OSS） |
 | 改界面文案、加语言、查 locale 门禁 | [development 的 Locale 文案](docs/development.md#locale-文案) |
