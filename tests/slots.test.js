@@ -339,3 +339,133 @@ test('会话没有工作目录时渲染为空串', () => {
   })
   assert.equal(text, '')
 })
+
+test('frontmatter 的槽位元数据带 model 与 effort', () => {
+  const { slots } = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  dev:',
+    '    label: 开发',
+    '    model: deepseek/deepseek-reasoner',
+    '    effort: high',
+    '  review:',
+    '    model: reasoner',
+    '---',
+    '## dev',
+    '正文',
+    '## review',
+    '正文',
+  ].join('\n'))
+  const dev = slots.get('dev')
+  assert.equal(dev.label, '开发')
+  assert.equal(dev.model, 'deepseek/deepseek-reasoner')
+  assert.equal(dev.effort, 'high')
+  assert.equal(dev.issues, undefined)
+  // 裸模型 id 是合法写法：派工时沿用 leader 的 provider。
+  assert.equal(slots.get('review').model, 'reasoner')
+  assert.equal(slots.get('review').effort, undefined)
+})
+
+test('槽位 model / effort 的空值按未声明处理', () => {
+  const { slots } = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  dev:',
+    '    model:',
+    '    effort:',
+    '---',
+    '## dev',
+    '正文',
+  ].join('\n'))
+  const dev = slots.get('dev')
+  assert.equal(dev.model, undefined)
+  assert.equal(dev.effort, undefined)
+  assert.equal(dev.issues, undefined)
+})
+
+test('槽位 model / effort 形状不对时进 issues，且不进入槽位配置', () => {
+  const { slots } = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  dev:',
+    '    model:',
+    '      id: nested',
+    '    effort: 65',
+    '---',
+    '## dev',
+    '正文',
+  ].join('\n'))
+  const dev = slots.get('dev')
+  assert.equal(dev.model, undefined)
+  assert.equal(dev.effort, '65')
+  assert.match(dev.issues.join('；'), /model 必须是字符串/)
+})
+
+test('槽位 model / effort 超长时进 issues', () => {
+  const { slots } = parseSlotTemplates([
+    '---',
+    'slots:',
+    '  dev:',
+    `    model: ${'m'.repeat(201)}`,
+    `    effort: ${'e'.repeat(65)}`,
+    '---',
+    '## dev',
+    '正文',
+  ].join('\n'))
+  const dev = slots.get('dev')
+  assert.equal(dev.model, undefined)
+  assert.equal(dev.effort, undefined)
+  assert.match(dev.issues.join('；'), /model 超过 200 字符/)
+  assert.match(dev.issues.join('；'), /effort 超过 64 字符/)
+})
+
+test('槽位模型配置非法时 loadSlotTemplates 告警一次，修好后再坏重新报', async () => {
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = (message) => { warnings.push(message) }
+  const project = await createProject([
+    '---',
+    'slots:',
+    '  dev:',
+    `    model: ${'m'.repeat(201)}`,
+    '---',
+    '## dev',
+    '正文',
+  ].join('\n'))
+  const file = join(project.directory, SLOT_TEMPLATE_FILE)
+  try {
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 1)
+    assert.match(warnings[0], /槽位「dev」模型配置无效：model 超过 200 字符/)
+    // 同一份坏配置重复读不再刷日志。
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 1)
+
+    await writeFile(file, [
+      '---',
+      'slots:',
+      '  dev:',
+      '    model: deepseek/chat',
+      '---',
+      '## dev',
+      '正文',
+    ].join('\n'), 'utf8')
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 1)
+
+    await writeFile(file, [
+      '---',
+      'slots:',
+      '  dev:',
+      `    model: ${'m'.repeat(201)}`,
+      '---',
+      '## dev',
+      '正文',
+    ].join('\n'), 'utf8')
+    loadSlotTemplates(project.directory)
+    assert.equal(warnings.length, 2)
+  } finally {
+    console.warn = originalWarn
+    await project.cleanup()
+  }
+})

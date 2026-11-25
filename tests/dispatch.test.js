@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
 import { createDispatcher, buildNotificationText, buildWorkerReport } from '../src/host/dispatch.js'
 import { createNotificationStore } from '../src/host/notification-store.js'
@@ -49,6 +51,8 @@ function createFixture({ permissions } = {}) {
   const hostAgents = new Map()
   /** 订阅上来的 `session/event` 监听器 */
   const sessionEventListeners = []
+  /** 订阅上来的 `agent/inbox/claimed` 监听器 */
+  const inboxClaimListeners = []
   /** 会话 id → 当前句柄的记录（冷恢复会用同一 id 再建一份） */
   const entries = new Map()
   /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
@@ -58,13 +62,15 @@ function createFixture({ permissions } = {}) {
   /**
    * 造一个假 AgentHandle：`steer` 记录投递，session 供标题改写与身份判定。
    * @param {string} sessionId - 会话 id
+   * @param {object} [options] - 宿主传给 create/resume 的完整参数
    * @returns {object} 句柄
    */
-  function createHandle(sessionId) {
+  function createHandle(sessionId, options = {}) {
     // pending 是投给 worker、还没被某个 step 取走的输入：宿主只在 `user/message`
     // 落盘时才算消费，结算归属要靠这条边界。
     const entry = {
       sessionId,
+      options,
       messages: [],
       pending: [],
       turns: 0,
@@ -114,17 +120,19 @@ function createFixture({ permissions } = {}) {
   }
 
   const agents = {
-    async create({ sessionId }) {
+    async create(options) {
       sequence += 1
-      const { handle } = createHandle(sessionId ?? `worker-${sequence}`)
+      const sessionId = options.sessionId ?? `worker-${sequence}`
+      const { handle } = createHandle(sessionId, options)
       return handle
     },
-    async resume({ resumeSessionId }) {
+    async resume(options) {
+      const resumeSessionId = options.resumeSessionId
       resumed.push(resumeSessionId)
       // 冷恢复沿用同一个会话 id，历史消息不在这个假身里重建。
       const existing = spawned.find((item) => item.sessionId === resumeSessionId)
       if (existing !== undefined) existing.disposed = false
-      const { handle } = createHandle(resumeSessionId)
+      const { handle } = createHandle(resumeSessionId, options)
       return handle
     },
     get(sessionId) {
@@ -146,11 +154,16 @@ function createFixture({ permissions } = {}) {
      * @returns {() => void} 解除订阅
      */
     on(event, listener) {
-      assert.equal(event, 'session/event')
-      sessionEventListeners.push(listener)
+      const listeners = event === 'session/event'
+        ? sessionEventListeners
+        : event === 'agent/inbox/claimed'
+          ? inboxClaimListeners
+          : undefined
+      assert.notEqual(listeners, undefined, `未预期的宿主事件：${event}`)
+      listeners.push(listener)
       return () => {
-        const at = sessionEventListeners.indexOf(listener)
-        if (at >= 0) sessionEventListeners.splice(at, 1)
+        const at = listeners.indexOf(listener)
+        if (at >= 0) listeners.splice(at, 1)
       }
     },
     get(key) {
@@ -165,6 +178,15 @@ function createFixture({ permissions } = {}) {
       }
       if (key === 'sessionPersistence') return { append() {} }
       if (key === 'sessionQuery') return { observeSession() {} }
+      // 模型预检假件：只认一个「解析不了」的模型，其余原样通过。
+      if (key === 'llm') {
+        return {
+          async resolveCallConfig(selection) {
+            if (selection.model === 'missing') throw new Error('unknown model')
+            return selection
+          },
+        }
+      }
       // 权限服务照 rc.2 的方法面；默认不提供，只有权限继承用例打开。
       if (key === 'sandboxPolicy' && permissions !== undefined) {
         return {
@@ -196,6 +218,20 @@ function createFixture({ permissions } = {}) {
   }
 
   /**
+   * 模拟宿主在步骤边界取走一条输入：`agent/inbox/claimed`。
+   *
+   * @param {string} sessionId - 会话 id
+   * @param {object} message - 取走的用户消息
+   * @param {number} turn - 回合序号
+   * @returns {void}
+   */
+  function emitClaim(sessionId, message, turn) {
+    for (const listener of inboxClaimListeners) {
+      listener({ agent: { id: sessionId }, message, turn })
+    }
+  }
+
+  /**
    * 开一个回合：宿主先落 `turn/start`，再把收件箱里取走的输入落成 `user/message`。
    *
    * 没有待取输入时补一条真人输入——夹具里的「用户下钻对话」就是这种回合，结算
@@ -212,18 +248,18 @@ function createFixture({ permissions } = {}) {
     await emitRaw(sessionId, { type: 'turn/start', data: { turn: entry.openTurn } })
     const consumed = entry.pending.splice(0)
     for (const message of consumed) {
+      emitClaim(sessionId, message, entry.openTurn)
       await emitRaw(sessionId, { type: 'user/message', data: message })
     }
     if (consumed.length === 0) {
-      await emitRaw(sessionId, {
-        type: 'user/message',
-        data: {
-          id: `user-${sessionId}-${entry.openTurn}`,
-          role: 'user',
-          content: [{ type: 'text', text: '用户插话' }],
-          source: { kind: 'user' },
-        },
-      })
+      const message = {
+        id: `user-${sessionId}-${entry.openTurn}`,
+        role: 'user',
+        content: [{ type: 'text', text: '用户插话' }],
+        source: { kind: 'user' },
+      }
+      emitClaim(sessionId, message, entry.openTurn)
+      await emitRaw(sessionId, { type: 'user/message', data: message })
     }
   }
 
@@ -270,6 +306,25 @@ function createFixture({ permissions } = {}) {
     },
 
     /**
+     * 只落 `turn/start`，不消费收件箱、也不补真人输入。
+     *
+     * 模拟模型 route 在 `preStep`/`prepareRequest` 就失败：这一轮已经打开，但
+     * `user/message` 还没落盘，派工消息 id 无从归属。
+     *
+     * @param {string} sessionId - 会话 id
+     * @param {object[]} [claims] - 这一轮宿主取走、但没落成 user/message 的输入
+     * @returns {Promise<void>} 边界落完
+     */
+    async startTurnBare(sessionId, claims = []) {
+      const entry = entries.get(sessionId)
+      if (entry === undefined) return
+      entry.turns += 1
+      entry.openTurn = entry.turns
+      await emitRaw(sessionId, { type: 'turn/start', data: { turn: entry.openTurn } })
+      for (const message of claims) emitClaim(sessionId, message, entry.openTurn)
+    },
+
+    /**
      * 模拟 worker 的下一步取走收件箱里的输入（`steer` 的 next-step 边界）。
      *
      * `steer` 在回合进行中投进来的消息要等下一个 step 才落成 `user/message`；用例
@@ -283,6 +338,7 @@ function createFixture({ permissions } = {}) {
       if (entry === undefined) return
       const consumed = entry.pending.splice(0)
       for (const message of consumed) {
+        emitClaim(sessionId, message, entry.openTurn)
         await emitRaw(sessionId, { type: 'user/message', data: message })
       }
     },
@@ -429,6 +485,17 @@ function finishWorker(dispatcher, fixture, { summary = '产物在此', outcome =
     text: summary,
     reason: outcome === 'completed' ? { kind: 'completed' } : { kind: 'error', error: { message: summary } },
   })
+}
+
+/**
+ * 取某条 worker 收件箱里最后一条尚未取走的输入。
+ *
+ * @param {object} fixture - 夹具
+ * @param {string} sessionId - worker 会话 id
+ * @returns {object | undefined} 待取消息
+ */
+function pendingTask(fixture, sessionId) {
+  return fixture.spawned.find((item) => item.sessionId === sessionId)?.pending.at(-1)
 }
 
 test('通知正文包含任务标签、状态与产物摘要', () => {
@@ -578,7 +645,7 @@ test('被取消、被阻断、撞 token 上限的轮次都判失败并写明原�
     { reason: { kind: 'aborted', reason: { kind: 'user' } }, pattern: /被取消：user/ },
     { reason: { kind: 'blocked' }, pattern: /被阻断/ },
     { reason: { kind: 'max-tokens' }, pattern: /token 上限/ },
-    { reason: { kind: 'error', error: { message: '模型不可用' } }, pattern: /失败：模型不可用/ },
+    { reason: { kind: 'error', error: { message: '模型不可用' } }, pattern: /失败原因：模型不可用/ },
   ]
   for (const { reason, pattern } of cases) {
     const fixture = createFixture()
@@ -1099,6 +1166,15 @@ test('spawn_worker 缺少调用方 agent 时报错', async () => {
     await assert.rejects(
       () => tool.execute({ name: '工', cardId: 'card-1' }, { signal: new AbortController().signal, agent: createParent('p', []) }),
       /cardId 与 slot 必须成对/,
+    )
+    // 模型与 effort 传非字符串会被当成没传，worker 静默跑在别的模型上。
+    await assert.rejects(
+      () => tool.execute({ name: '工', model: 42 }, { signal: new AbortController().signal }),
+      /model 必须是字符串/,
+    )
+    await assert.rejects(
+      () => tool.execute({ name: '工', effort: 42 }, { signal: new AbortController().signal }),
+      /effort 必须是字符串/,
     )
   } finally {
   }
@@ -3551,4 +3627,359 @@ test('续聊投递失败时把在飞记录退回去，上一轮不会失去结�
   assert.equal(await fixture.finishTurn(record.childId, { text: '第一轮产物' }), true)
   await waitFor(() => fixture.delivered.length === 1)
   assert.match(fixture.delivered[0].content[0].text, /第一轮产物/)
+})
+
+/**
+ * 造一个带当前模型选择的 leader 假身。
+ *
+ * @param {string} id - 会话 id
+ * @param {object[]} delivered - 收到的完成通知
+ * @param {{ provider: string, model: string, reasoningEffort?: string }} selection - 当前模型
+ * @returns {object} agent 假身
+ */
+function createParentWithModel(id, delivered, selection) {
+  return {
+    ...createParent(id, delivered),
+    model: { current: () => selection },
+  }
+}
+
+test('spawn_worker 把显式模型与 effort 交给 worker，回执写明来源', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  try {
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+    })
+    const tool = createSpawnWorkerTool({ dispatcher })
+    const parent = createParentWithModel('leader-1', fixture.delivered, { provider: 'leader-provider', model: 'leader-model' })
+
+    const result = await tool.execute(
+      { name: '实现派工', model: 'deepseek/reasoner', effort: 'high' },
+      { signal: new AbortController().signal, agent: parent },
+    )
+
+    assert.equal(result.model, 'deepseek/reasoner')
+    assert.equal(result.effort, 'high')
+    assert.equal(result.modelSource, 'spawn')
+    assert.deepEqual(fixture.spawned[0].options.agentOptions, {
+      provider: 'deepseek',
+      model: 'reasoner',
+      reasoningEffort: 'high',
+    })
+    // 模型选择随登记表落盘：冷恢复要按它还原 route。
+    assert.deepEqual((await fixture.workers.get(result.childId)).agentOptions, {
+      provider: 'deepseek',
+      model: 'reasoner',
+      reasoningEffort: 'high',
+    })
+    const rendered = tool.output.render({ name: '实现派工' }, result).map((block) => block.text).join('\n')
+    assert.match(rendered, /模型：deepseek\/reasoner，effort high（来自派工参数）/)
+  } finally {
+  }
+})
+
+test('spawn_worker 绑定槽位时用 SLOTS.md 的角色默认模型', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const project = await makeTempDir('dsh-leader-agent-project-')
+  try {
+    await writeFile(join(project, 'SLOTS.md'), [
+      '---',
+      'slots:',
+      '  dev:',
+      '    label: 开发',
+      '    model: deepseek/slot-model',
+      '    effort: medium',
+      '---',
+      '## dev',
+      '你是实现者。',
+    ].join('\n'), 'utf8')
+    const cards = createCardStore({ home })
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+      resolveWorkerCwd: () => project,
+      bindCardSlot: (input) => cards.bindSlot(input),
+      getCard: (cardId) => cards.get(cardId),
+      resolveProject: async () => ({ id: 'project-a' }),
+    })
+    const card = await cards.create({ title: '任务', projectId: 'project-a' })
+    const parent = createParentWithModel('leader-1', fixture.delivered, {
+      provider: 'leader-provider',
+      model: 'leader-model',
+      reasoningEffort: 'low',
+    })
+
+    const record = await dispatcher.dispatch({
+      parent,
+      name: '实现派工',
+      cardId: card.id,
+      slot: 'dev',
+      signal: new AbortController().signal,
+    })
+
+    assert.equal(record.model, 'deepseek/slot-model')
+    assert.equal(record.effort, 'medium')
+    assert.equal(record.modelSource, 'slot')
+    assert.deepEqual(fixture.spawned[0].options.agentOptions, {
+      provider: 'deepseek',
+      model: 'slot-model',
+      reasoningEffort: 'medium',
+    })
+  } finally {
+  }
+})
+
+test('spawn_worker 的模型预检失败时不建会话', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  try {
+    const dispatcher = makeDispatcher({
+      ctx: fixture.ctx,
+      store: createNotificationStore({ home }),
+      workers: fixture.workers,
+    })
+    const tool = createSpawnWorkerTool({ dispatcher })
+    const parent = createParentWithModel('leader-1', fixture.delivered, { provider: 'leader-provider', model: 'leader-model' })
+
+    await assert.rejects(
+      () => tool.execute(
+        { name: '实现派工', model: 'mock/missing' },
+        { signal: new AbortController().signal, agent: parent },
+      ),
+      /模型 mock\/missing 不可用：unknown model/,
+    )
+    assert.equal(fixture.spawned.length, 0)
+  } finally {
+  }
+})
+
+test('spawn_worker 回执标出模型来自槽位还是 leader', () => {
+  const tool = createSpawnWorkerTool({ dispatcher: {} })
+  const slotText = tool.output.render(
+    { slot: 'dev' },
+    { childId: 'c', status: 'spawned', model: 'p/m', effort: 'medium', modelSource: 'slot' },
+  ).map((block) => block.text).join('\n')
+  assert.match(slotText, /模型：p\/m，effort medium（来自槽位「dev」的默认）/)
+
+  const leaderText = tool.output.render(
+    {},
+    { childId: 'c', status: 'spawned', model: 'p/m', effort: 'low', modelSource: 'leader' },
+  ).map((block) => block.text).join('\n')
+  assert.match(leaderText, /模型：p\/m，effort low（来自leader 当前模型）/)
+
+  const noneText = tool.output.render({}, { childId: 'c', status: 'spawned' })
+    .map((block) => block.text).join('\n')
+  assert.doesNotMatch(noneText, /模型：/)
+})
+
+test('失败通知带上 worker 的模型与 leader 可执行的下一步', () => {
+  const text = buildNotificationText(
+    {
+      name: '实现派工',
+      childId: 'child-1',
+      model: 'deepseek/reasoner',
+      effort: 'high',
+      modelSource: 'spawn',
+    },
+    { ok: false, error: new Error('模型不可用') },
+  )
+  assert.match(text, /模型：deepseek\/reasoner，effort high（派工参数）/)
+  assert.match(text, /失败原因：模型不可用/)
+  assert.match(text, /list_worker_models/)
+  assert.match(text, /message_worker 重试/)
+})
+
+test('失败气泡的回报也带模型，不让界面只剩一句错误', () => {
+  assert.equal(
+    buildWorkerReport(
+      { ok: false, error: new Error('模型不可用') },
+      { model: 'deepseek/reasoner', effort: 'high' },
+    ),
+    '失败（模型 deepseek/reasoner，effort high）：模型不可用',
+  )
+})
+
+test('没有 claim 的裸 error 仍回报 leader，并标明归属不确定', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    effort: 'high',
+    signal: new AbortController().signal,
+  })
+  // 没有 claim 通知的裸 error（event 丢失/宿主更早失败）：仍按无法归属的派工失败回报。
+  await fixture.startTurnBare(record.childId)
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
+  }), true)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /worker「实现派工」有一轮执行失败/)
+  assert.match(text, /状态：failed/)
+  assert.match(text, /模型：deepseek\/reasoner，effort high（派工参数）/)
+  assert.match(text, /失败原因：模型不可用/)
+  assert.match(text, /无法确认是否消费了你的任务/)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
+test('leader claim 后 preStep 失败仍按派工失败回报，并说明任务已被取走', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    effort: 'high',
+    signal: new AbortController().signal,
+  })
+  const task = pendingTask(fixture, record.childId)
+  assert.ok(task)
+  // 宿主先 claim 了 leader 的任务消息，但 `preStep` 失败，消息没落成 user/message。
+  await fixture.startTurnBare(record.childId, [task])
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
+  }), true)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /worker「实现派工」有一轮执行失败/)
+  assert.match(text, /任务消息已被取走/)
+  assert.match(text, /还没落成 user\/message/)
+  assert.match(text, /失败原因：模型不可用/)
+  assert.doesNotMatch(text, /无法确认是否消费了你的任务/)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
+test('续聊轮失败也带上从登记表读回的模型', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    effort: 'high',
+    signal: new AbortController().signal,
+  })
+  await finishWorker(dispatcher, fixture)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  await dispatcher.message({
+    parent,
+    sessionId: record.childId,
+    message: '接着做',
+    signal: new AbortController().signal,
+  })
+  const continuation = pendingTask(fixture, record.childId)
+  assert.ok(continuation)
+  await fixture.startTurnBare(record.childId, [continuation])
+  await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
+  })
+  await waitFor(() => fixture.delivered.length === 2)
+
+  const text = fixture.delivered[1].content[0].text
+  assert.match(text, /模型：deepseek\/reasoner，effort high/)
+  assert.match(text, /失败原因：模型不可用/)
+})
+
+test('用户开启的轮次失败时不冒充派工失败', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    signal: new AbortController().signal,
+  })
+  await finishWorker(dispatcher, fixture)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  // 人先开一轮，leader 的消息被下一个 step 取进用户这一轮；这一轮失败不能
+  // 按派工失败回报——产物不是 leader 任务的，归属已明确是用户。
+  await fixture.startTurn(record.childId)
+  await dispatcher.message({
+    parent,
+    sessionId: record.childId,
+    message: '接着做',
+    signal: new AbortController().signal,
+  })
+  await fixture.consumePending(record.childId)
+  assert.equal(await fixture.finishTurn(record.childId, {
+    text: '用户这一轮的半截',
+    reason: { kind: 'error', error: { message: '模型不可用' } },
+  }), false)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(fixture.delivered.length, 1)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
+test('用户 claim 后 preStep 失败不回报派工失败，任务留到之后真正执行', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    signal: new AbortController().signal,
+  })
+  // 用户自己开轮，宿主 claim 了用户消息，但 `preStep` 失败：没有 user/message 可归属。
+  // 这一轮不是派工轮，不能把 leader 的在飞任务报成失败。
+  await fixture.startTurnBare(record.childId, [{
+    id: 'user-claim-1',
+    role: 'user',
+    content: [{ type: 'text', text: '用户插话' }],
+    source: { kind: 'user' },
+  }])
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
+  }), false)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(fixture.delivered.length, 0)
+  // 记录不能丢：任务消息还在收件箱里，后面真正执行时仍要回报。
+  assert.equal(dispatcher.inflightCount(), 1)
+
+  await fixture.startTurn(record.childId)
+  await fixture.finishTurn(record.childId, { text: '后来完成' })
+  await waitFor(() => fixture.delivered.length === 1)
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /任务「实现派工」已结束/)
+  assert.match(text, /后来完成/)
+  assert.equal(dispatcher.inflightCount(), 0)
 })

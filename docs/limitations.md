@@ -22,8 +22,9 @@
 
 ## worker 的控制面
 
-- **leader 能纠偏、不能中止，也没有模型侧的名录工具**。纠偏走 `message_worker` 的 `steer`：正在跑时消息插进当前轮次的下一步，续派、改名与换卡同一条路径。中止是缺口——宿主的 `Agent.cancel(cause)` 能停掉当前活动，本 bundle 持有 `AgentHandle` 却没接成工具，只能引导 worker 自己收尾，停不了一轮死循环。宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 对 worker 无效（subagent 体系工具，worker 是根会话；`interrupt_agent` 还返回假成功，`wait_agent` 只是阻塞空等）；要看项目里有哪些 worker，看项目树（那一层在前端，模型看不到）。
-- **worker 的权限是派工那一刻的快照**。leader 在派工之后切换 preset 不影响已派出的 worker；后台 worker 的 `ask` 没人应答，一律落到 `unavailable`，所以需要审批的调用会被直接拒绝（只有打开这个会话才可能应答）。
+- **leader 能查模型目录、纠偏，不能中止**。派工用 `list_worker_models` 查 route；纠偏走 `message_worker` 的 `steer`：正在跑时消息插进当前轮次的下一步，续派、改名与换卡同一条路径。中止是缺口——宿主的 `Agent.cancel(cause)` 能停掉当前活动，本 bundle 持有 `AgentHandle` 却没接成工具，只能引导 worker 自己收尾，停不了一轮死循环。宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 对 worker 无效（subagent 体系工具，worker 是根会话；`interrupt_agent` 还返回假成功，`wait_agent` 只是阻塞空等）；要看项目里有哪些 worker，看项目树（那一层在前端，模型看不到）。
+- **用户 claim 失败保留的在飞记录不会自动过期**。用户 claim 的轮次失败后记录会留到任务真正进入下一轮；如果用户不再发话、leader 也不重投，它会一直留到进程重启。15 分钟巡查会周期性重复提醒（每次入队后重置 `lastAlertAt`），会话 disposed 只跳过巡查、不删在飞记录；重启才清空。
+- **worker 的权限与模型都是派工那一刻的快照**。leader 在派工之后切换 preset 不影响已派出的 worker；后台的 `ask` 没人应答，一律落到 `unavailable`，需要审批的调用因此被拒（只有打开这个会话才可能应答）。`spawn_worker` 的 `model` / `effort` 与 `SLOTS.md` 槽位默认只在建会话时用，之后改文件或 leader 换模型都不影响。
 - **`read_worker_session` 是只读视图，不是会话导出**。它读宿主的 `sessionQuery.readSession()`（live 会话读内存快照）并折叠成「一回合一段」：leader 投递的任务、人下钻说的话、worker 说过的正文、调过哪些工具、失败原因、终态。三类 `user/message` 按 `source.kind` 分开——宿主注入的上下文（换目录、plan 模式等）只记条数、不渲染正文，免得冒充任务或挤掉它的预算。正文有条目上限（单条 2000 字符、失败原因 200）与总量上限（12000 字符，按最新优先保留），超出部分丢弃并标注条数与成因（窗口外 / 体积溢出）；截断按码点边界退让，不会切出孤立代理。`turns` 默认 2、最多 20。工具参数与成功结果不返回——那是给排障解释「哪一步失败」，不是完整转录（要完整日志用宿主的会话导出）。权限按项目 leader + 本体系登记归属判，与 `message_worker` 同档；退役 leader 在调用时被判掉。读取路径不调用任何写方法（夹具对 `send` / `append` 等写了硬断言）。
 - **读 worker 会话与 worker 是否在跑无关**：会话日志已落盘的部分随时可读，最后一轮缺 `turn/end` 时标「进行中」并按当前已追加的事件展示——不要把半截输出当结论。worker 还没投过第一条消息时没有日志，工具会说明这一点而不是返回空视图。
 - **无回报巡查有延迟、也不追溯过去**：`dispatch.js` 每 60 秒扫一次 leader 发起、尚未 `turn/end` 的轮次，基线超过 15 分钟才提醒，因此提醒落在阈值后一分钟内，不是精确的第 15 分钟。进程重启后内存里没有正在跑的轮次，不重新生成提醒，补投时也会丢弃盘上已过期的巡查提醒；人下钻跟 worker 聊的轮次不进在飞记录，不重置计时（提醒可能在你正跟它对话时出现）。提醒是例行检查的普通文本注入：不一定是卡住，也不代表任务失败；本插件不再注册会话节点，会话里始终按官方上下文行展示（裸 kind 标签 + 摘要 + 正文）。它只是「去查」：本流程仍没有中止手段，确认卡死要请人在它的会话里处理。同一 worker 盘上已有未消费提醒时不再入队，leader 长期缺位时只留一条。

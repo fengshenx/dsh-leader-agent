@@ -35,6 +35,12 @@ const SLOT_NAME_PATTERN = /^[a-z0-9_-]{1,32}$/
 /** 显示名的长度上限。它只进界面，不需要容纳长句。 */
 const MAX_SLOT_LABEL_LENGTH = 64
 
+/** 槽位默认模型的长度上限。只防误把整段说明写进字段。 */
+const MAX_SLOT_MODEL_LENGTH = 200
+
+/** 槽位默认 effort 的长度上限。effort 是适配器定义的短标识。 */
+const MAX_SLOT_EFFORT_LENGTH = 64
+
 /**
  * 判断槽位名是否合法。
  *
@@ -58,26 +64,63 @@ export function isValidSlotName(name) {
 export const DEFAULT_SLOT_NAMES = Object.freeze(['dev', 'review'])
 
 /**
- * 从 frontmatter 的 `slots` 字段读显示名。
+ * 读一个槽位元数据字段。
  *
- * 只认一层嵌套（`slots.<槽位名>.label`）。非法槽位名、非对象条目、空值与超长值
- * 都跳过——按未声明处理，界面回落 locale 字典或槽位名。
+ * 空字符串按未声明处理（与 `label` 的口径一致）；形状不对或超长记进 `issues`，
+ * 由调用方决定告警与派工时的拒绝。非法值一律不进入槽位配置。
+ *
+ * @param {Record<string, unknown>} entry - frontmatter 里的槽位条目
+ * @param {string} field - 字段名
+ * @param {number} maxLength - 长度上限
+ * @param {string[]} issues - 本轮发现的问题
+ * @returns {string | undefined} 合法值
+ */
+function readSlotField(entry, field, maxLength, issues) {
+  const raw = entry[field]
+  if (raw === undefined || raw === '') return undefined
+  if (typeof raw !== 'string') {
+    issues.push(`${field} 必须是字符串`)
+    return undefined
+  }
+  const value = raw.trim()
+  if (value === '') return undefined
+  if (value.length > maxLength) {
+    issues.push(`${field} 超过 ${maxLength} 字符`)
+    return undefined
+  }
+  return value
+}
+
+/**
+ * 从 frontmatter 的 `slots` 字段读显示名与默认模型。
+ *
+ * 只认一层嵌套（`slots.<槽位名>.<字段>`）。非法槽位名、非对象条目与空值都跳过
+ * ——按未声明处理，界面回落 locale 字典或槽位名，模型回落 leader 当前模型。
  *
  * @param {unknown} slots - frontmatter 的 `slots` 值
- * @returns {Map<string, string>} 槽位名到显示名
+ * @returns {Map<string, { label?: string, model?: string, effort?: string, issues: string[] }>} 槽位元数据
  */
-function readSlotLabels(slots) {
-  const labels = new Map()
-  if (slots === null || typeof slots !== 'object' || Array.isArray(slots)) return labels
+function readSlotMetadata(slots) {
+  const metadata = new Map()
+  if (slots === null || typeof slots !== 'object' || Array.isArray(slots)) return metadata
   for (const [name, entry] of Object.entries(slots)) {
     if (!isValidSlotName(name)) continue
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) continue
+    const issues = []
     const label = entry.label
-    if (typeof label === 'string' && label !== '' && label.length <= MAX_SLOT_LABEL_LENGTH) {
-      labels.set(name, label)
-    }
+    const validLabel = typeof label === 'string' && label !== '' && label.length <= MAX_SLOT_LABEL_LENGTH
+      ? label
+      : undefined
+    const model = readSlotField(entry, 'model', MAX_SLOT_MODEL_LENGTH, issues)
+    const effort = readSlotField(entry, 'effort', MAX_SLOT_EFFORT_LENGTH, issues)
+    metadata.set(name, {
+      ...validLabel === undefined ? {} : { label: validLabel },
+      ...model === undefined ? {} : { model },
+      ...effort === undefined ? {} : { effort },
+      issues,
+    })
   }
-  return labels
+  return metadata
 }
 
 /**
@@ -93,7 +136,7 @@ function readSlotLabels(slots) {
  * `loadSlotTemplates` 决定（那里有按目录去重的控制）。
  *
  * @param {string} content - 文件内容
- * @returns {{ slots: Map<string, { label?: string, body: string }>, invalidNames: string[], warnings: string[] }} 槽位配置、被忽略的非法节名与 frontmatter 冲突
+ * @returns {{ slots: Map<string, { label?: string, model?: string, effort?: string, issues?: string[], body: string }>, invalidNames: string[], warnings: string[] }} 槽位配置、被忽略的非法节名与 frontmatter 冲突
  */
 export function parseSlotTemplates(content) {
   const slots = new Map()
@@ -101,7 +144,7 @@ export function parseSlotTemplates(content) {
   const invalidNames = []
   if (typeof content !== 'string') return { slots, invalidNames, warnings: [] }
   const { data, body, warnings } = parseFrontmatter(content)
-  const labels = readSlotLabels(data.slots)
+  const metadata = readSlotMetadata(data.slots)
   /** @type {{ name: string, lines: string[] }[]} 已开启的合法节 */
   const sections = []
   /** @type {{ name: string, lines: string[] } | undefined} 当前正在收集的节 */
@@ -129,9 +172,12 @@ export function parseSlotTemplates(content) {
     current.lines.push(line)
   }
   for (const section of sections) {
-    const label = labels.get(section.name)
+    const entry = metadata.get(section.name)
     slots.set(section.name, {
-      ...label === undefined ? {} : { label },
+      ...entry?.label === undefined ? {} : { label: entry.label },
+      ...entry?.model === undefined ? {} : { model: entry.model },
+      ...entry?.effort === undefined ? {} : { effort: entry.effort },
+      ...entry === undefined || (entry.issues ?? []).length === 0 ? {} : { issues: entry.issues },
       body: section.lines.join('\n').trim(),
     })
   }
@@ -178,10 +224,11 @@ function reportIssues(directory, issues) {
  *
  * - 非法分节名（中文、大写、超长）：整节忽略，列出全部非法名；
  * - frontmatter 里同一槽位给了两个不同的 `label`：合并时后者覆盖，报冲突；
+ * - 槽位的 `model` / `effort` 形状不对或超长：该值忽略，派工时目标槽位会再报错；
  * - 文件在但一个合法节都没有：回落默认槽位。
  *
  * @param {string} directory - 项目目录绝对路径
- * @returns {Map<string, { label?: string, body: string }>} 槽位名到配置
+ * @returns {Map<string, { label?: string, model?: string, effort?: string, issues?: string[], body: string }>} 槽位名到配置
  */
 export function loadSlotTemplates(directory) {
   const fallback = new Map()
@@ -218,6 +265,14 @@ export function loadSlotTemplates(directory) {
       signature: `frontmatter:${warning}`,
       message: `dsh-leader-agent: ${file} 的 frontmatter ${warning}。`,
     })
+  }
+  for (const [name, slot] of slots) {
+    for (const issue of slot.issues ?? []) {
+      issues.push({
+        signature: `slot:${name}:${issue}`,
+        message: `dsh-leader-agent: ${file} 的槽位「${name}」模型配置无效：${issue}，已忽略该值。`,
+      })
+    }
   }
   if (slots.size === 0) {
     issues.push({

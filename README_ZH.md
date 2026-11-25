@@ -33,7 +33,7 @@
 4. **多项目并行，每个项目一个 Leader** — 左栏加一个项目就绑定一个 leader 会话，项目树列出它派出的 worker；项目行可拖拽排序，删除项目只删记录、保留文件夹与会话（dsh 工作区不受影响）。项目之间各管各的。换 Leader 时原班 worker 与未投递的回报一并改投新会话，新 Leader 直接接着派。
 5. **`leader-mode` skill，给 Leader 的编排 Skill** — 不是一句「你是 tech lead」：按技术讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
 6. **回看 worker 的会话过程，不必唤醒它** — `read_worker_session` 直读 worker 的会话日志，给出每轮的任务、正文、调过哪些工具与失败原因。只读：不唤醒 worker、不产生模型调用。完成通知负责「产物是什么」，它负责「过程是怎样的」，排查不必再开一轮。
-7. **worker 长时间没动静会收到巡查提醒** — Leader 发起的一轮超过 15 分钟没有任何回报时，机制侧注入一条带「【后台巡查】」前缀的普通文本提醒：挂着的卡、已连续多久、最后回报在哪、可照抄的回看调用。每 15 分钟至多一条，不轮询、不假装还活着。自动唤醒上限可在设置页调（默认 200）。
+7. **worker 长时间没动静会收到巡查提醒** — Leader 发起的一轮超过 15 分钟没有任何回报时，机制侧注入一条带「【后台巡查】」前缀的普通文本提醒：挂着的卡、已连续多久、最后回报在哪、可照抄的回看调用。每 15 分钟至多一条，不轮询、不假装还活着。
 
 ## 安装
 
@@ -84,7 +84,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 **炫酷模式**：同一块看板画成线路图——卡片挂主干，执行者是右侧支线，只有执行中的支线跑光点。纯演示，社交媒体传播用。图为深色主题；浅色宿主下是电蓝正交线条。
 
-在 **设置 → Leader Agent → 任务看板** 切换，选择只存本浏览器，不改项目或卡片；工作模式截图取自真实会话，炫酷模式取自 e2e 夹具（真实宿主 + 本地 mock）。
+在 **设置 → Leader Agent → 任务看板** 切换，选择只存本浏览器；工作模式截图取自真实会话，炫酷模式取自 e2e 夹具（真实宿主 + 本地 mock）。
 
 ## 它是怎么跑起来的
 
@@ -121,13 +121,13 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 1. **加项目**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个 leader 会话；点项目行就是打开这个 Leader。当前会话属于该项目时左栏按两层回执：打开的是 leader 会话则项目行整行亮，打开的是它派出的 worker 则项目行只点亮行首应用格子、选中态落在那个 worker 自己的会话行上。行首槽位平时是应用格子图标（宿主 `apps-add-outline`：三格 + 一个加号；替掉宿主的目录图标，免得侧边栏里「项目」和「工作区」同形），活动提示看 leader：它在跑就换成加载圈（leader 没有自己的行，项目展开着也照换），项目收起时名下有 worker 在跑也换成加载圈，展开后 worker 由会话行自己带加载圈。
 2. **加载协议**：leader 会话里让模型加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
-3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次把卡槽位绑好；工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱模式与审批策略在派工那一刻从 leader 继承（leader 是 Auto 时连审查门一起继承），回执里写明它实际以什么权限在跑，完全权限会被点名。要看它这一轮怎么做的（调了哪些工具、哪步失败），用 `read_worker_session` 回看，不必唤醒它。
+3. **派工**：`spawn_worker` 只要求 `name`（角色-任务短名），可带 `cardId` + `slot` 一次绑好卡槽位，也可带 `model` / `effort`；默认取绑定槽位的 `SLOTS.md`，再回落 leader 模型。工具立即返回会话 id，此时 worker **还没开工**。用 `message_worker` 投递任务正文（`sessionId` + `message`，可顺手 `rename`），第一条消息才开工；挂卡 worker 的请求会自动带上卡片事实，消息里不必抄 spec。worker 的沙箱与审批在派工那一刻从 leader 继承（Auto 连审查门一起继承），回执写明实际权限，完全权限会被点名。用 `read_worker_session` 回看它这一轮调了哪些工具、哪步失败，不必唤醒它。
 4. **记任务事实**：`create_card` 建卡（`title` 必填），`update_card` 改卡（改内容带 `expectedRevision` 做乐观并发；链接可用 `links` 整体替换，或用 `addLinks` 按 id 增量追加），`list_cards` 查卡。链接只挂 PR / Issue / 文档 / 成片这类交付物入口，不挂评论或行内评论的锚点（`#issuecomment-` / `#discussion_r` / `#pullrequestreview-`）；评论是过程证据，写进回报正文。卡片按项目归属、编号全局递增，跨项目改卡会被拒绝。`list_cards` 与 `create_card` 只给 leader，普通会话一件也没有；`update_card` leader 与 worker 都有。worker 只能改自己挂着的卡，且只能挂 `links` 这类派生字段：`title` / `spec` / `status` / `kind` / `sortOrder` / `slots` 都归 leader（前两者是验收锚点与注入内容，其余组织看板并决定谁在执行）。`read_card` 只给 worker：读本项目的任意卡，不传 `cardId` / `number` 时读自己唯一绑定的卡——压缩或注入失效后找回任务的入口；长规格按 2000 字符分页，用 `specOffset` 续读。
 5. **看看板**：右栏「看板」Tab，按当前会话所属项目拉卡片。leader 建卡后自动打开；点卡面看详情（链接可编辑、可删卡，其余只读），点槽位 chip 打开执行者会话。工作模式是默认；想切炫酷，在 `设置 → Leader Agent → 任务看板` 选「炫酷模式」。
 
 ## 编排：把规则写进文件
 
-三份东西各管一层，都只贡献提示词，不授予工具权限：
+三份不授权工具；手册贡献提示词，槽位可声明默认模型：
 
 | 文件 / skill | 写给谁 | 管什么 |
 |---|---|---|
@@ -139,7 +139,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给仍按旧文件名找 leader 手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
 
-槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。
+槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。槽位可声明默认 `model` / `effort`；没给就回落到 Leader 模型，建会话时定下。
 
 `init-leader-agent` skill 管项目初始化：先把仓库工程约定并入目标项目 `AGENTS.md` 的受管区块，再按包内骨架写 `LEADER.md`（leader 怎么指挥这个项目）与 `SLOTS.md`（执行者角色）。重复执行只替换受管区块，两份手册先读后改；空目录写带 TODO 的骨架，并把还没答的三个问题问清楚，不编造项目事实。
 

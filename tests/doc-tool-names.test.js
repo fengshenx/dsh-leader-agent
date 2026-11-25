@@ -71,7 +71,7 @@ test('围栏没闭合时报出错位置，不静默跳过后半篇', () => {
 
 test('门禁的已知集合只来自 documentedToolNames，不碰 gate.js', () => {
   const names = documentedToolNames()
-  for (const name of ['spawn_worker', 'message_worker', 'create_card', 'update_card', 'list_cards']) {
+  for (const name of ['spawn_worker', 'message_worker', 'create_card', 'update_card', 'list_cards', 'list_worker_models']) {
     assert.ok(names.includes(name), `${name} 应在文档可引用的工具名里`)
   }
 
