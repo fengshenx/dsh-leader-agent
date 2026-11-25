@@ -1,5 +1,5 @@
 /**
- * 看板显示模式：`cinema`（线路图）与 `work`（纯列表）。
+ * 看板显示模式：`work`（纯列表，默认）与 `cinema`（线路图）。
  *
  * 这是**显示偏好**，不是项目数据：它跟着浏览器窗口走，不跟项目走，所以存
  * localStorage 而不是宿主卡片库。放在 localStorage 还有一个实际好处——设置页写
@@ -15,95 +15,45 @@
 /** 存储键。改键等于丢掉老用户的选择，不轻易动。 */
 export const BOARD_MODE_KEY = 'dsh-leader-agent.board.mode'
 
-/**
- * 宿主判定的默认模式缓存键。
- *
- * 老用户（升级前已有项目/卡片）默认工作，新装默认炫酷；默认值单独存，不冒充
- * 用户的显式选择。显式 key 存在时永远优先。
- */
-export const BOARD_DEFAULT_KEY = 'dsh-leader-agent.board.default'
-
 /** 线路图模式：列表 + 主干与支线。 */
 export const BOARD_MODE_CINEMA = 'cinema'
 
 /** 工作模式：现在的纯列表，零动效。 */
 export const BOARD_MODE_WORK = 'work'
 
-/** 默认模式。产品定位是「打开就能看到工作流」，缺省值必须和它一致。 */
-export const BOARD_MODE_DEFAULT = BOARD_MODE_CINEMA
+/** 默认模式：工作列表。炫酷模式是演示用途，需要显式开启。 */
+export const BOARD_MODE_DEFAULT = BOARD_MODE_WORK
 
 /** 全部合法模式，设置页按这个顺序渲染选项。 */
-export const BOARD_MODES = Object.freeze([BOARD_MODE_CINEMA, BOARD_MODE_WORK])
+export const BOARD_MODES = Object.freeze([BOARD_MODE_WORK, BOARD_MODE_CINEMA])
 
 /**
  * 把任意读到的值收成合法模式。
  *
- * 只有明确的 `work` 才算工作模式，其余（旧版遗留、手改坏、空值）一律回到默认：
- * 未知值不该把看板切成一个没人设计过的状态。
+ * 只有明确的 `cinema` 才算炫酷，其余（旧版遗留、手改坏、空值）一律回到工作
+ * 模式：未知值不该把看板切成一个没人设计过的状态。
  *
  * @param {unknown} value - 待规范化的值
- * @returns {string} `cinema` 或 `work`
+ * @returns {string} `work` 或 `cinema`
  */
 export function normalizeBoardMode(value) {
-  return value === BOARD_MODE_WORK ? BOARD_MODE_WORK : BOARD_MODE_CINEMA
-}
-
-/**
- * 从存储口读模式与「默认值是否已就绪」。
- *
- * 没写过任何偏好时返回 `resolved: false`：此时 `mode` 只是内置兜底，不能拿它当
- * 用户偏好渲染——老用户升级后的首帧会先画成炫酷，等宿主判定的工作默认值到了
- * 再切。`resolved` 让看板在默认值落地前不画线路图。
- *
- * @param {{ getItem?: (key: string) => string | null } | undefined} storage - 存储口
- * @returns {{ mode: string, resolved: boolean }} 合法模式与是否已有偏好依据
- */
-export function readBoardModeSnapshot(storage) {
-  try {
-    const explicit = storage?.getItem?.(BOARD_MODE_KEY)
-    if (explicit !== null && explicit !== undefined) return { mode: normalizeBoardMode(explicit), resolved: true }
-    const fallback = storage?.getItem?.(BOARD_DEFAULT_KEY)
-    if (fallback !== null && fallback !== undefined) return { mode: normalizeBoardMode(fallback), resolved: true }
-  } catch {
-    // 隐私模式读存储会抛：连显式选择都读不到，只能按内置默认走
-    return { mode: BOARD_MODE_DEFAULT, resolved: false }
-  }
-  return { mode: BOARD_MODE_DEFAULT, resolved: false }
+  return value === BOARD_MODE_CINEMA ? BOARD_MODE_CINEMA : BOARD_MODE_WORK
 }
 
 /**
  * 从存储口读模式。
  *
+ * 没有写过偏好、或存储读不出来时回到工作模式；显式选择永远优先。
+ *
  * @param {{ getItem?: (key: string) => string | null } | undefined} storage - 存储口
  * @returns {string} 合法模式
  */
 export function readBoardMode(storage) {
-  return readBoardModeSnapshot(storage).mode
-}
-
-/**
- * 缓存宿主判定的默认模式。
- *
- * 只在没有显式选择时写；写成功返回实际生效的模式。写失败也返回该模式——默认值
- * 仍要在本次运行时生效，否则隐私模式下老用户会一直停在内置炫酷。同值或已有
- * 显式选择时返回 undefined：那种情况下存储里本来就有可读依据，订阅者不必再
- * 被通知一次。
- *
- * @param {{ getItem?: (key: string) => string | null, setItem?: (key: string, value: string) => void } | undefined} storage - 存储口
- * @param {unknown} mode - 宿主给出的默认模式
- * @returns {string | undefined} 本次生效的模式
- */
-export function cacheBoardDefault(storage, mode) {
-  const next = normalizeBoardMode(mode)
   try {
-    const explicit = storage?.getItem?.(BOARD_MODE_KEY)
-    if (explicit !== null && explicit !== undefined) return undefined
-    if (storage?.getItem?.(BOARD_DEFAULT_KEY) === next) return undefined
-    storage?.setItem?.(BOARD_DEFAULT_KEY, next)
-    return next
+    return normalizeBoardMode(storage?.getItem?.(BOARD_MODE_KEY))
   } catch {
-    // 隐私模式/配额满：缓存写不进去，但默认值仍要在本次会话生效
-    return next
+    // 隐私模式读存储会抛：读不到显式选择，只能按内置默认走
+    return BOARD_MODE_DEFAULT
   }
 }
 
@@ -122,24 +72,6 @@ export function writeBoardMode(storage, mode) {
     // 隐私模式/配额满：本次会话按用户刚选的值走，刷新后退回上一次能写进去的值
   }
   return next
-}
-
-/**
- * 结算宿主默认值，返回要广播的模式。
- *
- * 默认值 RPC 可能失败（项目通道还没挂好、宿主版本缺这个方法）：失败时不能把看板
- * 永远留在 `pending`。已有缓存或显式选择时保持不动；都没有才回退到内置默认并
- * 广播——这一步只影响呈现，不值得让看板停在半初始化状态。
- *
- * @param {{ getItem?: (key: string) => string | null, setItem?: (key: string, value: string) => void } | undefined} storage - 存储口
- * @param {unknown} defaults - 宿主返回值；RPC 失败时传 undefined
- * @returns {string | undefined} 要广播的模式；不需要广播时为 undefined
- */
-export function settleBoardDefault(storage, defaults) {
-  if (defaults?.defaultMode !== undefined) return cacheBoardDefault(storage, defaults.defaultMode)
-  // RPC 失败：缓存里已有依据就保持不动，不要用内置炫酷覆盖掉数据算出的工作默认
-  if (readBoardModeSnapshot(storage).resolved) return undefined
-  return cacheBoardDefault(storage, BOARD_MODE_DEFAULT)
 }
 
 /** 同一运行时内的订阅者。设置页写、看板读，都在这张表上。 */

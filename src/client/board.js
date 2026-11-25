@@ -53,7 +53,7 @@ import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
 import { projectRemoteErrorText } from './project-remote.js'
-import { BOARD_DEFAULT_KEY, BOARD_MODE_KEY, readBoardModeSnapshot, subscribeBoardMode } from './board-mode.js'
+import { BOARD_MODE_KEY, readBoardMode, subscribeBoardMode } from './board-mode.js'
 import { readLocalStorage } from './guide-card-logic.js'
 import { BoardRail } from './board-rail.js'
 
@@ -63,19 +63,15 @@ import { BoardRail } from './board-rail.js'
  * 同一运行时里设置页写、这里读，走 `board-mode.js` 的模块级订阅；其它窗口靠
  * `storage` 事件同步。取不到存储时按默认模式走，不阻塞渲染。
  *
- * `resolved` 是「偏好有没有依据」：宿主判定的默认值在插件初始化时异步落地，
- * 落地前老用户没有可读的偏好，此时不能把内置的炫酷当成用户选择来画。
- *
- * @returns {{ mode: string, resolved: boolean }} 当前模式与偏好是否已就绪
+ * @returns {string} 当前模式
  */
 function useBoardMode() {
-  const [snapshot, setSnapshot] = useState(() => readBoardModeSnapshot(readLocalStorage(globalThis)))
+  const [mode, setMode] = useState(() => readBoardMode(readLocalStorage(globalThis)))
   useEffect(() => {
-    const off = subscribeBoardMode((mode) => setSnapshot({ mode, resolved: true }))
+    const off = subscribeBoardMode(setMode)
     const onStorage = (event) => {
-      // 默认值也可能由另一个窗口写入：两种 key 都要重读，不能只认显式选择
-      if (event.key !== BOARD_MODE_KEY && event.key !== BOARD_DEFAULT_KEY) return
-      setSnapshot(readBoardModeSnapshot(readLocalStorage(globalThis)))
+      if (event.key !== BOARD_MODE_KEY) return
+      setMode(readBoardMode(readLocalStorage(globalThis)))
     }
     globalThis.addEventListener?.('storage', onStorage)
     return () => {
@@ -83,7 +79,7 @@ function useBoardMode() {
       globalThis.removeEventListener?.('storage', onStorage)
     }
   }, [])
-  return snapshot
+  return mode
 }
 
 /**
@@ -737,10 +733,7 @@ function BoardPanel({
   }), [cardList, states])
   const doneFold = foldDoneCards(done, doneWatermark, t)
 
-  const modeState = useBoardMode()
-  // 默认值还没落地时既不是工作也不是炫酷：先按无线路图渲染，老用户的首帧不能先
-  // 闪一下炫酷再切回工作；`pending` 也让 e2e 能区分「还没就绪」与「用户选了工作」
-  const mode = modeState.resolved ? modeState.mode : 'pending'
+  const mode = useBoardMode()
   const cinema = mode === 'cinema'
   const scheme = useHostColorScheme(getTheme, onThemeChange)
   const listClass = cinema ? cinemaListClass(scheme) : 'dsh-leader-agent-board-list'
