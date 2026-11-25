@@ -91,3 +91,23 @@ export async function groupSessionsByProject({ projects, sessions, canonicalize,
   }
   return grouped
 }
+
+/**
+ * 按「最近被使用」排一个项目下的 worker 会话。
+ *
+ * 时间来自 worker 登记表的 `lastUsedAt`：派工投递成功与回合结算都会更新它，人
+ * 下钻聊天不更新。它表达的是「最近被 leader 使用」，不是会话创建顺序。没有时间
+ * 的会话取 0，靠稳定排序保持原有相对位置——登记表读不到时列表仍按会话库顺序，
+ * 不会整列乱跳。
+ *
+ * @param {readonly string[]} sessionIds - 项目下的 worker 会话 id
+ * @param {Map<string, number>} lastUsedAt - 会话 id 到最后使用时刻
+ * @returns {string[]} 最近使用的排在前面
+ */
+export function orderSessionsByLastUsed(sessionIds, lastUsedAt) {
+  const at = (sessionId) => {
+    const value = lastUsedAt.get(sessionId)
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0
+  }
+  return [...sessionIds].sort((left, right) => at(right) - at(left))
+}
