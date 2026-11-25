@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 import { agentPresetOptions } from '../agent-preset.js'
-import { createCanonicalizer, groupSessionsByProject } from './session-index.js'
+import { createCanonicalizer, groupSessionsByProject, orderSessionsByLastUsed } from './session-index.js'
 import { MAX_PROJECT_NAME_LENGTH } from '../../shared/projects.js'
 
 /** 目录归一器在进程内共享：会话头里的 cwd 高度重复，重复 realpath 纯属浪费。 */
@@ -101,6 +101,9 @@ export function assertUsableName(name) {
  * @param {(sessionId: string) => Promise<boolean | undefined>} [options.sessionExists] - 判断会话是否仍存在
  * @param {(sessionId: string) => boolean} options.isWorkerSession - worker 会话判定。
  *   会话头看不出身份（worker 是普通根会话），列项目的会话树只能按登记表判。
+ * @param {() => Promise<Map<string, number>>} [options.workerLastUsedAt] - worker 的
+ *   最后使用时刻（登记表的 `lastUsedAt`）。给了就按它倒序列出项目下的 worker；
+ *   没给时保持会话库顺序。
  * @param {(change: { projectId: string }) => Promise<void>} [options.onLeaderReplaced] -
  *   换 leader 成功后的接管动作（派工归属与未投递通知改投新会话）。参数只给项目 id：
  *   接管要按**当前落盘记录**算退役集与接手方，两次并发换人不至于各按自己那次写。
@@ -113,6 +116,7 @@ export function createProjectService({
   createLeaderSession,
   sessionExists,
   isWorkerSession,
+  workerLastUsedAt,
   onLeaderReplaced,
   logger = () => {},
 }) {
@@ -589,6 +593,10 @@ export function createProjectService({
      * 还归项目），但目录判据认不出它——这条会话是本插件建的，用户手开的不该跟着
      * 进来。不列它的话，它会既不在项目下、也不在（被排除的）官方工作区树里。
      *
+     * worker 之间按登记表 `lastUsedAt` 倒序（最近被投递或刚回报的在前）；退役
+     * leader 没有这个时间，接在 worker 后面。调用方没给 `workerLastUsedAt` 时
+     * 保持会话库顺序。
+     *
      * `sessionQuery` 缺失时返回空映射：会话索引是增强能力，缺了不该让项目列表
      * 整体不可用。
      *
@@ -612,6 +620,16 @@ export function createProjectService({
         canonicalize,
         isWorkerSession,
       })
+      // 项目树按「最近被使用」排 worker：登记表是这份时间的真源，会话库只给创建
+      // 顺序。排序只动 worker，退役 leader 随后按原顺序接在它们后面。
+      const lastUsedAt = typeof workerLastUsedAt === 'function'
+        ? await workerLastUsedAt()
+        : undefined
+      if (lastUsedAt !== undefined) {
+        for (const [projectId, bucket] of grouped) {
+          grouped.set(projectId, orderSessionsByLastUsed(bucket, lastUsedAt))
+        }
+      }
       // 退役会话已从会话库消失时不再列出：留下来只会得到一条点不开的行。
       const known = new Set(sessions.map((session) => session.id))
       for (const project of projects) {

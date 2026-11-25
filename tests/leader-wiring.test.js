@@ -189,6 +189,21 @@ async function writeProjectIndex(home, projects) {
   )
 }
 
+/**
+ * 往隔离的 DSH_HOME 里写一份 worker 登记表。
+ * @param {string} home - DSH_HOME
+ * @param {object[]} workers - 登记记录
+ * @returns {Promise<void>}
+ */
+async function writeWorkerRegistry(home, workers) {
+  await mkdir(join(home, 'dsh-leader-agent'), { recursive: true })
+  await writeFile(
+    join(home, 'dsh-leader-agent', 'workers.json'),
+    JSON.stringify({ version: 1, workers }),
+    'utf8',
+  )
+}
+
 test('装配层：工作区服务就绪后把项目 leader 从工作区里摘掉', async () => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
   const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
@@ -614,6 +629,52 @@ test('装配层：detachSession 抛错只记日志，其它卡照常清理', asy
     assert.equal(await waitFor(async () => (await read(other.card.id)).slots.review === undefined), true)
   } finally {
     restoreDetach?.()
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
+    await rm(projectDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：项目树按登记表 lastUsedAt 排 worker', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const projectDirectory = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-project-'))
+  const previousHome = process.env.DSH_HOME
+  // 会话库顺序是 worker-old → worker-new；登记表的最近使用时间反过来。
+  const { ctx, holder } = createFakeHost(new Map(), {
+    sessionQuery: {
+      async listSessions() {
+        return [
+          { header: { id: 'worker-old', cwd: projectDirectory } },
+          { header: { id: 'worker-new', cwd: projectDirectory } },
+        ]
+      },
+    },
+  })
+  process.env.DSH_HOME = home
+  try {
+    await writeProjectIndex(home, [{
+      id: 'project-1',
+      name: 'p1',
+      directory: projectDirectory,
+      leaderSessionId: 'session-leader',
+    }])
+    await writeWorkerRegistry(home, [
+      { childId: 'worker-old', parentSessionId: 'session-leader', name: 'old', registeredAt: 1, lastUsedAt: 10 },
+      { childId: 'worker-new', parentSessionId: 'session-leader', name: 'new', registeredAt: 2, lastUsedAt: 30 },
+    ])
+    apply(ctx)
+    const service = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY).projects
+    assert.equal(await service.awaitIndex(), true)
+    // 登记表在装配时异步收编成 worker 身份集合，等它落地后再断言顺序。
+    assert.equal(await waitFor(async () => (await service.sessionsByProject())[0]?.sessionIds.length === 2), true)
+    // 注入的 provider 从登记表取 lastUsedAt：结果顺序必须按时间而不是会话库顺序。
+    assert.deepEqual(await service.sessionsByProject(), [{
+      projectId: 'project-1',
+      sessionIds: ['worker-new', 'worker-old'],
+    }])
+  } finally {
     holder.handlers.get('dispose')?.()
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome

@@ -1,7 +1,7 @@
 {
   "AGENTS.md": 4674,
-  "README.md": 3574,
-  "README_ZH.md": 5330,
+  "README.md": 3720,
+  "README_ZH.md": 5600,
   "LEADER.md": 3800,
   "COORDINATOR.md": 75,
   "SLOTS.md": 5950,
@@ -10,7 +10,7 @@
   "docs/limitations.md": 9000,
   "docs/development.md": 3008,
   "docs/capability-gaps.md": 18171,
-  "docs/usage.md": 7600,
+  "docs/usage.md": 7700,
   "docs/getting-started.md": 2165,
   "docs/e2e-testing.md": 4160,
   "docs/release.md": 1542,

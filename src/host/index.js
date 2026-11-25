@@ -29,7 +29,6 @@ import { applyCardContext } from './cards/card-context.js'
 import { createProjectStore } from './projects/store.js'
 import { createProjectService, sessionExistsWithCtx } from './projects/service.js'
 import { createProjectRemote } from './projects/remote.js'
-import { resolveBoardDefaults } from './board-defaults.js'
 import { createDispatcher } from './dispatch.js'
 import { createLeaderHandover } from './leader-handover.js'
 import { applyToolGate, canWriteCardsFor, HOST_SUBAGENT_TOOLS } from './tools/gate.js'
@@ -152,13 +151,6 @@ export function apply(ctx) {
     ctx.logger?.warn?.(message)
   }
 
-  // 看板默认模式要在任何项目/卡片写入之前判一次：升级前已有数据 → 工作，新装
-  // → 炫酷。标记写进数据根，之后不再随数据增删变化。
-  const boardDefaults = resolveBoardDefaults({ home: resolveDshHome() })
-  void boardDefaults.catch((error) => {
-    logger(`dsh-leader-agent: 计算看板默认模式失败：${error instanceof Error ? error.message : String(error)}`)
-  })
-
   ctx.skills.registerProvider(() =>
     createSkillProvider({
       skillsRoot: join(bundleRoot, SKILLS_DIR),
@@ -172,6 +164,9 @@ export function apply(ctx) {
   // worker 会话管理器要先建：项目服务列 worker 时要用它的同步判定（会话头没有
   // subagent 标记了，只有登记知道谁是 worker）。
   const workerSessions = createWorkerSessions({ ctx, logger })
+  // 登记表也要先建：项目树按它的 `lastUsedAt` 给 worker 排序。文件读写都在调用
+  // 时发生，这里只准备路径。
+  const workers = createWorkerRegistry({ home: resolveDshHome(), logger })
   // 换 leader 后的接管要同时改登记表、通知队列与派工器内存态，而派工器依赖项目
   // 服务（身份判定、worker 目录），只能晚绑定：先占位，装配完再换成真动作。
   /** @type {(change: { projectId: string }) => Promise<void>} */
@@ -180,6 +175,10 @@ export function apply(ctx) {
     store: projects,
     ctx,
     isWorkerSession: workerSessions.isWorkerSession,
+    // 最近被投递或刚回报的 worker 排在项目树最前面。
+    workerLastUsedAt: async () => new Map(
+      (await workers.list()).map((record) => [record.childId, record.lastUsedAt]),
+    ),
     onLeaderReplaced: (change) => handover(change),
     logger,
   })
@@ -203,7 +202,6 @@ export function apply(ctx) {
   // 浏览器侧要读项目、也要建项目，走 dsh 官方的 Typert 远程调用（`/api`
   // 共享通道），与工作区控制器同构。
   const store = createNotificationStore({ logger })
-  const workers = createWorkerRegistry({ home: resolveDshHome(), logger })
   // 启动时按登记表收编既有 worker 会话 id：工具面裁剪是同步判定，登记表是异步的，
   // 需要一份内存集合；不灌入的话重启后老 worker 会被当成普通会话，拿到 leader 工具。
   const adoptedWorkers = workers.list().then((records) => {
@@ -232,7 +230,6 @@ export function apply(ctx) {
     cards,
     workers,
     workerSessions,
-    boardDefaults: () => boardDefaults,
     ctx,
   })
 

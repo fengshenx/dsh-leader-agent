@@ -130,14 +130,14 @@
     "tabs.close": "Fechar aba",
     "tabs.list": "Abas de sessões do projeto",
     "tabs.more": "Mais",
-    "board.mode.cinema.desc": "Mapa de fluxo com trilho luminoso. Ideal para demos e gravações.",
+    "board.mode.cinema.desc": "Apenas demonstração, para redes sociais.",
     "board.mode.cinema.title": "Modo cinema",
     "board.mode.work.desc": "Lista simples, sem animação. Ideal para revisar tarefas.",
     "board.mode.work.title": "Modo trabalho",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} em execução · {total} tarefas",
     "board.settings.desc": "Escolha como o quadro aparece. A configuração é salva neste navegador.",
-    "board.settings.nav": "Quadro de tarefas",
+    "board.settings.nav": "Leader Agent",
     "board.settings.scope": "Vale apenas para este navegador; não altera os dados do projeto.",
     "board.settings.title": "Quadro de tarefas"
   }

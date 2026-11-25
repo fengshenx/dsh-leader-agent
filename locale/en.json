@@ -130,14 +130,14 @@
     "tabs.close": "Close tab",
     "tabs.list": "Project session tabs",
     "tabs.more": "More",
-    "board.mode.cinema.desc": "Workflow map with a glowing rail. Best for demos and recordings.",
+    "board.mode.cinema.desc": "Demo only, for social sharing.",
     "board.mode.cinema.title": "Cinematic",
     "board.mode.work.desc": "Plain list, no motion. Best for scanning tasks.",
     "board.mode.work.title": "Work",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} running · {total} tasks",
     "board.settings.desc": "Choose how the board looks. The setting is saved in this browser.",
-    "board.settings.nav": "Task board",
+    "board.settings.nav": "Leader Agent",
     "board.settings.scope": "Applies to this browser only; project data is untouched.",
     "board.settings.title": "Task board"
   }

@@ -130,14 +130,14 @@
     "tabs.close": "Fermer l'onglet",
     "tabs.list": "Onglets des sessions du projet",
     "tabs.more": "Plus",
-    "board.mode.cinema.desc": "Carte de flux avec un rail lumineux. Idéal pour les démos et les captures.",
+    "board.mode.cinema.desc": "Démo uniquement, pour les réseaux sociaux.",
     "board.mode.cinema.title": "Mode spectacle",
     "board.mode.work.desc": "Liste simple, sans animation. Idéal pour parcourir les tâches.",
     "board.mode.work.title": "Mode travail",
     "board.rail.leader": "Leader",
     "board.rail.summary": "{running} en cours · {total} tâches",
     "board.settings.desc": "Choisissez l'apparence du tableau. Le réglage est enregistré dans ce navigateur.",
-    "board.settings.nav": "Tableau des tâches",
+    "board.settings.nav": "Leader Agent",
     "board.settings.scope": "Ne concerne que ce navigateur ; les données du projet ne changent pas.",
     "board.settings.title": "Tableau des tâches"
   }
