@@ -1007,7 +1007,7 @@ test('连续自动续行达到上限后不再唤醒', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
-  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 2 })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => 2 })
   try {
     const parent = createParent('parent-1', fixture.delivered)
     fixture.agents.set('parent-1', parent)
@@ -1035,7 +1035,7 @@ test('撞续行上限后不再每轮重试', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
-  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 1 })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => 1 })
   try {
     const parent = createParent('parent-1', fixture.delivered, 'running')
     fixture.agents.set('parent-1', parent)
@@ -1075,7 +1075,7 @@ test('上限复位后被挡下的通知能重新投出', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const store = createNotificationStore({ home })
-  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 1 })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => 1 })
   try {
     const parent = createParent('parent-1', fixture.delivered, 'running')
     fixture.agents.set('parent-1', parent)
@@ -1110,12 +1110,114 @@ test('上限复位后被挡下的通知能重新投出', async () => {
   }
 })
 
+test('调高上限后释放被旧上限挡下的回报', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  let limit = 1
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => limit })
+  try {
+    const parent = createParent('parent-1', fixture.delivered, 'running')
+    fixture.agents.set('parent-1', parent)
+
+    for (let index = 0; index < 2; index += 1) {
+      await dispatchAndStart(dispatcher, {
+        parent,
+        initialMessage: '做一件事',
+        name: `工 ${index}`,
+        signal: new AbortController().signal,
+      })
+      await finishWorker(dispatcher, fixture, { summary: '做完了' })
+    }
+    await waitFor(async () => (await store.listPending()).length === 2)
+
+    // 父会话空闲：第一条投出，第二条被上限 1 挡下
+    parent.status = 'idle'
+    await waitFor(() => fixture.delivered.length === 1, 5000)
+    await waitFor(async () => {
+      const pending = await store.listPending()
+      return pending.some((item) => typeof item.lastError === 'string' && item.lastError.includes('上限'))
+    }, 5000)
+
+    // 上限仍是 1：释放不动
+    assert.equal(dispatcher.releaseExhausted(), 0)
+    await new Promise((resolve) => { setTimeout(resolve, 600) })
+    assert.equal(fixture.delivered.length, 1)
+
+    // 调高到 2：释放被挡下的那条，父会话空闲时投出；再调一次不应重复计数
+    limit = 2
+    assert.equal(dispatcher.releaseExhausted(), 1)
+    assert.equal(dispatcher.releaseExhausted(), 0, '释放后必须清掉 exhausted 标记，不能每次调用都算释放')
+    assert.equal(await waitFor(() => fixture.delivered.length === 2, 5000), true, '调高后应投出第二条')
+    assert.equal(
+      await waitFor(async () => (await store.listPending()).length === 0, 5000),
+      true,
+      '投出后队列应清空',
+    )
+  } finally {
+    dispatcher.dispose()
+  }
+})
+
+test('调低上限不释放已挡下的回报', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  let limit = 2
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => limit })
+  try {
+    const parent = createParent('parent-1', fixture.delivered, 'running')
+    fixture.agents.set('parent-1', parent)
+
+    for (let index = 0; index < 3; index += 1) {
+      await dispatchAndStart(dispatcher, {
+        parent,
+        initialMessage: '做一件事',
+        name: `工 ${index}`,
+        signal: new AbortController().signal,
+      })
+      await finishWorker(dispatcher, fixture, { summary: '做完了' })
+    }
+    await waitFor(async () => (await store.listPending()).length === 3)
+
+    // 上限 2：前两条投出，第三条被挡下
+    parent.status = 'idle'
+    assert.equal(await waitFor(() => fixture.delivered.length === 2, 5000), true, '旧上限下应投出两条')
+    assert.equal(
+      await waitFor(async () => {
+        const pending = await store.listPending()
+        return pending.some((item) => typeof item.lastError === 'string' && item.lastError.includes('上限'))
+      }, 5000),
+      true,
+      '第三条应被上限挡下',
+    )
+
+    // 调低到 1：已用 2 次，新上限覆盖不了，释放不能放行
+    limit = 1
+    assert.equal(dispatcher.releaseExhausted(), 0)
+    await new Promise((resolve) => { setTimeout(resolve, 600) })
+    assert.equal(fixture.delivered.length, 2)
+    assert.equal((await store.listPending()).length, 1)
+
+    // 人工开口重置计数后才放行
+    dispatcher.resetResumeCount('parent-1')
+    assert.equal(await waitFor(() => fixture.delivered.length === 3, 5000), true, '人工开口后应投出第三条')
+    assert.equal(
+      await waitFor(async () => (await store.listPending()).length === 0, 5000),
+      true,
+      '投出后队列应清空',
+    )
+  } finally {
+    dispatcher.dispose()
+  }
+})
+
 test('外部输入重置自动续行计数', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   try {
     const store = createNotificationStore({ home })
-    const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, autoResumeLimit: 1 })
+    const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers, getAutoResumeLimit: () => 1 })
     const parent = createParent('parent-1', fixture.delivered)
     fixture.agents.set('parent-1', parent)
 
@@ -2033,7 +2135,7 @@ test('接管后等待中的通知按接手会话的额度计，不绕过自动�
       return fixture.ctx.get(key)
     },
   }
-  const dispatcher = makeDispatcher({ ctx, store, workers, autoResumeLimit: 1 })
+  const dispatcher = makeDispatcher({ ctx, store, workers, getAutoResumeLimit: () => 1 })
   // 旧 leader 正忙：这条回报进等待表，条目里的通知还带着旧父会话 id
   const retiredParent = createParent('parent-1', [], 'busy')
   await dispatchAndStart(dispatcher, {

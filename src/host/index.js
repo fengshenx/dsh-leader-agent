@@ -22,6 +22,7 @@ import { createReadWorkerTool } from './tools/read-worker.js'
 import { createListWorkerModelsTool } from './tools/list-worker-models.js'
 import { createCreateCardTool, createUpdateCardTool, createListCardsTool, createReadCardTool } from './tools/cards.js'
 import { createNotificationStore } from './notification-store.js'
+import { createSettingsStore } from './settings-store.js'
 import { resolveDshHome } from './home-paths.js'
 import { createWorkerRegistry } from './worker-registry.js'
 import { createWorkerSessions } from './worker-sessions.js'
@@ -215,6 +216,9 @@ export function apply(ctx) {
   // 浏览器侧要读项目、也要建项目，走 dsh 官方的 Typert 远程调用（`/api`
   // 共享通道），与工作区控制器同构。
   const store = createNotificationStore({ logger })
+  // 设置是实例级的：同一数据根下的所有项目共用一份，派工器在每次投递时现取，
+  // 设置页保存后不需要重启。
+  const settings = createSettingsStore({ home: resolveDshHome(), logger })
   // 启动时按登记表收编既有 worker 会话 id：工具面裁剪是同步判定，登记表是异步的，
   // 需要一份内存集合；不灌入的话重启后老 worker 会被当成普通会话，拿到 leader 工具。
   const adoptedWorkers = workers.list().then((records) => {
@@ -243,6 +247,7 @@ export function apply(ctx) {
     cards,
     workers,
     workerSessions,
+    settings,
     ctx,
   })
 
@@ -271,11 +276,18 @@ export function apply(ctx) {
     // 都不能拿来绑 worker。
     resolveProject,
     getCard: (cardId) => cards.get(cardId),
+    getAutoResumeLimit: () => settings.get().autoResumeLimit,
     logger,
   })
 
   // 装配收尾：接管动作依赖上面全部组件，现在才成形。
   handover = createLeaderHandover({ projects, workers, notifications: store, dispatcher, logger })
+
+  // 设置页把上限调高后，被旧上限挡下的回报不必再等用户开口：这是一次人工介入，
+  // 释放条目并让空闲检测重新投。只在调高时做——调低时条目本来就该继续等待。
+  ctx.effect(() => settings.subscribe((next, previous) => {
+    if (next.autoResumeLimit > previous.autoResumeLimit) dispatcher.releaseExhausted()
+  }), 'dsh-leader-agent 设置变更释放被挡回报')
 
   // 卡片写入只给 leader 与 worker（见 `applyToolGate`）：普通会话不在项目编排里，
   // 建出来的卡没有槽位、没人认领，改别人的卡更没有依据。查全库卡片、派工与续聊

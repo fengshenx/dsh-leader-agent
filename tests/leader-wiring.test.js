@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -150,6 +150,28 @@ test('装配层：手册目录只认 leader 会话的项目目录，不认会话
     await rm(home, { recursive: true, force: true })
     await rm(projectDirectory, { recursive: true, force: true })
     await rm(sessionDirectory, { recursive: true, force: true })
+  }
+})
+
+test('装配层：设置默认 200/work，保存后落到 settings.json 并可再读出', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-leader-agent-home-'))
+  const previousHome = process.env.DSH_HOME
+  const { ctx, holder } = createFakeHost(new Map())
+  process.env.DSH_HOME = home
+  try {
+    apply(ctx)
+    const remote = holder.provided.get(PROJECT_REMOTE_SERVICE_KEY)
+    assert.deepEqual(await remote.readSettings(), { autoResumeLimit: 200, boardMode: 'work' })
+    assert.deepEqual(await remote.updateAutoResumeLimit(500), { autoResumeLimit: 500, boardMode: 'work' })
+    assert.deepEqual(await remote.setBoardMode('cinema'), { autoResumeLimit: 500, boardMode: 'cinema' })
+    assert.deepEqual(await remote.readSettings(), { autoResumeLimit: 500, boardMode: 'cinema' })
+    const stored = JSON.parse(await readFile(join(home, 'dsh-leader-agent', 'settings.json'), 'utf8'))
+    assert.deepEqual(stored, { version: 2, autoResumeLimit: 500, boardMode: 'cinema' })
+  } finally {
+    holder.handlers.get('dispose')?.()
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    await rm(home, { recursive: true, force: true })
   }
 })
 

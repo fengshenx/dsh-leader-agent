@@ -53,32 +53,41 @@ import { ensureBoardStyles } from './board-styles.js'
 import { productIcon } from './icons.js'
 import { clearBoardForeground, noteBoardForeground } from './board-foreground.js'
 import { projectRemoteErrorText } from './project-remote.js'
-import { BOARD_MODE_KEY, readBoardMode, subscribeBoardMode } from './board-mode.js'
-import { readLocalStorage } from './guide-card-logic.js'
+import { getBoardMode, setBoardMode, subscribeBoardMode } from './board-mode.js'
 import { BoardRail } from './board-rail.js'
 
 /**
  * 订阅看板显示模式。
  *
- * 同一运行时里设置页写、这里读，走 `board-mode.js` 的模块级订阅；其它窗口靠
- * `storage` 事件同步。取不到存储时按默认模式走，不阻塞渲染。
+ * 同一运行时里设置页写、这里读，走 `board-mode.js` 的模块级订阅；模式本身存在
+ * 宿主 `settings.json`，挂载时读一次，其它窗口改动后靠窗口 `focus` 重读。取不到
+ * 宿主配置时按默认模式走，不阻塞渲染。
  *
+ * @param {(method: string, args?: unknown[]) => Promise<unknown>} callRemote - 项目通道调用
  * @returns {string} 当前模式
  */
-function useBoardMode() {
-  const [mode, setMode] = useState(() => readBoardMode(readLocalStorage(globalThis)))
+function useBoardMode(callRemote) {
+  const [mode, setMode] = useState(getBoardMode)
   useEffect(() => {
+    let cancelled = false
     const off = subscribeBoardMode(setMode)
-    const onStorage = (event) => {
-      if (event.key !== BOARD_MODE_KEY) return
-      setMode(readBoardMode(readLocalStorage(globalThis)))
+    const load = () => {
+      callRemote('readSettings', []).then((value) => {
+        if (cancelled) return
+        setBoardMode(value?.boardMode)
+      }).catch(() => {
+        // 读不到设置（老宿主 / 通道未就绪）就保持当前快照，显示偏好不该让看板报错
+      })
     }
-    globalThis.addEventListener?.('storage', onStorage)
+    load()
+    const onFocus = () => { load() }
+    globalThis.addEventListener?.('focus', onFocus)
     return () => {
+      cancelled = true
       off()
-      globalThis.removeEventListener?.('storage', onStorage)
+      globalThis.removeEventListener?.('focus', onFocus)
     }
-  }, [])
+  }, [callRemote])
   return mode
 }
 
@@ -733,7 +742,7 @@ function BoardPanel({
   }), [cardList, states])
   const doneFold = foldDoneCards(done, doneWatermark, t)
 
-  const mode = useBoardMode()
+  const mode = useBoardMode(callRemote)
   const cinema = mode === 'cinema'
   const scheme = useHostColorScheme(getTheme, onThemeChange)
   const listClass = cinema ? cinemaListClass(scheme) : 'dsh-leader-agent-board-list'

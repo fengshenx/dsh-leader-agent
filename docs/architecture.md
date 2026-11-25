@@ -99,7 +99,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 项目会话标签栏 | 在 `shell.overlay` 挂一个不占布局的锚，effect 把宿主节点插到主面板第一个子节点、portal 渲染真正的栏；首标签是项目名（leader 入口），worker 标签按项目记在浏览器 localStorage；栏右端承接会话「更多」（宿主 `contextMenus`）与右栏开关；栏可见时给主面板与会话体加 flex 收缩标记（参考 dsh-session-tabs，见 `THIRD_PARTY_LICENSE`） |
 | 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
-| leader 引导卡 | `conversation.input.dock` 独立条目，会话快照 `blank` 且未关闭时画一行上手说明（与输入框同宽同圆角）；「了解怎么用」经 `inputActions` 发通用触发语（不读不改不建）；未初始化时提示建 Hello World 示例卡、派 worker 说「你好」，worker 回报后只汇报并问用户是否关卡，不自行 done/archived，再问是否初始化 `LEADER.md` 与 `SLOTS.md`（确认前不写文件）；已有手册只讲用法，不建卡派工；关闭标记存 localStorage |
+| leader 引导卡 | `conversation.input.dock` 条目，`blank` 且未关闭时显示；「了解怎么用」经 `inputActions` 发通用触发语；未初始化时提示建 Hello World 卡、派 worker 说「你好」，回报后汇报、问是否关卡（不自动 done/archived），再问是否初始化 `LEADER.md` / `SLOTS.md`（确认前不写）；有手册只讲用法；关闭标记存 localStorage |
 | agent 消息气泡 | leader 任务与 worker 回报各用一个独立 Chat node kind + exclusive claim；任务渲染成右侧用户气泡（无身份头，正文与 assistant 内容同套 Markdown（`MarkdownText` compact），单换行按 Markdown 合并），回报渲染成左侧气泡、头像、名字可下钻；回报只渲染最后一次的内容，任务渲染投递原文 |
 | 看板 tab 与入口 | 右栏 tab 类型静态注册；「开始」页入口接管自己那枚胶囊的渲染，只在项目会话里画出来 |
 | 浮层与提示条 | 弹窗外壳（`modal-shell.js`）与菜单复刻官方源码改写；一次性消息走宿主的 `shell.overlay` 槽位，4 秒淡出 |
@@ -114,8 +114,9 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | `cards.json` | 任务卡片：编号、状态、说明、链接、槽位、项目归属、revision |
 | `workers.json` | worker 登记表：会话 id → 父会话与名字，续聊跨进程找回归属；最后一轮回报时刻是巡查与 `list_cards` 槽位行的活性事实 |
 | `notifications.json` | 完成通知落盘队列：投递失败留队，父会话重开时补投 |
+| `settings.json` | 自动续行上限与看板显示模式；实例级 |
 
-浏览器侧的项目标签打开集合存在 localStorage 的 `dsh-leader-agent.session-tabs.v1` 下，按项目 id 分组，不进数据根；它只是导航快捷方式，清掉不影响任何会话。
+浏览器侧只存项目标签集合（`dsh-leader-agent.session-tabs.v1`）与引导卡关闭标记（`dsh-leader-agent.guide.dismissed.*`），不进数据根；看板模式与自动续行上限在 `settings.json`。
 
 会话本体是宿主的 JSONL（`$DSH_HOME/sessions/`），不在本 bundle 手里。仓外插件不能新增 session event 类型（[capability-gaps 第 8 条](capability-gaps.md)），卡片与通知状态因此走独立存储域 + session projection。
 
