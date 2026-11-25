@@ -8,7 +8,7 @@ README 给最短路径，[上手](getting-started.md) 把整条路径串一遍�
 
 工具立即返回会话 id，但 worker **还没开工**——它不产生模型调用，等 `message_worker` 投递首条消息才开始跑。分两步是为了让绑定先落盘：第一条请求组装时，角色槽位与卡片事实（规格、链接、revision）已在上下文里。`cardId` 必须是**本项目**的、状态为 `active` 的卡：跨项目的卡会被拒绝（否则 A 项目能把 worker 绑到 B 的卡上，每轮读到 B 的 spec），已关闭或归档的卡也会被拒绝（关闭即释放执行者，再绑会让投递门禁看不见它）。绑定失败会销毁刚建的会话；改名在绑定成功后才做，磁盘上不会留下空会话。
 
-worker 的模型按 **`spawn_worker` 参数 → `SLOTS.md` 的槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸模型 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；显式换模型却没给 effort 时用新模型默认。派工前可先用 `list_worker_models` 查 route（provider → 模型 → effort）。指定模型/effort 时，在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。
+worker 的模型按 **`spawn_worker` 参数 → `SLOTS.md` 的槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸模型 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；显式换模型却没给 effort 时用新模型默认。派工前可先用 `list_worker_models` 查 route（provider → 模型 → effort；查 effort 必须同时给 provider，只给 model 会报错）。指定模型/effort 时，在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。
 
 worker 是**常驻根会话**——它在左栏项目树下有自己的会话行，你能像开别的会话一样打开它、直接输入新指令，也能在 `message_worker` 里给它续聊。worker 那一轮结束时 leader 随即被唤醒，收到一条完成通知——回报由机制侧从会话事件结算，worker 不需要调用任何工具。
 
@@ -21,6 +21,8 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 用 `message_worker` 投递（`sessionId` 与 `message` 必填，`sessionId` 就是 `spawn_worker` 返回的会话 id；可选的 `rename` 顺手改名，登记表与会话标题同次改到新名字）。**第一条消息就是开工信号**，之后再用它是续聊。会话还活着就把消息投进它的当前轮次（返回 `merged`）——worker 正在跑时下一步即生效，空闲时立即开工；进程重启后不在内存就先冷恢复再投（返回 `sent`）。两种形态对调用方是同一步，新的一轮结束时同样唤醒 leader，收到一条格式一致的汇报气泡。
 
 **人下钻跟 worker 聊天不经过这条路径**：结算按回合归属，你的回合不回报 leader；leader 消息未取走时留到下一轮，不会拿你的产物顶名。派工要求会话持久化与查询后端（`sessionPersistence` / `sessionQuery`）：缺一就拒绝，而不是降级成只能跑一轮的一次性 worker。
+
+失败回报也按回合归属：leader 任务的轮次失败会通知；用户自己开的轮次失败不回报。若失败发生在 `user/message` 落盘前，机制用宿主的 `agent/inbox/claimed` 认输入来源——用户 claim 的轮次不回报，派工记录留在在飞表等任务真正执行；leader claim 的轮次仍按派工失败回报，并写明任务已被取走但没落成 `user/message`；没有 claim 的裸 error 才标「无法确认是否消费」。
 
 ### worker 名册上限与复用
 
@@ -126,7 +128,7 @@ leader 会话不显示宿主每轮末尾的「已编辑 N 个文件」汇总卡�
 
 槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则，非法名在写卡时直接报错。文件顶部的 YAML frontmatter 用 `slots:` 声明卡面上的显示名：`slots:` 下按槽位名缩进一层写 `label:`（块状 YAML，不能写成 `slots.dev.label: 开发` 这种点路径），中文可用，只影响界面、不进入注入正文；没声明时内置 `dev` / `review` 按界面语言显示，其余槽位显示槽位名（`discuss` 保留内置翻译）。
 
-`slots:` 同一层可给角色声明默认 `model` / `effort`：派工未显式指定时用它，`model` 没写回落 leader 当前模型。**模型在派工时定下**，之后改 `SLOTS.md` 只影响新派的工；值非法时忽略并告警，绑到该槽位派工会被拒。示例见[上手](getting-started.md#slotsmd定义每个角色怎么干活)。
+`slots:` 同一层可给角色声明默认 `model` / `effort`：派工未显式指定时用它，`model` 没写回落 leader 当前模型。**模型在派工时定下**，之后改 `SLOTS.md` 只影响新派的工；形状或超长的值在解析时忽略并告警，绑到该槽位派工会被拒；语法或 route 不可用则在派工预检（`llm.resolveCallConfig`）报错。示例见[上手](getting-started.md#slotsmd定义每个角色怎么干活)。
 
 槽位只贡献提示词文本，不授予工具权限。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`（正文为空）。节名不合法（中文、大写、超长）的节整节忽略，宿主日志一次列出全部被忽略的节名；一个合法节都不剩时同样回落。同一槽位在 frontmatter 里出现两个不同 `label` 时告警，后者覆盖。同一问题只告警一次，配置修好后再坏会重新报——沉默的配置错误会让注入静默变空串或显示名静默丢失。
 

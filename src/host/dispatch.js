@@ -135,7 +135,9 @@ export function buildNotificationText(record, outcome) {
   // 正文不带「谁在说话」的前缀：说话人由消息的 source 标记，客户端渲染成
   // 带头像与身份的气泡。前缀写进正文会同时污染模型读的事实与用户看到的界面。
   lines.push(record.unattributed === true
-    ? `worker「${record.name}」有一轮执行失败，且无法确认是否消费了你的任务。`
+    ? record.claimed === true
+      ? `worker「${record.name}」有一轮执行失败；任务消息已被取走，但还没落成 user/message。`
+      : `worker「${record.name}」有一轮执行失败，且无法确认是否消费了你的任务。`
     : `任务「${record.name}」已结束。`)
   lines.push(`子会话：${record.childId}`)
   lines.push(`状态：${status}`)
@@ -145,7 +147,9 @@ export function buildNotificationText(record, outcome) {
     if (model !== undefined) lines.push(`模型：${model}`)
     lines.push(`失败原因：${reason}`)
     if (record.unattributed === true) {
-      lines.push('注意：这一轮在你的任务消息被记录进会话前失败；先 read_worker_session 查看，再决定重投或换模型。')
+      lines.push(record.claimed === true
+        ? '注意：这一轮在你的任务消息落成 user/message 前失败；消息已被取走，不在收件箱里。先 read_worker_session 查看，再决定重投或换模型。'
+        : '注意：这一轮在你的任务消息被记录进会话前失败；先 read_worker_session 查看，再决定重投或换模型。')
     }
   } else {
     const summary = messageText(outcome.result?.output ?? [])
@@ -246,7 +250,13 @@ export function createDispatcher({
    * 折叠：`turn/start` 开回合、`user/message` 认输入来源、`assistant/message` 攒
    * 文本、`turn/end` 结算。
    *
-   * @type {Map<string, { openedBy: 'leader' | 'user' | undefined, leaderMessageIds: Set<string>, text: string }>}
+   * @type {Map<string, {
+   *   turn: number | undefined,
+   *   openedBy: 'leader' | 'user' | undefined,
+   *   leaderMessageIds: Set<string>,
+   *   leaderClaimedMessageIds: Set<string>,
+   *   text: string
+   * }>}
    */
   const openTurns = new Map()
   /**
@@ -1285,6 +1295,7 @@ export function createDispatcher({
     // **这一轮**的产物，不能被下一轮的 assistant 文本覆盖。
     if (record.summary === undefined) {
       const consumed = turn?.leaderMessageIds.has(record.messageId) === true
+      const claimed = turn?.leaderClaimedMessageIds?.has(record.messageId) === true
       const attributed = turn?.openedBy === 'leader' && consumed
       if (!attributed) {
         if (consumed) {
@@ -1292,13 +1303,14 @@ export function createDispatcher({
           return false
         }
         // 模型 route 在 `preStep`/`prepareRequest` 就失败时，这一轮还没走到
-        // `user/message`，按消息 id 归属会漏报；此时 `openedBy` 也还没定。
-        // 只接 error 终态，且不接已明确由用户开启的回合，避免把人的一轮当成
-        // 派工失败。归属不确定要在通知里写明，让 leader 自己决定重投或换模型。
+        // `user/message`，但宿主已经在 `agent/inbox/claimed` 里报过取走了谁的输入。
+        // 用户 claim 的轮次失败不能算派工失败，记录要留着等任务消息真正进入下一轮；
+        // 只接 error 终态。归属仍不确定时在通知里写明，让 leader 自己决定重投或换模型。
         if (turn?.openedBy !== undefined || reason?.kind !== 'error') return false
         record.outcome = 'failed'
         record.summary = describeTurnFailure(reason)
         record.unattributed = true
+        if (claimed) record.claimed = true
       } else {
         record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
         record.summary = record.outcome === 'completed'
@@ -1336,6 +1348,34 @@ export function createDispatcher({
   }
 
   /**
+   * 记录宿主在步骤边界取走了谁的输入。
+   *
+   * `preStep`/`prepareRequest` 失败时这一轮只有 `turn/start` + `turn/end`，
+   * `user/message` 还没落盘；只靠会话事件看不出这一轮是用户自己开的。宿主的
+   * `agent/inbox/claimed` 在取走输入时给出消息来源，正好补上这个窗口。
+   *
+   * @param {{ agent?: object, message?: object, turn?: number }} [payload] - 领取通知
+   * @returns {void}
+   */
+  function observeClaim(payload = {}) {
+    const agent = payload.agent
+    const sessionId = typeof agent?.id === 'string' ? agent.id : agent?.session?.id
+    if (typeof sessionId !== 'string') return
+    const turn = openTurns.get(sessionId)
+    if (turn === undefined) return
+    if (typeof payload.turn === 'number' && turn.turn !== undefined && turn.turn !== payload.turn) return
+    const input = payload.message
+    if (typeof input?.id !== 'string') return
+    // leader 任务消息自带 parentSessionId 凭证；用户输入没有这个 kind。这里只记
+    // claim，不把 leader 消息直接算成已消费——真正的消费仍以 `user/message` 为准。
+    if (readWorkerTaskSource(input.source) !== null) {
+      turn.leaderClaimedMessageIds.add(input.id)
+    } else if (input.source?.kind === 'user') {
+      turn.openedBy ??= 'user'
+    }
+  }
+
+  /**
    * 观察会话事件，在轮次边界上按回合归属结算。
    *
    * 一个 turn 是 `agent.run()` 的一次调用（内部含多个 step）。宿主的追加顺序是
@@ -1353,8 +1393,10 @@ export function createDispatcher({
     switch (event?.type) {
       case 'turn/start': {
         openTurns.set(sessionId, {
+          turn: event.data?.turn,
           openedBy: undefined,
           leaderMessageIds: new Set(),
+          leaderClaimedMessageIds: new Set(),
           text: '',
         })
         return undefined
@@ -1398,6 +1440,7 @@ export function createDispatcher({
   // 订阅不到事件只可能是宿主低于 `engines.dsh` 下限（rc.2 已提供 `session/event`
   // 与 `turn/end`），那是版本契约问题，不是装配期能判定的事。
   const stopTurns = ctx.on('session/event', (session, event) => observeTurn(session, event))
+  const stopClaims = ctx.on('agent/inbox/claimed', (payload) => observeClaim(payload))
 
   // 单个 60s 节拍扫全部在飞轮次：没有在跑的 worker 时零动作，不给 leader 发例行询问。
   const stallWatch = createStallWatch({
@@ -1496,6 +1539,7 @@ export function createDispatcher({
       closed = true
       // 卸载后不再有派工：留着订阅会继续替已死记录结算，也会让宿主持住这个模块。
       stopTurns()
+      stopClaims()
       stallWatch.dispose()
       if (idleTimer !== undefined) {
         clearInterval(idleTimer)

@@ -51,6 +51,8 @@ function createFixture({ permissions } = {}) {
   const hostAgents = new Map()
   /** 订阅上来的 `session/event` 监听器 */
   const sessionEventListeners = []
+  /** 订阅上来的 `agent/inbox/claimed` 监听器 */
+  const inboxClaimListeners = []
   /** 会话 id → 当前句柄的记录（冷恢复会用同一 id 再建一份） */
   const entries = new Map()
   /** 会话上已落盘的权限覆盖：`{ [sessionId]: { sandbox?, approval? } }` */
@@ -152,11 +154,16 @@ function createFixture({ permissions } = {}) {
      * @returns {() => void} 解除订阅
      */
     on(event, listener) {
-      assert.equal(event, 'session/event')
-      sessionEventListeners.push(listener)
+      const listeners = event === 'session/event'
+        ? sessionEventListeners
+        : event === 'agent/inbox/claimed'
+          ? inboxClaimListeners
+          : undefined
+      assert.notEqual(listeners, undefined, `未预期的宿主事件：${event}`)
+      listeners.push(listener)
       return () => {
-        const at = sessionEventListeners.indexOf(listener)
-        if (at >= 0) sessionEventListeners.splice(at, 1)
+        const at = listeners.indexOf(listener)
+        if (at >= 0) listeners.splice(at, 1)
       }
     },
     get(key) {
@@ -211,6 +218,20 @@ function createFixture({ permissions } = {}) {
   }
 
   /**
+   * 模拟宿主在步骤边界取走一条输入：`agent/inbox/claimed`。
+   *
+   * @param {string} sessionId - 会话 id
+   * @param {object} message - 取走的用户消息
+   * @param {number} turn - 回合序号
+   * @returns {void}
+   */
+  function emitClaim(sessionId, message, turn) {
+    for (const listener of inboxClaimListeners) {
+      listener({ agent: { id: sessionId }, message, turn })
+    }
+  }
+
+  /**
    * 开一个回合：宿主先落 `turn/start`，再把收件箱里取走的输入落成 `user/message`。
    *
    * 没有待取输入时补一条真人输入——夹具里的「用户下钻对话」就是这种回合，结算
@@ -227,18 +248,18 @@ function createFixture({ permissions } = {}) {
     await emitRaw(sessionId, { type: 'turn/start', data: { turn: entry.openTurn } })
     const consumed = entry.pending.splice(0)
     for (const message of consumed) {
+      emitClaim(sessionId, message, entry.openTurn)
       await emitRaw(sessionId, { type: 'user/message', data: message })
     }
     if (consumed.length === 0) {
-      await emitRaw(sessionId, {
-        type: 'user/message',
-        data: {
-          id: `user-${sessionId}-${entry.openTurn}`,
-          role: 'user',
-          content: [{ type: 'text', text: '用户插话' }],
-          source: { kind: 'user' },
-        },
-      })
+      const message = {
+        id: `user-${sessionId}-${entry.openTurn}`,
+        role: 'user',
+        content: [{ type: 'text', text: '用户插话' }],
+        source: { kind: 'user' },
+      }
+      emitClaim(sessionId, message, entry.openTurn)
+      await emitRaw(sessionId, { type: 'user/message', data: message })
     }
   }
 
@@ -291,14 +312,16 @@ function createFixture({ permissions } = {}) {
      * `user/message` 还没落盘，派工消息 id 无从归属。
      *
      * @param {string} sessionId - 会话 id
+     * @param {object[]} [claims] - 这一轮宿主取走、但没落成 user/message 的输入
      * @returns {Promise<void>} 边界落完
      */
-    async startTurnBare(sessionId) {
+    async startTurnBare(sessionId, claims = []) {
       const entry = entries.get(sessionId)
       if (entry === undefined) return
       entry.turns += 1
       entry.openTurn = entry.turns
       await emitRaw(sessionId, { type: 'turn/start', data: { turn: entry.openTurn } })
+      for (const message of claims) emitClaim(sessionId, message, entry.openTurn)
     },
 
     /**
@@ -315,6 +338,7 @@ function createFixture({ permissions } = {}) {
       if (entry === undefined) return
       const consumed = entry.pending.splice(0)
       for (const message of consumed) {
+        emitClaim(sessionId, message, entry.openTurn)
         await emitRaw(sessionId, { type: 'user/message', data: message })
       }
     },
@@ -461,6 +485,17 @@ function finishWorker(dispatcher, fixture, { summary = '产物在此', outcome =
     text: summary,
     reason: outcome === 'completed' ? { kind: 'completed' } : { kind: 'error', error: { message: summary } },
   })
+}
+
+/**
+ * 取某条 worker 收件箱里最后一条尚未取走的输入。
+ *
+ * @param {object} fixture - 夹具
+ * @param {string} sessionId - worker 会话 id
+ * @returns {object | undefined} 待取消息
+ */
+function pendingTask(fixture, sessionId) {
+  return fixture.spawned.find((item) => item.sessionId === sessionId)?.pending.at(-1)
 }
 
 test('通知正文包含任务标签、状态与产物摘要', () => {
@@ -3726,7 +3761,7 @@ test('失败气泡的回报也带模型，不让界面只剩一句错误', () =>
   )
 })
 
-test('模型在任务消息落盘前失败也回报 leader，并标明归属不确定', async () => {
+test('没有 claim 的裸 error 仍回报 leader，并标明归属不确定', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
   const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
@@ -3741,7 +3776,7 @@ test('模型在任务消息落盘前失败也回报 leader，并标明归属不�
     effort: 'high',
     signal: new AbortController().signal,
   })
-  // `preStep`/`prepareRequest` 失败：turn 已开，但任务消息还没落成 user/message。
+  // 没有 claim 通知的裸 error（event 丢失/宿主更早失败）：仍按无法归属的派工失败回报。
   await fixture.startTurnBare(record.childId)
   assert.equal(await fixture.emitSessionEvent(record.childId, {
     type: 'turn/end',
@@ -3755,6 +3790,40 @@ test('模型在任务消息落盘前失败也回报 leader，并标明归属不�
   assert.match(text, /模型：deepseek\/reasoner，effort high（派工参数）/)
   assert.match(text, /失败原因：模型不可用/)
   assert.match(text, /无法确认是否消费了你的任务/)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
+test('leader claim 后 preStep 失败仍按派工失败回报，并说明任务已被取走', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    effort: 'high',
+    signal: new AbortController().signal,
+  })
+  const task = pendingTask(fixture, record.childId)
+  assert.ok(task)
+  // 宿主先 claim 了 leader 的任务消息，但 `preStep` 失败，消息没落成 user/message。
+  await fixture.startTurnBare(record.childId, [task])
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
+  }), true)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /worker「实现派工」有一轮执行失败/)
+  assert.match(text, /任务消息已被取走/)
+  assert.match(text, /还没落成 user\/message/)
+  assert.match(text, /失败原因：模型不可用/)
+  assert.doesNotMatch(text, /无法确认是否消费了你的任务/)
   assert.equal(dispatcher.inflightCount(), 0)
 })
 
@@ -3782,7 +3851,9 @@ test('续聊轮失败也带上从登记表读回的模型', async () => {
     message: '接着做',
     signal: new AbortController().signal,
   })
-  await fixture.startTurnBare(record.childId)
+  const continuation = pendingTask(fixture, record.childId)
+  assert.ok(continuation)
+  await fixture.startTurnBare(record.childId, [continuation])
   await fixture.emitSessionEvent(record.childId, {
     type: 'turn/end',
     data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
@@ -3827,5 +3898,45 @@ test('用户开启的轮次失败时不冒充派工失败', async () => {
   }), false)
   await new Promise((resolve) => setTimeout(resolve, 20))
   assert.equal(fixture.delivered.length, 1)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
+test('用户 claim 后 preStep 失败不回报派工失败，任务留到之后真正执行', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    model: 'deepseek/reasoner',
+    signal: new AbortController().signal,
+  })
+  // 用户自己开轮，宿主 claim 了用户消息，但 `preStep` 失败：没有 user/message 可归属。
+  // 这一轮不是派工轮，不能把 leader 的在飞任务报成失败。
+  await fixture.startTurnBare(record.childId, [{
+    id: 'user-claim-1',
+    role: 'user',
+    content: [{ type: 'text', text: '用户插话' }],
+    source: { kind: 'user' },
+  }])
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'error', error: { message: '模型不可用' } } },
+  }), false)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  assert.equal(fixture.delivered.length, 0)
+  // 记录不能丢：任务消息还在收件箱里，后面真正执行时仍要回报。
+  assert.equal(dispatcher.inflightCount(), 1)
+
+  await fixture.startTurn(record.childId)
+  await fixture.finishTurn(record.childId, { text: '后来完成' })
+  await waitFor(() => fixture.delivered.length === 1)
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /任务「实现派工」已结束/)
+  assert.match(text, /后来完成/)
   assert.equal(dispatcher.inflightCount(), 0)
 })
