@@ -271,39 +271,69 @@ export function desktopLinkSpec(worktree) {
   return `link:${worktree}`
 }
 
+/** 影子数据根里，记录本脚本建了哪些顶层项的清单。 */
+export const DESKTOP_SHADOW_MANIFEST = '.desktop-shadow.json'
+
 /**
- * 派生数据根：工作树内的 `.dev/desktop-home`。
+ * 影子数据根用到的各条路径。
  *
- * 与 `npm run dev` 的 `.dev/home` 同级但不同目录：两个开发实例共用一份数据根时，
- * 会话、项目与卡片会互相写，问题出在数据里而不是代码里。
+ * 宿主把桌面 profile 写死在 `$DSH_HOME/profiles/desktop`，没有 profile 开关。要让
+ * 开发版用日常数据、又不碰线上 profile，就给应用一个影子 `DSH_HOME`：影子里的
+ * `profiles/desktop` 是从日常 profile 派生的开发 profile，其余顶层项（sessions、
+ * storages、cards…）链回日常根。线上 `~/.dsh` 一个字节不动，直接启动仍用线上版。
  *
  * @param {object} options - 选项
- * @param {string} options.worktree - 工作树绝对路径
- * @returns {string} 派生数据根的绝对路径
+ * @param {string} options.sourceHome - 日常数据根绝对路径
+ * @param {string} options.worktree - 当前工作树绝对路径
+ * @param {string} [options.home] - 影子根，默认 prod 的 `.dev/desktop-prod-home`
+ * @returns {object} 影子根、开发 profile 与来源 profile 的路径
  */
-export function derivedDesktopHome({ worktree }) {
-  return join(worktree, '.dev', 'desktop-home')
+export function desktopShadowPaths({ sourceHome, worktree, home = derivedDesktopHome({ worktree, prod: true }) }) {
+  const base = desktopPathsOf(home)
+  return {
+    ...base,
+    sourceHome,
+    sourceProfileDir: join(sourceHome, 'profiles', DESKTOP_PROFILE),
+    manifestPath: join(home, DESKTOP_SHADOW_MANIFEST),
+  }
 }
 
 /**
- * 日常工作根与派生数据根之间怎么选。
+ * 派生数据根：dev 是 `.dev/desktop-home`，prod 影子根是 `.dev/desktop-prod-home`。
  *
- * 桌面 profile 只有一份，同一数据根下挂不了两个版本。在 worktree 里跑就是「这个
- * 分支要临时验证一下」，不该把日常那份换成自己的代码——并行开发的几个 worktree
- * 会互相覆盖，主 checkout 的桌面版也会在下次启动时变成某个分支的版本。所以 worktree
- * 内一律用派生根，日常 profile 一个字节都不动；主 checkout（`npm run desktop` 原本
- * 的位置）照旧写日常根。
+ * 两种模式必须是不同目录：prod 的影子根会把 sessions、storages、cards 等链回日常根，
+ * 若 dev 复用同一个影子根，dev 的写入会顺着这些链接进正式数据。与 `npm run dev` 的
+ * `.dev/home` 也各自分开——共用数据根时，会话、项目与卡片会互相写。
+ *
+ * @param {object} options - 选项
+ * @param {string} options.worktree - 工作树绝对路径
+ * @param {boolean} [options.prod] - 是否 prod 影子根
+ * @returns {string} 派生数据根的绝对路径
+ */
+export function derivedDesktopHome({ worktree, prod = false }) {
+  return join(worktree, '.dev', prod === true ? 'desktop-prod-home' : 'desktop-home')
+}
+
+/**
+ * 影子数据根与派生数据根之间怎么选。
+ *
+ * 按命令选，不按当前目录或环境变量猜：`npm run desktop` 是开发数据根（`derived`，
+ * 数据独立）；`npm run desktop:prod` 传 `--prod`，是正式数据（`shadow`，影子根里的
+ * 开发 profile 挂着当前工作树，sessions、项目、卡片等链回 `DSH_HOME` 那条根，线上
+ * profile 不动）。`DSH_HOME` 只决定「哪条根」，不改变模式。
  *
  * `owner` 只用于输出提示「日常那份现在挂的是谁」，不参与判定。
  *
  * @param {object} options - 选项
- * @param {boolean} options.inWorktree - 当前目录是不是 git worktree（主 checkout 为 false）
+ * @param {boolean} options.prod - 是否 `--prod`（正式数据）
  * @param {string | null} [options.installedSpec] - 日常 profile 里的依赖说明符
- * @returns {{ mode: 'daily' | 'derived', owner: string | null }} 用哪个根，以及日常那份挂的是谁
+ * @param {string} options.worktree - 当前工作树绝对路径
+ * @returns {{ mode: 'shadow' | 'derived', owner: string | null, home: string }} 模式、日常挂载来源与实际数据根
  */
-export function planDesktopHome({ inWorktree, installedSpec = null }) {
-  if (inWorktree !== true) return { mode: 'daily', owner: null }
-  return { mode: 'derived', owner: installedSpec === '' ? null : installedSpec }
+export function planDesktopHome({ prod, installedSpec = null, worktree }) {
+  const owner = installedSpec === '' ? null : installedSpec
+  const mode = prod === true ? 'shadow' : 'derived'
+  return { mode, owner, home: derivedDesktopHome({ worktree, prod: mode === 'shadow' }) }
 }
 
 /**

@@ -8,6 +8,10 @@ Status: implemented
 
 ## Decision
 
+> **已被 [影子数据根](2026-11-24-desktop-shadow-home.md) 部分取代**：现在由命令决定模式
+>（`npm run desktop` = dev 派生根，`npm run desktop:prod` = 正式数据影子根），不再按主
+> checkout / worktree 区分；派生根的目录与派生机制仍按本文。
+
 - **按当前目录的身份选数据根，`planDesktopHome` 是唯一判定点**：worktree 内（`.git` 是文件）派生 `<工作树>/.dev/desktop-home`——profile 从日常 `profiles/desktop` 派生（`deriveProfilePackage` 照抄依赖与 bundle，只把本插件换成工作树链接），`node_modules` 逐条链回源 profile，日常 profile 一个字节都不动；主 checkout 内（`.git` 是目录）照旧写日常 profile；显式 `DSH_HOME` 两条都不走，就写那一份根。
 - **派生与依赖链接直接调 `dev-instance.mjs` 的 `prepareProfileDir`**：与 `npm run dev`、e2e 共用同一份实现，三处组合一旦漂移，e2e 测到的就不是用户拿到的实例。
 - **凭据跟着搬**：派生数据根独立，`.credentials.yaml` 也要有 `refs`，否则一进界面没有 API key；`inheritCredentialRefs` 与 `dev` 共用一份实现，取舍见 [开发实例从源 HOME 继承凭据 refs](2026-11-02-dev-instance-inherits-credential-refs.md)。

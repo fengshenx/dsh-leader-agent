@@ -18,7 +18,7 @@
 
 `npm start` 起的是日常实例：数据根 `~/.dsh`（`DSH_HOME` 可换），profile 固定 `profiles/web`（`dsh web` 读的就是它），插件取该 profile 链接的版本。起之前依次检查——`dsh` 可执行文件（未装或不在 PATH 时给中文提示，`DSH_DSH` 可指定路径）、profile 存在、bundles 里有 web-app bundle 与本插件、`node_modules/dsh-leader-agent` 链接存在；全部通过后，若链接指的就是当前目录则先 `npm run build:client`（`lib/client.js` 不入库，没构建过时实例照常起来、右栏却没有看板）。从 worktree 里跑时链接指的是主 checkout，脚本跳过构建并提示那是另一个目录的代码——本目录的改动要在本目录里验证请用 `npm run dev`。额外参数原样转给 `dsh web`：`npm start -- --no-open --port 3210`。
 
-桌面版：`npm run desktop` 把当前目录挂进 desktop profile（Electron 独占，CLI 起不了），改 manifest、建链接、重建产物再拉起应用，三平台各自把数据根交给应用。**worktree 里跑时数据根换成本目录的 `.dev/desktop-home`**，profile 从日常根派生（依赖与 bundle 照抄、只换插件链接），凭据 `refs` 同 `dev` 从日常根继承，日常 profile 不动：桌面 profile 只一份，派生是分支内验证又不覆盖别人的唯一办法，代价是数据与日常分两套。主 checkout 里跑仍写日常根，显式 `DSH_HOME` 时两条都不走。`--remove` 在哪个目录跑就摘哪个根；应用运行中或 profile 有锁时拒绝写入（见对应 Agent Note）。
+桌面版：`npm run desktop` 用当前目录的代码起应用，重建产物、挂 profile 再拉起。**`npm run desktop` 是 dev 派生根** `./.dev/desktop-home`，数据独立、不链日常数据。**`npm run desktop:prod` 用正式数据（影子根）**：应用拿到的 `DSH_HOME` 是 `.dev/desktop-prod-home`，`profiles/desktop` 从日常 profile 派生，sessions、项目、卡片等顶层项链回那条根，凭据用 `credentials.path` 指回 `<根>/.credentials.yaml`；启动不写线上 profile，直接启动仍用已装版本，kill/断电无需还原。`-- --remove` 只删影子根；旧版线上永久挂载要 `-- --remove --remove-mount` 显式摘除（会改线上 profile）。验证：退出应用 → 跑两条命令 → 直接点图标，应仍是线上版。见[影子数据根笔记](../.agents/notes/implemented/process/2026-11-24-desktop-shadow-home.md)。
 
 ## 收尾清理
 
