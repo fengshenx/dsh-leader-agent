@@ -145,13 +145,13 @@ test('自动续行输入框自带焦点环，单位「次」在框外', () => {
   const focus = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-control input.dsh-leader-agent-settings-input:focus-visible')
   assert.equal(
     focus?.declarations['border-color'],
-    'var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))',
-    '焦点边框颜色取宿主 focus-ring-color',
+    'var(--dsw-alias-label-secondary)',
+    '焦点边框是宿主黑灰色',
   )
   assert.equal(
     focus?.declarations['box-shadow'],
-    '0 0 0 2px color-mix(in srgb, var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)) 18%, transparent)',
-    '焦点用宿主内置插件搜索框同款 2px 18% 柔光',
+    '0 0 0 2px color-mix(in srgb, var(--dsw-alias-state-business-primary) 18%, transparent)',
+    '焦点用蓝色柔光',
   )
   assert.equal(focus?.declarations.outline, 'none', '焦点规则要压掉浏览器默认 outline')
   assert.equal(
