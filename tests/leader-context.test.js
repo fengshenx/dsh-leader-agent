@@ -119,11 +119,14 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、建�
     assert.match(text, /init-leader-agent/)
     assert.match(text, /目录是空的就写带 TODO 的骨架/)
     assert.match(text, /不要创建或修改任何文件/)
-    // 示例卡是看板动作：只建卡、不派工，规格里明确不碰文件。
+    // 示例卡要真的派出去：建卡 → 绑 worker → 投递任务；worker 回报后收工。
     assert.match(text, /`create_card`.*`Hello World`/)
     assert.match(text, /回复一句『你好』即可/)
     assert.match(text, /不读取、不修改、不创建任何文件/)
-    assert.match(text, /不要派工/)
+    assert.match(text, /`spawn_worker`.*`cardId`.*`slot`/)
+    assert.match(text, /`message_worker`.*`sessionId`.*`childId`/)
+    assert.match(text, /worker 回报唤醒你时/)
+    assert.match(text, /标 `done`/)
     assert.match(text, /`list_cards`/)
     // 用户直接派活时不打断：提示自己限定触发面。
     assert.match(text, /用户直接派活时不要打断/)

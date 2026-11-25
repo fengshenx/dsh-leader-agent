@@ -71,7 +71,7 @@
     "common.saving": "Salvando…",
     "guide.action.dismiss": "Entendi",
     "guide.action.intro": "Mostre-me como usá-lo",
-    "guide.intro.prompt": "Este projeto ainda não está configurado — mostre-me como o dsh-leader-agent funciona e crie um cartão de exemplo Hello World em que um agente apenas diga olá (sem alterar arquivos).",
+    "guide.intro.prompt": "Este projeto ainda não está configurado — mostre-me como o dsh-leader-agent funciona, crie um cartão de exemplo Hello World, atribua-o a um agente e faça o agente dizer olá (sem alterar arquivos).",
     "guide.steps": "Crie cartões de tarefas, entregue o trabalho aos agentes e acompanhe o progresso no quadro",
     "guide.title": "Este diretório tem um Leader",
     "markdown.code": "Código",
