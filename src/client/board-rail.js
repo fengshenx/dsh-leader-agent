@@ -13,7 +13,6 @@
 
 import { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { planRailLanes, railNodeState, RAIL_LANE_HOT, RAIL_LANE_WARN } from './board-rail-plan.js'
-import { railSignature } from './board-rail-signature.js'
 import { prefersReducedMotion, watchReducedMotion } from './motion-preference.js'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -197,8 +196,7 @@ function drawRail(svg, options = {}) {
  * 线路图覆盖层。
  *
  * `railKey` 是行身份与状态的签名：卡片轮询每 2 秒会换一个新数组，但签名不变时
- * 不必重画——重画会让光点从头再跑一遍。几何（尺寸、行高、行位置）另由
- * `railSignature` 并入绘制签名，见 `board-rail-signature.js`。
+ * 不必重画——重画会让光点从头再跑一遍。stage 宽高另并入绘制签名。
  *
  * @param {object} props - 组件属性
  * @param {string} props.railKey - 行与状态的签名
@@ -221,17 +219,9 @@ export function BoardRail({ railKey, orthogonal, theme }) {
     const draw = () => {
       // 宿主用 display:none 隐藏非当前会话的右栏：尺寸归零不是布局变化
       if (stage.clientWidth === 0 || stage.clientHeight === 0) return
-      // 覆盖层的 y 坐标全部来自实测的卡片矩形：标题换行、locale/字体加载都会
-      // 移动行中心，而 railKey 不含标题与行高。几何必须一起进签名，否则尺寸变了
-      // 签名没变，线路图会停在旧位置。
-      const rect = stage.getBoundingClientRect()
-      const rows = [...stage.querySelectorAll('[data-rail-row]')].map((row) => {
-        const rowRect = row.getBoundingClientRect()
-        return { top: rowRect.top - rect.top, height: rowRect.height }
-      })
-      const key = railSignature({
-        railKey, orthogonal, theme, reduced, width: rect.width, height: rect.height, rows,
-      })
+      // 卡面标题固定单行后，行中心只随行高变化；宽度决定换行，高度覆盖 locale/
+      // 字体与链接行导致的整卡高度变化，两者合起来就够，不必逐行量几何。
+      const key = `${railKey}|${orthogonal}|${theme}|${reduced}|${stage.clientWidth}x${stage.clientHeight}`
       if (key === drawnKey.current) return
       drawnKey.current = key
       drawRail(svg, { orthogonal, theme, reduced })
