@@ -254,6 +254,7 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   assert.equal(await bar.locator('.dsh-leader-agent-tab[data-kind="worker"]').count(), 0, '没点开的 worker 不该先出标签')
   // 栏可见时才给主列加 flex 收缩标记；这是 DOM 属性，不是样式值。
   assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 1, '栏可见时应给主列加 flex 收缩标记')
+  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-main]').count(), 1, '栏可见时应给会话体加主列标记')
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'session-tabs')
   mkdirSync(artifacts, { recursive: true })

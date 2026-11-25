@@ -30,4 +30,4 @@ Status: implemented
 
 ## Testing
 
-`tests/e2e/project-alignment.e2e.js` 保留最小 3 条相对几何守卫（项目行 vs 宿主工作区行：行高、行首图标左缘、标题左缘），不恢复内边距/边框/截图的像素级全量；其余样式走[人工取证](../../../../docs/e2e-testing.md#样式布局人工取证review-门禁)。`tests/project-panel.test.js` 钉住标题与字形断言。双向验证：把项目行行高改小、或给标题加几像素左偏移，场景按对应断言变红；读数见 PR。
+`tests/e2e/project-alignment.e2e.js` 保留最小 4 条相对几何守卫（项目行 vs 宿主工作区行：行高、行首图标左缘、标题左缘；项目区块小节标题 vs 宿主 section label 左缘），不恢复内边距/边框/截图的像素级全量；其余样式走[人工取证](../../../../docs/e2e-testing.md#样式布局人工取证review-门禁)。`tests/project-panel.test.js` 钉住标题与字形断言。双向验证：把项目行行高改小、给标题加几像素左偏移、或给项目区块 header 加 4px 左内边距，场景分别按行高/标题左缘/小节标题左缘断言变红；读数见 PR。
