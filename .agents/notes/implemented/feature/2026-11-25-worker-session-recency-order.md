@@ -25,11 +25,12 @@ Status: implemented
 - 人下钻跟 worker 聊天不改变 `lastUsedAt`，不会让它跳位；这类会话仍按上一次派工/结算的时间排。
 - 一轮执行中的 worker 只记投递时刻，长回合里不会持续上浮；回合结束结算时才会更新到当前时刻。
 - 退役 leader 固定排在 worker 之后，不参与时间排序。
-- 项目树在会话事件（status/settle）后防抖重取 `sessionsByProject`，排序变化最多晚约 1 秒；收起再展开或窗口聚焦也会重取。
+- 项目树在会话事件（status/settle）后防抖重取 `sessionsByProject`：同一批事件合并进一个 1 秒 timer（后到的事件重置它），顺序最多晚约 1 秒，不会因此刷两次；窗口重新聚焦也会重取。
 
 收益：左栏最近被投递或刚回报的 worker 浮到项目最前面，与 `list_cards`/名册 LRU 的「最近使用」口径一致。
 
 ## Testing
 
-- `tests/project-session-index.test.js`：纯函数 `orderSessionsByLastUsed` 倒序/稳定/非数字回落三例；服务用例把会话库顺序与 `lastUsedAt` 顺序设成相反，断言输出按时间、退役 leader 接在 worker 后面。
+- `tests/project-session-index.test.js`：纯函数 `orderSessionsByLastUsed` 倒序/稳定/非数字回落，以及相同 `lastUsedAt` 保持原序；服务用例把会话库顺序与 `lastUsedAt` 顺序设成相反，断言输出按时间、退役 leader 接在 worker 后面；不注入 `workerLastUsedAt` 时保持会话库顺序。
+- `tests/leader-wiring.test.js`：装配层用真实登记表文件断言 `workerLastUsedAt` 注入确实把 `lastUsedAt` 传给项目服务（覆盖 `src/host/index.js` 的注入行）。
 - `tests/e2e/worker-session-order.e2e.js`：真实宿主建 3 个 worker，登记表的 `lastUsedAt` 与创建顺序相反，展开项目后按 DOM 顺序断言 `[w1, w2, w3]`。双向：临时关掉服务里的排序后，同一场景读到会话库顺序 `[w3, w2, w1]` 变红；还原后全绿。

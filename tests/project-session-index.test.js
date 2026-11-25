@@ -325,6 +325,14 @@ test('worker 会话按最后使用时间倒序排，没有时间时保持原顺�
     orderSessionsByLastUsed(['worker-a', 'worker-b'], new Map([['worker-a', 'oops'], ['worker-b', 5]])),
     ['worker-b', 'worker-a'],
   )
+  // 相同时间保持会话库里的相对顺序：每次重取不能因为排序实现换成不稳定排序而换位。
+  assert.deepEqual(
+    orderSessionsByLastUsed(
+      ['first', 'second', 'third', 'fourth'],
+      new Map([['first', 7], ['second', 9], ['third', 7], ['fourth', 9]]),
+    ),
+    ['second', 'fourth', 'first', 'third'],
+  )
 })
 
 test('服务按 lastUsedAt 倒序列出 worker，退役 leader 接在后面', async () => {
@@ -353,6 +361,32 @@ test('服务按 lastUsedAt 倒序列出 worker，退役 leader 接在后面', as
   assert.deepEqual(await service.sessionsByProject(), [{
     projectId: project.id,
     sessionIds: ['worker-new', 'worker-old', factory.ids[0]],
+  }])
+})
+
+test('服务没注入 workerLastUsedAt 时保持会话库顺序', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => (key === 'sessionQuery'
+        ? { listSessions: async () => sessions.map((id) => ({ header: { id, cwd: workspace } })) }
+        : undefined),
+    },
+    createLeaderSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: (id) => id.startsWith('worker-'),
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  sessions.push(factory.ids[0], 'worker-old', 'worker-new')
+
+  // 可选注入缺失时行为与改动前一致：不排序、不报错。
+  assert.deepEqual(await service.sessionsByProject(), [{
+    projectId: project.id,
+    sessionIds: ['worker-old', 'worker-new'],
   }])
 })
 
