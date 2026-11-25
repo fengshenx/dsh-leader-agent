@@ -27,7 +27,7 @@ Status: implemented
 ## Consequences
 
 - 不覆盖原生控件、浮层像素与动画观感、WebKit/Firefox；继续人工取证并在 PR 里标注「未 GUI 实测」。
-- 不做 aria golden 与 snapshot refresh：断言锚是 DOM class、计算样式与落盘文件。
+- 不做 aria golden 与 snapshot refresh：断言锚是 DOM class、可见性与落盘文件；计算样式断言后由 [e2e 只测行为与逻辑，不测样式](2026-11-25-e2e-logic-only.md) 移除。
 - 不为 e2e 改生产代码；需要新选择器时那是一次产品决定，不夹带。
 - 跨进程拿不到 `whenIdle()`，轮次完成只能从浏览器侧观察（回复上屏、落盘文件出现）。
 - 显式 `baseURL` 会让 mock 静默失效：派生 profile 时检测 `cordis.yml` / `cordis.patch.yml`，命中直接报错。

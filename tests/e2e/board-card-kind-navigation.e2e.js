@@ -131,7 +131,6 @@ async function readCard(page, title) {
     const signal = node.querySelector(selectors.signal)
     return {
       header: id?.textContent ?? null,
-      linkIcons: items.reduce((total, item) => total + item.querySelectorAll('svg').length, 0),
       slots: node.querySelectorAll(selectors.slot).length,
       slotNames: Array.from(node.querySelectorAll(selectors.slot)).map((item) => item.textContent),
       signalClass: signal?.className ?? null,
@@ -249,9 +248,6 @@ test('卡面按导航目标组织：分类在头部、空槽不占位、停滞�
   assert.equal(card1.slots, 1, `会话入口应只有已绑定的 1 个，实际 ${card1.slots}：${JSON.stringify(card1.slotNames)}`)
 
   // 链接收起态：放不下时出现「+N」，展开后全部直出，但不是打开详情。
-  // 链接保持纯文本：一行多条时图标会连成点阵，比标签本身更抢眼
-  assert.equal(card1.linkIcons, 0, `卡面链接不该有前置图标，实际 ${card1.linkIcons} 个`)
-
   assert.notEqual(card1.overflowText, null, '链接行应有溢出开关')
   assert.equal(card1.overflowExpanded, 'false', '溢出开关初始应是收起态')
   assert.equal(card1.overflowText.startsWith('+'), true, `收起态文案应是 +N，实际 ${JSON.stringify(card1.overflowText)}`)

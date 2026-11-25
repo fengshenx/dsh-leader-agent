@@ -1,15 +1,15 @@
 # 浏览器侧证据：e2e 车道与人工取证
 
-`npm run check` 只覆盖纯函数与落盘逻辑；圆点档位、折叠水位、浮层位置这类东西，只有把应用真跑起来才能证明。能写成断言的行为一律走 **e2e 车道**（`npm run e2e`），只有脚本化不了的部分才走[人工取证](#人工取证没有可脚本化断言时)，且必须在 PR 里标注「未 GUI 实测」或写明测了什么。写场景的方法与纪律（断言、诊断、双向验证、搭场景）见 [e2e-scenarios 技能](../.agents/skills/e2e-scenarios/SKILL.md)；车道为什么长这样、7 条从宿主搬来的确定性规则，见[宿主方案笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-host-approach-and-determinism.md)。
+`npm run check` 只覆盖纯函数与落盘逻辑；圆点档位、折叠水位、交互后的落盘这类行为，只有把应用真跑起来才能证明。**样式（颜色、字号、圆角、动画、像素位置与尺寸、布局对齐）不进 e2e**：它们随宿主改版漂移，写进回归只会周期性红。能写成断言的行为一律走 **e2e 车道**（`npm run e2e`），其余走[人工取证](#人工取证没有可脚本化断言时)，并在 PR 里标注「未 GUI 实测」或写明测了什么。写场景的方法与纪律（断言、诊断、双向验证、搭场景）见 [e2e-scenarios 技能](../.agents/skills/e2e-scenarios/SKILL.md)；车道由来与确定性规则见[宿主方案笔记](../.agents/notes/implemented/testing/2026-11-04-e2e-host-approach-and-determinism.md)。
 
-规则清单（细节与理由在笔记）：禁 `networkidle`；禁单次瞬态 DOM 采样；禁固定 sleep；pageerror / console.error 即失败；端口用 `listen(0)`；默认不开重试；一次只改一个变量。
+规则清单（细节见笔记）：只测逻辑，不测样式；禁 `networkidle`；禁单次瞬态 DOM 采样；禁固定 sleep；pageerror / console.error 即失败；端口用 `listen(0)`；默认不开重试；一次只改一个变量。
 
 ## 分层与判据
 
 | 层 | 命令 | 证明什么 | 证明不了什么 |
 |---|---|---|---|
 | 纯函数与落盘 | `npm run check` | 投影、状态归一、去重、串行与并发 | 浏览器里实际渲染成什么 |
-| 浏览器 e2e | `npm run e2e` | 真实宿主里的挂载、交互、wire、落盘 | 未写成断言的行为；原生控件与浮层的像素位置 |
+| 浏览器 e2e | `npm run e2e` | 真实宿主里的挂载、交互、wire、落盘 | 样式与像素布局；未写成断言的行为 |
 | 人工取证 | 本文末节 | 剩下那些只有人眼能判的东西 | 不可复现，不能当回归 |
 
 能在纯函数层断言的先落 `tests/`；能在 e2e 层断言的不要再手工点。
@@ -71,7 +71,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
   const e2e = await launchE2E({ scripts: { 'MOCK-XXX': [{ text: '回执' }] } }) // 键是标记名，值是依次要拿到的东西
   t.after(() => e2e.stop())
   await e2e.open()
-  // 交互一律用 locator 等状态；断言锚是 DOM class / 计算样式 / 落盘文件，不读自述文本
+  // 交互一律用 locator 等状态；断言锚是 DOM 结构/属性/可见性与落盘文件，不读计算样式与自述文本
   await e2e.page.locator('div[role="textbox"][contenteditable="true"]').first().fill('MOCK-XXX 做点什么')
   await waitForLocator(e2e.page.locator('.dsh-leader-agent-project-section'), { description: '项目区块挂载' })
   await waitFor({ description: '会话日志写入回执', check: () => sessionLogsContain(e2e.instance.home, '回执') })
@@ -139,25 +139,23 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 `waitFor()` / `waitForLocator()` 的默认 **15 秒是代码里的默认值，不是不可改的协议**：调用点可传 `timeoutMs`，首次启动的元素（输入框、项目行、工作区行）显式给 20 秒；测试级上限是 `scenarioTimeout()`（默认 90 秒，`session-tabs` 150 秒）。慢机与 2 核 CI 用 `E2E_BUDGET_SCALE=1.5` 整体放大等待与测试级上限，不改代码。
 
-**该调**：确认是机器冷启动/CI 核数不足，且同一场景在空载下仍稳定慢；用倍率整体放大，读数要写进 PR。**不该调**：单个 flaky 场景、元素没渲染、选择器等错、数据没到——这些加秒数只会把失败拖长并掩盖根因；不写 60/90 秒的单点预算，也不靠重试变绿。
+**该调**：确认是慢机或 CI 核数不足，空载仍稳定慢；用倍率整体放大，读数写进 PR。**不该调**：单个 flaky 场景、元素没渲染、选择器等错、数据没到——这些加秒数只会把失败拖长并掩盖根因；不写 60/90 秒的单点预算，也不靠重试变绿。
 
 ### 不覆盖
 
 - 原生控件（目录选择器、系统文件对话框）在无头浏览器里拿不到结果，只能单测 + 人工取证，PR 里如实标注。
-- 浮层的像素位置、动画观感不写进 e2e：它们不进回归，写进去只会周期性红。
+- 颜色、字号、圆角、动画、像素位置与尺寸、布局对齐等样式不进 e2e：随宿主改版漂移，写进去只会周期性红；需要时人工取证。
 - WebKit / Firefox 暂不跑（宿主只在个别场景用 WebKit）；需要时给 `instance.mjs` 加引擎参数，不要复制一套 harness。
 
 ## 人工取证：没有可脚本化断言时
 
-只有脚本化不了的部分才走这里，且必须在 PR 里写明测了什么、没测什么。
+只有脚本化不了的部分才走这里，PR 写明测了什么、没测什么。
 
 1. **先写断言**：能进单测的先写单测并看它变红，再改实现。
 2. **起隔离实例**：`DSH_HOME` 指独立目录、端口独占；token 每次启动都变，从启动日志取出写入文件，**只打印长度**。
 3. **场景用标记驱动**：`MOCK-<场景名>` 写在用户输入里，本地 mock 按标记返回固定序列；一个标记只表达一个场景，标记名与用例名对得上。
 4. **断言与双向验证**照 [e2e-scenarios 技能](../.agents/skills/e2e-scenarios/SKILL.md)：读外部世界，撤掉修复必须变红。
 5. **清理**：kill 端口、删探针脚本；截图与临时数据不入库。
-
-无头浏览器里弹不出的原生控件（目录选择器、系统文件对话框）只能单测 + 样式注入核验，PR 里写明「未 GUI 实测」，见[不覆盖](#不覆盖)。
 
 ## 禁止
 

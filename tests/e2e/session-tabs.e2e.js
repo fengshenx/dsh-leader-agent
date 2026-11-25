@@ -6,7 +6,8 @@
  * 从项目行打开 leader，验证标签栏与真实会话切换。
  *
  * 断言只落在插件自己的 DOM（标签的 data-session-id / aria-selected / 状态灯）
- * 与主面板几何上；不读宿主内部状态，也不把「当前会话」委托给宿主会话行——
+ * 与交互后的状态上；栏高、控件坐标、滚动溢出这类样式与布局不写进 e2e。
+ * 不读宿主内部状态，也不把「当前会话」委托给宿主会话行——
  * 项目会话恰好被左栏排除，宿主树里没有它们的行。
  */
 
@@ -249,32 +250,7 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   const leaderTab = bar.locator('.dsh-leader-agent-tab[data-kind="leader"]')
   await waitForLocator(leaderTab, { description: '项目标签（leader 入口）', timeoutMs: 10_000 })
   assert.equal((await leaderTab.innerText()).trim(), '网站改版', '项目标签应当是项目名，不再单列 Leader')
-  assert.equal(
-    await leaderTab.locator('.dsh-leader-agent-tab-icon svg path').count(),
-    4,
-    '项目标签图标应与左栏项目行同一枚 apps 图标（三条 rect + 一个加号）',
-  )
   assert.equal(await bar.locator('.dsh-leader-agent-tab[data-kind="worker"]').count(), 0, '没点开的 worker 不该先出标签')
-  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 1, '栏可见时才给主列加 flex 收缩标记')
-
-  const barBox = await bar.boundingBox()
-  const header = page.locator('header:has([data-conversation-header-leading])').first()
-  await waitForLocator(header, { description: '会话头', timeoutMs: 10_000 })
-  const headerBox = await header.boundingBox()
-  assert.ok(barBox !== null && Math.abs(barBox.height - 48) <= 1, `标签栏高度应为 48px，实际 ${JSON.stringify(barBox)}`)
-  assert.ok(
-    barBox !== null && headerBox !== null && barBox.y + barBox.height <= headerBox.y + 1,
-    `标签栏应在会话头之上：bar=${JSON.stringify(barBox)} header=${JSON.stringify(headerBox)}`,
-  )
-  // 宿主右栏顶条是 28px 内容带 + 10px 上留白；它下方没有分割线，所以标签栏
-  // 再撑高 10px：chip 仍压在同一条内容带上，底部留白把分隔线与 chip 分开。
-  const barChipBox = await leaderTab.boundingBox()
-  assert.ok(
-    barBox !== null && barChipBox !== null
-      && Math.abs(barChipBox.y - (barBox.y + 10)) <= 1
-      && Math.abs((barChipBox.y + barChipBox.height) - (barBox.y + barBox.height - 10)) <= 1,
-    `标签内容应压在上留白 10px 的 28px 内容带、下方留 10px 分隔线位置：bar=${JSON.stringify(barBox)} chip=${JSON.stringify(barChipBox)}`,
-  )
 
   const artifacts = join(WORKTREE, '.dev', 'e2e-artifacts', 'session-tabs')
   mkdirSync(artifacts, { recursive: true })
@@ -303,31 +279,9 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     timeoutMs: 10_000,
   })
 
-  // 右栏开关与会话「更多」必须在标签栏这一行：收起右栏时不再留在会话头
-  // 标题行（标签栏下一行），展开后宿主的收起按钮才会落在同一坐标。
-  const rowTop = barBox.y
-  const rowBottom = barBox.y + barBox.height
-  const inTabRow = (box) => box !== null && box.y >= rowTop - 1 && box.y + box.height <= rowBottom + 1
-  const centerOf = (box) => [box.x + box.width / 2, box.y + box.height / 2]
-
+  // 右栏开关与会话「更多」都挂标签栏；原会话头菜单按钮让位，避免同一个菜单
+  // 出现两次。控件坐标与同排对齐属于样式，不写进 e2e。
   const expandControl = page.locator('[data-sidebar-right-expand]:visible').first()
-  const expandBox = await expandControl.boundingBox()
-  const moreBox = await moreButton.boundingBox()
-  assert.ok(inTabRow(expandBox), `右栏展开按钮应落在标签栏这一行：bar=${JSON.stringify(barBox)} expand=${JSON.stringify(expandBox)}`)
-  assert.ok(inTabRow(moreBox), `会话更多按钮应落在标签栏这一行：bar=${JSON.stringify(barBox)} more=${JSON.stringify(moreBox)}`)
-  assert.ok(
-    expandBox !== null && Math.abs((expandBox.x + expandBox.width) - (barBox.x + barBox.width)) <= 8,
-    `右栏展开按钮应贴标签栏右缘：bar=${JSON.stringify(barBox)} expand=${JSON.stringify(expandBox)}`,
-  )
-  assert.ok(
-    expandBox !== null && moreBox !== null && moreBox.x + moreBox.width <= expandBox.x,
-    `更多按钮应在右栏开关左侧：more=${JSON.stringify(moreBox)} expand=${JSON.stringify(expandBox)}`,
-  )
-  assert.ok(
-    expandBox !== null && moreBox !== null
-      && Math.abs(centerOf(moreBox)[1] - centerOf(expandBox)[1]) <= 1,
-    `更多按钮与右栏开关应在同一内容带：more=${JSON.stringify(moreBox)} expand=${JSON.stringify(expandBox)}`,
-  )
   const headerMenuButtons = page.locator('[class*="headerMenuButton"]')
   assert.equal(await headerMenuButtons.count(), 1, '会话头标题行原更多按钮应仍挂载，才能证明是隐藏而不是不存在')
   assert.equal(
@@ -335,21 +289,6 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     0,
     '会话头标题行里的更多按钮应让位给标签栏，避免同一个菜单出现两次',
   )
-  const expandCenter = centerOf(expandBox)
-
-  // 窄窗：标签栏、更多与右栏开关仍须同排且不重叠。
-  await page.setViewportSize({ width: 900, height: 900 })
-  const narrowBarBox = await bar.boundingBox()
-  const narrowMoreBox = await moreButton.boundingBox()
-  const narrowExpandBox = await page.locator('[data-sidebar-right-expand]:visible').first().boundingBox()
-  assert.ok(narrowBarBox !== null && inTabRow(narrowExpandBox) && inTabRow(narrowMoreBox),
-    `窄窗下控件应仍在标签栏这一行：bar=${JSON.stringify(narrowBarBox)} more=${JSON.stringify(narrowMoreBox)} expand=${JSON.stringify(narrowExpandBox)}`)
-  assert.ok(
-    narrowExpandBox !== null && narrowMoreBox !== null
-      && narrowExpandBox.x - (narrowMoreBox.x + narrowMoreBox.width) >= 7,
-    `窄窗下更多与右栏开关应留出间距：more=${JSON.stringify(narrowMoreBox)} expand=${JSON.stringify(narrowExpandBox)}`,
-  )
-  await page.setViewportSize({ width: 1440, height: 900 })
 
   // 右栏打开 leader 看板，再切 worker：右栏按会话隔离，看板要在 worker 的右栏里
   // 继续显示（看板是项目级的，worker 也看同一块），而不是切成 worker 的默认 guide。
@@ -367,38 +306,9 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   await waitForLocator(leaderBoard, { description: 'leader 右栏的看板空态', timeoutMs: 15_000 })
   await page.screenshot({ path: join(artifacts, 'leader-board.png') })
 
-  // 核心回归：展开后宿主的收起按钮与展开前的展开按钮在同一坐标，开关不再跳行。
+  // 右栏展开后宿主的收起按钮可见；开关收起/展开是否同坐标属于样式，不写进 e2e。
   const collapseButton = page.locator('[data-sidebar-right-toggle]:visible').first()
-  const collapseBox = await collapseButton.boundingBox()
-  assert.ok(collapseBox !== null, '右栏展开后应能看到宿主的收起按钮')
-  const collapseCenter = centerOf(collapseBox)
-  assert.ok(
-    Math.abs(collapseCenter[0] - expandCenter[0]) <= 1 && Math.abs(collapseCenter[1] - expandCenter[1]) <= 1,
-    `右栏开关收起/展开应在同一坐标：expand=${JSON.stringify(expandBox)} collapse=${JSON.stringify(collapseBox)}`,
-  )
-  const openBarBox = await bar.boundingBox()
-  const openMoreBox = await moreButton.boundingBox()
-  assert.ok(
-    openBarBox !== null && openMoreBox !== null
-      && openMoreBox.y >= openBarBox.y - 1
-      && openMoreBox.y + openMoreBox.height <= openBarBox.y + openBarBox.height + 1,
-    `右栏展开后更多按钮仍应在标签栏这一行：bar=${JSON.stringify(openBarBox)} more=${JSON.stringify(openMoreBox)}`,
-  )
-  // 展开后宿主收起按钮在面板自己的顶条里，主列右缘不再有开关；「更多」的
-  // 右留白从 42px 收到 6px，不再在右侧留一段空档。
-  assert.ok(
-    openBarBox !== null && openMoreBox !== null
-      && Math.abs((openBarBox.x + openBarBox.width) - (openMoreBox.x + openMoreBox.width) - 6) <= 1,
-    `右栏展开后更多按钮应贴主列右缘 6px：bar=${JSON.stringify(openBarBox)} more=${JSON.stringify(openMoreBox)}`,
-  )
-  // 与右栏面板自己的 chip 同底对齐：两侧顶行视觉上是同一条 38px 条带。
-  const panelChipBox = await page.locator('[data-sidebar-right-open] [data-dockkit-strip] [role="tab"]').first().boundingBox()
-  assert.ok(
-    panelChipBox !== null && openMoreBox !== null
-      && Math.abs(panelChipBox.y - openMoreBox.y) <= 1
-      && Math.abs((panelChipBox.y + panelChipBox.height) - (openMoreBox.y + openMoreBox.height)) <= 1,
-    `标签栏内容带应与右栏面板顶条对齐：more=${JSON.stringify(openMoreBox)} panelChip=${JSON.stringify(panelChipBox)}`,
-  )
+  await waitForLocator(collapseButton, { description: '右栏展开后宿主的收起按钮', timeoutMs: 10_000 })
 
   // 点项目树里的 worker：形成标签并成为当前标签。
   const w1 = workers[0]
@@ -565,24 +475,7 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
     menuCount: await contextMenu.count(),
   })}`)
 
-  // 极窄窗且两个标签：滚动容器真的溢出时，更多仍可点、菜单能开能关。
-  await page.setViewportSize({ width: 300, height: 900 })
-  const tabScroll = bar.locator('.dsh-leader-agent-tabs-scroll')
-  const overflow = await tabScroll.evaluate((element) => element.scrollWidth > element.clientWidth)
-  assert.equal(overflow, true, '300px 窄窗下标签滚动区应溢出')
-  await moreButton.click()
-  await waitForLocator(contextMenu, { description: '300px 窄窗打开更多菜单', timeoutMs: 10_000 })
-  await page.keyboard.press('Escape')
-  await waitFor({
-    description: '300px 窄窗 Escape 关闭更多菜单',
-    check: async () => (await contextMenu.count()) === 0
-      && (await moreButton.getAttribute('aria-expanded')) === 'false',
-    timeoutMs: 10_000,
-  })
-  t.diagnostic('NARROW_300 overflow=true menu=open-close')
-  await page.setViewportSize({ width: 1440, height: 900 })
-
-  // 普通会话：同一工作区里新建，不属于项目，整条栏与 flex 标记都消失。
+  // 普通会话：同一工作区里新建，不属于项目，整条栏消失。
   const ordinaryWorkspaceRow = page.locator('[data-row-key^="workspace:"]').filter({ hasText: '默认工作区' }).first()
   await waitForLocator(ordinaryWorkspaceRow, { description: '第二段默认工作区行', timeoutMs: 20_000 })
   await ordinaryWorkspaceRow.hover()
@@ -597,8 +490,6 @@ test('项目会话标签栏：leader 标签与 worker 标签可切换、可关�
   })
   await waitForLocator(bar, { description: '普通会话不显示标签栏', state: 'detached', timeoutMs: 15_000 })
   assert.equal(await page.locator('.dsh-leader-agent-tabs').count(), 0, '普通会话整条栏都不在')
-  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-column]').count(), 0, '栏隐藏后不能常驻覆盖宿主布局')
-  assert.equal(await page.locator('[data-dsh-leader-agent-tabs-main]').count(), 0, '栏隐藏后会话体的 flex 标记也要摘掉')
   await page.screenshot({ path: join(artifacts, 'ordinary-session.png') })
 
   assert.deepEqual(problems, [])

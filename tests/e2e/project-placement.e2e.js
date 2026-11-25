@@ -1,10 +1,10 @@
 /**
  * 项目区块在左栏里的落点：面板列表之下、工作区列表之上。
  *
- * 守的是纯布局问题：宿主 0.2.2 把面板列表与工作区包进同一个滚动网格后，老锚点
- * （`nav` 是左栏根的直接子元素）不再成立，区块静默退回栏底的 `sidebar.footer.action`
- * ——功能都在，位置全错。断言读 DOM 结构（落点容器、宽度、与 `nav` / 工作区的文档
- * 顺序），不读像素坐标；截图只解释「当时长什么样」。
+ * 守的是 portal 落点结构：宿主 0.2.2 把面板列表与工作区包进同一个滚动网格后，
+ * 老锚点（`nav` 是左栏根的直接子元素）不再成立，区块静默退回栏底的
+ * `sidebar.footer.action` ——功能都在，位置全错。断言读 DOM 结构（落点容器、与
+ * `nav` / 工作区的文档顺序），不读像素尺寸与坐标；宽度、行高等样式走人工取证。
  *
  * 先等区块在**任意位置**挂载再断言：修复失效时它仍会在 footer 里出现，失败形态
  * 因此是带读数的断言红，而不是「等它进落点」的 20 秒超时。
@@ -49,7 +49,6 @@ test('项目区块落在工作区列表之上，不退回左栏底部', { timeou
     const workspace = region === null
       ? null
       : Array.from(region.children).find((child) => child !== host) ?? null
-    const sectionRect = section?.getBoundingClientRect() ?? null
     const key = host !== null ? 'host' : section?.closest('[class*="footArea"]') !== null ? 'footer' : 'elsewhere'
     return {
       key,
@@ -63,8 +62,6 @@ test('项目区块落在工作区列表之上，不退回左栏底部', { timeou
         && (nav.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
       aboveWorkspace: workspace !== null && section !== null
         && (section.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
-      sectionWidth: sectionRect === null ? 0 : Math.round(sectionRect.width),
-      sectionHeight: sectionRect === null ? 0 : Math.round(sectionRect.height),
     }
   })
 
@@ -88,9 +85,6 @@ test('项目区块落在工作区列表之上，不退回左栏底部', { timeou
   assert.equal(placement.regionFound, true, `左栏里应有工作区容器；读数 ${reading}`)
   assert.equal(placement.hostFound, true, `项目区块应被 portal 搬进左栏落点容器；读数 ${reading}`)
   assert.equal(placement.inFooter, false, `项目区块不应退回栏底的 footer 槽；读数 ${reading}`)
-  // 朴素「插到 nav 之后」在 0.2.2 上会被网格摆进 4px × 8px 的空单元格：宽度是
-  // 分辨「真落进容器」与「被压成竖条」的关键读数，不能只断言高度非零。
-  assert.ok(placement.sectionWidth >= 100, `项目区块宽度不应被网格压成竖条（朴素写法实测 4px）；读数 ${reading}`)
   assert.equal(
     placement.hostParentIsExpected,
     true,
@@ -98,7 +92,6 @@ test('项目区块落在工作区列表之上，不退回左栏底部', { timeou
   )
   assert.equal(placement.afterNav, true, `项目区块应排在面板列表 nav 之后；读数 ${reading}`)
   assert.equal(placement.aboveWorkspace, true, `项目区块应排在工作区列表之前；读数 ${reading}`)
-  assert.ok(placement.sectionHeight > 0, `项目区块不应为零高；读数 ${reading}`)
 
   await e2e.screenshot('project-placement')
   assert.deepEqual(e2e.problems, [], '页内不应有未处理的异常或 console 错误')

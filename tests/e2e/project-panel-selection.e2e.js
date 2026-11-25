@@ -10,8 +10,8 @@
  * 主区域已经换成插件页，项目行与它的会话行却还铺着选中底色——用户看到的是
  * 「点了两样东西，亮着的还是上一个」。
  *
- * 断言落在项目行自己的 `data-selected` 与计算后的底色：`data-selected` 是选中态
- * 的唯一来源，底色是它真正画出来的东西。只读其中一个，改坏另一处时仍然会绿。
+ * 断言落在项目行自己的 `data-selected` 与 `aria-current`：选中态是行为，底色、
+ * 高亮等样式不写进 e2e。
  *
  * 夹具与 project-workspace 同款：项目注册表只在宿主启动时读回内存
  * （`projects/service.js` 的 `loadIndex()`），所以先起一轮拿宿主建出的会话，停机
@@ -60,20 +60,16 @@ function seedProject(home, session) {
   }, null, 2)}\n`)
 }
 
-/** 读项目行的选中态：属性与它实际画出的底色一起读。 */
+/** 读项目行的选中态。 */
 function readSelection(row) {
-  return row.evaluate((node) => {
-    const style = getComputedStyle(node)
-    return {
-      selected: node.getAttribute('data-selected'),
-      ariaCurrent: node.getAttribute('aria-current'),
-      background: style.backgroundColor,
-      // 主区域有没有会话：点行之前宿主自己的启动导航可能还没落定，没落定时
-      // 点击会与它抢主视图，看起来像「点了没反应」。
-      composer: document.querySelector('div[role="textbox"][contenteditable="true"]') !== null,
-      guideCard: document.querySelectorAll('.dsh-leader-agent-guide-card').length,
-    }
-  })
+  return row.evaluate((node) => ({
+    selected: node.getAttribute('data-selected'),
+    ariaCurrent: node.getAttribute('aria-current'),
+    // 主区域有没有会话：点行之前宿主自己的启动导航可能还没落定，没落定时
+    // 点击会与它抢主视图，看起来像「点了没反应」。
+    composer: document.querySelector('div[role="textbox"][contenteditable="true"]') !== null,
+    guideCard: document.querySelectorAll('.dsh-leader-agent-guide-card').length,
+  }))
 }
 
 test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持选中态', { timeout: scenarioTimeout() }, async (t) => {
@@ -138,8 +134,6 @@ test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持�
   }).catch(async (error) => {
     throw new Error(`${error.message}；失败读数 ${JSON.stringify(await readSelection(row))}`)
   })
-  const selected = await readSelection(row)
-  assert.notEqual(selected.background, 'rgba(0, 0, 0, 0)', `选中态应当铺底色；读数 ${JSON.stringify(selected)}`)
 
   // 点左栏面板列表里的「插件」：主区域换成插件页，宿主会话树此时不再选中任何行。
   const pluginsRow = page.locator('nav button[aria-label="插件"]').first()
@@ -155,7 +149,7 @@ test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持�
     description: '面板页打开后项目行退出选中态',
     check: async () => {
       const reading = await readSelection(row)
-      return reading.selected === null && reading.background === 'rgba(0, 0, 0, 0)' ? reading : null
+      return reading.selected === null ? reading : null
     },
     timeoutMs: 10_000,
   }).catch(async (error) => {
@@ -188,8 +182,6 @@ test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持�
     timeoutMs: 10_000,
   })
   assert.equal(await entry.getAttribute('aria-expanded'), 'true', '浮层展开时入口的 aria-expanded 应为 true')
-  const floatingBackground = await entry.evaluate((node) => getComputedStyle(node).backgroundColor)
-  assert.notEqual(floatingBackground, 'rgba(0, 0, 0, 0)', '浮层展开时入口图标应当高亮')
 
   const railPluginsRow = page.locator('nav button[aria-label="插件"]').first()
   await waitForLocator(railPluginsRow, { description: '导轨里出现「插件」入口', timeoutMs: 15_000 })
@@ -206,11 +198,6 @@ test('打开左栏面板页后，项目区块与窄导轨浮层都不再保持�
     const reading = { sections: await page.locator('.dsh-leader-agent-project-section').count() }
     throw new Error(`${error.message}；失败读数 ${JSON.stringify(reading)}`)
   })
-  assert.equal(
-    await entry.evaluate((node) => getComputedStyle(node).backgroundColor),
-    'rgba(0, 0, 0, 0)',
-    '浮层收起后入口图标不应还亮着',
-  )
   assert.equal(await entry.getAttribute('aria-expanded'), 'false', '浮层收起后入口的 aria-expanded 应为 false')
 
   // 在面板页上手动打开浮层，再切到另一个面板页：`panelActive` 的 boolean 没有翻转，

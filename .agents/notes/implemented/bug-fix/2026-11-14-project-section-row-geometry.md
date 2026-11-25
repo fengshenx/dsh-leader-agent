@@ -30,4 +30,4 @@ Status: implemented
 
 ## Testing
 
-`tests/e2e/project-alignment.e2e.js` 以宿主同一元素为基准断言行高、内边距、边框与图标/标题左边缘的偏差在容许范围内，期望值不写死；把项目行退回旧的高度与无边框时红（行高、图标与标题读数都对不上），把 header 左内边距退回旧值时红；还原后绿。`tests/project-panel.test.js` 钉住标题与字形断言。
+`tests/e2e/project-alignment.e2e.js` 已随 [e2e 只测行为与逻辑，不测样式](../testing/2026-11-25-e2e-logic-only.md) 删除：行几何回归改走人工取证；`tests/project-panel.test.js` 钉住标题与字形断言。

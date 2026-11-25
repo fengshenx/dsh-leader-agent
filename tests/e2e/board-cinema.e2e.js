@@ -309,21 +309,11 @@ test('线路图默认炫酷：rail 由卡片驱动，切工作模式后 rail 消
   const pathCount = await page.locator(`${RAIL} path`).count()
   assert.equal(pathCount, 1 + 2 + 3, `线路应为主干 + tick + 支线，实际 ${pathCount} 条路径`)
 
-  // 设置页：预览圆点取主题强调色（浅色宿主的 accent 是蓝的，固定琥珀会误导）。
+  // 设置页：炫酷模式选项存在。预览圆点取主题强调色属于样式，不写进 e2e。
   const dialog = await openSettings(page)
   await dialog.getByRole('button', { name: '任务看板', exact: true }).click()
   const preview = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '炫酷模式' }).first()
   await waitForLocator(preview, { description: '设置页里的炫酷模式选项', timeoutMs: 10_000 })
-  const colors = await dialog.evaluate((node) => {
-    const dot = node.querySelector('.dsh-leader-agent-settings-preview-dot')
-    const radio = node.querySelector('.dsh-leader-agent-settings-option-selected .dsh-leader-agent-settings-radio')
-    return {
-      dot: dot === null ? null : getComputedStyle(dot).fill,
-      radio: radio === null ? null : getComputedStyle(radio).borderTopColor,
-    }
-  })
-  assert.notEqual(colors.dot, null, '缺设置页预览圆点')
-  assert.equal(colors.dot, colors.radio, `预览圆点应取主题强调色，实际 fill=${colors.dot} / accent=${colors.radio}`)
 
   // 切工作：看板同运行时即时换模式，rail 不再渲染，卡内会话入口回来。
   const workOption = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '工作模式' }).first()

@@ -7,7 +7,7 @@
  * 判据改成会话快照后与宿主排版无关。
  *
  * 造状态走界面自己的动作（删工作区），不手改落盘文件：手改 `sessionIds` 并不能让
- * 宿主把会话渲染成松散行。断言落在计算样式与类名上，不读任何自述文本。
+ * 宿主把会话渲染成松散行。断言落在类名与可见性上，不读颜色、尺寸等样式。
  */
 
 import assert from 'node:assert/strict'
@@ -71,22 +71,16 @@ test('删掉工作区后，未分组里的会话与组头都得在', { timeout: 
   // 组头不能跟着消失：这是本次回归的判据。
   const header = page.locator('[data-row-key="workspace:"]').first()
   await waitForLocator(header, { description: '未分组的组头', state: 'attached', timeoutMs: 20_000 })
-  const state = await header.evaluate((node) => ({
-    classes: node.className,
-    display: getComputedStyle(node).display,
-  }))
+  const classes = (await header.getAttribute('class')) ?? ''
   assert.equal(
-    state.classes.includes(EMPTY_UNGROUPED_CLASS),
+    classes.includes(EMPTY_UNGROUPED_CLASS),
     false,
     '未分组里还有会话时不能给组头加隐藏类',
   )
-  assert.notEqual(state.display, 'none', '未分组组头要真的显示出来')
+  assert.equal(await header.isVisible(), true, '未分组组头要真的显示出来')
 
-  const rows = await page.locator(ROW_SELECTOR).evaluateAll((nodes) => nodes.map((node) => ({
-    display: getComputedStyle(node).display,
-  })))
   assert.ok(
-    rows.some((row) => row.display !== 'none'),
+    (await page.locator(`${ROW_SELECTOR}:visible`).count()) > 0,
     '未分组里的会话行要可见',
   )
 
