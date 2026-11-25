@@ -10,7 +10,7 @@ leader 无人值守时，机制侧每投一条 worker 回报就消耗一次自�
 
 - **设置落宿主**：`src/host/settings-store.js` 把上限写到 `$DSH_HOME/dsh-leader-agent/settings.json`，构造时同步读、写入走临时文件 + rename；共享契约在 `src/shared/settings.js`，默认 200、范围 1–10000。坏文件、坏值退回默认并留日志，不阻断启动。
 - **派工器按次取值**：`createDispatcher` 收 `getAutoResumeLimit()` 而不是常量，每次投递现取；设置页保存后不重启、不重建 worker 会话。
-- **设置页分区**：看板展示与自动续行各成一块，标题、说明、范围注记分开；看板模式随后也改存宿主设置，见[看板模式改存宿主设置](2026-11-25-board-mode-host-settings.md)。看板范围文案不再说「不写入项目数据」——旧文案把「不改业务数据」说成了「不写项目配置」，容易被读成项目级设置。
+- **设置页分区**：看板展示与自动续行各成一块，只留标题与一行短说明；看板模式随后也改存宿主设置，见[看板模式改存宿主设置](2026-11-25-board-mode-host-settings.md)。旧的 scope 长文案已删掉，实例级共用只在 `docs/usage.md` 说明。
 - **调高上限释放被挡条目**：设置变更订阅在 `next.autoResumeLimit > previous` 时调用 `dispatcher.releaseExhausted()`，只清 `exhausted` 标记、不重置已用次数；调低不释放。
 - **通道**：沿用现有 `projects` Typert 命名空间（本插件唯一的 client→host RPC 面），新增 `readSettings` / `updateAutoResumeLimit`，上限走 `number` codec；看板模式另加 `setBoardMode`（`string`），见[看板模式改存宿主设置](2026-11-25-board-mode-host-settings.md)。
 

@@ -393,7 +393,7 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
   const cinemaOption = dialog.locator('.dsh-leader-agent-settings-option').filter({ hasText: '炫酷模式' }).first()
   await waitForLocator(cinemaOption, { description: '设置页里的炫酷模式选项', timeoutMs: 10_000 })
   assert.equal(await workOption.getAttribute('aria-checked'), 'true', '默认应选中工作模式')
-  assert.match(await cinemaOption.innerText(), /纯演示，社交媒体传播用/, '炫酷模式说明应写明纯演示用途')
+  assert.equal((await cinemaOption.innerText()).trim(), '炫酷模式', '模式卡片只保留标题，不堆说明')
 
   // 切炫酷：等宿主设置加载完、选项可用，保存成功后看板同运行时即时换模式。
   await waitFor({

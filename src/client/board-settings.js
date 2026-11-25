@@ -47,8 +47,8 @@ const SECTION_ORDER = 90
  * 「哪些键被引用」，拼出来的键会被判成没人用。
  */
 const MODE_KEYS = Object.freeze({
-  [BOARD_MODE_CINEMA]: { title: 'board.mode.cinema.title', desc: 'board.mode.cinema.desc' },
-  [BOARD_MODE_WORK]: { title: 'board.mode.work.title', desc: 'board.mode.work.desc' },
+  [BOARD_MODE_CINEMA]: 'board.mode.cinema.title',
+  [BOARD_MODE_WORK]: 'board.mode.work.title',
 })
 
 /**
@@ -65,39 +65,37 @@ function errorText(error) {
 }
 
 /**
- * 模式选项的小预览图。
+ * 模式图标：工作模式三行列表，炫酷模式主干与支线。
  *
- * 只是示意：用两个 SVG 画出「主干 + 节点」与「三行列表」，让用户在点之前就能
- * 分辨两个模式。图形颜色走 currentColor，执行者圆点取宿主强调色（不写死琥珀：
- * 浅色宿主的 accent 是蓝的，固定琥珀会与看板实际配色对不上），一起跟随主题。
+ * 尺寸取 18px，与宿主「外观」里的主题图标同一档；颜色走 currentColor，
+ * 选中态由按钮的 background/border 表达，不在这里写第二套强调色。
  *
  * @param {boolean} cinema - 是否画线路图
  * @returns {object} React 元素
  */
-function ModePreview({ cinema }) {
+function ModeIcon({ cinema }) {
   if (cinema) {
     return createElement(
       'svg',
-      { width: 44, height: 30, viewBox: '0 0 44 30', fill: 'none', 'aria-hidden': 'true' },
-      createElement('path', { d: 'M10 4V26', stroke: 'currentColor', strokeOpacity: 0.45, strokeWidth: 1.5 }),
-      createElement('path', { d: 'M10 9H20M10 18H20M10 26H20', stroke: 'currentColor', strokeOpacity: 0.45, strokeWidth: 1.5 }),
-      createElement('circle', { cx: 10, cy: 9, r: 2, fill: 'currentColor' }),
-      createElement('circle', { cx: 10, cy: 18, r: 2, fill: 'currentColor' }),
-      createElement('circle', { cx: 10, cy: 26, r: 2, fill: 'currentColor' }),
-      createElement('circle', { cx: 36, cy: 9, r: 2.6, className: 'dsh-leader-agent-settings-preview-dot' }),
+      { width: 16, height: 16, viewBox: '0 0 18 18', fill: 'none', 'aria-hidden': 'true' },
+      createElement('path', { d: 'M4 3V15', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
+      createElement('path', { d: 'M4 6H10M4 12H10', stroke: 'currentColor', strokeWidth: 1.5, strokeLinecap: 'round' }),
+      createElement('circle', { cx: 4, cy: 6, r: 1.5, fill: 'currentColor' }),
+      createElement('circle', { cx: 4, cy: 12, r: 1.5, fill: 'currentColor' }),
+      createElement('circle', { cx: 12, cy: 6, r: 1.5, fill: 'currentColor' }),
     )
   }
   return createElement(
     'svg',
-    { width: 44, height: 30, viewBox: '0 0 44 30', fill: 'none', 'aria-hidden': 'true' },
-    createElement('rect', { x: 4, y: 4, width: 36, height: 6, rx: 2, fill: 'currentColor', fillOpacity: 0.22 }),
-    createElement('rect', { x: 4, y: 12, width: 36, height: 6, rx: 2, fill: 'currentColor', fillOpacity: 0.22 }),
-    createElement('rect', { x: 4, y: 20, width: 36, height: 6, rx: 2, fill: 'currentColor', fillOpacity: 0.22 }),
+    { width: 16, height: 16, viewBox: '0 0 18 18', fill: 'none', 'aria-hidden': 'true' },
+    createElement('rect', { x: 3, y: 3.5, width: 12, height: 3, rx: 1.5, fill: 'currentColor', fillOpacity: 0.25 }),
+    createElement('rect', { x: 3, y: 7.5, width: 12, height: 3, rx: 1.5, fill: 'currentColor', fillOpacity: 0.25 }),
+    createElement('rect', { x: 3, y: 11.5, width: 12, height: 3, rx: 1.5, fill: 'currentColor', fillOpacity: 0.25 }),
   )
 }
 
 /**
- * 一个模式选项。
+ * 一个模式选项：宿主 themeCube 的样式，图标在上、标题在下。
  *
  * @param {object} props - 组件属性
  * @param {string} props.value - 该选项的模式值
@@ -115,24 +113,18 @@ function ModeOption({ value, mode, onChoose, disabled, t }) {
       type: 'button',
       role: 'radio',
       'aria-checked': selected,
+      disabled,
       className: selected
         ? 'dsh-leader-agent-settings-option dsh-leader-agent-settings-option-selected'
         : 'dsh-leader-agent-settings-option',
-      disabled,
       onClick: () => { onChoose(value) },
     },
     createElement(
       'span',
-      { className: 'dsh-leader-agent-settings-preview' },
-      createElement(ModePreview, { cinema: value === BOARD_MODE_CINEMA }),
+      { className: 'dsh-leader-agent-settings-option-icon' },
+      createElement(ModeIcon, { cinema: value === BOARD_MODE_CINEMA }),
     ),
-    createElement(
-      'span',
-      { className: 'dsh-leader-agent-settings-copy' },
-      createElement('b', null, t(MODE_KEYS[value].title)),
-      createElement('span', null, t(MODE_KEYS[value].desc)),
-    ),
-    createElement('span', { className: 'dsh-leader-agent-settings-radio', 'aria-hidden': 'true' }),
+    createElement('span', { className: 'dsh-leader-agent-settings-option-label' }, t(MODE_KEYS[value])),
   )
 }
 
@@ -201,7 +193,7 @@ function BoardModeSection({ t, callRemote }) {
 
   return createElement(
     'section',
-    { className: 'dsh-leader-agent-settings-section', 'aria-labelledby': 'dsh-leader-agent-settings-board' },
+    { className: 'dsh-leader-agent-settings-section dsh-leader-agent-settings-group', 'aria-labelledby': 'dsh-leader-agent-settings-board' },
     createElement('h3', {
       id: 'dsh-leader-agent-settings-board',
       className: 'dsh-leader-agent-settings-title',
@@ -229,22 +221,21 @@ function BoardModeSection({ t, callRemote }) {
         createElement('span', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message),
         createElement('button', {
           type: 'button',
-          className: 'dsh-leader-agent-settings-button',
+          className: 'dsh-leader-agent-settings-retry',
           onClick: () => setAttempt((value) => value + 1),
         }, t('board.settings.retry')))
       : null,
     phase === 'ready' && message !== ''
       ? createElement('p', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message)
       : null,
-    createElement('p', { className: 'dsh-leader-agent-settings-scope' }, t('board.settings.scope')),
   )
 }
 
 /**
- * 「自动续行」分区：宿主侧护栏，保存在当前 dsh 数据根，所有项目共用。
+ * 「自动续行」分区：一行标题/说明 + 右侧输入框，编辑后自动保存。
  *
- * 输入在提交时校验；保存成功后只更新本地快照，不做乐观更新——写盘失败时界面
- * 必须显示旧值仍然生效，否则用户会以为改成功了。
+ * 没有保存按钮：输入停顿 600ms 或失焦即提交；写盘成功后在行下方显示绿色
+ * 「保存成功」，失败则保留输入并就地报红。校验失败只报错、不提交。
  *
  * @param {object} props - 组件属性
  * @param {(key: string, params?: Record<string, unknown>) => string} props.t - 翻译函数
@@ -252,11 +243,11 @@ function BoardModeSection({ t, callRemote }) {
  * @returns {object} React 元素
  */
 function AutoResumeSection({ t, callRemote }) {
-  /** `loading` 时表单不可用；`error` 表示读不到宿主配置，需要重试。 */
+  /** `loading` 时输入不可用；`error` 表示读不到宿主配置，需要重试。 */
   const [phase, setPhase] = useState('loading')
   /** 已生效的值：保存成功后由宿主返回，作为「是否有改动」的基线。 */
   const [saved, setSaved] = useState(AUTO_RESUME_LIMIT_DEFAULT)
-  /** 输入框里的草稿（字符串），保留用户正在敲的原始形态。 */
+  /** 输入框里的草稿，保留用户正在敲的原始形态。 */
   const [draft, setDraft] = useState(String(AUTO_RESUME_LIMIT_DEFAULT))
   /** `idle` / `saving` / `saved` / `error` */
   const [status, setStatus] = useState('idle')
@@ -292,21 +283,20 @@ function AutoResumeSection({ t, callRemote }) {
   const busy = phase !== 'ready' || status === 'saving'
 
   /**
-   * 提交表单：Enter 与「保存」按钮走同一条路径。
-   * @param {object} event - 表单提交事件
+   * 提交当前草稿；同值、非法、读取中或保存中都不重复提交。
+   * @param {string} value - 输入框草稿
    * @returns {void}
    */
-  function submit(event) {
-    event.preventDefault()
+  function commit(value) {
     if (phase !== 'ready' || status === 'saving') return
-    if (limit === undefined) return
-    if (limit === saved) return
+    const next = parseAutoResumeLimit(value)
+    if (next === undefined || next === saved) return
     setStatus('saving')
     setMessage('')
-    callRemote('updateAutoResumeLimit', [limit]).then((value) => {
-      const next = parseAutoResumeLimit(value?.autoResumeLimit) ?? limit
-      setSaved(next)
-      setDraft(String(next))
+    callRemote('updateAutoResumeLimit', [next]).then((result) => {
+      const applied = parseAutoResumeLimit(result?.autoResumeLimit) ?? next
+      setSaved(applied)
+      setDraft(String(applied))
       setStatus('saved')
     }).catch((error) => {
       setStatus('error')
@@ -314,38 +304,45 @@ function AutoResumeSection({ t, callRemote }) {
     })
   }
 
-  const describedBy = invalid
-    ? 'dsh-leader-agent-auto-resume-hint dsh-leader-agent-auto-resume-error'
-    : 'dsh-leader-agent-auto-resume-hint'
+  // 输入停顿后自动保存；保存失败不自动重试，等用户再改或失焦/Enter。
+  useEffect(() => {
+    if (phase !== 'ready' || !dirty || status === 'saving' || status === 'error') return undefined
+    const timer = setTimeout(() => { commit(draft) }, 600)
+    return () => clearTimeout(timer)
+    // `commit` 依赖 saved/status，函数每次渲染都会换；依赖收在真正会改变提交
+    // 条件的值上，避免把它放进依赖后定时器每轮重建。
+  }, [draft, phase, dirty, status, saved, callRemote])
+
+  const describedBy = invalid ? 'dsh-leader-agent-auto-resume-error' : undefined
 
   return createElement(
     'section',
     { className: 'dsh-leader-agent-settings-section', 'aria-labelledby': 'dsh-leader-agent-settings-auto-resume' },
-    createElement('h3', {
-      id: 'dsh-leader-agent-settings-auto-resume',
-      className: 'dsh-leader-agent-settings-subtitle',
-    }, t('settings.autoResume.title')),
-    createElement('p', { className: 'dsh-leader-agent-settings-desc' }, t('settings.autoResume.desc')),
     createElement(
-      'form',
-      { className: 'dsh-leader-agent-settings-field', onSubmit: submit, noValidate: true },
-      createElement('label', {
-        className: 'dsh-leader-agent-settings-label',
-        htmlFor: 'dsh-leader-agent-auto-resume',
-      }, t('settings.autoResume.label')),
+      'div',
+      { className: 'dsh-leader-agent-settings-row' },
       createElement(
         'div',
-        { className: 'dsh-leader-agent-settings-field-row' },
+        { className: 'dsh-leader-agent-settings-row-text' },
+        createElement('h3', {
+          id: 'dsh-leader-agent-settings-auto-resume',
+          className: 'dsh-leader-agent-settings-subtitle',
+        }, t('settings.autoResume.title')),
+        createElement('p', { className: 'dsh-leader-agent-settings-desc' }, t('settings.autoResume.desc')),
+      ),
+      createElement(
+        'div',
+        { className: 'dsh-leader-agent-settings-control' },
         createElement('input', {
           id: 'dsh-leader-agent-auto-resume',
           className: 'dsh-leader-agent-settings-input',
-          type: 'number',
-          min: AUTO_RESUME_LIMIT_MIN,
-          max: AUTO_RESUME_LIMIT_MAX,
-          step: 1,
+          type: 'text',
           inputMode: 'numeric',
+          pattern: '[0-9]*',
+          maxLength: 5,
           value: draft,
           disabled: busy,
+          'aria-label': t('settings.autoResume.title'),
           'aria-invalid': invalid,
           'aria-describedby': describedBy,
           onChange: (event) => {
@@ -353,51 +350,44 @@ function AutoResumeSection({ t, callRemote }) {
             setStatus('idle')
             setMessage('')
           },
+          onBlur: () => { commit(draft) },
+          onKeyDown: (event) => {
+            if (event.key !== 'Enter') return
+            event.preventDefault()
+            commit(draft)
+          },
         }),
-        createElement('button', {
-          type: 'submit',
-          className: 'dsh-leader-agent-settings-button',
-          disabled: busy || !dirty || invalid,
-        }, t(status === 'saving' ? 'settings.autoResume.saving' : 'settings.autoResume.save')),
+        createElement('span', { className: 'dsh-leader-agent-settings-unit' }, t('settings.autoResume.unit')),
       ),
-      createElement('p', {
-        id: 'dsh-leader-agent-auto-resume-hint',
-        className: 'dsh-leader-agent-settings-hint',
-      }, t('settings.autoResume.hint', {
-        default: AUTO_RESUME_LIMIT_DEFAULT,
+    ),
+    invalid
+      ? createElement('p', {
+        id: 'dsh-leader-agent-auto-resume-error',
+        className: 'dsh-leader-agent-settings-error',
+        role: 'alert',
+      }, t('settings.autoResume.invalid', {
         min: AUTO_RESUME_LIMIT_MIN,
         max: AUTO_RESUME_LIMIT_MAX,
-      })),
-      invalid
-        ? createElement('p', {
-          id: 'dsh-leader-agent-auto-resume-error',
-          className: 'dsh-leader-agent-settings-error',
-          role: 'alert',
-        }, t('settings.autoResume.invalid', {
-          min: AUTO_RESUME_LIMIT_MIN,
-          max: AUTO_RESUME_LIMIT_MAX,
-        }))
-        : null,
-      status === 'saved'
-        ? createElement('p', {
-          className: 'dsh-leader-agent-settings-saved',
-          role: 'status',
-        }, t('settings.autoResume.saved'))
-        : null,
-      status === 'error'
-        ? createElement('p', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message)
-        : null,
-      phase === 'error'
-        ? createElement('div', { className: 'dsh-leader-agent-settings-retry-row' },
-          createElement('span', { className: 'dsh-leader-agent-settings-error' }, message),
-          createElement('button', {
-            type: 'button',
-            className: 'dsh-leader-agent-settings-button',
-            onClick: () => setAttempt((value) => value + 1),
-          }, t('settings.autoResume.retry')))
-        : null,
-    ),
-    createElement('p', { className: 'dsh-leader-agent-settings-scope' }, t('settings.autoResume.scope')),
+      }))
+      : null,
+    status === 'saved'
+      ? createElement('p', {
+        className: 'dsh-leader-agent-settings-saved',
+        role: 'status',
+      }, t('settings.autoResume.saved'))
+      : null,
+    status === 'error'
+      ? createElement('p', { className: 'dsh-leader-agent-settings-error', role: 'alert' }, message)
+      : null,
+    phase === 'error'
+      ? createElement('div', { className: 'dsh-leader-agent-settings-retry-row' },
+        createElement('span', { className: 'dsh-leader-agent-settings-error' }, message),
+        createElement('button', {
+          type: 'button',
+          className: 'dsh-leader-agent-settings-retry',
+          onClick: () => setAttempt((value) => value + 1),
+        }, t('settings.autoResume.retry')))
+      : null,
   )
 }
 

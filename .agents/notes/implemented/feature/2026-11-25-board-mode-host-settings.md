@@ -12,7 +12,7 @@ Status: implemented
 - **存储接口**：`settings-store.update({ boardMode })` 做校验、原子写与订阅通知；`update` 接受部分字段，在串行链内部基于当前快照合并，两个并发保存改不同字段不会互相覆盖。
 - **远端**：`readSettings` 返回 `{ autoResumeLimit, boardMode }`；看板模式走 `setBoardMode`（`string`），自动续行改走显式的 `updateAutoResumeLimit`（`number`），不再用一个复用的 `updateSettings`。
 - **客户端快照**：`src/client/board-mode.js` 只保留模块级 `get / subscribe / set`，不再读写 localStorage。看板挂载时读一次宿主设置，设置页保存成功后广播；其它窗口在窗口 `focus` 时重读。
-- **设置页**：看板分区点击即保存，写盘成功后才改选中态并广播；失败保留原选择、就地报错并给重试。范围文案改为「保存在当前 DSH 实例，所有项目共用」。
+- **设置页**：看板分区点击即保存，写盘成功后才改选中态并广播；失败保留原选择、就地报错并给重试。只留标题与一行短说明，不再显示 scope 长文案；实例级共用由 `docs/usage.md` 说明。
 - **不阻塞渲染**：看板先按 `work` 渲染，读到宿主 `cinema` 后切换；读配置失败保持当前快照，不让显示偏好把看板打成错误页。
 
 ## Alternatives considered

@@ -315,9 +315,3 @@ test('需注意的线只呼吸、不流动：与文案「不流动（会呼吸�
   assert.match(trail?.declarations.animation ?? '', /^dsh-leader-agent-rail-flow /, '光流只属于执行中的线')
 })
 
-test('设置页预览的执行者圆点取主题强调色，不写死琥珀', () => {
-  // 浅色皮的实际 accent 是蓝的，预览点固定 amber 会让设置页与看板各说一套
-  const dot = rules.find((rule) => rule.selector === '.dsh-leader-agent-settings-preview-dot')
-  assert.notEqual(dot, undefined, '缺设置页预览圆点规则')
-  assert.equal(dot.declarations.fill, 'var(--dsw-alias-state-business-primary)')
-})
