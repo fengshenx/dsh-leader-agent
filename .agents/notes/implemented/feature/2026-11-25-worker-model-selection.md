@@ -4,7 +4,7 @@ Status: implemented
 
 ## Problem
 
-worker 建会话时只能拿 `agentDefaultModel` 的部署默认值，leader 无法按任务要求换模型；`SLOTS.md` 的角色只贡献提示词，同一角色的默认模型无处声明。派工参数里也没有 effort，模型选择完全脱离 leader 的编排判断。派工还要求 leader 知道合法 route，而宿主没有面向模型的通用模型目录工具。
+worker 建会话时只能拿 `agentDefaultModel` 的部署默认值，leader 无法按任务要求换模型；`SLOTS.md` 的角色只贡献提示词，同一角色的默认模型无处声明。派工参数里也没有 effort，模型选择完全脱离 leader 的编排判断。派工还要求 leader 知道合法 route，而宿主没有面向模型的通用模型目录工具。模型 route 在 `preStep`/`prepareRequest` 就失败时，这一轮还没落 `user/message`，按消息 id 归属会漏报，leader 只能等超时巡查。
 
 ## Decision
 
@@ -15,6 +15,7 @@ worker 建会话时只能拿 `agentDefaultModel` 的部署默认值，leader 无
 - **模型是建会话时的 route**：选择随派工登记表落盘；冷恢复按 `agentOptions` 还原。rc.2 的 `agents.resume()` 只从 `agentOptions` 取 route，不从会话日志推导，不落盘会让自定义模型的 worker 重启后首轮失败。
 - **回执可审计**：`spawn_worker` 返回并渲染 `model`、`effort` 与 `modelSource`（派工参数 / 槽位默认 / leader 当前模型），leader 不必猜 worker 实际跑在什么模型上。
 - **模型目录**：新增 leader-only `list_worker_models`，读宿主 live LLM registry：不传参列 provider，给 provider 列模型，再给 model 列 reasoning effort。它不替 leader 选模型，只把 `spawn_worker` 需要的 route 变成可查的。
+- **失败回报**：`turn/end` 的 error 若发生在任务消息落成前（`openedBy` 未定），仍按派工失败回报，并明写「无法确认任务是否已消费」；通知带 `model`/`effort`/来源与换 route 或重试的下一步。续聊记录从登记表读回模型。
 
 ## Alternatives considered
 
@@ -31,9 +32,10 @@ worker 建会话时只能拿 `agentDefaultModel` 的部署默认值，leader 无
 - **模型目录读 live registry**：`list_worker_models` 列的是宿主当前注册的 provider/model；provider 的发现失败会在目录末尾点名，不挡其他 provider。列表可见不等于一定可调用——凭据或模型下架仍由 `spawn_worker` 预检拦下。
 - **登记表是冷恢复的模型真源**：登记失败（已记日志）或旧记录没有 `agentOptions` 时，恢复行为退回旧路径；新宿主仍可从 `modelSelection` 投影取回。
 - **槽位模型值非法只影响该槽位派工**：解析期忽略并告警，绑到该槽位派工时直接拒绝，不影响其他槽位与注入。
+- **归属不确定的失败会回报**：任务消息落成前失败时按派工失败通知，但无法确认它是否已被消费；通知要求 leader 先 `read_worker_session` 再决定重投或换模型。已记录为用户开启的轮次失败不冒充派工失败。
 
 收益：leader 能在派工那一刻按任务难度与角色分配模型，同时保留项目级角色默认与 leader 兜底。
 
 ## Testing
 
-`tests/worker-model.test.js` 钉住来源优先级、route 解析与预检；`tests/list-worker-models.test.js` 钉住目录逐层下钻、失败降级与参数错误；`tests/slots.test.js` 钉住 frontmatter 读取与非法值；`tests/worker-sessions.test.js` 钉住创建与冷恢复传 `agentOptions`；`tests/dispatch.test.js` 钉住派工参数、槽位默认、失败不建会话与回执；`tests/tool-gate.test.js` 钉住 `list_worker_models` 只给 leader。双向：把 `spawn_worker` 的模型参数从 dispatcher 调用里删掉 → 显式模型用例红；把预检跳过 → 预检失败用例红；还原后全绿。
+`tests/worker-model.test.js` 钉住来源优先级、route 解析与预检；`tests/list-worker-models.test.js` 钉住目录逐层下钻、失败降级与参数错误；`tests/slots.test.js` 钉住 frontmatter 读取与非法值；`tests/worker-sessions.test.js` 钉住创建与冷恢复传 `agentOptions`；`tests/dispatch.test.js` 钉住派工参数、槽位默认、失败不建会话、回执与失败回报（含任务消息落成前的 error）；`tests/tool-gate.test.js` 钉住 `list_worker_models` 只给 leader。双向：把 `spawn_worker` 的模型参数从 dispatcher 调用里删掉 → 显式模型用例红；把预检跳过 → 预检失败用例红；还原后全绿。

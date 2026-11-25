@@ -52,7 +52,7 @@ import {
 } from './worker-stall.js'
 import { readWorkerTaskSource } from '../shared/worker-task.js'
 import { loadSlotTemplates } from './slots/slot-templates.js'
-import { resolveWorkerModel } from './worker-model.js'
+import { normalizeModelSelection, resolveWorkerModel } from './worker-model.js'
 
 const DEFAULT_AUTO_RESUME_LIMIT = 8
 /**
@@ -102,6 +102,28 @@ const RETRYABLE = 'retryable'
 const EXHAUSTED = 'exhausted'
 
 /**
+ * 把派工记录里的模型选择写成给 leader 看的短标签。
+ *
+ * 首次派工记录带 `modelSource`，续聊记录只有从登记表读回的路由；两者都能给出
+ * route 与 effort，来源只在知道时标注。
+ *
+ * @param {{ model?: string, effort?: string, modelSource?: string } | undefined} record - 派工记录
+ * @returns {string | undefined} 模型标签；没有模型选择时 undefined
+ */
+function describeRecordModel(record) {
+  if (record?.model === undefined) return undefined
+  const effort = record.effort === undefined ? '' : `，effort ${record.effort}`
+  const source = record.modelSource === 'spawn'
+    ? '（派工参数）'
+    : record.modelSource === 'slot'
+      ? '（槽位默认）'
+      : record.modelSource === 'leader'
+        ? '（leader 当前模型）'
+        : ''
+  return `${record.model}${effort}${source}`
+}
+
+/**
  * 构造完成通知正文。
  * @param {object} record - 派工记录
  * @param {{ ok: boolean, result?: object, error?: unknown }} outcome - 终态
@@ -112,17 +134,27 @@ export function buildNotificationText(record, outcome) {
   const status = outcome.ok ? outcome.result?.stopReason ?? 'completed' : 'failed'
   // 正文不带「谁在说话」的前缀：说话人由消息的 source 标记，客户端渲染成
   // 带头像与身份的气泡。前缀写进正文会同时污染模型读的事实与用户看到的界面。
-  lines.push(`任务「${record.name}」已结束。`)
+  lines.push(record.unattributed === true
+    ? `worker「${record.name}」有一轮执行失败，且无法确认是否消费了你的任务。`
+    : `任务「${record.name}」已结束。`)
   lines.push(`子会话：${record.childId}`)
   lines.push(`状态：${status}`)
   if (!outcome.ok) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
+    const model = describeRecordModel(record)
+    if (model !== undefined) lines.push(`模型：${model}`)
     lines.push(`失败原因：${reason}`)
+    if (record.unattributed === true) {
+      lines.push('注意：这一轮在你的任务消息被记录进会话前失败；先 read_worker_session 查看，再决定重投或换模型。')
+    }
   } else {
     const summary = messageText(outcome.result?.output ?? [])
     lines.push(summary === '' ? '产物摘要：（worker 未产出文本）' : `产物摘要：\n${summary}`)
   }
   lines.push('下一步：按 leader 协议判断验收、返工或派新工。')
+  if (!outcome.ok && record.model !== undefined) {
+    lines.push('若怀疑模型或凭据不可用，用 list_worker_models 换 route 重新派工；瞬时故障可 message_worker 重试。')
+  }
   return lines.join('\n').slice(0, NOTIFICATION_LIMIT)
 }
 
@@ -133,12 +165,14 @@ export function buildNotificationText(record, outcome) {
  * worker 真正产出的内容——成功是产物摘要，失败是失败原因。
  *
  * @param {{ ok: boolean, result?: object, error?: unknown }} outcome - 终态
+ * @param {{ model?: string, effort?: string, modelSource?: string }} [record] - 派工记录；有模型时失败回报点名
  * @returns {string} 最后一次回报的内容
  */
-export function buildWorkerReport(outcome) {
+export function buildWorkerReport(outcome, record) {
   if (!outcome.ok) {
     const reason = outcome.error instanceof Error ? outcome.error.message : String(outcome.error)
-    return `失败：${reason}`.slice(0, NOTIFICATION_LIMIT)
+    const model = describeRecordModel(record)
+    return `${model === undefined ? '失败' : `失败（模型 ${model}）`}：${reason}`.slice(0, NOTIFICATION_LIMIT)
   }
   // 气泡按 Markdown 渲染：块间要空行，单个 \n 是软换行，多块会被折成一段。
   const summary = messageText(outcome.result?.output ?? [], '\n\n')
@@ -520,7 +554,7 @@ export function createDispatcher({
       name: record.name,
       text,
       summary: text.split('\n')[0] ?? '',
-      report: buildWorkerReport(outcome),
+      report: buildWorkerReport(outcome, record),
       outcome: outcome.ok ? 'completed' : 'failed',
       createdAt: Date.now(),
       attempts: 0,
@@ -735,6 +769,13 @@ export function createDispatcher({
       throw new Error('message_worker: 该 worker 是别的会话派的，不能跨会话给它发消息')
     }
     const displayName = name ?? (typeof worker.name === 'string' ? worker.name : sessionId)
+    // 续聊记录也带上模型：失败回报要能直接说出 worker 跑在哪个 route 上。
+    // 登记表是跨进程真源；`owners` 兜住本次进程里登记落盘失败的会话。
+    const selection = normalizeModelSelection(worker.agentOptions)
+    const model = selection === undefined
+      ? worker.model
+      : `${selection.provider}/${selection.model}`
+    const effort = selection?.reasoningEffort ?? worker.effort
     // 消息 id 先于投递生成并记进在飞表：worker 可能在本轮收尾时立刻取走这条消息，
     // 等 `send` 返回再登记就赶不上那次 `turn/end` 了。投递失败把记录退回去。
     const messageId = randomUUID()
@@ -744,6 +785,11 @@ export function createDispatcher({
       parentSessionId: parent.id,
       parent,
       name: displayName,
+      ...model === undefined ? {} : {
+        model,
+        ...effort === undefined ? {} : { effort },
+        ...typeof worker.modelSource === 'string' ? { modelSource: worker.modelSource } : {},
+      },
       task: message,
       messageId,
       startedAt: Date.now(),
@@ -991,7 +1037,15 @@ export function createDispatcher({
       },
     }
     // 先记本进程归属，再落登记表：落盘失败时同轮投递仍然可用（见 `owners`）。
-    owners.set(childId, { parentSessionId: parent.id, name })
+    owners.set(childId, {
+      parentSessionId: parent.id,
+      name,
+      ...agentOptions === undefined ? {} : {
+        model: `${agentOptions.provider}/${agentOptions.model}`,
+        ...agentOptions.reasoningEffort === undefined ? {} : { effort: agentOptions.reasoningEffort },
+        modelSource: modelChoice.source,
+      },
+    })
     // 派工落登记表：leader 可能在任何时刻（含本进程重启后）续聊，归属与父会话
     // 映射不能只活在内存里。任务正文此时还没有，等 `message` 投递后才有。
     // 模型选择一并落盘：冷恢复要按它还原 route（rc.2 的 resume 不从会话日志取）。
@@ -1000,7 +1054,10 @@ export function createDispatcher({
         childId: record.childId,
         parentSessionId: parent.id,
         name,
-        ...agentOptions === undefined ? {} : { agentOptions: { ...agentOptions } },
+        ...agentOptions === undefined ? {} : {
+          agentOptions: { ...agentOptions },
+          modelSource: modelChoice.source,
+        },
       })
     } catch (error) {
       logger(`dsh-leader-agent: worker ${record.childId} 登记失败，续聊与归属查询会落空：${error instanceof Error ? error.message : String(error)}`)
@@ -1024,7 +1081,7 @@ export function createDispatcher({
       case 'aborted': return `被取消：${reason.reason?.kind ?? '未说明原因'}`
       case 'blocked': return '被阻断：这一轮被宿主拦下，没有开始'
       case 'max-tokens': return '输出达到 token 上限，这一轮没有正常收尾'
-      case 'error': return `失败：${reason.error?.message ?? '未知错误'}`
+      case 'error': return reason.error?.message ?? '未知错误'
       default: return `这一轮没有正常结束（${reason?.kind ?? '未知原因'}）`
     }
   }
@@ -1228,14 +1285,26 @@ export function createDispatcher({
     // **这一轮**的产物，不能被下一轮的 assistant 文本覆盖。
     if (record.summary === undefined) {
       const consumed = turn?.leaderMessageIds.has(record.messageId) === true
-      if (turn?.openedBy !== 'leader' || !consumed) {
-        if (consumed) inflight.delete(sessionId)
-        return false
+      const attributed = turn?.openedBy === 'leader' && consumed
+      if (!attributed) {
+        if (consumed) {
+          inflight.delete(sessionId)
+          return false
+        }
+        // 模型 route 在 `preStep`/`prepareRequest` 就失败时，这一轮还没走到
+        // `user/message`，按消息 id 归属会漏报；此时 `openedBy` 也还没定。
+        // 只接 error 终态，且不接已明确由用户开启的回合，避免把人的一轮当成
+        // 派工失败。归属不确定要在通知里写明，让 leader 自己决定重投或换模型。
+        if (turn?.openedBy !== undefined || reason?.kind !== 'error') return false
+        record.outcome = 'failed'
+        record.summary = describeTurnFailure(reason)
+        record.unattributed = true
+      } else {
+        record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
+        record.summary = record.outcome === 'completed'
+          ? turn.text
+          : describeTurnFailure(reason)
       }
-      record.outcome = reason?.kind === 'completed' ? 'completed' : 'failed'
-      record.summary = record.outcome === 'completed'
-        ? turn.text
-        : describeTurnFailure(reason)
     }
     const judged = record.outcome === 'completed'
       ? { ok: true, result: { stopReason: 'completed', output: [{ type: 'text', text: record.summary }] } }
