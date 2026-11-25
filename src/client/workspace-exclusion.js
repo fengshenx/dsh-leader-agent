@@ -30,6 +30,8 @@
  * @module dsh-leader-agent/client/workspace-exclusion
  */
 
+import { ensureStyleSheet } from './style-sheet.js'
+
 /** 命中排除集的会话行所用的类名。 */
 const HIDDEN_CLASS = 'dsh-leader-agent-excluded-session'
 
@@ -72,16 +74,11 @@ const STYLE_TEXT = `
 `
 
 /**
- * 注入隐藏规则。同一页面只注入一次。
+ * 注入隐藏规则；已存在时刷新为新版本内容（HMR 换插件不刷新页面）。
  * @returns {void}
  */
 function ensureStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById(STYLE_ID) !== null) return
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = STYLE_TEXT
-  document.head.append(style)
+  ensureStyleSheet(STYLE_ID, STYLE_TEXT)
 }
 
 /**

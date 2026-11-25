@@ -19,6 +19,7 @@
  */
 
 import { findMainPanel } from './main-panel.js'
+import { ensureStyleSheet } from './style-sheet.js'
 
 /** 主面板容器上的隐藏标记。 */
 export const HIDE_ATTR = 'data-dsh-leader-agent-hide-changed-files'
@@ -34,16 +35,11 @@ const STYLE_TEXT = `
 `
 
 /**
- * 注入隐藏规则。同一页面只注入一次。
+ * 注入隐藏规则；已存在时刷新为新版本内容（HMR 换插件不刷新页面）。
  * @returns {void}
  */
 export function ensureLeaderChangesStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById(STYLE_ID) !== null) return
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = STYLE_TEXT
-  document.head.append(style)
+  ensureStyleSheet(STYLE_ID, STYLE_TEXT)
 }
 
 /**

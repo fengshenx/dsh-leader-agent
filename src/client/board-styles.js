@@ -17,8 +17,9 @@
  */
 
 import { SIGNAL_PULSE_ANIMATION, signalStyleText } from './signal-styles.js'
+import { ensureStyleSheet } from './style-sheet.js'
 
-/** 样式表 id，同一页面只注入一次。 */
+/** 样式表 id；已存在时按内容刷新，见 `style-sheet.js`。 */
 const STYLE_ID = 'dsh-leader-agent-board'
 
 /**
@@ -1549,14 +1550,9 @@ ${signalStyleText('dsh-leader-agent-board-signal')}
 `
 
 /**
- * 注入样式表。同一页面只注入一次。
+ * 注入样式表；已存在时刷新为新版本内容（HMR 换插件不刷新页面）。
  * @returns {void}
  */
 export function ensureBoardStyles() {
-  if (typeof document === 'undefined') return
-  if (document.getElementById(STYLE_ID) !== null) return
-  const style = document.createElement('style')
-  style.id = STYLE_ID
-  style.textContent = STYLE_TEXT
-  document.head.append(style)
+  ensureStyleSheet(STYLE_ID, STYLE_TEXT)
 }
