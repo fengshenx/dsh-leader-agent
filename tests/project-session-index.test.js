@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { after, test } from 'node:test'
 import { mkdir, realpath, symlink } from 'node:fs/promises'
 import { join } from 'node:path'
-import { createCanonicalizer, groupSessionsByProject } from '../src/host/projects/session-index.js'
+import { createCanonicalizer, groupSessionsByProject, orderSessionsByLastUsed } from '../src/host/projects/session-index.js'
 import { createProjectStore } from '../src/host/projects/store.js'
 import { createProjectService } from '../src/host/projects/service.js'
 import { cleanupTempDirs, makeTempDir } from './helpers/temp-dir.js'
@@ -308,6 +308,51 @@ test('换下的 leader 列在项目下，与 worker 同列', async () => {
   assert.deepEqual(grouped, [{
     projectId: project.id,
     sessionIds: ['worker-root', factory.ids[0]],
+  }])
+})
+
+test('worker 会话按最后使用时间倒序排，没有时间时保持原顺序', () => {
+  const ids = ['worker-old', 'worker-new', 'worker-mid', 'worker-unknown']
+  const at = new Map([['worker-old', 10], ['worker-new', 30], ['worker-mid', 20]])
+  assert.deepEqual(
+    orderSessionsByLastUsed(ids, at),
+    ['worker-new', 'worker-mid', 'worker-old', 'worker-unknown'],
+  )
+  // 登记表读不到或没有这条记录时不能把列表打乱：稳定排序保持会话库顺序。
+  assert.deepEqual(orderSessionsByLastUsed(ids, new Map()), ids)
+  // 非数字时间按 0 处理，不让 NaN 污染比较结果。
+  assert.deepEqual(
+    orderSessionsByLastUsed(['worker-a', 'worker-b'], new Map([['worker-a', 'oops'], ['worker-b', 5]])),
+    ['worker-b', 'worker-a'],
+  )
+})
+
+test('服务按 lastUsedAt 倒序列出 worker，退役 leader 接在后面', async () => {
+  const { home, workspace } = await makeWorkspace()
+  const store = createProjectStore({ home })
+  const factory = createSessionFactory()
+  const sessions = []
+  const service = createProjectService({
+    store,
+    ctx: {
+      get: (key) => (key === 'sessionQuery'
+        ? { listSessions: async () => sessions.map((id) => ({ header: { id, cwd: workspace } })) }
+        : undefined),
+    },
+    createLeaderSession: factory,
+    sessionExists: async () => true,
+    isWorkerSession: (id) => id.startsWith('worker-'),
+    // 会话库顺序是 worker-old → worker-new；最近使用时间反过来，排序必须按时间。
+    workerLastUsedAt: async () => new Map([['worker-old', 100], ['worker-new', 300]]),
+  })
+  const project = await service.create({ directory: workspace, name: 'alpha' })
+  sessions.push(factory.ids[0], 'worker-old', 'worker-new')
+  const updated = await service.replaceLeader(project.id)
+  sessions.push(updated.leaderSessionId)
+
+  assert.deepEqual(await service.sessionsByProject(), [{
+    projectId: project.id,
+    sessionIds: ['worker-new', 'worker-old', factory.ids[0]],
   }])
 })
 
