@@ -12,7 +12,9 @@ import {
   loadLeaderManual,
   renderLeaderContext,
 } from '../src/host/leader-context.js'
+import { parseListQuery, selectCards } from '../src/host/cards/card-list-view.js'
 import { ROLE_CONTEXT_ORDER } from '../src/host/slots/index.js'
+import { LOCALE_UI } from '../src/client/locales.js'
 
 /**
  * 建一个假的服务上下文，捕获注册进来的运行时上下文。
@@ -107,7 +109,7 @@ test('手册缺失或只有空白时 loadLeaderManual 返回空串（提示由�
   }
 })
 
-test('项目还没有手册时注入初始化提示：解释怎么工作、问是否初始化、确认后才写', async () => {
+test('项目还没有手册时注入初始化提示：解释怎么工作、建示例卡、问是否初始化、确认后才写', async () => {
   const project = await createProject(undefined)
   try {
     const { ctx, holder } = createFakeCtx()
@@ -119,8 +121,68 @@ test('项目还没有手册时注入初始化提示：解释怎么工作、问�
     assert.match(text, /init-leader-agent/)
     assert.match(text, /目录是空的就写带 TODO 的骨架/)
     assert.match(text, /不要创建或修改任何文件/)
+    // 示例卡要真的派出去：建卡 → 绑 worker → 投递任务；worker 回报后汇报给用户，
+    // 是否关卡由用户决定，leader 不自动关闭。
+    assert.match(text, /`create_card`.*`Hello World`/)
+    assert.match(text, /回复一句『你好』即可/)
+    assert.match(text, /不读取、不修改、不创建任何文件/)
+    assert.match(text, /`spawn_worker`.*`cardId`.*`slot`/)
+    assert.match(text, /`message_worker`.*`sessionId`.*`childId`/)
+    assert.match(text, /worker 回报唤醒你时/)
+    assert.match(text, /向用户汇报/)
+    assert.match(text, /你想结束任务、关卡的话跟我说/)
+    assert.match(text, /不要自行把示例卡标 `done` 或 `archived`/)
+    assert.doesNotMatch(text, /确认它说了「你好」就把这张示例卡标 `done`/)
+    assert.match(text, /`list_cards\(/)
+    // 查重要覆盖 active / done / archived；参数必须真能解析出来，不能只匹配文案。
+    const call = text.match(/`list_cards\((\{[^`]+\})\)`/)
+    assert.ok(call !== null, '提示里应给出一段可解析的 list_cards 参数')
+    const args = JSON.parse(call[1])
+    assert.equal(args.status, 'all')
+    assert.equal(args.limit, 100)
+    assert.match(text, /`active` \/ `done` \/ `archived`/)
+    assert.match(text, /整段跳过第 2–4 步/)
+    // 失败路径：告诉用户实情，但同样不自动归档；等用户决定后再处理。
+    assert.match(text, /把情况告诉用户/)
+    assert.match(text, /也不要自行归档或关卡/)
+    assert.doesNotMatch(text, /把这张示例卡标 `archived` 并告诉用户示例没跑完/)
+    assert.match(text, /不要重试第二次/)
+    // 示例产物是有意保留：卡与 worker 会话都留在项目里。
+    assert.match(text, /示例卡与 worker 会话会留在项目里/)
     // 用户直接派活时不打断：提示自己限定触发面。
     assert.match(text, /用户直接派活时不要打断/)
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('示例卡查重覆盖 done / archived：第二次触发能看见已关闭的卡', async () => {
+  const project = await createProject(undefined)
+  try {
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    const call = text.match(/`list_cards\((\{[^`]+\})\)`/)
+    assert.ok(call !== null, '提示里应给出一段可解析的 list_cards 参数')
+    const query = parseListQuery(JSON.parse(call[1]))
+    assert.equal(query.status, 'all')
+    const page = selectCards([
+      { id: 'done', number: 1, title: 'Hello World', status: 'done', updatedAt: 1 },
+      { id: 'archived', number: 2, title: 'Hello World', status: 'archived', updatedAt: 2 },
+    ], query).page
+    assert.deepEqual(page.map((card) => card.status).sort(), ['archived', 'done'])
+  } finally {
+    await project.cleanup()
+  }
+})
+
+test('已有 LEADER.md 时引导语不要求建卡派工，8 语言都不再点名 Hello World', async () => {
+  const project = await createProject('派工前先建卡。')
+  try {
+    const text = renderLeaderContext({ sessionId: 'session-a', resolveDirectory: () => project.directory })
+    assert.match(text, /## leader 手册/)
+    assert.doesNotMatch(text, /Hello World|spawn_worker|message_worker/)
+    for (const [code, dict] of Object.entries(LOCALE_UI)) {
+      assert.doesNotMatch(dict['guide.intro.prompt'], /Hello World|worker/i, `${code} 引导语不应再要求建卡派工`)
+    }
   } finally {
     await project.cleanup()
   }
