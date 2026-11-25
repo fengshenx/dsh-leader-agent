@@ -464,9 +464,10 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
   await page.evaluate(() => {
     document.querySelector('[data-rail-keep="switch"]')?.closest('svg')?.setAttribute('data-rail-probe', 'switch')
   })
-  // 用标记节点所在的 stage 量，避免同一会话在 DOM 里有两份右栏副本时读错。
+  // 用 svg 上的探针量 stage：主干被重画时标记会丢，stage 读数仍要稳（svg 本身
+  // 不随 drawRail 替换），否则先卡在「stage 归零」而不是「节点被替换」。
   const markedStage = () => page.evaluate(() => {
-    const stage = document.querySelector('[data-rail-keep="switch"]')?.closest('.dsh-leader-agent-board-stage')
+    const stage = document.querySelector('[data-rail-probe="switch"]')?.closest('.dsh-leader-agent-board-stage')
     return stage === null || stage === undefined ? null : { w: stage.clientWidth, h: stage.clientHeight }
   })
   const settled = () => page.evaluate(() => Number(
