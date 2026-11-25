@@ -153,7 +153,7 @@ export function parseModelSpec(spec, fallbackProvider) {
  * @param {unknown} options.model - 派工时显式给的模型
  * @param {unknown} options.effort - 派工时显式给的 effort
  * @returns {{ selection: { provider: string, model: string, reasoningEffort?: string }, source: 'spawn' | 'slot' | 'leader' } | undefined} 选择与来源
- * @throws {Error} 写法非法，或需要回落却读不到 leader 的模型
+ * @throws {Error} 写法非法、给了 effort 却没有可用模型，或需要回落却读不到 leader 的模型
  */
 export function chooseWorkerModel({ leader, slot, model, effort }) {
   const spawnModel = text(model)
@@ -176,7 +176,14 @@ export function chooseWorkerModel({ leader, slot, model, effort }) {
     source = 'leader'
     rawModel = leader?.model
   }
-  if (rawModel === undefined) return undefined
+  if (rawModel === undefined) {
+    // effort 不能脱离模型单独存在：没有 route 时静默丢掉它等于假装派工成功。
+    if (spawnEffort !== undefined || slotEffort !== undefined) {
+      const value = spawnEffort ?? slotEffort
+      throw new Error(`给了 effort「${value}」但没有可用的模型 route：请显式给 model，或在 SLOTS.md 里给该槽位配 model，或让 leader 有当前模型`)
+    }
+    return undefined
+  }
   const route = parseModelSpec(rawModel, leader?.provider)
   let reasoningEffort
   if (spawnEffort !== undefined) {

@@ -195,6 +195,17 @@ test('chooseWorkerModel：读不到 leader 模型又没显式给时返回 undefi
   assert.equal(chooseWorkerModel({ leader: undefined }), undefined)
 })
 
+test('chooseWorkerModel：只给 effort 但没有可用模型 route 时报错', () => {
+  assert.throws(
+    () => chooseWorkerModel({ leader: undefined, effort: 'high' }),
+    /给了 effort「high」但没有可用的模型 route/,
+  )
+  assert.throws(
+    () => chooseWorkerModel({ leader: undefined, slot: { effort: 'high' } }),
+    /给了 effort「high」但没有可用的模型 route/,
+  )
+})
+
 test('chooseWorkerModel：裸模型 id 在槽位里沿用 leader 的 provider', () => {
   const result = chooseWorkerModel({
     leader: { provider: 'deepseek', model: 'base' },
