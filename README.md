@@ -111,7 +111,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 ## 设计取舍
 
 - 这个项目不复刻 [DeepSeek Harness 团队的 Super-agent 研究原型](https://github.com/deepseek-ai/dsh-superagent-prototype)（研究原型，不是 DeepSeek 官方产品；它盯一个仓库、按事件起会话），要解决的是另一件事：让 1 个人管理 20 个以上的 Session，有 Leader、看板和并行任务（[项目落地页 FAQ](https://fengshenx.github.io/dsh-leader-agent/#faq)）。
-- 当前 agent 还不能无人值守，所以你可以随时打开 worker 的会话，直接看它的消息流：做到哪、卡在哪，再决定打断或推进。
+- 你可以随时打开 worker 的会话，直接看它的消息流：做到哪、卡在哪，再决定打断或推进。
 - routing 层用的是完整大模型，实际使用中，routing 层由于知道全局信息，经常能够把多个 PR 串起来思考，解决单 Worker 看不到的问题。
 - Agent 编排的泛化。Card 是任务本身的描述，可以用在非编码场景，也可以和各种 Skill 集成。
 - 项目还缺少一些初始化机制，实际使用时你需要在你的项目内初始化 `LEADER.md`（Leader 的人设 Prompt 以及编排流）和 `SLOTS.md`（任务的角色分工以及对应的人设 Prompt）。

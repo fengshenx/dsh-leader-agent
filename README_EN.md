@@ -111,7 +111,7 @@ These behaviours come from mechanisms, not from prompt wording:
 ## Design trade-offs
 
 - This project does not aim to rebuild [the Super-agent research prototype from the DeepSeek Harness team](https://github.com/deepseek-ai/dsh-superagent-prototype) (a research prototype, not an official DeepSeek product), which watches one repository and runs event-driven sessions. It solves a different problem: letting one person manage 20+ sessions, with a Leader, a board and parallel tasks ([FAQ](https://fengshenx.github.io/dsh-leader-agent/#faq)).
-- Agents are not reliable enough to run unattended, so you can open any worker's session and watch its message stream anytime — see where it is stuck, then interrupt or push it forward.
+- You can open any worker's session at any time and watch its message stream: where it is, where it is stuck, then interrupt or push it forward.
 - The routing layer runs a full-size model. In practice, holding the global picture, it often connects several PRs in one thought and resolves what a single worker cannot see.
 - Agent orchestration generalizes. A card describes the task itself, so it works outside coding and composes with any skill.
 - Initialization is still manual: in your own project you write `LEADER.md` (the Leader's persona prompt and orchestration flow) and `SLOTS.md` (the role split and each role's persona prompt).
