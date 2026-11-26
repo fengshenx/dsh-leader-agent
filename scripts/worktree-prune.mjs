@@ -11,7 +11,8 @@
  * dev 实例的逐条链接同理。删除成功后才删暂存；失败路径恢复链接、把 `.dev` 挪回，
  * 恢复不了时在错误信息里写明残留位置；git 已注销时不再重建链接，提示手工删目录与分支。
  * 已合并的分支一并删本地引用；远端分支默认保留，
- * `--delete-remote` 才删（远端名由 `--remote` 指定，默认 origin）。
+ * `--delete-remote` 才删（远端名由 `--remote` 指定，默认 origin）。远端引用已被
+ * GitHub 自动删除时按目标达成处理；权限、网络、保护分支等其它失败仍然报错。
  *
  * `--apply` 全程持有 `.worktrees/.prune.lock`（`wx` 创建；活 PID 的锁绝不回收，
  * 没有可用 PID 才按 TTL 回收）：
@@ -451,11 +452,18 @@ try {
       call('git', ['branch', '-D', row.branch], root)
       if (deleteRemote) {
         const pushed = call('git', ['push', remote, '--delete', row.branch], root)
+        // GitHub 的合并后自动删分支会先一步删掉远端引用；此时删除目标已经达成，
+        // 不能把「remote ref does not exist」当成失败，否则每次收尾都多一条噪音。
+        const remoteAlreadyGone = pushed.status !== 0
+          && /remote ref does not exist/i.test(`${pushed.stderr}\n${pushed.stdout}`)
         if (pushed.status === 0) {
           remoteNote = `，含远端 ${remote}`
+        } else if (remoteAlreadyGone) {
+          remoteNote = `，远端 ${remote} 已无该分支`
+          console.log(`[远端已无] ${row.branch}: ${remote}`)
         } else {
           // 只取首行：git 的失败输出常常是四五行建议，挤在一句里没法读
-          console.error(`[远端未删] ${row.branch}: ${pushed.stderr.trim().split('\n')[0]}（本地已删，远端分支还在）`)
+          console.error(`[失败] 删除远端 ${row.branch}: ${pushed.stderr.trim().split('\n')[0]}（本地已删，远端分支可能还在）`)
         }
       }
     }
