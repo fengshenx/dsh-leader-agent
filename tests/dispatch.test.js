@@ -79,6 +79,9 @@ function createFixture({ permissions } = {}) {
       openTurn: undefined,
       disposed: false,
       appends: [],
+      // 照 0.2.2+ 的 agent.model 面：续聊换模型读 current()、写 select()。
+      selection: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low', ...options.agentOptions },
+      selections: [],
     }
     spawned.push(entry)
     entries.set(sessionId, entry)
@@ -106,6 +109,13 @@ function createFixture({ permissions } = {}) {
         if (typeof entry.onDeliver === 'function') entry.onDeliver(message)
       },
       followup() {},
+      model: {
+        current: () => entry.selection,
+        select(selection) {
+          entry.selections.push({ ...selection })
+          entry.selection = { ...selection }
+        },
+      },
     }
     hostAgents.set(sessionId, agent)
     return {
@@ -396,6 +406,19 @@ function createMemoryRegistry() {
       existing.lastUsedAt = at
       return existing
     },
+    async setModel(childId, { agentOptions, modelSource }) {
+      const existing = workers.get(childId)
+      if (existing === undefined) return undefined
+      existing.agentOptions = { ...agentOptions }
+      if (modelSource !== undefined) existing.modelSource = modelSource
+      return existing
+    },
+    async setAssignment(childId, assignment) {
+      const existing = workers.get(childId)
+      if (existing === undefined) return undefined
+      existing.assignment = { cardId: assignment.cardId, slot: assignment.slot }
+      return existing
+    },
     async markReported(childId, at = Date.now()) {
       const existing = workers.get(childId)
       if (existing === undefined) return undefined
@@ -414,7 +437,11 @@ function createMemoryRegistry() {
 function makeDispatcher(options) {
   return createDispatcher({
     // worker 会话管理器用同一份假 ctx：它会去 ctx 取 agents / sessions / sessionTitle。
-    workerSessions: createWorkerSessions({ ctx: options.ctx, logger: options.logger }),
+    workerSessions: createWorkerSessions({
+      ctx: options.ctx,
+      logger: options.logger,
+      resolveSessionSelection: options.resolveSessionSelection,
+    }),
     leaderIndex: {
       async awaitIndex() {
         return true
@@ -2650,7 +2677,7 @@ test('listWorkers 优先读活 agent 的当前模型，并标出在跑', async (
     signal: new AbortController().signal,
   })
   // 用户在 worker 会话里换了模型：活 agent 的 route 与登记表的派工 route 不一致。
-  fixture.agents.get(record.childId).options = { provider: 'qwen', model: 'coder', reasoningEffort: 'low' }
+  fixture.agents.get(record.childId).model.select({ provider: 'qwen', model: 'coder', reasoningEffort: 'low' })
 
   const roster = await dispatcher.listWorkers({ parent })
   assert.equal(roster.workers[0].model, 'qwen/coder')
@@ -3525,6 +3552,872 @@ test('message_worker 成功投递会记录 lastUsedAt', async () => {
   })
   assert.ok(used >= 1)
   assert.equal(typeof (await fixture.workers.get(fixture.spawned.at(-1).sessionId)).lastUsedAt, 'number')
+})
+
+test('message_worker 复用换卡：无显式模型时应用新槽位的默认模型', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: strong/model',
+    '    effort: high',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let bound = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: 'card-1', number: 1, title: '新任务', status: 'active', slot: 'dev' }]
+      : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '复用工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  // 复用流程：先 update_card 把新卡的 dev 槽位指向这个会话，再 message_worker。
+  bound = true
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '承接 dev 角色',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'strong/model')
+  assert.equal(result.effort, 'high')
+  assert.equal(result.modelSource, 'slot')
+  assert.deepEqual(worker.selections, [{ provider: 'strong', model: 'model', reasoningEffort: 'high' }])
+  const record = await fixture.workers.get(childId)
+  assert.deepEqual(record.assignment, { cardId: 'card-1', slot: 'dev' })
+  assert.equal(record.modelSource, 'slot')
+})
+
+test('槽位默认是裸模型 id 时沿用 leader 的 provider，与派工口径一致', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: strong',
+    '    effort: high',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let bound = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: 'card-1', number: 1, title: '新任务', status: 'active', slot: 'dev' }]
+      : []),
+  })
+  const parent = createParentWithModel('parent-1', fixture.delivered, {
+    provider: 'leader-provider',
+    model: 'leader-model',
+  })
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '复用工',
+    model: 'mock/mock-echo',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  bound = true
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '承接 dev 角色',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'leader-provider/strong')
+  assert.equal(result.effort, 'high')
+  assert.deepEqual(worker.selections, [{
+    provider: 'leader-provider',
+    model: 'strong',
+    reasoningEffort: 'high',
+  }])
+})
+
+test('复用同一张卡续聊不重置模型：槽位默认只在换指派时应用', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: strong/model',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let bound = false
+  let currentCard = 'card-1'
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: currentCard, number: 1, title: '新任务', status: 'active', slot: 'dev' }]
+      : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '复用工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  bound = true
+  await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '承接 dev 角色',
+    cardId: 'card-1',
+    model: 'explicit/model',
+    signal: new AbortController().signal,
+  })
+  const switched = worker.selections.length
+
+  const followUp = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '同一张卡继续追问',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(followUp.model, undefined)
+  assert.equal(worker.selections.length, switched)
+  assert.deepEqual(worker.selections.at(-1), { provider: 'explicit', model: 'model' })
+
+  // 换到另一张卡（新指派）只显式给 effort：模型仍用槽位默认，effort 用显式值。
+  currentCard = 'card-2'
+  const effortOnly = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '换卡，用更高的 effort',
+    cardId: 'card-2',
+    effort: 'max',
+    signal: new AbortController().signal,
+  })
+  assert.equal(effortOnly.model, 'strong/model')
+  assert.equal(effortOnly.effort, 'max')
+  assert.equal(effortOnly.modelSource, 'message')
+  assert.deepEqual(worker.selections.at(-1), {
+    provider: 'strong',
+    model: 'model',
+    reasoningEffort: 'max',
+  })
+})
+
+test('同一张卡换 slot：按新 slot 默认重选并更新 assignment', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: dev/model',
+    '    effort: low',
+    '  review:',
+    '    model: review/model',
+    '    effort: max',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+    '## review',
+    '',
+    '审查。',
+    '',
+  ].join('\n'))
+  let bound = false
+  let currentSlot = 'dev'
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: 'card-1', number: 1, title: '任务', status: 'active', slot: currentSlot }]
+      : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '换槽位的工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  bound = true
+
+  const dev = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '先按 dev 做',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+  assert.equal(dev.model, 'dev/model')
+  assert.equal(dev.effort, 'low')
+
+  currentSlot = 'review'
+  const review = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '同一张卡改走 review',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(review.model, 'review/model')
+  assert.equal(review.effort, 'max')
+  assert.equal(review.modelSource, 'slot')
+  assert.deepEqual(worker.selections.at(-1), {
+    provider: 'review',
+    model: 'model',
+    reasoningEffort: 'max',
+  })
+  assert.deepEqual((await fixture.workers.get(childId)).assignment, { cardId: 'card-1', slot: 'review' })
+})
+
+test('卡被删除后重派到新卡：不沿用旧 assignment，应用新卡 slot 默认', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: dev/model',
+    '    effort: low',
+    '  review:',
+    '    model: review/model',
+    '    effort: max',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+    '## review',
+    '',
+    '审查。',
+    '',
+  ].join('\n'))
+  let binding = undefined
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (binding === undefined ? [] : [binding]),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '重派的工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  binding = { cardId: 'card-1', number: 1, title: '旧任务', status: 'active', slot: 'dev' }
+
+  const dev = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '先按旧卡做',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+  assert.equal(dev.model, 'dev/model')
+
+  // 卡被删除：没有 active 绑定，worker 可以暂时不接卡；此时不应重放旧槽位默认。
+  binding = undefined
+  const idle = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '卡删了，先停一下',
+    signal: new AbortController().signal,
+  })
+  assert.equal(idle.model, undefined)
+  assert.deepEqual((await fixture.workers.get(childId)).assignment, { cardId: 'card-1', slot: 'dev' })
+
+  // 重派到另一张卡：新卡 slot 默认重新生效。
+  binding = { cardId: 'card-2', number: 2, title: '新任务', status: 'active', slot: 'review' }
+  const review = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '改派到新卡',
+    cardId: 'card-2',
+    signal: new AbortController().signal,
+  })
+  assert.equal(review.model, 'review/model')
+  assert.equal(review.effort, 'max')
+  assert.equal(review.modelSource, 'slot')
+  assert.deepEqual((await fixture.workers.get(childId)).assignment, { cardId: 'card-2', slot: 'review' })
+})
+
+test('复用换卡时显式 model 优先于槽位默认，来源仍是续聊指定', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: strong/model',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let bound = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: 'card-1', number: 1, title: '新任务', status: 'active', slot: 'dev' }]
+      : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '复用工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  bound = true
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '这个任务要更强的模型',
+    cardId: 'card-1',
+    model: 'explicit/model',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'explicit/model')
+  assert.equal(result.modelSource, 'message')
+  assert.deepEqual(worker.selections, [{ provider: 'explicit', model: 'model' }])
+})
+
+test('复用换卡时显式 model 与 effort 同时压过槽位同名值', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: strong/model',
+    '    effort: high',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let bound = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: 'card-1', number: 1, title: '新任务', status: 'active', slot: 'dev' }]
+      : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '复用工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  bound = true
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '两个参数都要显式指定',
+    cardId: 'card-1',
+    model: 'explicit/model',
+    effort: 'max',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'explicit/model')
+  assert.equal(result.effort, 'max')
+  assert.equal(result.modelSource, 'message')
+  assert.deepEqual(worker.selections, [{ provider: 'explicit', model: 'model', reasoningEffort: 'max' }])
+})
+
+test('旧登记表没有指派记录：首次投递不按槽位改显式模型，之后换卡再应用', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    model: strong/model',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let cardId = 'card-1'
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => ([{
+      cardId,
+      number: 1,
+      title: '任务',
+      status: 'active',
+      slot: 'dev',
+    }]),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  const spawned = await dispatcher.dispatch({
+    parent,
+    name: '旧工',
+    model: 'explicit/model',
+    signal: new AbortController().signal,
+  })
+  const record = await fixture.workers.get(spawned.childId)
+  // 模拟升级前的登记：没有 assignment 字段，但有派工时显式指定的模型。
+  delete record.assignment
+  record.modelSource = 'spawn'
+  const worker = fixture.spawned.at(-1)
+  // 旧记录的第一条消息：不因为槽位默认把显式模型换掉。
+  const first = await dispatcher.message({
+    parent,
+    sessionId: spawned.childId,
+    message: '继续原任务',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+  assert.equal(first.model, undefined)
+  assert.deepEqual(worker.selections, [])
+  assert.deepEqual((await fixture.workers.get(spawned.childId)).assignment, { cardId: 'card-1', slot: 'dev' })
+
+  // 之后换到另一张卡：这是新指派，按新卡槽位的默认模型切换。
+  cardId = 'card-2'
+  const second = await dispatcher.message({
+    parent,
+    sessionId: spawned.childId,
+    message: '换一张新卡',
+    cardId: 'card-2',
+    signal: new AbortController().signal,
+  })
+  assert.equal(second.model, 'strong/model')
+  assert.equal(second.modelSource, 'slot')
+  assert.deepEqual(worker.selections, [{ provider: 'strong', model: 'model' }])
+})
+
+test('槽位只配 effort 时套在 worker 当前模型上', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const projectDir = await makeTempDir('dsh-leader-agent-project-')
+  await writeFile(join(projectDir, 'SLOTS.md'), [
+    '---',
+    'slots:',
+    '  dev:',
+    '    effort: max',
+    '---',
+    '',
+    '## dev',
+    '',
+    '实现。',
+    '',
+  ].join('\n'))
+  let bound = false
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveWorkerCwd: () => projectDir,
+    listCardBindings: async () => (bound
+      ? [{ cardId: 'card-1', number: 1, title: '新任务', status: 'active', slot: 'dev' }]
+      : []),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '复用工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  bound = true
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '承接 dev 角色',
+    cardId: 'card-1',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'mock/mock-echo')
+  assert.equal(result.effort, 'max')
+  assert.equal(result.modelSource, 'slot')
+  assert.deepEqual(worker.selections, [{ provider: 'mock', model: 'mock-echo', reasoningEffort: 'max' }])
+})
+
+test('message_worker 同次换模型：投递前切到新 route，登记表也更新', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '换模型的工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '换强模型返工',
+    model: 'deepseek/deepseek-reasoner',
+    effort: 'high',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'deepseek/deepseek-reasoner')
+  assert.equal(result.effort, 'high')
+  assert.deepEqual(worker.selections, [{
+    provider: 'deepseek',
+    model: 'deepseek-reasoner',
+    reasoningEffort: 'high',
+  }])
+  // 切换与投递同一次：worker 收到的仍是这条消息。
+  assert.equal(worker.messages.at(-1).content[0].text, '换强模型返工')
+  const record = await fixture.workers.get(childId)
+  assert.deepEqual(record.agentOptions, {
+    provider: 'deepseek',
+    model: 'deepseek-reasoner',
+    reasoningEffort: 'high',
+  })
+  assert.equal(record.modelSource, 'message')
+})
+
+test('message_worker 只换 effort 时沿用当前模型；换模型没给 effort 时清掉旧 effort', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '换 effort 的工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+
+  const effortOnly = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '想深一点',
+    effort: 'max',
+    signal: new AbortController().signal,
+  })
+  assert.deepEqual(effortOnly, {
+    code: 'merged',
+    name: '换 effort 的工',
+    model: 'mock/mock-echo',
+    effort: 'max',
+    modelSource: 'message',
+  })
+
+  const modelOnly = await dispatcher.message({
+    parent,
+    sessionId: childId,
+    message: '换模型',
+    model: 'other/strong',
+    signal: new AbortController().signal,
+  })
+  assert.deepEqual(modelOnly, {
+    code: 'merged',
+    name: '换 effort 的工',
+    model: 'other/strong',
+    modelSource: 'message',
+  })
+  assert.deepEqual(worker.selections.at(-1), { provider: 'other', model: 'strong' })
+})
+
+test('模型切换落盘失败只记日志：已经切过去的 route 不让投递回头变成失败', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const logs = []
+  const workers = {
+    ...fixture.workers,
+    async setModel() {
+      throw new Error('disk full')
+    },
+  }
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers,
+    logger: (message) => logs.push(message),
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '落盘失败的工',
+    signal: new AbortController().signal,
+  })
+  const worker = fixture.spawned.at(-1)
+
+  const result = await dispatcher.message({
+    parent,
+    sessionId: worker.sessionId,
+    message: '换模型再来',
+    model: 'other/strong',
+    signal: new AbortController().signal,
+  })
+
+  assert.equal(result.model, 'other/strong')
+  assert.equal(worker.messages.at(-1).content[0].text, '换模型再来')
+  assert.equal(logs.some((line) => /模型切换落盘失败/.test(line)), true)
+})
+
+test('message_worker 换模型预检失败：不投递、不改登记表', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '预检失败的工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  const worker = fixture.spawned.at(-1)
+  const before = worker.messages.length
+
+  await assert.rejects(
+    () => dispatcher.message({
+      parent,
+      sessionId: childId,
+      message: '不该投出去',
+      model: 'other/missing',
+      signal: new AbortController().signal,
+    }),
+    /指定的模型 other\/missing 不可用：unknown model/,
+  )
+  assert.equal(worker.messages.length, before)
+  assert.deepEqual(worker.selections, [])
+  assert.equal((await fixture.workers.get(childId)).agentOptions, undefined)
+})
+
+test('冷 worker 换模型预检失败：先预检，不唤醒、不登记 live', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({
+    childId: 'cold-worker',
+    parentSessionId: 'parent-1',
+    name: '冷工',
+    agentOptions: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' },
+  })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveSessionSelection: async (sessionId) => (await fixture.workers.get(sessionId))?.agentOptions,
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  await assert.rejects(
+    () => dispatcher.message({
+      parent,
+      sessionId: 'cold-worker',
+      message: '不该投出去',
+      model: 'other/missing',
+      signal: new AbortController().signal,
+    }),
+    /指定的模型 other\/missing 不可用：unknown model/,
+  )
+  // 预检失败必须发生在 agents.resume() 之前：冷 worker 不能被这次失败唤醒。
+  assert.deepEqual(fixture.resumed, [])
+  assert.equal(fixture.spawned.length, 0)
+  assert.equal(fixture.agents.get('cold-worker'), undefined)
+})
+
+test('冷 worker 只换 effort：用登记表当前 route 预检，失败也不唤醒', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({
+    childId: 'cold-effort',
+    parentSessionId: 'parent-1',
+    name: '冷 effort 工',
+    agentOptions: { provider: 'mock', model: 'missing' },
+  })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    resolveSessionSelection: async (sessionId) => (await fixture.workers.get(sessionId))?.agentOptions,
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  await assert.rejects(
+    () => dispatcher.message({
+      parent,
+      sessionId: 'cold-effort',
+      message: '只换 effort',
+      effort: 'high',
+      signal: new AbortController().signal,
+    }),
+    /指定的模型 mock\/missing（effort high） 不可用：unknown model/,
+  )
+  assert.deepEqual(fixture.resumed, [])
+  assert.equal(fixture.spawned.length, 0)
+  assert.equal(fixture.agents.get('cold-effort'), undefined)
+})
+
+test('续聊换模型投递失败：旧 route 与登记表都保持原样', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '先做一版',
+    name: '投递失败的工',
+    signal: new AbortController().signal,
+  })
+  const worker = fixture.spawned.at(-1)
+  const before = { ...worker.selection }
+  const beforeMessages = worker.messages.length
+  const beforeRecord = await fixture.workers.get(record.childId)
+  worker.deliverError = new Error('SESSION_OCCUPIED')
+
+  await assert.rejects(
+    () => dispatcher.message({
+      parent,
+      sessionId: record.childId,
+      message: '换了模型但没投出去',
+      model: 'other/strong',
+      effort: 'high',
+      signal: new AbortController().signal,
+    }),
+    /SESSION_OCCUPIED/,
+  )
+  // 消息没投出去，route 必须退回切换前；登记表根本不该被 setModel 改写。
+  assert.deepEqual(worker.selection, before)
+  assert.deepEqual(worker.selections.at(-1), before)
+  assert.equal(worker.messages.length, beforeMessages)
+  assert.deepEqual(await fixture.workers.get(record.childId), beforeRecord)
+})
+
+test('续聊换模型后的失败回报把新 route 标成续聊指定', () => {
+  const text = buildNotificationText(
+    { name: 'w', childId: 'c', model: 'deepseek/deepseek-reasoner', effort: 'high', modelSource: 'message' },
+    { ok: false, error: new Error('boom') },
+  )
+  assert.match(text, /模型：deepseek\/deepseek-reasoner，effort high（续聊指定）/)
+  assert.match(text, /message_worker 带 model \/ effort 重投/)
 })
 
 test('markUsed 落盘慢于 turn/end 时仍在飞记录结算', async () => {

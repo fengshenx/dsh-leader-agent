@@ -24,7 +24,7 @@
 
 - **Leader 能纠偏、不能中止**：`message_worker` 只能把消息插进当前轮次的下一步；宿主的 `Agent.cancel` 没接成工具。
 - **宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 对 worker 无效**：worker 是根会话，不在 subagent 体系里，`interrupt_agent` 还会返回假成功。
-- **权限与模型是派工时的快照**：之后改 preset、`SLOTS.md` 或 Leader 模型都不影响已派出的 worker。后台 `ask` 没人应答，需要审批的调用会被拒。
+- **权限是派工时的快照；模型默认也是**：改 preset / `SLOTS.md` / Leader 模型不影响已派 worker，但 `message_worker` 显式换 route、或换卡/换槽位承接新角色时重选。`ask` 无人应答，需审批调用被拒。
 - **用户 claim 失败的在飞记录不会自动过期**：会留到任务进入下一轮或进程重启，期间 15 分钟巡查反复提醒。
 - **`read_worker_session` 是视图，不是导出**：单条 4000 码元、单页 12000 码元，超出标注原长并给 `offset`；工具参数与成功结果不返回。
 - **`list_workers` 只覆盖你派出的未归档 worker**：跨项目、别的 Leader 与已归档的看不到；「在跑」只算你派出的轮次，人下钻聊的那一轮不算（机制见[笔记](../.agents/notes/implemented/feature/2026-11-25-list-workers-tool.md)）。

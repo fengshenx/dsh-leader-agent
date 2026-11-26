@@ -23,7 +23,7 @@ export function createMessageWorkerTool({ dispatcher }) {
   return {
     name: 'message_worker',
     description:
-      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 正在跑时消息会在它的下一步注入当前轮次，空闲时立刻开工；它结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
+      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 正在跑时消息会在它的下一步注入当前轮次，空闲时立刻开工；它结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。可同次换模型（model / effort）；不填时保持当前 route，但如果是复用承接新角色（换了卡或槽位），会按新槽位的 SLOTS.md 默认模型切换。换了之后这一轮和以后都用新 route，冷恢复也沿用。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
     parameters: {
       type: 'object',
       properties: {
@@ -43,6 +43,14 @@ export function createMessageWorkerTool({ dispatcher }) {
           type: 'string',
           description: '可选：本次任务所属卡 id。目标 worker 挂着未完成的卡时必填且必须等于它挂的卡——同卡续跑的显式声明；卡已完成或未挂卡时可省略。',
         },
+        model: {
+          type: 'string',
+          description: '可选：把 worker 切到这个模型 route，写成 provider/model（如 deepseek/deepseek-reasoner）；只写模型 id 时沿用 worker 当前的 provider。省略则保持当前模型；复用承接新角色时改用新槽位的 `SLOTS.md` 默认。',
+        },
+        effort: {
+          type: 'string',
+          description: '可选：reasoning effort id（如 low / medium / high，以该模型的模型目录为准）。只给 effort 时套在当前模型上（换指派时套新槽位默认模型）；换模型时省略 effort 就用新模型默认。显式 model / effort 分别优先于槽位同名值。',
+        },
       },
       required: ['sessionId', 'message'],
     },
@@ -53,29 +61,35 @@ export function createMessageWorkerTool({ dispatcher }) {
           sessionId: { type: 'string' },
           name: { type: 'string' },
           status: { type: 'string' },
+          model: { type: 'string' },
+          effort: { type: 'string' },
+          modelSource: { type: 'string' },
         },
         required: ['sessionId', 'status'],
       },
       render(args, value) {
-        const result = /** @type {{ sessionId: string, name?: string, status: string }} */ (value)
+        const result = /** @type {{ sessionId: string, name?: string, status: string, model?: string, effort?: string, modelSource?: string }} */ (value)
+        const switched = result.model === undefined
+          ? ''
+          : `\n模型：${result.model}${result.effort === undefined ? '' : `，effort ${result.effort}`}（${result.modelSource === 'slot' ? '槽位默认' : '续聊指定'}）`
         if (result.status === 'merged') {
           return [
             {
               type: 'text',
-              text: `worker「${result.name ?? result.sessionId}」在跑或刚开工：消息已投进它的当前轮次，下一步生效，随本轮执行一并回报。`,
+              text: `worker「${result.name ?? result.sessionId}」在跑或刚开工：消息已投进它的当前轮次，下一步生效，随本轮执行一并回报。${switched}`,
             },
           ]
         }
         return [
           {
             type: 'text',
-            text: `已把消息发给 worker「${result.name ?? result.sessionId}」（子会话 ${result.sessionId}），它开始执行后会自动回报。`,
+            text: `已把消息发给 worker「${result.name ?? result.sessionId}」（子会话 ${result.sessionId}），它开始执行后会自动回报。${switched}`,
           },
         ]
       },
     },
     async execute(args, exec) {
-      const input = /** @type {{ sessionId?: unknown, message?: unknown, rename?: unknown, cardId?: unknown }} */ (args)
+      const input = /** @type {{ sessionId?: unknown, message?: unknown, rename?: unknown, cardId?: unknown, model?: unknown, effort?: unknown }} */ (args)
       if (typeof input.sessionId !== 'string' || input.sessionId.trim() === '') {
         throw new Error('message_worker: sessionId 不能为空')
       }
@@ -90,11 +104,24 @@ export function createMessageWorkerTool({ dispatcher }) {
       if (input.cardId !== undefined && typeof input.cardId !== 'string') {
         throw new Error('message_worker: cardId 必须是字符串')
       }
+      // 模型与 effort 传非字符串会被当成没传，worker 静默留在旧 route 上。
+      if (input.model !== undefined && typeof input.model !== 'string') {
+        throw new Error('message_worker: model 必须是字符串')
+      }
+      if (input.effort !== undefined && typeof input.effort !== 'string') {
+        throw new Error('message_worker: effort 必须是字符串')
+      }
       const rename = typeof input.rename === 'string' && input.rename.trim() !== ''
         ? input.rename.trim()
         : undefined
       const cardId = typeof input.cardId === 'string' && input.cardId.trim() !== ''
         ? input.cardId.trim()
+        : undefined
+      const model = typeof input.model === 'string' && input.model.trim() !== ''
+        ? input.model.trim()
+        : undefined
+      const effort = typeof input.effort === 'string' && input.effort.trim() !== ''
+        ? input.effort.trim()
         : undefined
       const parent = exec.agent
       if (parent === undefined) {
@@ -107,9 +134,18 @@ export function createMessageWorkerTool({ dispatcher }) {
         message: input.message,
         name: rename,
         cardId,
+        ...model === undefined ? {} : { model },
+        ...effort === undefined ? {} : { effort },
         signal: exec.signal,
       })
-      return { sessionId, name: result.name, status: result.code }
+      return {
+        sessionId,
+        name: result.name,
+        status: result.code,
+        ...result.model === undefined ? {} : { model: result.model },
+        ...result.effort === undefined ? {} : { effort: result.effort },
+        ...result.modelSource === undefined ? {} : { modelSource: result.modelSource },
+      }
     },
   }
 }

@@ -13,6 +13,7 @@ import {
   normalizeModelSelection,
   parseModelSpec,
   resolveWorkerModel,
+  resolveWorkerModelSwitch,
 } from '../src/host/worker-model.js'
 
 /**
@@ -330,5 +331,104 @@ test('resolveWorkerModel：模型写法非法时包成 spawn_worker 错误', asy
       model: 'deepseek/',
     }),
     /spawn_worker: 模型「deepseek\/」不是合法的 provider\/model/,
+  )
+})
+
+test('resolveWorkerModelSwitch：不给 model / effort 就什么都不做，也不碰 llm', async () => {
+  const ctx = makeCtx({
+    llm: {
+      async resolveCallConfig() {
+        throw new Error('不该被调用')
+      },
+    },
+  })
+  assert.equal(await resolveWorkerModelSwitch({
+    ctx,
+    current: { provider: 'mock', model: 'base' },
+    signal: undefined,
+  }), undefined)
+})
+
+test('resolveWorkerModelSwitch：显式换模型时用新模型默认 effort', async () => {
+  const seen = []
+  const selection = await resolveWorkerModelSwitch({
+    ctx: makeCtx({
+      llm: {
+        async resolveCallConfig(value) {
+          seen.push(value)
+          return value
+        },
+      },
+    }),
+    current: { provider: 'mock', model: 'base', reasoningEffort: 'low' },
+    model: 'other/strong',
+    signal: undefined,
+  })
+  assert.deepEqual(selection, { provider: 'other', model: 'strong' })
+  assert.deepEqual(seen, [{ provider: 'other', model: 'strong' }])
+})
+
+test('resolveWorkerModelSwitch：裸模型 id 沿用 worker 当前的 provider', async () => {
+  const selection = await resolveWorkerModelSwitch({
+    ctx: makeCtx({ llm: { async resolveCallConfig(value) { return value } } }),
+    current: { provider: 'mock', model: 'base' },
+    model: 'strong',
+    signal: undefined,
+  })
+  assert.deepEqual(selection, { provider: 'mock', model: 'strong' })
+})
+
+test('resolveWorkerModelSwitch：只换 effort 时套在当前 route 上', async () => {
+  const selection = await resolveWorkerModelSwitch({
+    ctx: makeCtx({ llm: { async resolveCallConfig(value) { return value } } }),
+    current: { provider: 'mock', model: 'base', reasoningEffort: 'low' },
+    effort: 'high',
+    signal: undefined,
+  })
+  assert.deepEqual(selection, { provider: 'mock', model: 'base', reasoningEffort: 'high' })
+})
+
+test('resolveWorkerModelSwitch：读不到当前 route 时只换 effort / 只写裸模型 id 都报错', async () => {
+  const ctx = makeCtx({ llm: { async resolveCallConfig(value) { return value } } })
+  await assert.rejects(
+    () => resolveWorkerModelSwitch({ ctx, current: undefined, effort: 'high', signal: undefined }),
+    /读不到 worker 当前的模型 route.*请同时给 model/,
+  )
+  await assert.rejects(
+    () => resolveWorkerModelSwitch({ ctx, current: undefined, model: 'strong', signal: undefined }),
+    /模型「strong」没带 provider/,
+  )
+})
+
+test('resolveWorkerModelSwitch：effort 超长、写法非法、缺 llm、预检失败都包成 message_worker 错误', async () => {
+  const llm = { async resolveCallConfig(value) { return value } }
+  const ctx = makeCtx({ llm })
+  await assert.rejects(
+    () => resolveWorkerModelSwitch({ ctx, current: { provider: 'mock', model: 'base' }, effort: 'x'.repeat(65), signal: undefined }),
+    /message_worker: effort 超过 64 字符/,
+  )
+  await assert.rejects(
+    () => resolveWorkerModelSwitch({ ctx, current: { provider: 'mock', model: 'base' }, model: 'other/', signal: undefined }),
+    /message_worker: 模型「other\/」不是合法的 provider\/model/,
+  )
+  await assert.rejects(
+    () => resolveWorkerModelSwitch({ ctx: makeCtx(), current: { provider: 'mock', model: 'base' }, model: 'other/strong', signal: undefined }),
+    /没有可用的 llm 服务/,
+  )
+  await assert.rejects(
+    () => resolveWorkerModelSwitch({
+      ctx: makeCtx({
+        llm: {
+          async resolveCallConfig() {
+            throw new Error('unknown model')
+          },
+        },
+      }),
+      current: { provider: 'mock', model: 'base' },
+      model: 'other/strong',
+      effort: 'max',
+      signal: undefined,
+    }),
+    /message_worker: 指定的模型 other\/strong（effort max） 不可用：unknown model/,
   )
 })

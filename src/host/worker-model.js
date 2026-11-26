@@ -1,12 +1,14 @@
 /**
  * worker 模型选择：显式派工参数 > 角色槽位默认 > leader 当前模型。
  *
- * 模型是**会话创建时**的 route：worker 建好后，`SLOTS.md` 再改默认模型只影响之后
- * 新派的工，不会切换已在跑的会话。冷恢复要沿用创建时的 route，所以选择结果还要
- * 随登记表落盘（见 `worker-sessions.js` 的 `resolveSessionSelection`）。
+ * 模型在派工建会话时定下；复用承接新角色（换卡/换槽位）时按新槽位的默认值
+ * 重选，同一张卡续聊保持当前 route；要临时换就在 `message_worker` 里带
+ * `model` / `effort`。冷恢复要沿用登记表里的最近 route，所以选择结果还要随
+ * 登记表落盘（见 `worker-sessions.js` 的 `resolveSessionSelection`）。
  *
- * route 的写法与宿主模型选择器一致：`provider/model`。只写模型 id 时沿用 leader
- * 的 provider——大多数项目里角色默认模型换的是同一家供应商下的模型。
+ * route 的写法与宿主模型选择器一致：`provider/model`。裸模型 id 的 provider 口径
+ * 分两种：派工与复用承接的槽位默认沿用 leader 的 provider；续聊显式换模型沿用
+ * worker 当前的 provider——大多数项目里换的是同一家供应商下的模型。
  *
  * @module dsh-leader-agent/host/worker-model
  */
@@ -286,4 +288,70 @@ export async function resolveWorkerModel({ ctx, parent, slot, slotName, model, e
     )
   }
   return chosen
+}
+
+/**
+ * 解析续聊（`message_worker`）时的一次模型切换。
+ *
+ * 与派工的默认值不同：**不给 `model` / `effort` 就不切**，沿用 worker 当前选择，
+ * 不回落到槽位或 leader。只给 `effort` 时套在当前 route 上；显式换模型却没给
+ * `effort` 时用新模型自己的默认 effort，不把旧 effort 跨模型套用。
+ *
+ * @param {object} options - 解析参数
+ * @param {object} options.ctx - Cordis 上下文
+ * @param {{ provider: string, model: string, reasoningEffort?: string } | undefined} options.current -
+ *   worker 当前选择（读 live agent，读不到时 undefined）
+ * @param {unknown} options.model - 续聊显式给的模型
+ * @param {unknown} options.effort - 续聊显式给的 effort
+ * @param {AbortSignal | undefined} options.signal - 取消信号
+ * @returns {Promise<{ provider: string, model: string, reasoningEffort?: string } | undefined>} 新选择；没要求切换时 undefined
+ * @throws {Error} 写法非法、只给 effort 却没有当前 route，或 route/effort 不可用
+ */
+export async function resolveWorkerModelSwitch({ ctx, current, model, effort, signal }) {
+  const nextModel = text(model)
+  const nextEffort = text(effort)
+  if (nextModel === undefined && nextEffort === undefined) return undefined
+  const currentSelection = normalizeModelSelection(current)
+  if (nextEffort !== undefined && nextEffort.length > MAX_EFFORT_LENGTH) {
+    throw new Error(`message_worker: effort 超过 ${MAX_EFFORT_LENGTH} 字符`)
+  }
+  let route
+  if (nextModel !== undefined) {
+    // 裸模型 id 沿用 worker 自己的 provider：它不是 leader 那条 route 的延伸。
+    if (!nextModel.includes('/') && currentSelection === undefined) {
+      throw new Error(`message_worker: 模型「${nextModel}」没带 provider，且读不到 worker 当前的 provider；请写成 provider/model`)
+    }
+    try {
+      route = parseModelSpec(nextModel, currentSelection?.provider)
+    } catch (error) {
+      throw new Error(`message_worker: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    }
+  } else {
+    if (currentSelection === undefined) {
+      throw new Error('message_worker: 读不到 worker 当前的模型 route，无法只换 effort；请同时给 model')
+    }
+    route = { provider: currentSelection.provider, model: currentSelection.model }
+  }
+  const reasoningEffort = nextEffort ?? (nextModel === undefined ? currentSelection.reasoningEffort : undefined)
+  const selection = {
+    provider: route.provider,
+    model: route.model,
+    ...reasoningEffort === undefined ? {} : { reasoningEffort },
+  }
+  const llm = ctx.get('llm')
+  if (llm === undefined || typeof llm.resolveCallConfig !== 'function') {
+    throw new Error('message_worker: 指定了模型或 effort，但当前组合没有可用的 llm 服务，无法校验模型 route')
+  }
+  try {
+    await llm.resolveCallConfig(selection, signal)
+  } catch (error) {
+    const effortText = reasoningEffort === undefined ? '' : `（effort ${reasoningEffort}）`
+    throw new Error(
+      `message_worker: 指定的模型 ${selection.provider}/${selection.model}${effortText} 不可用：${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      { cause: error },
+    )
+  }
+  return selection
 }

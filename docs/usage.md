@@ -22,11 +22,13 @@
 1. `spawn_worker({ name })` 建一个常驻 worker 会话并立即返回会话 id，但 worker **还没开工**。`name` 同时是会话标题；可带 `cardId` + `slot` 绑卡片槽位，也可带 `model` / `effort`（不填回落 `SLOTS.md` 的槽位默认，再回落 Leader 当前模型）。
 2. `message_worker({ sessionId, message })` 投第一条消息，worker 才开始跑；之后再用就是续聊。worker 忙时消息插进当前轮次的下一步，空闲时立即开工。
 
-worker 是普通会话，在项目树下有自己的行，可以打开直接输入。它每跑完一轮，Leader 会被唤醒并收到一条回报气泡（产物摘要或失败原因）；不需要轮询，worker 也不用调工具交作业。
+worker 是普通会话，在项目树下有自己的行，可直接打开输入。每跑完一轮 Leader 会被唤醒并收到回报气泡（产物摘要或失败原因）；不用轮询，worker 也不用调工具交作业。
 
-卡必须是**本项目**的、`active` 状态才能绑；跨项目或已关闭的卡会被拒绝。
+卡必须是**本项目**的、`active` 状态才能绑；跨项目/已关闭被拒。
 
 派工前可用 `list_worker_models` 查 route：不传参列 provider，给 `provider` 列 model，再给 `model` 列 effort（给 `model` 必须同时给 `provider`）。
+
+`message_worker` 换模型需 worker 有 route；读不到拒绝，需重新派工。
 
 ### worker 名册上限与复用
 
@@ -81,7 +83,7 @@ worker 是普通会话，在项目树下有自己的行，可以打开直接输�
 在项目目录写两份文件。它们只贡献提示词，不授予工具权限；改文件在下一个模型请求生效。
 
 - `LEADER.md`：Leader 怎么指挥——职责、拆卡粒度、派工要求、验收口径。Leader 会话每轮自动注入，不需要绑定。
-- `SLOTS.md`：按 `## <槽位名>` 分节写角色方法与人设；卡片 `slots` 把槽位绑到会话，被绑 worker 每轮注入对应正文。顶部 frontmatter 可声明显示名 `label` 与默认 `model` / `effort`，模型只在建 worker 时定下。
+- `SLOTS.md`：按 `## <槽位名>` 分节写角色方法与人设；卡片 `slots` 把槽位绑到会话，被绑 worker 每轮注入对应正文。顶部 frontmatter 可声明显示名 `label` 与默认 `model` / `effort`。
 
 槽位名用小写字母、数字、下划线、连字符，最长 32 字符；没写 `SLOTS.md` 时回落内置 `dev` / `review`（正文为空）。示例见[上手](getting-started.md#三两份文件leader-的人设worker-的工作方法)。
 

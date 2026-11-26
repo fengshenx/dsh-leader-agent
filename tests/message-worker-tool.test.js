@@ -9,10 +9,15 @@ function createFakeDispatcher() {
     calls,
     async message(input) {
       calls.push(input)
-      if (input.sessionId === 'child-在飞') {
-        return { code: 'merged', name: input.name ?? '在飞的工' }
+      const switched = {
+        ...input.model === undefined ? {} : { model: input.model },
+        ...input.effort === undefined ? {} : { effort: input.effort },
+        ...input.model === undefined && input.effort === undefined ? {} : { modelSource: 'message' },
       }
-      return { code: 'sent', name: input.name ?? '已结算的工' }
+      if (input.sessionId === 'child-在飞') {
+        return { code: 'merged', name: input.name ?? '在飞的工', ...switched }
+      }
+      return { code: 'sent', name: input.name ?? '已结算的工', ...switched }
     },
   }
 }
@@ -93,4 +98,56 @@ test('渲染文案区分两种状态', () => {
   assert.ok(merged[0].text.includes('下一步'))
   const sent = tool.output.render({}, { sessionId: 'c1', name: '工B', status: 'sent' })
   assert.ok(sent[0].text.includes('自动回报'))
+})
+
+test('model / effort 非字符串时报错，不当成没传', async () => {
+  const tool = createMessageWorkerTool({ dispatcher: createFakeDispatcher() })
+  await assert.rejects(() => run(tool, { sessionId: 'child-1', message: 'hi', model: 7 }), /model/)
+  await assert.rejects(() => run(tool, { sessionId: 'child-1', message: 'hi', effort: 7 }), /effort/)
+})
+
+test('model / effort 去空白后与投递一起交给派工器，并回显新 route', async () => {
+  const dispatcher = createFakeDispatcher()
+  const tool = createMessageWorkerTool({ dispatcher })
+  const result = await run(tool, {
+    sessionId: 'child-1',
+    message: '换模型再做',
+    model: ' deepseek/deepseek-reasoner ',
+    effort: ' high ',
+  })
+  assert.equal(dispatcher.calls[0].model, 'deepseek/deepseek-reasoner')
+  assert.equal(dispatcher.calls[0].effort, 'high')
+  assert.equal(result.model, 'deepseek/deepseek-reasoner')
+  assert.equal(result.effort, 'high')
+  assert.equal(result.modelSource, 'message')
+})
+
+test('渲染在换过模型时补一行新 route', () => {
+  const tool = createMessageWorkerTool({ dispatcher: createFakeDispatcher() })
+  const merged = tool.output.render({}, {
+    sessionId: 'c1',
+    name: '工A',
+    status: 'merged',
+    model: 'deepseek/deepseek-reasoner',
+    effort: 'high',
+  })
+  assert.match(merged[0].text, /模型：deepseek\/deepseek-reasoner，effort high（续聊指定）/)
+  const sent = tool.output.render({}, {
+    sessionId: 'c1',
+    name: '工B',
+    status: 'sent',
+    model: 'deepseek/deepseek-reasoner',
+  })
+  assert.match(sent[0].text, /模型：deepseek\/deepseek-reasoner（续聊指定）/)
+  const plain = tool.output.render({}, { sessionId: 'c1', name: '工C', status: 'sent' })
+  assert.doesNotMatch(plain[0].text, /模型：/)
+  const slot = tool.output.render({}, {
+    sessionId: 'c1',
+    name: '工D',
+    status: 'sent',
+    model: 'strong/model',
+    effort: 'high',
+    modelSource: 'slot',
+  })
+  assert.match(slot[0].text, /模型：strong\/model，effort high（槽位默认）/)
 })
