@@ -97,7 +97,7 @@ for (const path of unregistered) console.log(`UNREG  ${'—'.padStart(6)} / ${'�
 if (listOnly) process.exit(0)
 
 const small = results.filter((result) => result.status === 'small')
-const special = results.filter((result) => result.minHeadroom > 5)
+const special = results.filter((result) => result.status !== 'small' && result.minHeadroom > 5)
 const failures = results.filter((result) => result.status !== 'ok' && result.status !== 'small')
 if (failures.length === 0 && unregistered.length === 0) {
   if (small.length === 0 && special.length === 0) {
@@ -127,12 +127,12 @@ for (const failure of failures) {
     const action = failure.maxUnits === undefined
       ? `抬天花板到 ${failure.suggestedCeiling}`
       : `压缩到 ${failure.maxUnits} 个单位，或抬天花板到 ${failure.suggestedCeiling}（二选一）`
-    console.error(`  ${failure.path}: 余量 ${headroomPercent(failure.units, failure.ceiling)}% 低于该文档要求的 ${failure.minHeadroom}%——${action}；抬天花板要在 PR 里写明为什么`)
+    console.error(`  ${failure.path}: 余量 ${headroomPercent(failure.units, failure.ceiling, failure.minHeadroom)}% 低于该文档要求的 ${failure.minHeadroom}%——${action}；抬天花板要在 PR 里写明为什么`)
   } else if (failure.status === 'tight') {
     const action = failure.maxUnits === undefined
       ? `抬天花板到 ${failure.suggestedCeiling}`
       : `压缩到 ${failure.maxUnits} 个单位，或抬天花板到 ${failure.suggestedCeiling}（二选一）`
-    console.error(`  ${failure.path}: 余量 ${headroomPercent(failure.units, failure.ceiling)}% 低于 5%——${action}；抬天花板要在 PR 里写明为什么`)
+    console.error(`  ${failure.path}: 余量 ${headroomPercent(failure.units, failure.ceiling, failure.minHeadroom)}% 低于 5%——${action}；抬天花板要在 PR 里写明为什么`)
   } else if (failure.status === 'missing') {
     console.error(`  ${failure.path}: 清单里的文件不存在（改名或删除了？同一次改动里更新 scripts/doc-budgets.json）`)
   } else {

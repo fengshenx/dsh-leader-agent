@@ -12,9 +12,6 @@ const CJK_PATTERN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/gu
 /** 天花板超过当前值的这个倍数，说明余量已经大到不再约束体量，报 `loose`。 */
 export const LOOSE_RATIO = 1.12
 
-/** 天花板低于当前值的这个倍数，说明余量不足 5%，报 `tight`。 */
-export const FLOOR_RATIO = 1.05
-
 /** 未登记专项下限的文档，至少按 5% 判。 */
 const DEFAULT_MIN_HEADROOM_PERCENT = 5
 
@@ -137,17 +134,18 @@ export function findUnregisteredDocs(registered, discovered) {
 /**
  * 余量百分比，保留两位小数。
  *
- * 低于 5% 时向下取整，避免 4.999% 显示成 5.00% 与 `tight` 自相矛盾；
- * 5% 以上正常四舍五入，避免 5.456% 被截成 5.45%。
+ * 低于该文档适用下限时向下取整，避免 9.999% 显示成 10.00% 却仍判专项失败；
+ * 达到下限后正常四舍五入，避免 5.456% 被截成 5.45%。
  *
  * @param {number} units - 当前体量单位数
  * @param {number} ceiling - 当前天花板
+ * @param {number} [minHeadroom=5] - 当前文档适用的最小余量（百分比）
  * @returns {string} 例如 `4.00`
  */
-export function headroomPercent(units, ceiling) {
+export function headroomPercent(units, ceiling, minHeadroom = 5) {
   const percent = (ceiling / units - 1) * 100
   const hundredths = percent * 100
-  const displayed = percent < 5 ? Math.floor(hundredths) : Math.round(hundredths)
+  const displayed = percent < minHeadroom ? Math.floor(hundredths) : Math.round(hundredths)
   return (displayed / 100).toFixed(2)
 }
 
@@ -165,12 +163,12 @@ export function formatBudgetRow(result) {
     suggestion = `  → 建议 ${result.suggestedCeiling}`
   } else if (result.status === 'tight-special') {
     const compress = result.maxUnits === undefined ? '' : `压到 ${result.maxUnits} 或`
-    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling)}%，要求 ≥${result.minHeadroom}%；${compress}抬到 ${result.suggestedCeiling}`
+    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling, result.minHeadroom)}%，要求 ≥${result.minHeadroom}%；${compress}抬到 ${result.suggestedCeiling}`
   } else if (result.status === 'tight') {
     const compress = result.maxUnits === undefined ? '' : `压到 ${result.maxUnits} 或`
-    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling)}%，${compress}抬到 ${result.suggestedCeiling}`
+    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling, result.minHeadroom)}%，${compress}抬到 ${result.suggestedCeiling}`
   } else if (result.status === 'small') {
-    const percent = result.units === 0 ? '' : `余量 ${headroomPercent(result.units, result.ceiling)}%，`
+    const percent = result.units === 0 ? '' : `余量 ${headroomPercent(result.units, result.ceiling, result.minHeadroom)}%，`
     suggestion = `  → ${percent}<9 单位，下界豁免`
   }
   return `${label}  ${units.padStart(6)} / ${String(result.ceiling).padEnd(6)} ${result.path}${suggestion}`

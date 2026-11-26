@@ -361,6 +361,36 @@ test('输出行：5% 以上按 raw 四舍五入，不再截成 5.45%', () => {
   assert.equal(headroomPercent(10000, 10546), '5.46')
 })
 
+test('门禁：专项 9.999% 显示 9.99 且红，10.000% 显示 10.00 且绿', () => {
+  const content = Array.from({ length: 100000 }, (_, index) => `w${index % 10}`).join(' ')
+  const red = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 109999, minHeadroom: 10 } }),
+    'docs/a.md': content,
+  })
+  assert.equal(red.status, 1, red.stderr)
+  assert.match(red.stdout, /TIGHT\*/)
+  assert.match(red.stdout, /余量 9\.99%/)
+  assert.match(red.stderr, /余量 9\.99% 低于该文档要求的 10%/)
+  assert.doesNotMatch(red.stdout, /余量 10\.00%/)
+
+  const green = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 110000, minHeadroom: 10 } }),
+    'docs/a.md': content,
+  })
+  assert.equal(green.status, 0, green.stderr)
+  assert.equal(headroomPercent(100000, 110000, 10), '10.00')
+})
+
+test('门禁：small 文档带专项下限时汇总不把它算作专项', () => {
+  const result = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 8, minHeadroom: 10 } }),
+    'docs/a.md': 'one two three four five six seven eight',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /1 篇 <9 单位豁免下界/)
+  assert.doesNotMatch(result.stdout, /另需 ≥10% 余量/)
+})
+
 test('门禁：4.x% 夹具报余量低于 5%，5.0% 边界放行', () => {
   const content = Array.from({ length: 100 }, (_, index) => `w${index % 10}`).join(' ')
   const tight = runBudgetGate({

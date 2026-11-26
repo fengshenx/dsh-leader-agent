@@ -30,4 +30,4 @@ Status: implemented
 
 ## Testing
 
-`tests/doc-budget.test.js` 覆盖 10% 专项红/绿、10.0% 边界、`small` 豁免不被专项误伤、5%/12% 边界、5.46% 取整，以及真实清单只有 `AGENTS.md` 与 `docs/capability-gaps.md` 登记专项下限。双向验证用 9.5% 夹具跑真实门禁：变红并指出要求 10%，恢复到 10% 后转绿。
+`tests/doc-budget.test.js` 覆盖 10% 专项红/绿、10.0% 边界、`small` 豁免不被专项误伤、5%/12% 边界、5.46% / 9.999% 取整，以及真实清单只有 `AGENTS.md` 与 `docs/capability-gaps.md` 登记专项下限。双向验证用 9.5% 夹具跑真实门禁：变红并指出要求 10%，恢复到 10% 后转绿。
