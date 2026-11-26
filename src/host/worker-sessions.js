@@ -513,7 +513,7 @@ export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSel
       // 不能先切过去、等投递失败再留下一个无法撤销的新 route。连切换入口都没有
       // 的宿主仍交给 applyAgentSelection 报它自己的缺 API 错误。
       if (previous === undefined && (typeof agent.model?.select === 'function' || agent.options !== undefined)) {
-        throw new Error('message_worker: 该 worker 没有可回滚的当前模型选择，无法换模型；请先给 worker 一个当前 route 再切换')
+        throw new Error('message_worker: 该 worker 没有可回滚的当前模型选择，无法换模型；请重新派工（`spawn_worker`）并在派工时指定 model，或在宿主会话里手动设置模型。')
       }
       try {
         applyAgentSelection(agent, selection)

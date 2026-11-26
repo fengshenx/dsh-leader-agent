@@ -1318,7 +1318,7 @@ test('没有可回滚的旧 route 时，换模型在应用前拒绝', async () =
       signal: new AbortController().signal,
       model: 'mock/mock-strong',
     }),
-    /没有可回滚的当前模型选择，无法换模型/,
+    /没有可回滚的当前模型选择，无法换模型；请重新派工（`spawn_worker`）并在派工时指定 model，或在宿主会话里手动设置模型/,
   )
 
   assert.equal(worker.selections.length, 0)
