@@ -71,8 +71,8 @@ function makeFixture(t) {
  * @param {string} repo - 临时仓库
  * @returns {import('node:child_process').SpawnSyncReturns<string>} prune 结果
  */
-function runPrune(repo) {
-  return spawnSync(process.execPath, [PRUNE, 'wt-int', '--apply'], { cwd: repo, encoding: 'utf8' })
+function runPrune(repo, extraArgs = []) {
+  return spawnSync(process.execPath, [PRUNE, 'wt-int', '--apply', ...extraArgs], { cwd: repo, encoding: 'utf8' })
 }
 
 test('win32 上 prune --apply 先拆 junction，共享依赖不被跟穿', WIN32, (t) => {
@@ -87,6 +87,42 @@ test('win32 上 prune --apply 先拆 junction，共享依赖不被跟穿', WIN32
     [],
     '.dev 暂存目录没有清掉',
   )
+})
+
+test('远端分支已被自动删除时 prune 视为达成', (t) => {
+  const base = mkdtempSync(join(tmpdir(), 'dsh-worktree-prune-remote-'))
+  t.after(() => rmSync(base, { recursive: true, force: true }))
+  const repo = join(base, 'repo')
+  const worktree = join(repo, '.worktrees', 'wt-int')
+  const remote = join(base, 'remote.git')
+  mkdirSync(join(repo, '.worktrees'), { recursive: true })
+  mkdirSync(remote, { recursive: true })
+  git(repo, ['init', '-q', '-b', 'main'])
+  writeFileSync(join(repo, 'a.txt'), 'a')
+  git(repo, ['add', '.'])
+  git(repo, ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'init'])
+  git(repo, ['worktree', 'add', worktree, '-b', 'feature/int'])
+  git(remote, ['init', '--bare', '-q'])
+  git(repo, ['remote', 'add', 'origin', remote])
+  git(repo, ['push', '-q', 'origin', 'main'])
+
+  const result = runPrune(repo, ['--delete-remote'])
+  const output = `${result.stdout}\n${result.stderr}`
+  assert.equal(result.status, 0, `prune 失败:\n${output}`)
+  assert.match(result.stdout, /\[远端已无\] feature\/int/)
+  assert.doesNotMatch(result.stdout, /\[远端未删\]/)
+  assert.doesNotMatch(result.stderr, /远端分支还在/)
+  assert.match(result.stdout, /\[已删\] wt-int/)
+  assert.equal(existsSync(worktree), false, 'worktree 目录没有删掉')
+
+  // 非「远端引用已不存在」的删除失败仍要报错，不能一起吞掉。
+  git(repo, ['worktree', 'add', '-q', worktree, '-b', 'feature/int'])
+  const failed = runPrune(repo, ['--delete-remote', '--remote', 'missing'])
+  const failedOutput = `${failed.stdout}\n${failed.stderr}`
+  assert.equal(failed.status, 0, `prune 异常退出:\n${failedOutput}`)
+  assert.match(failedOutput, /\[失败\] 删除远端 feature\/int/)
+  assert.match(failedOutput, /远端分支可能还在/)
+  assert.doesNotMatch(failedOutput, /\[远端已无\]/)
 })
 
 test('win32 上活 PID + 旧 startedAt 的锁不会被回收', WIN32, (t) => {
