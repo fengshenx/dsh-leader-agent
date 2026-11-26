@@ -30,7 +30,7 @@ worker 的模型选择（[见](2026-11-25-worker-model-selection.md)）在派工
 
 - 模型是尽力而为的读数：旧登记、登记落盘失败或活会话读不到时可能是「未记录」；`list_workers` 不读会话日志，不会为补一个旧值付出 O(N × 文件体积) 的代价。
 - 名册只覆盖未归档、且由当前 lead 派出的 worker；跨项目与别的 leader 的工人不可见，也不该可见。
-- 本次改动触及五份接近 5% 余量下界的文档（README 两份、LEADER.md、limitations、usage），天花板按当前值各留约 8% 余量重设；原因都是新增工具行/段落，不是扩写既有内容。
+- 文档预算：#220 重写 usage/limitations 后，本 PR 只新增 `list_workers` 的事实；按新增体量重算 usage 1990（1887 units，5.46%）、limitations 2440（2303 units，5.95%）、LEADER.md 3820（3636 units，5.06%）；都是新增工具行/段落，不是扩写既有内容。
 - 名册输出有上限：`limit` 与名字/卡标题/整表三级截断，worker 很多或名字、标题超长时不会挤掉 leader 的工作记忆；整表超限时按 worker 条目整块丢，尾部免责/口径提示不会被切掉。
 - 收益：leader 能在不唤醒任何 worker 的前提下盘点名册、核对每个 worker 的实际 route，并据此决定续聊、换模型重派或新派工。
 
