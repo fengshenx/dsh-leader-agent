@@ -57,6 +57,9 @@ export function parentCrumb(listing) {
   return crumbs.length > 1 ? crumbs[crumbs.length - 2] : null
 }
 
+/** browse 能力探测的上限：网络盘 home 卡住时不能让「加项目」一直 busy。 */
+const BROWSE_PROBE_TIMEOUT_MS = 5000
+
 /**
  * 探测宿主是否服务 browse 目录原语。
  *
@@ -66,15 +69,77 @@ export function parentCrumb(listing) {
  * 拒绝不是错误，是判据——native 宿主上它必然也拒绝。
  *
  * @param {object} uiWorkspace - 宿主的导航服务
- * @param {AbortSignal} [signal] - 探测超时/取消信号
- * @returns {Promise<object | null>} 主目录列表；宿主不是 browse 时 null
+ * @param {object} [options] - 取消信号与超时
+ * @param {AbortSignal} [options.signal] - 调用方的取消信号
+ * @param {number} [options.timeoutMs] - 超时毫秒数
+ * @returns {Promise<object | null>} 主目录列表；宿主不是 browse 或超时/取消时 null
  */
-export async function probeBrowseListing(uiWorkspace, signal) {
-  try {
-    return await uiWorkspace.listDirectory(undefined, signal)
-  } catch {
-    return null
+export async function probeBrowseListing(
+  uiWorkspace,
+  { signal, timeoutMs = BROWSE_PROBE_TIMEOUT_MS } = {},
+) {
+  const controller = new AbortController()
+  const abort = () => controller.abort()
+  let timer
+  const timedOut = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      resolve(null)
+    }, timeoutMs)
+  })
+  if (signal !== undefined && signal !== null) {
+    if (signal.aborted) controller.abort()
+    else signal.addEventListener('abort', abort, { once: true })
   }
+  try {
+    return await Promise.race([
+      Promise.resolve()
+        .then(() => uiWorkspace.listDirectory(undefined, controller.signal))
+        .catch(() => null),
+      timedOut,
+    ])
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+  }
+}
+
+/**
+ * 一次「加项目」选择器的结果。
+ *
+ * 用户取消（`pickDirectory()` 返回 null）不探测 browse，也不建项；只有 pick
+ * 被拒时才用 list 成败判断是否退回应用内浏览。
+ *
+ * @param {object} uiWorkspace - 宿主的导航服务
+ * @returns {Promise<object>} `{ kind: 'cancelled' | 'picked' | 'browse' | 'error', ... }`
+ */
+export async function resolveDirectoryPick(uiWorkspace) {
+  let picked
+  try {
+    picked = await uiWorkspace.pickDirectory()
+  } catch (error) {
+    const listing = await probeBrowseListing(uiWorkspace)
+    return listing === null ? { kind: 'error', error } : { kind: 'browse', listing }
+  }
+  if (picked === null) return { kind: 'cancelled' }
+  return { kind: 'picked', directory: picked }
+}
+
+/**
+ * 扫描/新建期间是否应拒绝新建文件夹。
+ *
+ * 表单可以停在打开状态；扫描开始后旧的 listing 已经不是当前目录，此时提交
+ * 会在上一级建目录，因此按钮与提交都必须看这个判据。
+ *
+ * @param {object} state - 当前 state
+ * @param {object | null} state.listing - 当前目录列表
+ * @param {boolean} state.loading - 是否正在扫描
+ * @param {boolean} state.busy - 宿主是否正在建项目
+ * @param {boolean} state.creating - 是否正在新建文件夹
+ * @returns {boolean} 是否应拒绝
+ */
+export function folderCreateBlocked({ listing, loading, busy, creating }) {
+  return listing === null || loading || busy || creating
 }
 
 /**

@@ -1,13 +1,18 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import {
   createBrowseFolder,
   directoryBrowseFailureText,
   displayCrumbs,
+  folderCreateBlocked,
   parentCrumb,
   probeBrowseListing,
+  resolveDirectoryPick,
   visibleEntries,
 } from '../src/client/directory-browse-logic.js'
+
+const browseSource = readFileSync(new URL('../src/client/directory-browse.js', import.meta.url), 'utf8')
 
 /** 一份形状与宿主 DirectoryListing 一致的列表。 */
 function listing(overrides = {}) {
@@ -78,8 +83,8 @@ test('没有业务文案时退回 Error.message，非 Error 值转成字符串',
   assert.equal(directoryBrowseFailureText({ rpcError: { message: '' } }), '[object Object]')
 })
 
-test('probeBrowseListing 成功时返回列表，并把 signal 传给宿主', async () => {
-  const signal = new AbortController().signal
+test('probeBrowseListing 成功时返回列表，并把内部 AbortSignal 传给宿主', async () => {
+  const controller = new AbortController()
   let call
   const next = listing()
   const result = await probeBrowseListing({
@@ -87,20 +92,98 @@ test('probeBrowseListing 成功时返回列表，并把 signal 传给宿主', as
       call = args
       return next
     },
-  }, signal)
+  }, { signal: controller.signal })
   assert.equal(result, next)
-  assert.deepEqual(call, [undefined, signal])
+  assert.equal(call[0], undefined)
+  assert.ok(call[1] instanceof AbortSignal)
 })
 
-test('probeBrowseListing 在 native 拒绝与取消时都返回 null', async () => {
+test('probeBrowseListing 在 native 拒绝时返回 null', async () => {
   assert.equal(await probeBrowseListing({
     listDirectory: async () => { throw new Error('directory picker unavailable') },
   }), null)
-  const aborted = new Error('aborted')
-  aborted.name = 'AbortError'
-  assert.equal(await probeBrowseListing({
-    listDirectory: async () => { throw aborted },
-  }, new AbortController().signal), null)
+})
+
+test('probeBrowseListing 在外部取消时中止请求并返回 null', async () => {
+  const controller = new AbortController()
+  let received
+  const pending = probeBrowseListing({
+    listDirectory: (_, signal) => {
+      received = signal
+      return new Promise((resolve, reject) => {
+        if (signal.aborted) {
+          reject(new Error('aborted'))
+          return
+        }
+        signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      })
+    },
+  }, { signal: controller.signal, timeoutMs: 10_000 })
+  controller.abort()
+  assert.equal(await pending, null)
+  assert.equal(received.aborted, true)
+})
+
+test('probeBrowseListing 超过 timeoutMs 会中止并返回 null', async () => {
+  let received
+  const started = Date.now()
+  const result = await probeBrowseListing({
+    listDirectory: (_, signal) => {
+      received = signal
+      return new Promise((resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true })
+      })
+    },
+  }, { timeoutMs: 20 })
+  assert.equal(result, null)
+  assert.equal(received.aborted, true)
+  assert.ok(Date.now() - started >= 10)
+})
+
+test('pickDirectory 返回 null 是用户取消，不探测 browse', async () => {
+  let probed = false
+  const outcome = await resolveDirectoryPick({
+    pickDirectory: async () => null,
+    listDirectory: async () => {
+      probed = true
+      return listing()
+    },
+  })
+  assert.deepEqual(outcome, { kind: 'cancelled' })
+  assert.equal(probed, false)
+})
+
+test('pick 成功直接交给建项路径，不探测 browse', async () => {
+  const outcome = await resolveDirectoryPick({
+    pickDirectory: async () => '/home/dev/work',
+  })
+  assert.deepEqual(outcome, { kind: 'picked', directory: '/home/dev/work' })
+})
+
+test('pick 被拒且 list 成功时退回 browse，两个都失败时保留原始错误', async () => {
+  const browse = listing()
+  const browsed = await resolveDirectoryPick({
+    pickDirectory: async () => { throw new Error('native') },
+    listDirectory: async () => browse,
+  })
+  assert.deepEqual(browsed, { kind: 'browse', listing: browse })
+
+  const error = new Error('native picker failed')
+  const failed = await resolveDirectoryPick({
+    pickDirectory: async () => { throw error },
+    listDirectory: async () => { throw new Error('list also failed') },
+  })
+  assert.equal(failed.kind, 'error')
+  assert.equal(failed.error, error)
+})
+
+test('扫描中即使新建表单已开，按钮与提交都拒绝', () => {
+  const idle = { listing: listing(), loading: false, busy: false, creating: false }
+  assert.equal(folderCreateBlocked(idle), false)
+  assert.equal(folderCreateBlocked({ ...idle, loading: true }), true)
+  assert.match(browseSource, /const createBlocked = folderCreateBlocked\(\{ listing, loading, busy, creating \}\)/)
+  assert.match(browseSource, /if \(folderCreateBlocked\(\{ listing, loading, busy, creating \}\)\) return/)
+  assert.match(browseSource, /disabled: createBlocked/)
 })
 
 test('新建文件夹成功时传父路径与 trim 后的名字，返回宿主列表', async () => {

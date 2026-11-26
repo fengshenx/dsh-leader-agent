@@ -402,13 +402,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 42. macOS 原生目录选择器在 0.2.1-rc.x 有初始灰态——修复只在 0.2.2-alpha.2 起
 
-**目标形态**：点「加项目」、宿主弹出系统目录选择框后，键盘与鼠标立刻可用。
+**目标形态**：点「加项目」后系统目录框立刻可交互。
 
-**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出在浏览器窗口之上但没有被激活——框体呈灰态，点它没反应；必须先点一下浏览器窗口，面板才变成可交互。症状与宿主 #7320 一致。
+**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出但未激活，框体呈灰态；先点浏览器窗口才可交互，症状同宿主 #7320。
 
-**证据**：`native-picker.ts` 的 `MAC_PANEL` 在 `rc.2`～`rc.5` 都在 `runModal` 前同步调 `app.activateIgnoringOtherApps(true)`，modal 循环未起；修复提交 `7333a38c7a` 只在 `0.2.2-alpha.2+`。darwin + loopback bind + 非 SSH 启动走 native，所以本机 web 弹的就是它。
+**证据**：`MAC_PANEL` 在 `rc.2`～`rc.5` 于 `runModal` 前同步调 `activateIgnoringOtherApps`，modal 循环未起；修复提交 `7333a38c7a` 只在 `0.2.2-alpha.2+`；darwin + loopback + 非 SSH 走 native。
 
-**影响**：面板由宿主 `osascript` 弹出、激活时机也在那支脚本里，bundle 无 hook 可改；只能升宿主到 `0.2.2-alpha.2+`，本仓 API 仍按下限 `0.2.1-rc.2` 写。
+**影响**：面板由宿主 `osascript` 弹出，bundle 无 hook 可改；只能升宿主到 `0.2.2-alpha.2+`，API 仍按下限 `0.2.1-rc.2` 写。
 
 ### 43. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
 
@@ -471,7 +471,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 47. 浏览器侧读不到 `directoryPicker` 的能力种类
 
-**目标**：加项目前判断 native / browse。**实测**：`UiWorkspace` 只有三个目录动词，无 `capability()`；能力只在宿主侧，wire 动词按 kind 拒绝（机制见 [browse 回退笔记](../.agents/notes/implemented/bug-fix/2026-11-26-browse-directory-picker-fallback.md)）。**影响**：只能先 pick，被拒时用 list 成败区分 browse；代价是白跑 pick 和吞异常点（`src/client/directory-browse.js` 的 `probeBrowseListing`），宿主暴露 `capability()` 后可删。
+**目标**：加项目前判断 native / browse。**实测**：`UiWorkspace` 无 `capability()`，只有三个目录动词；能力在宿主侧按 kind 拒绝（机制见 [browse 回退笔记](../.agents/notes/implemented/bug-fix/2026-11-26-browse-directory-picker-fallback.md)）。**影响**：只能先 pick，被拒后用 list 成败区分 browse；宿主暴露 `capability()` 后这段探测可删。
 
 ---
 

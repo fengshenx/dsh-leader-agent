@@ -22,6 +22,7 @@ import {
   createBrowseFolder,
   directoryBrowseFailureText,
   displayCrumbs,
+  folderCreateBlocked,
   parentCrumb,
   visibleEntries,
 } from './directory-browse-logic.js'
@@ -318,7 +319,7 @@ export function DirectoryBrowseDialog({
   }, [open])
 
   const submitFolder = useCallback(async () => {
-    if (listing === null || creating) return
+    if (folderCreateBlocked({ listing, loading, busy, creating })) return
     setCreating(true)
     setCreateError('')
     try {
@@ -330,7 +331,7 @@ export function DirectoryBrowseDialog({
     } finally {
       setCreating(false)
     }
-  }, [creating, folderName, listing, load, t, workspace])
+  }, [busy, creating, folderName, listing, load, loading, t, workspace])
 
   const crumbs = listing === null ? [] : displayCrumbs(listing, t('project.browse.home'))
   const up = listing === null ? null : parentCrumb(listing)
@@ -339,6 +340,7 @@ export function DirectoryBrowseDialog({
   // 扫描或新建期间冻结导航：连点两下「上一级」时第二下读到的是旧的 listing，
   // 会把父级算成同级——宁可按完等扫描落地。
   const navigationDisabled = loading || busy || creating
+  const createBlocked = folderCreateBlocked({ listing, loading, busy, creating })
 
   const body = createElement(
     'div',
@@ -446,7 +448,7 @@ export function DirectoryBrowseDialog({
         {
           type: 'button',
           className: 'dsh-leader-agent-browse-action dsh-leader-agent-browse-action-quiet',
-          disabled: busy || listing === null || creating,
+          disabled: createBlocked,
           onClick: () => {
             setCreateError('')
             setFolderForm((value) => !value)
@@ -487,7 +489,7 @@ export function DirectoryBrowseDialog({
           {
             type: 'button',
             className: 'dsh-leader-agent-browse-action',
-            disabled: creating || folderName.trim() === '',
+            disabled: createBlocked || folderName.trim() === '',
             onClick: () => { void submitFolder() },
           },
           t('project.browse.create'),
