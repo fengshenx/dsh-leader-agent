@@ -64,50 +64,70 @@ export function watchProblems(page, problems = []) {
 }
 
 let warnedScale = false
-let warnedAutoScale = false
+let cachedScale
 
 /** 自动倍率封顶：load 失控时不能让一次失败等上几分钟，失败读数比等待更重要。 */
 const AUTO_SCALE_CAP = 4
 
 /**
- * 预算倍率：显式 `E2E_BUDGET_SCALE` 优先；否则按整机 load / 核数自动放大，
- * 下限 1、上限 {@link AUTO_SCALE_CAP}。并发车道会把 load 推上去，自动倍率让
- * 「元素确实晚到」仍能通过；点击丢失这类问题不会被加预算掩盖。
+ * 解析预算倍率：显式覆盖优先，否则 `min(4, max(1, load / cores))`。
  *
- * 非法显式值只告警一次——静默按 1 处理会让人以为已经放宽，继续盯着一片红。
+ * 纯函数，load / cores / 覆盖值都可注入；单测不依赖真实机器负载。
+ * 非法覆盖值按自动倍率处理，由 {@link processBudgetScale} 告警一次。
  *
- * @returns {number} 倍率，默认按当前 load 自动计算
+ * @param {object} [options] - 选项
+ * @param {number} [options.load] - 1 分钟 load，默认读取当前值
+ * @param {number} [options.cores] - 核数，默认读取当前值
+ * @param {string} [options.override] - `E2E_BUDGET_SCALE` 的原始值
+ * @returns {number} 倍率
  */
-function budgetScale() {
-  const raw = process.env.E2E_BUDGET_SCALE
-  if (raw !== undefined && raw !== '') {
-    const scale = Number(raw)
+export function resolveBudgetScale({
+  load = loadavg()[0],
+  cores = cpus().length,
+  override = process.env.E2E_BUDGET_SCALE,
+} = {}) {
+  if (override !== undefined && override !== '') {
+    const scale = Number(override)
     if (Number.isFinite(scale) && scale > 0) return scale
+  }
+  if (!Number.isFinite(load) || !Number.isFinite(cores) || cores <= 0) return 1
+  return Math.min(AUTO_SCALE_CAP, Math.max(1, load / cores))
+}
+
+/**
+ * 本进程的预算倍率：只解析一次，`scenarioTimeout()` 与所有等待共用，
+ * 避免场景注册时与运行后取到不同倍率。测试可用 {@link resolveBudgetScale} 注入。
+ *
+ * @returns {number} 倍率
+ */
+export function processBudgetScale() {
+  if (cachedScale !== undefined) return cachedScale
+  const load = loadavg()[0]
+  const cores = cpus().length
+  cachedScale = resolveBudgetScale({ load, cores })
+  const raw = process.env.E2E_BUDGET_SCALE
+  const overridden = raw !== undefined && raw !== '' && Number.isFinite(Number(raw)) && Number(raw) > 0
+  if (raw !== undefined && raw !== '' && !overridden) {
     if (!warnedScale) {
       warnedScale = true
       console.warn(`[e2e] E2E_BUDGET_SCALE=${raw} 不是正数，按自动倍率处理`)
     }
+  } else if (!overridden) {
+    console.log(`[e2e] 预算倍率自动 ${cachedScale.toFixed(2)}（load ${load.toFixed(2)} / ${cores} 核，封顶 ${AUTO_SCALE_CAP}）`)
   }
-  const cores = cpus().length
-  const load = loadavg()[0]
-  if (!Number.isFinite(load) || !Number.isFinite(cores) || cores <= 0) return 1
-  const scale = Math.min(AUTO_SCALE_CAP, Math.max(1, load / cores))
-  if (!warnedAutoScale) {
-    warnedAutoScale = true
-    console.log(`[e2e] 预算倍率自动 ${scale.toFixed(2)}（load ${load.toFixed(2)} / ${cores} 核，封顶 ${AUTO_SCALE_CAP}）`)
-  }
-  return scale
+  return cachedScale
 }
 
 /**
- * 测试级上限：内部每个等待都乘 `budgetScale()`，测试级不乘会让慢机先撞它，
+ * 测试级上限：内部每个等待都乘同一个进程倍率，测试级不乘会让慢机先撞它，
  * 把带读数的「等待失败」换成一句「测试超时」——正是 #104 想避免的形态。
  *
  * @param {number} [baseMs] - 本机满额时的上限，默认 90 秒
+ * @param {number} [scale] - 倍率，默认本进程解析值；测试可显式注入
  * @returns {number} 实际使用的上限
  */
-export function scenarioTimeout(baseMs = 90_000) {
-  return Math.round(baseMs * budgetScale())
+export function scenarioTimeout(baseMs = 90_000, scale = processBudgetScale()) {
+  return Math.round(baseMs * scale)
 }
 
 /**
@@ -307,7 +327,7 @@ export async function launchE2E({ scripts = {}, locale = 'zh-CN', name = 'scenar
  * @returns {Promise<unknown>} 第一次为真的取值
  */
 export async function waitFor({ check, description, timeoutMs = 15_000, intervalMs = 100 }) {
-  const budgetMs = Math.round(timeoutMs * budgetScale())
+  const budgetMs = Math.round(timeoutMs * processBudgetScale())
   const deadline = Date.now() + budgetMs
   let last
   while (Date.now() < deadline) {
@@ -397,7 +417,7 @@ async function describeTarget(locator, timeoutMs) {
  * @returns {Promise<void>} 元素进入目标状态
  */
 export async function waitForLocator(locator, { description, state = 'visible', timeoutMs = 15_000 }) {
-  const budgetMs = Math.round(timeoutMs * budgetScale())
+  const budgetMs = Math.round(timeoutMs * processBudgetScale())
   try {
     await locator.waitFor({ state, timeout: budgetMs })
   } catch (error) {
