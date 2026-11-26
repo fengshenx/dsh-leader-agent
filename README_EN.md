@@ -79,6 +79,14 @@ For pinning a version, removing it, development installs, or trying it without a
 
 `LEADER.md` and `SLOTS.md` are the project manuals; `leader-mode` is the protocol; the target project's `AGENTS.md` remains the host's shared engineering instructions. None grant tool permissions. See [project prompts](docs/usage.md#项目提示词), [getting started](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法), and the `init-leader-agent` skill for setup.
 
+## Common workflows
+
+Pick the entry point that matches what you have:
+
+1. **Hand over a spec.** Get the requirements clear and written into a document, then give it to the Leader. It opens cards, dispatches workers and drives development / review / bug fixes following the flow in `LEADER.md`, and comes back when a decision is needed.
+2. **Hand over a PR.** Or develop in a normal workspace session and open a PR when done, then give the PR to the Leader for the follow-up review / bug-fix flow.
+3. **Ask for status.** At any time, ask the Leader "Report current status. Which PRs can merge, and what needs my decision?" — it answers from cards, deliverables and CI with actionable conclusions.
+
 ## Preview
 
 <div align="center">

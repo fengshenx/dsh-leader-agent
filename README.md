@@ -79,6 +79,14 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 `LEADER.md` 与 `SLOTS.md` 是项目手册，`leader-mode` 是协议，目标项目的 `AGENTS.md` 仍由宿主作为共享工程约定读取；三者都不授予工具权限。见[项目提示词](docs/usage.md#项目提示词)、[上手](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法)与 `init-leader-agent` skill。
 
+## 常规用法
+
+按你手上的东西选入口：
+
+1. **给文档**：先把需求聊清、写成文档，直接交给 Leader。它按 `LEADER.md` 约定的编排拆卡、派工，推进开发 / Review / 修 Bug，需要决策时由你拍板。
+2. **给 PR**：也可以自己在普通工作区的会话里边聊边开发，完成后提 PR；把 PR 交给 Leader，由它接手后续的 Review / 修 Bug。
+3. **问状态**：随时问 Leader「汇报当前状态。哪个 PR 可以合并，哪些事情需要我决策」，它会按卡片、交付物与 CI 给出可行动的结论。
+
 ## 预览
 
 <div align="center">
