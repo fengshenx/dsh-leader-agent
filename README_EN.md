@@ -173,7 +173,7 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 Join the dsh-leader-agent WeChat group — plugin users and anyone interested in frontier agent development and multi-agent orchestration are welcome:
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent WeChat group QR code" width="320">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/7daa10e0d4fed1240cdec8004b0c6021e47c0e2f/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent WeChat group QR code" width="320">
 </p>
 
 The QR code is valid for 7 days and is refreshed when it expires.

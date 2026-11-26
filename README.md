@@ -173,7 +173,7 @@ npm run e2e                       # 浏览器 e2e
 欢迎本插件用户，以及对前沿 Agent 开发、多 Agent 编排感兴趣的朋友入群讨论：
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent 微信群二维码" width="320">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/7daa10e0d4fed1240cdec8004b0c6021e47c0e2f/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent 微信群二维码" width="320">
 </p>
 
 二维码 7 天内有效，过期后会更新。
