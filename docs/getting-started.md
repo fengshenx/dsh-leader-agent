@@ -118,6 +118,6 @@ slots:
 | `create_card` 报没有权限 | 只有 Leader 能建卡与列卡，worker 只有 `update_card` |
 | `spawn_worker` 被拒 | 卡不是本项目、不是 `active`，或这个 worker 还挂着未完成卡 |
 | 改 `SLOTS.md` 没生效 | 确认槽位与正文都改对了；槽位模型只在建 worker 时生效 |
-| 桌面版没有看板 | 桌面版读 `desktop` profile，与 web 的插件安装互不相通 |
+| 桌面版看不到看板 | 插件只在 `web` profile 里装了；要在 `desktop` profile 再装一次 |
 
 更多操作见[使用手册](usage.md)。看板与信号灯的口径见[已知限制](limitations.md)。

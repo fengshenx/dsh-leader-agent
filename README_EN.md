@@ -39,7 +39,7 @@
 
 ### Desktop install (DeepSeek Harness Desktop)
 
-Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`. The **delivery board is a web-profile feature**; the desktop profile loads the plugin without it.
+Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`, so install the plugin separately in each. Once installed, both sides have the same features — the board and project tree included — and share sessions, projects and cards.
 
 **GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-agent` and click **Install**:
 
