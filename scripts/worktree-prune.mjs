@@ -385,6 +385,8 @@ if (removable.length === 0) {
 }
 const lockToken = acquirePruneLock()
 if (lockToken === null) process.exit(1)
+// 远端删除是真失败时要让整个 prune 非零退出；「远端已无」不算失败。
+let remoteDeleteFailed = false
 try {
   // 在将要删除的 worktree 里执行时，删到自己那一步 cwd 就失效了，所以从主 checkout 跑
   process.chdir(root)
@@ -462,6 +464,7 @@ try {
           remoteNote = `，远端 ${remote} 已无该分支`
           console.log(`[远端已无] ${row.branch}: ${remote}`)
         } else {
+          remoteDeleteFailed = true
           // 只取首行：git 的失败输出常常是四五行建议，挤在一句里没法读
           console.error(`[失败] 删除远端 ${row.branch}: ${pushed.stderr.trim().split('\n')[0]}（本地已删，远端分支可能还在）`)
         }
@@ -472,3 +475,4 @@ try {
 } finally {
   releasePruneLock(lockToken)
 }
+if (remoteDeleteFailed) process.exitCode = 1

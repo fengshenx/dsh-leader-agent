@@ -119,7 +119,7 @@ test('远端分支已被自动删除时 prune 视为达成', (t) => {
   git(repo, ['worktree', 'add', '-q', worktree, '-b', 'feature/int'])
   const failed = runPrune(repo, ['--delete-remote', '--remote', 'missing'])
   const failedOutput = `${failed.stdout}\n${failed.stderr}`
-  assert.equal(failed.status, 0, `prune 异常退出:\n${failedOutput}`)
+  assert.equal(failed.status, 1, `prune 应以非零退出:\n${failedOutput}`)
   assert.match(failedOutput, /\[失败\] 删除远端 feature\/int/)
   assert.match(failedOutput, /远端分支可能还在/)
   assert.doesNotMatch(failedOutput, /\[远端已无\]/)
