@@ -4,8 +4,8 @@
  * 两个项目各自有一份水位：展开 A 到 6 条、收起 B 时 A 不受影响，B 回到 5；
  * 再收起 A 后重开也回到 5。两段起实例（同 `projects.json` / `workers.json` 的
  * 惯例）：第一段在两个工作区里各建一个 leader 与 6 个 worker，停掉后登记进两个
- * 项目；第二段验证隔离与回落。断言只落在插件自己的 DOM（会话行数与「展开其余」
- * 按钮文案）上。
+ * 项目；第二段验证隔离与回落，并把 A 的一条 worker 跑成完成未读，验证它不会把
+ * 列表撑开。断言只落在插件自己的 DOM（会话行数与「展开其余」按钮文案）上。
  */
 
 import assert from 'node:assert/strict'
@@ -218,8 +218,15 @@ test('收起项目再展开回到默认 5 条，且不影响其它项目', { tim
   const mock = await startMockProvider({ scripts })
   let browser = null
   let instance = null
+  let completionMock = null
 
-  t.after(() => stopScenario({ browser, instance, mock, root }))
+  t.after(async () => {
+    try {
+      await stopScenario({ browser, instance, mock, root })
+    } finally {
+      await completionMock?.stop()
+    }
+  })
 
   // 第一段：两个工作区各建一个 leader 与 6 个 worker。水位超过一页才看得出
   // 有没有把上次展开的条数带回来。
@@ -287,9 +294,17 @@ test('收起项目再展开回到默认 5 条，且不影响其它项目', { tim
 
   seedProjects(first.home, dirs, leaders, workers)
 
+  // 第二段单独起一个带延迟的 mock：完成未读要在「运行中」窗口里切走才会点亮。
+  // 标记沿用第一轮，请求历史里仍只有一个标记；每个标记只补一步新回执。
+  const completionScripts = {}
+  for (let index = 0; index < WORKERS_PER_PROJECT; index += 1) {
+    completionScripts[PROJECTS[0].workerMarker(index)] = [{ text: `折叠场景：A worker ${index + 1} 第二轮回执。` }]
+  }
+  completionMock = await startMockProvider({ scripts: completionScripts, stepDelayMs: 1200 })
+
   // 第二段：A、B 各自展开到 6 条；收起 B 时 A 不能被拉回 5；再收起/重开 A、B
   // 都回到默认一页，且互不影响。
-  const second = await startInstanceIn({ root, baseUrl: mock.url })
+  const second = await startInstanceIn({ root, baseUrl: completionMock.url })
   instance = second
   const context = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   const page = await context.newPage()
@@ -373,6 +388,56 @@ test('收起项目再展开回到默认 5 条，且不影响其它项目', { tim
   await waitForCount(sessionsA, PAGE_SIZE, 'A 重新展开回到默认 5 条')
   assert.equal(await overflowA.innerText(), '展开其余 1 个会话', 'A 重新展开后剩余条数重新出现')
   assert.equal(await sessionsB.count(), PAGE_SIZE, 'A 重新展开不应影响 B 的 5 条')
+
+  // 完成未读不撑开列表：把 A 最老的一条 worker 跑成完成未读，再让其余 5 条各
+  // 跑一轮压到它前面，使它落在第 6 条。旧实现会因 completed 把基线抬到 6，
+  // 新实现重开项目仍只露 5 条，目标行折在「展开其余」后面。
+  const workersA = workers.filter((worker) => worker.projectId === projectA.id)
+  assert.equal(workersA.length, WORKERS_PER_PROJECT, 'A 应有 6 条 worker 会话')
+  const completedWorker = workersA[0]
+  const completedRow = page.locator(`.dsh-leader-agent-session-row[data-session-id="${completedWorker.id}"]`)
+  await overflowA.click()
+  await waitForCount(sessionsA, WORKERS_PER_PROJECT, 'A 先展开到全部 6 条')
+  await completedRow.click()
+  const completionComposer = page.locator('div[role="textbox"][contenteditable="true"]').first()
+  await waitForLocator(completionComposer, { description: '完成未读 worker 的输入框' })
+  await completionComposer.click()
+  await completionComposer.fill(PROJECTS[0].workerMarker(0))
+  await completionComposer.press('Enter')
+  await waitForLocator(completedRow.locator('[data-state="ongoing"]'), { description: '完成未读 worker 的运行中加载圈' })
+  await rowA.click()
+  await waitFor({
+    description: '切回 A 的 leader',
+    check: async () => (await rowA.getAttribute('data-selected')) === 'true',
+  })
+  await waitFor({
+    description: '完成未读 worker 退出主视图',
+    check: async () => (await completedRow.getAttribute('data-selected')) !== 'true',
+  })
+  await waitForLocator(completedRow.locator('[data-state="done"]'), { description: '完成未读 worker 的绿点' })
+
+  for (let index = 1; index < WORKERS_PER_PROJECT; index += 1) {
+    const workerRow = page.locator(`.dsh-leader-agent-session-row[data-session-id="${workersA[index].id}"]`)
+    await workerRow.click()
+    await say(
+      page,
+      PROJECTS[0].workerMarker(index),
+      `折叠场景：A worker ${index + 1} 第二轮回执。`,
+      `A 第 ${index + 1} 个 worker 压序`,
+    )
+    await rowA.click()
+    await waitFor({
+      description: `A 第 ${index + 1} 个 worker 压序后切回 leader`,
+      check: async () => (await rowA.getAttribute('data-selected')) === 'true',
+    })
+  }
+
+  // 目标完成行现在是第 6 条；旧实现会把它抬进基线，新实现仍只露 5 条。
+  await rowA.locator('button[aria-label="收起会话"]').click()
+  await waitForCount(sessionsA, 0, '压序后收起 A')
+  await rowA.locator('button[aria-label="展开会话"]').click()
+  await waitForCount(sessionsA, PAGE_SIZE, 'A 重新展开仍只露 5 条（完成未读不撑开）')
+  assert.equal(await overflowA.innerText(), '展开其余 1 个会话', '完成未读 worker 应被折进展开其余')
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')
 })
