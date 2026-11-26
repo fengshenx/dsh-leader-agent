@@ -10,6 +10,8 @@ Status: implemented
 
 提醒正文接收 `runStartedAt`：`lastReportAt` 早于本轮起点时写「最后回报：本轮还没有回报（上一次回报在 X 前）」，把上一轮的事实留在括号里；本轮确有回报时维持「X 前」；从未回报仍是「无记录（这一轮还没有结束过）」。巡查的判定基线、去重与补投都不动——只改这一行的呈现。
 
+边界固定为严格 `<`：`lastReportAt === runStartedAt` 算本轮（上一轮 `turn/end` 与新一轮派工落在同一毫秒时仍显示「X 前」）。若将来要求相等也算 stale，改成 `<=` 并同步 `tests/worker-stall.test.js` 的相等边界用例。
+
 ## Alternatives considered
 
 - **显示绝对本机时刻（如「最后回报 15:47」）**：提醒给模型读，进程与用户不一定同时区，绝对时刻还要附带时区说明；相对时长与提醒的其余时长口径一致，也不会和宿主会话时钟打架。
@@ -27,7 +29,7 @@ Status: implemented
 
 ## Testing
 
-- `tests/worker-stall.test.js`：跨轮 stale 写「本轮还没有回报（上一次回报在 9 小时 6 分钟前）」；本轮有回报仍写「3 分钟前」；从未回报仍写「无记录」。
-- `tests/dispatch.test.js`：真实派工后在登记表注入上一轮的回报，扫描到点投递的正文同上。
-- 双向验证：把 `lastReportAt < runStartedAt` 判据改成恒假，两处新用例都变红；还原后两文件 153/153 绿。
+- `tests/worker-stall.test.js`：跨轮 stale 写「本轮还没有回报（上一次回报在 9 小时 6 分钟前）」；本轮有回报仍写「3 分钟前」；相等边界（`lastReportAt === runStartedAt`）写「15 分钟前」而不是跨轮文案；从未回报仍写「无记录」。
+- `tests/dispatch.test.js`：真实派工后分别覆盖 never / current / stale 三种正文；stale 在登记表注入上一轮的回报，扫描到点投递的正文同上。
+- 双向验证：把 `lastReportAt < runStartedAt` 改成 `<=`，相等边界用例变红（1 fail）；改成恒假，stale 两处变红；还原后全绿。
 - `npm run check` 通过。
