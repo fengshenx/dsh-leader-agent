@@ -119,13 +119,11 @@ These behaviours come from mechanisms, not from prompt wording:
 
 ## Quick start
 
-The shortest path is: add a project, load `leader-mode`, dispatch a worker, record the card, then watch the board. The full walkthrough is in [getting started](docs/getting-started.md); each action is documented in the [usage manual](docs/usage.md).
+The shortest path: add a project, then ask the Leader.
 
-1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is bound to a Leader immediately; the project row is its entry point. Details: [projects](docs/usage.md#加项目) and [getting started](docs/getting-started.md#二加一个项目就得到一个-leader).
-2. **Load the protocol.** In the Leader session, load the `leader-mode` skill. It starts with `playbooks/program.md`, then the playbook for the current stage.
-3. **Dispatch.** `spawn_worker` creates a worker (optionally with `cardId` + `slot`, `model` / `effort`); `message_worker` sends the first message and starts it. Later messages steer the same worker. The worker inherits the Leader's sandbox and approval policy, and the receipt reports the effective permissions. Use `read_worker_session` to inspect and `list_workers` to inventory. Details: [dispatch](docs/usage.md#派工) and [worker control](docs/limitations.md#worker-的控制面).
-4. **Record task facts.** `create_card` / `update_card` / `list_cards` manage cards; content changes carry `expectedRevision`; links are deliverable entry points (not comment anchors) and use `links` / `addLinks`. Workers can only update their bound card's links; `read_card` returns a worker to its task, and long specs page via `specOffset`. Details: [cards](docs/usage.md#卡片).
-5. **Watch the board.** The right-panel Board tab shows cards for the current project and opens when the Leader creates one. Click a card for details, or a slot chip to open the executor. Details: [board](docs/usage.md#看板).
+1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is bound to a Leader immediately; the project row is its entry point.
+2. **Ask the Leader how to set up.** In the Leader session, just ask "How should I set up this project?" or "How do I get started?". It reads the directory and `AGENTS.md` and tells you the next step; when needed it can write `LEADER.md` / `SLOTS.md` via `init-leader-agent`, then walks you through cards, dispatch and the board. An empty session also shows a "Show me how to use it" guide above the input.
+3. **Look up details when needed.** [Getting started](docs/getting-started.md) walks the full path; the [usage manual](docs/usage.md) documents each action.
 
 `LEADER.md` and `SLOTS.md` are the project manuals; `leader-mode` is the protocol; the target project's `AGENTS.md` remains the host's shared engineering instructions. None grant tool permissions. See [project prompts](docs/usage.md#项目提示词), [getting started](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法), and the `init-leader-agent` skill for setup.
 

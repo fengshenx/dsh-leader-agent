@@ -119,13 +119,11 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 ## 快速开始
 
-最短路径：加项目 → 加载 `leader-mode` → 派工 → 记卡 → 看看板。完整走一遍见[上手](docs/getting-started.md)，每个动作见[使用手册](docs/usage.md)。
+最短路径：加项目，然后直接问 Leader。
 
-1. **加项目**：左栏「项目」点「加项目」选目录；项目当场建好并绑定 Leader，项目行就是入口。详见[项目](docs/usage.md#加项目)与[上手](docs/getting-started.md#二加一个项目就得到一个-leader)。
-2. **加载协议**：在 Leader 会话里加载 `leader-mode`，先读 `playbooks/program.md`，再按阶段读对应 playbook。
-3. **派工**：`spawn_worker` 建 worker（可带 `cardId` + `slot`、`model` / `effort`），`message_worker` 投第一条消息才开工；之后再用就是纠偏或续聊。worker 继承 Leader 的沙箱与审批策略，回执报实际权限；用 `read_worker_session` 回看、`list_workers` 盘点。详见[派工](docs/usage.md#派工)与[worker 控制面](docs/limitations.md#worker-的控制面)。
-4. **记任务事实**：`create_card` / `update_card` / `list_cards` 管卡；改内容带 `expectedRevision`；链接只挂交付物入口，用 `links` / `addLinks`。worker 只能改自己挂着的卡的链接；`read_card` 找回任务，长规格用 `specOffset` 分页。详见[卡片](docs/usage.md#卡片)。
-5. **看看板**：右栏「看板」Tab 按当前项目拉卡，Leader 建卡后自动打开；点卡面看详情，点槽位 chip 进执行者会话。详见[看板](docs/usage.md#看板)。
+1. **加项目**：左栏「项目」点「加项目」选目录。项目当场建好并绑定一个 Leader，项目行就是入口。
+2. **问 Leader 怎么设置**：在 Leader 会话里直接问「这个项目该怎么设置 / 怎么开始？」。它会读当前目录与 `AGENTS.md`，告诉你下一步；需要时可以用 `init-leader-agent` 帮你写 `LEADER.md` / `SLOTS.md`，再带你建卡、派工与看看板。空会话的输入框上方也有「了解怎么用」引导。
+3. **要细节时查手册**：[上手](docs/getting-started.md) 完整走一遍，[使用手册](docs/usage.md) 查每个动作。
 
 `LEADER.md` 与 `SLOTS.md` 是项目手册，`leader-mode` 是协议，目标项目的 `AGENTS.md` 仍由宿主作为共享工程约定读取；三者都不授予工具权限。见[项目提示词](docs/usage.md#项目提示词)、[上手](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法)与 `init-leader-agent` skill。
 
