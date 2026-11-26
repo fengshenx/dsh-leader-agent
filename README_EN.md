@@ -101,7 +101,7 @@ you ──────▶ Leader (the leader session, sole commander of the proj
       Leader wakes up ──▶ board status lights update ──▶ open any worker and keep talking
 ```
 
-Three mechanisms make this more than "a smarter prompt":
+These behaviours come from mechanisms, not from prompt wording:
 
 - **Identity decides the tool surface.** The Leader gets `spawn_worker` / `message_worker`; workers don't. The host trims the tool surface when a session is created — the model is not trusted to hold back.
 - **Completion is settled by the runtime, which wakes the Leader.** When a worker's turn ends, the Leader receives a report (rendered as the worker speaking), with no polling from the Leader and no submit step from the worker.
