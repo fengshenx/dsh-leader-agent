@@ -4,32 +4,35 @@ Status: implemented
 
 ## Problem
 
-`tests/desktop-remove.integration.test.js` 的「假 .app 启动」用真实 `open --env DSH_HOME=...` 拉起 fake app，等它把数据根写进 capture。但在沙箱、无 GUI 会话或部分系统版本上，`open` 退出码仍是 0，`--env` 却被静默丢掉：fake app 拿空 `DSH_HOME`，capture 永远等不到目标内容，用例白等 30 秒后变红。`npm run check` 因此在这些环境里无法全绿，而失败信息容易被人误读成 main 回归。手动验证：同一个 fake app 用 `open --env` 拉起后读不到变量，用编译型 app 复核同样为空，排除 shell 或脚本因素。
+`tests/desktop-remove.integration.test.js` 的「假 .app 启动」用真实 `open --env DSH_HOME=...` 拉起 fake app，等它把数据根写进 capture。沙箱、无 GUI 会话或部分系统版本上，`open` 退出码仍是 0，`--env` 却被静默丢掉：fake app 拿空 `DSH_HOME`，capture 等不到目标内容，用例白等 30 秒后变红。
+
+初版探测把「open 起不来 / 退出非 0」「探针 app 没启动」「app 拉起但变量丢失」三种情况都判成「不支持」并 skip。审查实测：假 `open` 直接 `exit 1` 时用例 `skipped 1 / fail 0`；假 `open` 延迟 8 秒时 5 秒探测也 skip，把慢启动误判成能力缺失。只有第三种是系统限制，前两种是环境坏了、本该失败。
 
 ## Decision
 
-- 真实启动用例开跑前先做一次能力探测：建一个最小的 fake app，用 `open --env DSH_HOME=<探针根> -n -a` 拉起，最多等 5 秒看它是否把探针根写进 capture。
-- 探不通就用 `t.skip()` 跳过整条真实启动用例，跳过文案写明「本机 LaunchServices 不投递 `open --env`（沙箱、无 GUI 会话或系统限制）；真实启动用例跳过，请在桌面会话单跑本用例复核 `npm run desktop`」。
-- 探通时行为不变：仍然用真实 `open` 跑 dev / prod / 再 dev 三段，30 秒窗口照旧。
-- 探测与等待共用一个 100ms 间隔常量；探测不设置 `DSH_HOME` 到测试自己的根以外，fake app 只写探针子目录。
+- 探针只返回 `delivered` / `unsupported`：capture 已出现且内容就是 sentinel 才算 `delivered`；**capture 已出现但内容不是 sentinel**（app 已拉起、`--env` 被丢弃）才算 `unsupported`。
+- `open` 起不来（`result.error`）、退出码非 0 或 stderr 非空 → 抛错，用例失败，错误写明「这是环境坏了，不是系统不支持 --env」。
+- 探针 app 在 30 秒内没有出现 → 抛错，不判成「不支持」；探测预算与真实用例共用 `LAUNCH_WAIT_ATTEMPTS`。
+- 沙箱 / 无 GUI 需要放行时用显式 `DSH_DESKTOP_E2E=skip`；自动 skip 只在确认「app 已拉起但变量丢失」时发生。
+- 探针用 `-n` 强制新实例，与真实启动（单实例复用）不是同一条调用；`-n` 只为保证探针 app 一定被拉起。
 
 ## Alternatives considered
 
-- **继续靠 30 秒超时并让维护者单跑**：失败发生在 `npm run check` 里，不能要求每个跑门禁的人都手工判断这是环境还是回归；30 秒 × 多次等待也很贵。
-- **总是用假 `open` 替换真实通道**：能测 `desktop.mjs` 的参数拼接，但就不再验证 OS 的 `open --env` 链路；把系统限制换成测试假件会掩盖真实环境差异。
-- **始终跳过 macOS 启动用例**：正常的桌面会话本来能验证，全部跳过会让唯一一条真机启动断言失效。
-- **把超时预算调大**：`open --env` 是静默丢弃变量，不是慢；等多久都不会变绿，只会更慢。
-- **改生产启动方式**：`open --env` 仍是 macOS 给 .app 注入环境的文档通道；本次只处理不可测环境，不改启动机制。
+- **保留 5 秒探测**：审查实测 8 秒慢启动会 skip，换成 30 秒预算后同一用例 pass；短预算把慢启动误判成不支持。
+- **open 失败也判成不支持**：open 坏掉时真实用例本该失败，判成跳过等于让唯一真机启动断言在所有机器上静默失效。
+- **始终跳过 macOS 启动用例**：正常桌面会话本来能验证，全部跳过会让唯一一条真机断言失效。
+- **总是用假 `open` 替换真实通道**：能测参数拼接，但不再验证 OS 的 `open --env` 链路；把系统限制换成假件会掩盖真实环境差异。
+- **改生产启动方式**：`open --env` 仍是 macOS 给 .app 注入环境的文档通道；本次只处理不可测环境。
 
 ## Consequences
 
-- 沙箱/无 GUI 环境下 `npm run check` 通过，代价是多一条明确的 skip；测试输出直接指出被跳过的原因与人工复核入口。
-- 探测通过的环境仍跑真实启动；这条用例的价值没有整体丢掉。
-- 不掩盖生产风险：跳过的文案明确要求到桌面会话复核 `npm run desktop`，此次本机无法证明该通道可用。
-- 单次测试多约 5 秒探测预算；比原来每个启动等 30 秒失败便宜。
-
-收益：环境限制不再把 `npm run check` 变成红的，同时保留健康 macOS 上的真实 LaunchServices 验证。
+- 健康 macOS：探测 1–2 秒通过，真实用例照跑；本机 11 pass / 0 skip。
+- `open` 坏掉 / 权限 / PATH 异常：用例红，并直接指向环境问题，不再绿色 skip。
+- 慢启动：30 秒预算内交付不 skip；实测假 `open` 延迟 8 秒时用例 pass（34.3s）。
+- 沙箱 / 无 GUI：显式 `DSH_DESKTOP_E2E=skip` 才跳过；app 已拉起但变量丢失时自动 skip 并给出桌面复核入口。
+- 单次测试多约 1–30 秒探测预算（视环境）。
+- 收益：只有确认「app 已拉起但变量丢失」才跳过；`open` 坏掉与慢启动分别暴露成红与正常通过，不再让唯一真机启动断言静默失效。
 
 ## Testing
 
-本机单跑 `node --test tests/desktop-remove.integration.test.js`：11 条中 10 pass / 1 skip，跳过的是真实启动用例，原因写明 LaunchServices 不投递 `open --env`；其余摘除、影子根、拒绝启动用例照旧通过。探测逻辑的双向验证：把探测改为恒 `true` → 用例回到 30 秒超时红；还原后跳过并全绿。
+`tests/desktop-remove.integration.test.js` 的四场景（假 `open` exit 1 / 延迟 8 秒 / 丢 `--env` / `DSH_DESKTOP_E2E=skip`）分别钉住 fail / pass / skip / skip；本机健康路径 11 pass / 0 skip。对照旧实现，exit 1 与 8 秒慢启动都会 skip，本实现不再吞这两类回归。
