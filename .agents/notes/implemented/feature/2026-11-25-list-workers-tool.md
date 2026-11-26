@@ -12,7 +12,7 @@ worker 的模型选择（[见](2026-11-25-worker-model-selection.md)）在派工
 - 归属按 `parentSessionId` 精确匹配，与 `message_worker` 的投递校验同口径：列出来的每条都能直接续聊，不制造「看得见、投不进」。
 - 模型优先读活 agent 的当前选择（`model.current` → 会话 `model/selection` → 请求头 → `agent.options`），读不到才回落到登记表里建会话时落盘的 `agentOptions`。后者也是冷恢复还原的 route；活会话换过模型时标来源「当前会话」，不把后来的 route 说成派工时选的。
 - 归档集合 provider 返回 `undefined` 表示注册表缺失（不是空数组）：名册列出登记表全部并明说可能含已归档会话；读到空数组才是「本项目没有已归档会话」。卡绑定提供方缺失时省略挂卡行。旧登记没有模型记录时显示「未记录」，不拿部署默认冒充。
-- 名册默认列 20 个、`limit` 上限 100；名字 80 码元、卡标题 120 码元、整张名册 12000 码元，用 `clipText` 截断，标记写出原长。
+- 名册默认列 20 个、`limit` 上限 100；名字 80 码元、卡标题 120 码元。整表超过 12000 码元时先锁住尾部三句提示（「还有 N 个未列出」/归档未知/在跑口径），再从最久未用的 worker 开始整块丢弃并重算 N，不切半条；原长用 `truncationMarker` 按码元标出。
 - 「在跑」只统计 leader 派出的 `inflight` 轮次；人下钻跟 worker 聊的那一轮不算，输出尾部明说，避免 leader 据此误判可立刻续聊。
 - `workerSessions.get` 是可选方法：缺省时回落到宿主 `agents`，自定义/旧 manager 不会因缺一个方法让整条名册 TypeError。
 - 名册渲染成文本，空名册给出下一步；工具面归入 `LEADER_ONLY_TOOLS`，worker 与普通会话都拿不到。
@@ -31,9 +31,9 @@ worker 的模型选择（[见](2026-11-25-worker-model-selection.md)）在派工
 - 模型是尽力而为的读数：旧登记、登记落盘失败或活会话读不到时可能是「未记录」；`list_workers` 不读会话日志，不会为补一个旧值付出 O(N × 文件体积) 的代价。
 - 名册只覆盖未归档、且由当前 lead 派出的 worker；跨项目与别的 leader 的工人不可见，也不该可见。
 - 本次改动触及五份接近 5% 余量下界的文档（README 两份、LEADER.md、limitations、usage），天花板按当前值各留约 8% 余量重设；原因都是新增工具行/段落，不是扩写既有内容。
-- 名册输出有上限：`limit` 与名字/卡标题/整表三级截断，worker 很多或名字、标题超长时不会挤掉 leader 的工作记忆。
+- 名册输出有上限：`limit` 与名字/卡标题/整表三级截断，worker 很多或名字、标题超长时不会挤掉 leader 的工作记忆；整表超限时按 worker 条目整块丢，尾部免责/口径提示不会被切掉。
 - 收益：leader 能在不唤醒任何 worker 的前提下盘点名册、核对每个 worker 的实际 route，并据此决定续聊、换模型重派或新派工。
 
 ## Testing
 
-`tests/list-workers.test.js` 钉住渲染（模型/effort/来源、未记录、在跑、挂卡、空名册、归档未知提示、`limit` 截断与超长名字/标题）、工具装配与 `limit` 越界；`tests/dispatch.test.js` 钉住父会话过滤、归档过滤、最近使用排序、`limit`/`total`、活 agent 覆盖登记表、逐会话卡读取回退、归档 provider 返回 `undefined`、缺 `workerSessions.get` 的回落与身份拒绝；`tests/tool-gate.test.js` 钉住只给 leader，`tests/doc-tool-names.test.js` 钉住文档可引用。双向：把 `list_workers` 从 `LEADER_ONLY_TOOLS` 删掉 → tool-gate 用例红；把活 agent 选择改回只读登记表 → dispatch 的 live 覆盖用例红；把 `clipText` 截断撤掉 → 超长名字用例的红；均还原后全绿。
+`tests/list-workers.test.js` 钉住渲染（模型/effort/来源、未记录、在跑、挂卡、空名册、归档未知提示、`limit` 截断与超长名字/标题、整表超限时整块丢 worker 且尾部三句不丢）、工具装配与 `limit` 越界；`tests/dispatch.test.js` 钉住父会话过滤、归档过滤、最近使用排序、`limit`/`total`、活 agent 覆盖登记表、逐会话卡读取回退、归档 provider 返回 `undefined`、缺 `workerSessions.get` 的回落与身份拒绝；`tests/tool-gate.test.js` 钉住只给 leader，`tests/doc-tool-names.test.js` 钉住文档可引用。双向：把 `list_workers` 从 `LEADER_ONLY_TOOLS` 删掉 → tool-gate 用例红；把活 agent 选择改回只读登记表 → dispatch 的 live 覆盖用例红；把 `clipText` 截断撤掉 → 超长名字用例的红；均还原后全绿。

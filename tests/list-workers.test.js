@@ -75,6 +75,55 @@ test('renderWorkerList：注明「在跑」只统计 leader 派出的轮次', ()
   assert.match(text, /「在跑」只统计你派出的轮次/)
 })
 
+test('renderWorkerList：超限时整块丢 worker，尾部三句与「还有 N」不被切掉', () => {
+  const longName = 'x'.repeat(5000)
+  const stressWorker = (index) => worker({
+    sessionId: `worker-${index}`,
+    name: longName,
+    cards: Array.from({ length: 30 }, (_, cardIndex) => ({
+      number: index * 100 + cardIndex,
+      title: 'y'.repeat(200),
+      slot: 'dev',
+      cardId: `card-${index}-${cardIndex}`,
+    })),
+  })
+  const workers = Array.from({ length: 20 }, (_, index) => stressWorker(index))
+  const text = renderWorkerList({ workers, total: 120, archivedKnown: false })
+  const lines = text.split('\n')
+  const kept = lines.filter((line) => line.startsWith('- worker「')).length
+  assert.ok(text.length <= 12000, `输出应受整表上限约束，实际 ${text.length}`)
+  assert.ok(kept > 0 && kept < workers.length, `应整块丢到部分 worker，实际保留 ${kept}`)
+  assert.match(lines.at(-3), new RegExp(`还有 ${120 - kept} 个更久未用的 worker 未列出`))
+  assert.match(lines.at(-2), /读不到归档集合/)
+  assert.match(lines.at(-1), /「在跑」只统计你派出的轮次/)
+  assert.match(lines.at(-4), /^…（已截断，原长 \d+ 码元；用更小的 limit 聚焦最近使用的 worker）$/)
+  // 标记前必须是完整条目的最后一行：没有把某个 worker 切成半条。
+  assert.match(lines.at(-5), /^  (状态|挂卡)：/)
+})
+
+test('renderWorkerList：limit 100、total 120 的极端名册也整块截断且保留尾部', () => {
+  const longName = 'x'.repeat(5000)
+  const stressWorker = (index) => worker({
+    sessionId: `worker-${index}`,
+    name: longName,
+    cards: Array.from({ length: 30 }, (_, cardIndex) => ({
+      number: index * 100 + cardIndex,
+      title: 'y'.repeat(200),
+      slot: 'dev',
+      cardId: `card-${index}-${cardIndex}`,
+    })),
+  })
+  const workers = Array.from({ length: 100 }, (_, index) => stressWorker(index))
+  const text = renderWorkerList({ workers, total: 120, archivedKnown: false })
+  const lines = text.split('\n')
+  const kept = lines.filter((line) => line.startsWith('- worker「')).length
+  assert.ok(text.length <= 12000, `输出应受整表上限约束，实际 ${text.length}`)
+  assert.ok(kept > 0 && kept < workers.length)
+  assert.match(lines.at(-3), new RegExp(`还有 ${120 - kept} 个更久未用的 worker 未列出`))
+  assert.match(lines.at(-2), /读不到归档集合/)
+  assert.match(lines.at(-1), /「在跑」只统计你派出的轮次/)
+})
+
 test('renderWorkerList：超过 limit 时只列最近使用的，并截断超长名字与卡标题', () => {
   const longName = 'x'.repeat(5000)
   const longTitle = 'y'.repeat(200)

@@ -10,7 +10,7 @@
  * @module dsh-leader-agent/host/tools/list-workers
  */
 
-import { clipText } from '../../shared/truncate.js'
+import { clipText, truncationMarker } from '../../shared/truncate.js'
 
 /** 默认列出多少个 worker：覆盖常见项目，又不至于把名册撑满 leader 上下文。 */
 const DEFAULT_LIMIT = 20
@@ -21,6 +21,8 @@ const NAME_LIMIT = 80
 const CARD_TITLE_LIMIT = 120
 /** 整张名册的硬上限：limit 调大或名字/标题都超长时，也不让输出挤掉 leader 的工作记忆。 */
 const OUTPUT_LIMIT = 12_000
+/** 「在跑」口径是固定尾部提示：整块丢 worker 条目时不能被切掉。 */
+const RUNNING_NOTE = '（「在跑」只统计你派出的轮次；人下钻跟 worker 聊的那一轮不算，别据此判断能否立刻续聊。）'
 
 /**
  * 把模型来源写成给 leader 看的一段话。
@@ -77,18 +79,28 @@ export function renderWorkerList({ workers, total = workers.length, archivedKnow
   if (workers.length === 0) {
     return '本项目目前没有可用的 worker（未归档）。用 spawn_worker 派第一个工，或确认它们是否已经被归档。'
   }
-  const lines = [
-    total > workers.length
-      ? `本项目可用的 worker 共 ${total} 个（未归档，最近使用在前），这里列出最近使用的 ${workers.length} 个：`
-      : `本项目可用的 worker 共 ${total} 个（未归档，最近使用在前）：`,
-    ...workers.map(renderWorker),
-  ]
-  if (total > workers.length) {
-    lines.push(`（还有 ${total - workers.length} 个更久未用的 worker 未列出；需要时用更大的 limit。）`)
+  const headerFor = (shown) => total > shown
+    ? `本项目可用的 worker 共 ${total} 个（未归档，最近使用在前），这里列出最近使用的 ${shown} 个：`
+    : `本项目可用的 worker 共 ${total} 个（未归档，最近使用在前）：`
+  const tailFor = (shown) => [
+    total > shown
+      ? `（还有 ${total - shown} 个更久未用的 worker 未列出；需要时用更大的 limit。）`
+      : undefined,
+    archivedKnown ? undefined : '（当前组合读不到归档集合，列表可能包含已归档会话）',
+    RUNNING_NOTE,
+  ].filter((line) => line !== undefined)
+  const blocks = workers.map(renderWorker)
+  const full = [headerFor(workers.length), ...blocks, ...tailFor(workers.length)].join('\n')
+  if (full.length <= OUTPUT_LIMIT) return full
+  const marker = truncationMarker(full.length, '；用更小的 limit 聚焦最近使用的 worker')
+  // 尾部三句先占位；超限时从最久未用的条目整块丢，不切半条。
+  let shown = workers.length
+  let text = full
+  while (text.length > OUTPUT_LIMIT && shown > 0) {
+    shown -= 1
+    text = [headerFor(shown), ...blocks.slice(0, shown), marker, ...tailFor(shown)].join('\n')
   }
-  if (!archivedKnown) lines.push('（当前组合读不到归档集合，列表可能包含已归档会话）')
-  lines.push('（「在跑」只统计你派出的轮次；人下钻跟 worker 聊的那一轮不算，别据此判断能否立刻续聊。）')
-  return clipText(lines.join('\n'), OUTPUT_LIMIT, '；用更小的 limit 聚焦最近使用的 worker')
+  return text
 }
 
 /**
