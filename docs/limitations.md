@@ -22,13 +22,14 @@
 
 ## worker 的控制面
 
-- **Leader 能纠偏、不能中止**：`message_worker` 只能把消息插进当前轮次的下一步；宿主的 `Agent.cancel` 没接成工具。
+- **Leader 能纠偏不能中止**：`message_worker` 只能把消息插进当前轮次下一步；宿主的 `Agent.cancel` 没接成工具。
 - **宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 对 worker 无效**：worker 是根会话，不在 subagent 体系里，`interrupt_agent` 还会返回假成功。
-- **权限是派工时的快照；模型默认也是**：改 preset / `SLOTS.md` / Leader 模型不影响已派 worker，但 `message_worker` 显式换 route、或换卡/换槽位承接新角色时重选。`ask` 无人应答，需审批调用被拒。
-- **用户 claim 失败的在飞记录不会自动过期**：会留到任务进入下一轮或进程重启，期间 15 分钟巡查反复提醒。
-- **`read_worker_session` 是视图，不是导出**：单条 4000 码元、单页 12000 码元，超出标注原长并给 `offset`；工具参数与成功结果不返回。
-- **`list_workers` 只覆盖你派出的未归档 worker**：跨项目、别的 Leader 与已归档的看不到；「在跑」只算你派出的轮次，人下钻聊的那一轮不算（机制见[笔记](../.agents/notes/implemented/feature/2026-11-25-list-workers-tool.md)）。
-- **无回报巡查有延迟**：60 秒扫一次、超过 15 分钟才提醒；重启后不补，人下钻的回合不计时。
+- **权限与模型默认都是派工快照**：改 preset / `SLOTS.md` / Leader 模型不影响已派 worker；`message_worker` 换 route、换卡/槽位承接才重选。`ask` 无人应答，需审批调用被拒。
+- **用户 claim 失败的在飞记录不会自动过期**：会留到下一轮或进程重启，15 分钟巡查反复提醒。
+- **`read_worker_session` 是视图，不是导出**：单条 4000、单页 12000 码元，超出标注原长并给 `offset`；工具参数与成功结果不返回。
+- **`list_workers` 只覆盖你派出的未归档 worker**：跨项目、别的 Leader 与已归档的看不到；「在跑」只算你派出的轮次，人下钻的不算（机制见[笔记](../.agents/notes/implemented/feature/2026-11-25-list-workers-tool.md)）。
+- **无回报巡查有延迟**：60 秒一扫、超 15 分钟才提醒；重启后不补，人下钻的不计时。
+- **归档 worker 的续聊消息 claim 后会被丢弃**：反归档不补跑，需重新 message_worker 投递。
 
 ## 看板与卡片
 

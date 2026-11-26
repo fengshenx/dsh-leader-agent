@@ -25,7 +25,7 @@ leader 用 `message_worker` 给正在跑的 worker 发消息，要等下一个 t
 
 - **只在 step 边界生效**：worker 卡在长工具调用里时不会立刻看到消息；本 bundle 也没有中止 worker 的手段，这是宿主的 step 语义，不是投递失败。
 - **一条完成通知覆盖合并后的轮次**：纠偏消息与当前任务同轮结束，产物摘要按整轮折叠，不分别回报两次。
-- **被拒绝的 step 会让 steer 留在 inbox 是宿主文档口径**，下限版本的实现与文档不一致（领取之后 reject、整轮直接 blocked），待上游确认；取消或销毁可能丢弃未消费的 steer，`followup` 在同一路径上也会被清空，没有新增可观测面。
+- **被拒绝的 step 在 rc.2 是领取后 reject、整轮 blocked**：消息已被 claim 并从 inbox 取走，不会留在收件箱；本仓按失败回报 leader，见[宿主阻断轮次的失败回报](2026-11-27-blocked-turn-settlement.md)。取消或销毁仍可能丢弃未消费的 steer，`followup` 在同一路径上也会被清空，没有新增可观测面。
 - **不改变 headless 的结论**：父会话被销毁后仍没有投递载体，续聊与回报都落在落盘/重开路径上。
 
 收益：leader 的纠偏消息在 worker 下一步就生效，不再白等一轮，也不再拿旧产物当新轮回报。

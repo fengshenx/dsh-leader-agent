@@ -5190,6 +5190,82 @@ test('leader claim 后 preStep 失败仍按派工失败回报，并说明任务�
   assert.equal(dispatcher.inflightCount(), 0)
 })
 
+test('leader claim 后宿主阻断归档 worker，按失败回报并指出归档', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const archived = []
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store: createNotificationStore({ home }),
+    workers: fixture.workers,
+    archivedSessionIds: () => archived,
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  const task = pendingTask(fixture, record.childId)
+  assert.ok(task)
+  // 人从宿主归档视图归档：登记还在，归档集合已经包含这条会话。
+  // 宿主在 pre-step 直接 reject，leader 的消息被 claim 但不会落成 user/message。
+  archived.push(record.childId)
+  await fixture.startTurnBare(record.childId, [task])
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'blocked' } },
+  }), true)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /任务消息已被取走/)
+  assert.match(text, /还没落成 user\/message/)
+  assert.match(text, /失败原因：被阻断/)
+  assert.match(text, /已归档/)
+  assert.match(text, /反归档/)
+  assert.match(text, /反归档不会补跑这条消息，需重新 message_worker 投递/)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
+test('leader claim 后被宿主阻断且归档集合为空，不追加已归档仍按失败回报', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store: createNotificationStore({ home }),
+    workers: fixture.workers,
+    // 已知本项目没有归档会话：与「注册表缺失（undefined）」是不同分支。
+    archivedSessionIds: () => [],
+  })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+
+  const record = await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件事',
+    name: '实现派工',
+    signal: new AbortController().signal,
+  })
+  const task = pendingTask(fixture, record.childId)
+  assert.ok(task)
+  await fixture.startTurnBare(record.childId, [task])
+  assert.equal(await fixture.emitSessionEvent(record.childId, {
+    type: 'turn/end',
+    data: { reason: { kind: 'blocked' } },
+  }), true)
+  await waitFor(() => fixture.delivered.length === 1)
+
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /任务消息已被取走/)
+  assert.match(text, /失败原因：被阻断/)
+  assert.doesNotMatch(text, /已归档/)
+  assert.equal(dispatcher.inflightCount(), 0)
+})
+
 test('续聊轮失败也带上从登记表读回的模型', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
