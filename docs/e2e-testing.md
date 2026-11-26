@@ -110,11 +110,11 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 ### 负载卫生：全量 e2e 独占机器
 
-全量 e2e 会同时起宿主、chromium 与本地 mock，**不要**和 `npm run check`、别的 worker 的 e2e 或 `e2e:report` 并发跑；并发会把 15 秒等待变成环境噪声，把「等待超时」误读成回归。**同一台机器同一时刻只允许一个 e2e 车道**；多个 worker 需要推进时，用 `--files` 拆成互不重叠的场景集合后**错峰**执行（同一时刻仍只跑一个），或排队等前一个结束。2026-11-20 两个 worker 并发跑 e2e，另一条 i18n 场景在 15 秒等待上反复超时，就是现场依据。
+e2e 默认按整机负载自动放大等待：`budgetScale() = min(4, max(1, loadavg / ncpu))`，`scenarioTimeout()` 与每个 `waitFor()` / `waitForLocator()` 都乘同一个倍率。显式 `E2E_BUDGET_SCALE=1.5` 仍优先，用于复现固定预算或 2 核 CI；自动值在场景进程启动时打印一次，读数要一起记。
 
-开跑前先 `uptime`：1 分钟 load 已经高于核数时先停，等负载降下来；本机 load ~54 时实测 `guide-card`、`board-done-paging`、`avatar` 都会 15 秒超时，空载单跑才恢复。
+**允许两条车道并发**：一条全量 + 一条 `--files` 子集（子集与全量重合也可以，实例隔离），或两条不相交的 `--files` 子集。不要并发跑 `npm run check`（它会抢 CPU 且有自己的超时），也不要让两条全量同时跑；并发时整机 load 上升，自动倍率会把「首屏确实慢」放过去；点击丢失这类问题不会因此变绿（交互本身有就绪/选中确认，见 `openProject`）。
 
-推荐串行顺序：`uptime` → `npm run check`（单独）→ 失败场景用 `npm run e2e:one <场景>` → 全量 `npm run e2e`（fail-fast）→ 只有需要看全量景观时才 `npm run e2e:report`。`e2e:report` 不并行、不重试；不要把它接到 CI。拆并发或只验两三个场景时用 `npm run e2e:report -- --files <场景...>`，不要用「全量 report 并发」代替排队。
+开跑前仍看 `uptime`：自动倍率封顶 4，load 远超核数时先确认不是别的任务在抢机器；超过封顶仍红，按失败处理，不手动加单点秒数。
 
 ### 失败处理：先截图，再断言
 
@@ -127,19 +127,21 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 | 场景 | 症状 / 触发 | 判定方法 | 是否已修 | 最后确认 |
 |---|---|---|---|---|
-| `guide-card` | 项目行选中后 15 秒内引导卡未出现；高 load 时复现。2026-11-25 复测 1 红 2 绿 | 空载 `npm run e2e:one tests/e2e/guide-card.e2e.js` 通过；看 `final.png` | 否（登记，根因未定位） | 2026-11-27 |
-| `board-done-paging` | 项目行首次点击偶发丢失，下游等不到折叠开关；高 load 复现 | 空载单跑通过；失败读数 `data-selected=null` | 是（点到 selected） | 2026-11-27 |
-| `board-cinema` | 全量/单跑均偶发 `openBoard` 的项目行进入选中态 15 秒超时（约 22 秒失败） | 失败时主区域是会话视图（无面板页）；启动期侧栏还在刷新，首点被重渲染丢掉——`openBoard` 等侧栏 500ms 无变化后只点一次，点不中即红。关 worker 看板标签已走真实路径，#200 的 pageerror 由 `watchProblems` 留红 | 否（不重试；稳定后仍丢按产品问题处理） | 2026-11-27 |
-| `avatar` | worker 回报气泡 15 秒内未出现；高 load 时复现 | 空载 `npm run e2e:one tests/e2e/avatar.e2e.js` 通过 | 否（登记，根因未定位） | 2026-11-27 |
+| `guide-card` | 项目行只点一次，既没等 `data-dead` 也没等 `data-selected`；高 load 时引导卡不出现 | 失败读数看 `dead` / `selected`；`openProject` 等就绪并点到选中 | 是（openProject） | 2026-11-27 |
+| `board-done-paging` | 项目行首次点击偶发丢失，下游等不到折叠开关；高 load 复现 | 空载单跑通过；失败读数 `data-selected=null` | 是（openProject） | 2026-11-27 |
+| `board-cinema` | `openBoard` 的项目行只点一次，靠 500ms DOM 静默窗口；启动期侧栏刷新时点击丢失，随后等选中态超时 | 失败读数看 `dead` / `selected`；移除静默窗口，改 `openProject` 等就绪并点到选中 | 是（openProject） | 2026-11-27 |
+| `avatar` | 用 `getByText('avatar')` 点文本而不是项目行，且没有就绪/选中确认；高 load 时回报气泡不出现 | 失败读数先看点击前后是否选中；改为绑定 `.project-row` 后 `openProject` | 是（openProject） | 2026-11-27 |
 | `session-tabs`（多会话） | `instance.logs` 出现 `sessions.retain: unknown session`，切换/清理后常伴随等待失败 | 空载单跑通过且日志不再复现才算环境 flake；日志仍在则不是「已修」 | 否（#200，宿主生命周期，待确认） | 2026-11-20 |
+
+`sessions.retain: unknown session` 仍可能命中上述场景；这是 #200 宿主问题，仍由 `watchProblems` 留红。
 
 登记不等于放行：同一场景连续两次空载单跑都失败，按回归处理，不再引用本表。
 
 ### 超时口径
 
-`waitFor()` / `waitForLocator()` 的默认 **15 秒是代码里的默认值，不是不可改的协议**：调用点可传 `timeoutMs`，首次启动的元素（输入框、项目行、工作区行）显式给 20 秒；测试级上限是 `scenarioTimeout()`（默认 90 秒，`session-tabs` 150 秒）。慢机与 2 核 CI 用 `E2E_BUDGET_SCALE=1.5` 整体放大等待与测试级上限，不改代码。
+`waitFor()` / `waitForLocator()` 的默认 **15 秒是代码里的默认值，不是不可改的协议**：调用点可传 `timeoutMs`，首次启动的元素（输入框、项目行、工作区行）显式给 20 秒；测试级上限是 `scenarioTimeout()`（默认 90 秒，`session-tabs` 150 秒）。两者都乘自动倍率（load / 核数，封顶 4）；`E2E_BUDGET_SCALE` 显式覆盖自动值，适合固定预算与 2 核 CI。
 
-**该调**：确认是慢机或 CI 核数不足，空载仍稳定慢；用倍率整体放大，读数写进 PR。**不该调**：单个 flaky 场景、元素没渲染、选择器等错、数据没到——这些加秒数只会把失败拖长并掩盖根因；不写 60/90 秒的单点预算，也不靠重试变绿。
+**该调**：确认是慢机或 CI 核数不足，空载仍稳定慢；用倍率整体放大，读数写进 PR。**不该调**：单个 flaky 场景、元素没渲染、选择器等错、数据没到——这些加秒数只会把失败拖长并掩盖根因；不写 60/90 秒的单点预算，也不靠重试变绿。**交互竞态靠「等就绪 + 点到选中」，不靠加秒**：`openProject()` 先等 `data-dead` 为空，再点到 `data-selected`，失败读数带 `dead` / `selected` / `aria-current`。
 
 ### 不覆盖
 

@@ -5,13 +5,16 @@
  * - **pageerror / console.error 即失败**：页内异常被重连与历史重同步自愈时，
  *   场景会绿着通过，实际断了一条通路。宿主自己记成 error 的预期取消按文案放行，
  *   见 {@link EXPECTED_SESSION_RELEASE}。
- * - **按状态同步，不用 sleep**：等 DOM 稳定、等落盘文件出现，等某个具体状态。
- * - **不设重试**：失败就是失败，重试只会把竞态藏起来。
+ * - **按状态同步，不用 sleep**：等就绪、等落盘文件、等某个具体状态；不用「连续
+ *   多少毫秒没变化」这类墙钟窗口。
+ * - **不设整场景重试**：失败就是失败，重跑场景只会把竞态藏起来；只有交互本身
+ *   允许「点到目标状态」（如 {@link openProject}），重试的每一步都必须先确认前置状态。
  *
  * @module dsh-leader-agent/tests/e2e/harness
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
+import { cpus, loadavg } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from 'playwright'
 import { WORKTREE, startInstance } from './instance.mjs'
@@ -61,23 +64,39 @@ export function watchProblems(page, problems = []) {
 }
 
 let warnedScale = false
+let warnedAutoScale = false
+
+/** 自动倍率封顶：load 失控时不能让一次失败等上几分钟，失败读数比等待更重要。 */
+const AUTO_SCALE_CAP = 4
 
 /**
- * 预算倍率：慢机与 2 核 CI 上首屏可能超过 20 秒，`E2E_BUDGET_SCALE=1.5` 整体放宽，
- * 不用改代码。非法值只告警一次——静默按 1 处理会让人以为已经放宽，继续盯着一片红。
+ * 预算倍率：显式 `E2E_BUDGET_SCALE` 优先；否则按整机 load / 核数自动放大，
+ * 下限 1、上限 {@link AUTO_SCALE_CAP}。并发车道会把 load 推上去，自动倍率让
+ * 「元素确实晚到」仍能通过；点击丢失这类问题不会被加预算掩盖。
  *
- * @returns {number} 倍率，默认 1
+ * 非法显式值只告警一次——静默按 1 处理会让人以为已经放宽，继续盯着一片红。
+ *
+ * @returns {number} 倍率，默认按当前 load 自动计算
  */
 function budgetScale() {
   const raw = process.env.E2E_BUDGET_SCALE
-  if (raw === undefined || raw === '') return 1
-  const scale = Number(raw)
-  if (Number.isFinite(scale) && scale > 0) return scale
-  if (!warnedScale) {
-    warnedScale = true
-    console.warn(`[e2e] E2E_BUDGET_SCALE=${raw} 不是正数，按 1 处理`)
+  if (raw !== undefined && raw !== '') {
+    const scale = Number(raw)
+    if (Number.isFinite(scale) && scale > 0) return scale
+    if (!warnedScale) {
+      warnedScale = true
+      console.warn(`[e2e] E2E_BUDGET_SCALE=${raw} 不是正数，按自动倍率处理`)
+    }
   }
-  return 1
+  const cores = cpus().length
+  const load = loadavg()[0]
+  if (!Number.isFinite(load) || !Number.isFinite(cores) || cores <= 0) return 1
+  const scale = Math.min(AUTO_SCALE_CAP, Math.max(1, load / cores))
+  if (!warnedAutoScale) {
+    warnedAutoScale = true
+    console.log(`[e2e] 预算倍率自动 ${scale.toFixed(2)}（load ${load.toFixed(2)} / ${cores} 核，封顶 ${AUTO_SCALE_CAP}）`)
+  }
+  return scale
 }
 
 /**
@@ -394,4 +413,47 @@ export async function waitForLocator(locator, { description, state = 'visible', 
       { cause: error },
     )
   }
+}
+
+/**
+ * 打开项目 leader：先等项目行出现且 `data-dead` 为空，再点到 `data-selected` 成立。
+ *
+ * 只重试 click 会把「行还没就绪」误归因成「重渲染吃掉点击」；这里每一轮都先确认
+ * 就绪，未就绪时连点都不点。行在重渲染中被替换时 locator 会重新解析，失败读数
+ * 带 `dead` / `selected` / `aria-current`，能分清「没就绪」与「没选中」。
+ *
+ * @param {import('playwright').Page} page - 页面
+ * @param {object} [options] - 选项
+ * @param {import('playwright').Locator} [options.row] - 已定位的项目行，默认取左栏第一行
+ * @param {string} [options.description] - 报错时说明在等哪个项目
+ * @param {number} [options.timeoutMs] - 就绪与选中的总预算，默认 20 秒
+ * @returns {Promise<import('playwright').Locator>} 已选中的项目行
+ */
+export async function openProject(page, { row, description = '项目行', timeoutMs = 20_000 } = {}) {
+  const projectRow = row ?? page.locator('.dsh-leader-agent-project-row').first()
+  await waitForLocator(projectRow, { description: `${description}出现在左栏`, timeoutMs })
+  const readState = () => projectRow.evaluate((node) => ({
+    dead: node.getAttribute('data-dead'),
+    selected: node.getAttribute('data-selected'),
+    current: node.getAttribute('aria-current'),
+  })).catch((error) => ({ error: error.message }))
+  try {
+    await waitFor({
+      description: `${description}就绪并进入选中态`,
+      check: async () => {
+        const state = await readState()
+        if (state.error !== undefined) return false
+        if (state.selected === 'true') return true
+        // 未就绪时点只会弹「leader 已被删除」，等下一轮；不要用「重试 click」代替就绪判断。
+        if (state.dead !== null) return false
+        await projectRow.click({ timeout: 1000 }).catch(() => {})
+        return false
+      },
+      timeoutMs,
+    })
+  } catch (error) {
+    const state = await readState()
+    throw new Error(`${error.message}；项目行读数 ${JSON.stringify(state)}`, { cause: error })
+  }
+  return projectRow
 }
