@@ -9,6 +9,15 @@
 
 import { MAX_PROJECT_NAME_LENGTH } from '../shared/projects.js'
 import { isRetiredLeaderSession } from './project-board-data.js'
+import { isUnknownSessionError } from './slot-retain.js'
+
+/** 宿主 catalog 未就绪时的递增重试间隔；3 次重试、4 次尝试。 */
+const OPEN_RETRY_DELAYS_MS = [200, 500, 1000]
+
+/** 默认延迟实现；测试传 `wait` 注入，避免真等。 */
+function waitForRetry(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms) })
+}
 
 export { MAX_PROJECT_NAME_LENGTH }
 
@@ -328,15 +337,37 @@ export function isArchiveActiveRefusal(reason) {
  * @param {object} options.project - 项目
  * @param {(sessionId: string) => void} options.openSession - 打开会话
  * @param {(key: string, params?: Record<string, unknown>) => string} options.t - 当前语言的翻译函数
- * @returns {{ok: boolean, message?: string}} 打开结果
+ * @param {(ms: number) => Promise<void>} [options.wait] - 延迟函数，测试可注入
+ * @param {number[]} [options.retryDelaysMs] - 未知会话的递增重试间隔，默认 200/500/1000ms
+ * @param {(attempt: number, delayMs: number) => void} [options.onRetry] - 每次重试前的 UI 通知
+ * @returns {Promise<{ok: boolean, message?: string}>} 打开结果
  */
-export function openLeaderSession({ project, openSession, t }) {
+export async function openLeaderSession({
+  project,
+  openSession,
+  t,
+  wait = waitForRetry,
+  retryDelaysMs = OPEN_RETRY_DELAYS_MS,
+  onRetry = () => {},
+}) {
   const sessionId = project?.leaderSessionId
   if (typeof sessionId !== 'string' || sessionId === '') {
     return { ok: false, message: t('project.leaderMissing', { name: project?.name ?? '' }) }
   }
-  openSession(sessionId)
-  return { ok: true }
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      openSession(sessionId)
+      return { ok: true }
+    } catch (error) {
+      // 宿主 session catalog 还在加载时 openSession 会同步抛 unknown；负载下这个
+      // 窗口会变长，重试到目录就绪，别的错误仍然直接暴露。
+      if (!isUnknownSessionError(error)) throw error
+      if (attempt >= retryDelaysMs.length) throw error
+      const delayMs = retryDelaysMs[attempt]
+      onRetry(attempt + 1, delayMs)
+      await wait(delayMs)
+    }
+  }
 }
 
 /**

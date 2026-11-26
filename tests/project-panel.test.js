@@ -484,9 +484,9 @@ test('归档失败只在「会话还在跑」时要求确认', () => {
   assert.equal(isArchiveActiveRefusal(undefined), false)
 })
 
-test('打开 leader 直接导航到会话，不碰工作区', () => {
+test('打开 leader 直接导航到会话，不碰工作区', async () => {
   const opened = []
-  const result = openLeaderSession({
+  const result = await openLeaderSession({
     project: { id: 'p-1', leaderSessionId: 'session-1' },
     openSession: (sessionId) => opened.push(sessionId),
     t,
@@ -495,9 +495,9 @@ test('打开 leader 直接导航到会话，不碰工作区', () => {
   assert.deepEqual(opened, ['session-1'])
 })
 
-test('没有 leader 会话时不导航并报出原因', () => {
+test('没有 leader 会话时不导航并报出原因', async () => {
   const opened = []
-  const result = openLeaderSession({
+  const result = await openLeaderSession({
     project: { id: 'p-1', name: 'demo', leaderSessionId: '' },
     openSession: (sessionId) => opened.push(sessionId),
     t,
@@ -505,6 +505,82 @@ test('没有 leader 会话时不导航并报出原因', () => {
   assert.equal(result.ok, false)
   assert.match(result.message, /demo/)
   assert.deepEqual(opened, [])
+})
+
+test('未知会话按递增间隔重试，成功即停', async () => {
+  const opened = []
+  const waits = []
+  const retries = []
+  let remaining = 2
+  const result = await openLeaderSession({
+    project: { id: 'p-1', leaderSessionId: 'session-1' },
+    openSession: (sessionId) => {
+      opened.push(sessionId)
+      if (remaining > 0) {
+        remaining -= 1
+        throw new Error(`sessions.retain: unknown session ${sessionId}`)
+      }
+    },
+    t,
+    wait: async (ms) => { waits.push(ms) },
+    retryDelaysMs: [10, 20, 30],
+    onRetry: (attempt, delayMs) => { retries.push([attempt, delayMs]) },
+  })
+  assert.deepEqual(result, { ok: true })
+  assert.deepEqual(opened, ['session-1', 'session-1', 'session-1'])
+  assert.deepEqual(waits, [10, 20])
+  assert.deepEqual(retries, [[1, 10], [2, 20]])
+})
+
+test('省略注入时走默认延迟，重试成功', async () => {
+  let remaining = 1
+  const result = await openLeaderSession({
+    project: { id: 'p-1', leaderSessionId: 'session-1' },
+    openSession: () => {
+      if (remaining > 0) {
+        remaining -= 1
+        throw new Error('sessions.retain: unknown session session-1')
+      }
+    },
+    t,
+    retryDelaysMs: [0],
+  })
+  assert.deepEqual(result, { ok: true })
+})
+
+test('未知会话重试用尽后抛出原错误，错误信息不丢', async () => {
+  const error = new Error('sessions.retain: unknown session session-1')
+  const waits = []
+  const retries = []
+  await assert.rejects(
+    openLeaderSession({
+      project: { id: 'p-1', leaderSessionId: 'session-1' },
+      openSession: () => { throw error },
+      t,
+      wait: async (ms) => { waits.push(ms) },
+      retryDelaysMs: [10, 20, 30],
+      onRetry: (attempt, delayMs) => { retries.push([attempt, delayMs]) },
+    }),
+    (thrown) => thrown === error,
+  )
+  assert.deepEqual(waits, [10, 20, 30])
+  assert.deepEqual(retries, [[1, 10], [2, 20], [3, 30]])
+})
+
+test('非未知会话错误立即抛出，不重试', async () => {
+  const error = new Error('宿主网络错误')
+  let waits = 0
+  await assert.rejects(
+    openLeaderSession({
+      project: { id: 'p-1', leaderSessionId: 'session-1' },
+      openSession: () => { throw error },
+      t,
+      wait: async () => { waits += 1 },
+      retryDelaysMs: [10, 20, 30],
+    }),
+    (thrown) => thrown === error,
+  )
+  assert.equal(waits, 0)
 })
 
 test('项目菜单只有一条删除入口，没有工作区也出现', () => {
