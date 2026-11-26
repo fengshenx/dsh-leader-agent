@@ -130,7 +130,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 ## 前提：多 worktree 隔离
 
-每个任务一个 worktree、一个独立 dsh 实例与数据根；否则并行任务会互相覆盖插件版本、争抢会话与数据。详见[开发](docs/development.md)与[架构](docs/architecture.md#协作与文档机制)。
+每个任务一个 worktree、一个独立 dsh 实例与数据根；否则并行任务会互相覆盖插件版本、争抢会话与数据。详见[开发](docs/development.md)与[架构](docs/architecture.md#项目与会话归属)。
 
 ## 当前限制
 

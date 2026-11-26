@@ -19,16 +19,16 @@
 
 分两步：
 
-1. `spawn_worker({ name })` 建一个常驻 worker 会话并立即返回会话 id，但 worker **还没开工**。`name` 同时是会话标题；可带 `cardId` + `slot` 绑卡片槽位，也可带 `model` / `effort`（不填回落 `SLOTS.md` 的槽位默认，再回落 Leader 当前模型）。
+1. `spawn_worker({ name })` 建一个常驻 worker 会话并立即返回会话 id，但 worker **还没开工**。`name` 同时是会话标题；可带 `cardId` + `slot` 绑卡片槽位，也可带 `model` / `effort`（不填回落 `SLOTS.md` 的槽位默认，再回落 Leader 当前模型）；绑卡自动注入卡片事实。
 2. `message_worker({ sessionId, message })` 投第一条消息，worker 才开始跑；之后再用就是续聊。worker 忙时消息插进当前轮次的下一步，空闲时立即开工。
 
-worker 是普通会话，在项目树下有自己的行，可直接打开输入。每跑完一轮 Leader 会被唤醒并收到回报气泡（产物摘要或失败原因）；不用轮询，worker 也不用调工具交作业。
+worker 是普通会话，在项目树下有自己的行，可直接打开输入；每跑完一轮 Leader 会收到回报气泡（产物摘要或失败原因），不用轮询，worker 也不用调工具交作业。
 
-卡必须是**本项目**的、`active` 状态才能绑；跨项目/已关闭被拒。
+卡必须是**本项目**的、`active` 才能绑；跨项目/已关闭被拒。
 
-派工前可用 `list_worker_models` 查 route：不传参列 provider，给 `provider` 列 model，再给 `model` 列 effort（给 `model` 必须同时给 `provider`）。
+派工前可用 `list_worker_models` 查 route：不传参列 provider，给 `provider` 列 model，再给 `model` 列 effort（查 effort 必须给 `provider`）。
 
-`message_worker` 换模型需 worker 有 route；读不到拒绝，需重新派工。
+`message_worker` 换模型需当前 route；读不到拒绝，重派。
 
 ### worker 名册上限与复用
 

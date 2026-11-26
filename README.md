@@ -130,7 +130,7 @@ The shortest path is: add a project, load `leader-mode`, dispatch a worker, reco
 
 ## Prerequisites: multi-worktree isolation
 
-One worktree, one dsh instance and one data root per task; otherwise parallel tasks overwrite each other's plugin version and compete for sessions and data. Details: [development](docs/development.md) and [architecture](docs/architecture.md#协作与文档机制).
+One worktree, one dsh instance and one data root per task; otherwise parallel tasks overwrite each other's plugin version and compete for sessions and data. Details: [development](docs/development.md) and [architecture](docs/architecture.md#项目与会话归属).
 
 ## Current limitations
 
