@@ -12,14 +12,14 @@ Status: implemented
 - **绿点用宿主同一个 `StateDot`**（`state: 'done'`），与官方会话行同一个基线组件、同默认尺寸，不另画样式。档位降序照官方：执行中（加载圈）盖过完成绿点，空闲不画点。
 - **tracker 随订阅 effect 同生命周期**：实例化放在订阅 `useEffect` 里而不是组件顶层，订阅重建即重新开始跟踪，不把上一轮里看到的运行态当成这一轮的完成跳变。
 - **订阅只在挂载时建立一次，props 经 ref 解引用**：slot inject 的内联函数每次重渲染都换新引用，放进订阅 effect 的依赖会让宿主任一次重渲染（会话标题晚到就够）把订阅重挂——完成未读投影随之清零，跑完的绿点凭空消失。修复为依赖恒空、取值经 `useRef` 走最新一份；挂载早于会话服务就绪时轮询补挂（拿不到即 `console.error`，Fail Loud）。接线断言钉住 ref 存在、tracker 在 effect 内、依赖恒空。
-- **完成未读与当前会话不被折叠**：绿点是通知语义，被折进「展开其余」后面就看不见。`requiredWatermark` 照宿主注意力水位，除运行中外也认 `completed` 与当前会话，在前 50 条内把水位抬到它所在位置；长列表里「有子代理在跑」「等你输入」两档没有数据源，不参与。当前会话必须参与——点开绿点行后 `completed` 清除，若不认当前会话，水位当场回落、这一行会从列表里消失。
+- **当前会话不被折叠**：`requiredWatermark` 只认当前会话，在前 50 条内把水位抬到它所在位置；运行中与完成未读不参与（见[项目树折叠只认当前会话](2026-11-25-project-fold-ignores-unread.md)），绿点可能折在「展开其余」后面。当前会话必须参与——点开绿点行后 `completed` 清除，若不认当前会话，水位当场回落、这一行会从列表里消失。
 
 ## Alternatives considered
 
 - **直接依赖宿主 `ui-session` 的完成投影**：它是进程本地状态、不在任何公开服务上，也不在冻结模块表基线里；照同一套语义自己投影。
 - **把 `ui-session` 加进 `dsh.client.external`**：基线外模块不保证可用，产物在模块求值阶段就会失败；不可行。
 - **挂载时把所有空闲会话都标完成**：会满屏绿点；首见只登记不标记。
-- **不把 `completed` 与当前会话纳入水位**：绿点会被折进「展开其余」，点开后当前行还会消失；两者都参与水位。
+- **不把 `completed` 与当前会话纳入水位**：绿点会被折进「展开其余」，点开后当前行还会消失；当时两者都参与水位（`completed` 后来按[项目树折叠只认当前会话](2026-11-25-project-fold-ignores-unread.md)退出，当前会话保留）。
 - **tracker 放组件顶层**：订阅重建后会把上一轮运行态当成本轮跳变；放进订阅 effect，重建即重新跟踪。
 
 ## Consequences
@@ -28,10 +28,10 @@ Status: implemented
 - **投影是单窗口进程内的**：刷新或组件卸载后从头开始，挂载前已空闲的会话不亮绿点；官方侧栏的完成提醒同为进程内投影，两边口径一致。
 - **宿主「列表基线 pending 期间首见空闲也算完成」的分支不适用**：插件只消费列表快照，观察不到基线之前的事件。
 - **行提示走 title 后缀**（「已完成，待查看」）：本仓会话行没有官方那套悬停卡，title 是唯一说明位。
-- **折叠的代价**：完成未读越多，展开的基线越高（最多 50 条），打开后投影清除、离开该会话后水位回落；不做则 worker 较多的项目里绿点基本不可见，与这个功能的目的冲突。
+- **绿点可能被折起**：运行中与完成未读不抬水位，排在 5 条之后的未读行要展开才看得到（[项目树折叠只认当前会话](2026-11-25-project-fold-ignores-unread.md)）。
 
-收益：worker 跑完在项目树里亮绿点，打开即灭，且不会被折叠或订阅重建吞掉。
+收益：worker 跑完在项目树里亮绿点，打开即灭，且不会被订阅重建吞掉。
 
 ## Testing
 
-`tests/session-completion.test.js`、`tests/session-watermark.test.js`、`tests/project-panel.test.js` 与 `tests/e2e/session-done-dot.e2e.js`。双向：删掉 `unread.add(id)` → 完成跳变相关用例全红；撤掉 `requiredWatermark` 的 `completed` 分支 → 3 例红；撤掉当前会话分支 → 2 例红。还原后全绿。
+`tests/session-completion.test.js`、`tests/session-watermark.test.js`、`tests/project-panel.test.js` 与 `tests/e2e/session-done-dot.e2e.js`。双向：删掉 `unread.add(id)` → 完成跳变相关用例全红；撤掉当前会话分支 → 2 例红；`completed` 分支已按[项目树折叠只认当前会话](2026-11-25-project-fold-ignores-unread.md)移除。还原后全绿。

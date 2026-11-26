@@ -11,7 +11,7 @@ Status: implemented
 - **判定收敛成一个纯函数 `showsProjectActivity({ expanded, rows, leaderRunning })`**：`leaderRunning === true` 直接返回 `true`（任何展开状态都只能靠行首）；其它会话只在收起时算（`expanded === true` 直接返回 `false`，否则同一件事画两遍）。
 - **入参 `rows` 就是 `ProjectRow` 要渲染的那批会话行**，不为目录行另判一遍身份与归属：「目录行有加载圈」与「至少一条会话行有 spinner」因此严格同源。已归档会话在挑行时就被滤掉（会话索引按磁盘目录扫，归档后记录仍在索引里）；快照里还没有的会话没有行可渲染，不会被当成在跑；当前 leader 不在会话行里，由 `isLeaderRunning()` 单独提供；退役 leader 留在会话行里，跟着行走。
 - **两个来源对归档的口径统一**：会话行那一半在挑行时滤掉归档会话，leader 那一半在 `isLeaderRunning()` 里自己查 `archivedSessionIds`；不统一的话，归档的 leader 会让行首一直转。
-- **展开态不额外兜底，边界是水位的「前 50 条」**：运行中的会话把水位抬到自己所在位置，只在前 50 条内生效；这个范围内展开后可见，不会出现「收起时有加载器、展开后连会话行也看不见」的失明窗口。第 51 条及以后在跑的会话不抬水位，展开后仍可能被折起，要再点「展开其余」——那是会话列表超出一页时的既有折叠口径，不为它扩大边界。
+- **展开态不额外兜底**：运行中不抬水位（[项目树折叠只认当前会话](2026-11-25-project-fold-ignores-unread.md)），排在 5 条之后的会话行会被折起来；展开态行首只代表 leader，worker 在跑时由它自己的会话行带 spinner，被折起的行要点「展开其余」才看得到。收起时行首仍是唯一的活动提示。
 - **渲染上是替换行首槽位里的目录图标，不是加第二个指示**：槽位尺寸不变，spinner 复用同一份关键帧；画在目录槽位**内部**而不是替换容器——组内有当前会话时的激活色挂在容器的 `color` 上，容器被顶掉就丢了承载。边框用 `currentColor`，悬停规则挂在槽位容器上，箭头照常盖住 spinner——运行中也要能展开看是哪条会话在跑。spinner 是装饰（`aria-hidden`），状态语义不塞进无障碍名：项目行的入口含义仍是「打开 leader」。
 
 > **这一段已被 [2026-11-03 加载圈改用宿主 StateDot](../bug-fix/2026-11-03-spinner-aligned-with-host-state-dot.md) 取代**：现在渲染的是宿主基线模块的 `StateDot`（`state: 'ongoing'`，14px），不再有自绘类、`currentColor` 与 0.8s 关键帧；运行中槽位只有灰圈、目录图标不渲染，该槽位没有激活色回执，组内激活态在整条项目行上完全消失。**判定与边界的其余决策仍然生效**——`showsProjectActivity` 的两来源并集、归档口径、`expanded` / `leaderRunning` 边界都还在 `src/client/project-panel-logic.js` 里跑。
