@@ -78,6 +78,28 @@ export function isStalled({ baseline, now, thresholdMs = STALL_THRESHOLD_MS }) {
 }
 
 /**
+ * 「最后回报」这一行的口径。
+ *
+ * 复用的 worker 会带着上一轮的 `lastReportAt` 开新轮：直接算「9 小时前」会被读成
+ * 本轮已经沉默 9 小时，也容易被当成时区算错。本轮没有结算过时只陈述这一事实，
+ * 把上一轮的时长放进括号里。
+ *
+ * @param {object} input - 活性事实
+ * @param {number} [input.lastReportAt] - 最后一次回报的时刻
+ * @param {number} input.runStartedAt - 本轮开跑时刻
+ * @param {number} input.now - 当前时刻
+ * @returns {string} 「最后回报：」后面的文案
+ */
+function describeLastReport({ lastReportAt, runStartedAt, now }) {
+  if (lastReportAt === undefined) return '无记录（这一轮还没有结束过）'
+  const elapsedText = formatElapsed(now - lastReportAt)
+  if (lastReportAt < runStartedAt) {
+    return `本轮还没有回报（上一次回报在 ${elapsedText}前）`
+  }
+  return `${elapsedText}前`
+}
+
+/**
  * 构造给模型读的提醒正文。
  *
  * 正文要让人能直接照着做：有卡号与标题（知道是哪条工作线）、有已连续时长与最后
@@ -89,6 +111,7 @@ export function isStalled({ baseline, now, thresholdMs = STALL_THRESHOLD_MS }) {
  * @param {string} input.childId - worker 会话 id
  * @param {number} input.elapsedMs - 已连续未回报的时长
  * @param {number} [input.lastReportAt] - 最后一次回报的时刻
+ * @param {number} input.runStartedAt - 本轮开跑时刻；早于它的回报属于上一轮
  * @param {number} input.now - 当前时刻
  * @param {{ number: number|string, title: string, slot: string }[]} [input.cards] - 挂着的未完成卡
  * @returns {string} 提醒正文
@@ -98,6 +121,7 @@ export function buildStallNoticeText({
   childId,
   elapsedMs,
   lastReportAt,
+  runStartedAt,
   now,
   cards = [],
 }) {
@@ -109,9 +133,7 @@ export function buildStallNoticeText({
       .join('、')
     lines.push(`挂着的卡：${refs}`)
   }
-  lines.push(`最后回报：${lastReportAt === undefined
-    ? '无记录（这一轮还没有结束过）'
-    : `${formatElapsed(now - lastReportAt)}前`}`)
+  lines.push(`最后回报：${describeLastReport({ lastReportAt, runStartedAt, now })}`)
   lines.push(`下一步：先查明再决定继续等待或停止——调 read_worker_session({ sessionId: "${childId}", turns: 3 }) 回看它这一轮卡在哪一步。`)
   lines.push('本流程没有中止 worker 的手段；确认卡死时请人在项目树里打开它的会话处理，或 message_worker 投一条纠偏指令。')
   return lines.join('\n')
