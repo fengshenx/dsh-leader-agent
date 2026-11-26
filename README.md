@@ -142,7 +142,7 @@ Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen,
 
 The `init-leader-agent` skill handles project setup: it merges the repository's engineering conventions into a managed block of the target project's `AGENTS.md`, then writes `LEADER.md` (how the Leader drives this project) and `SLOTS.md` (executor roles) from the bundled skeletons. Re-running only replaces the managed block, and both manuals are read before editing. An empty directory gets the TODO skeleton plus the three questions still unanswered — project facts are never invented.
 
-For the full interaction — slot frontmatter details, archiving, swapping the Leader, how board status lights are derived — see the [usage manual](docs/usage.md) (Chinese).
+For everyday use — projects, dispatch, cards, board, slots and manuals — see the [usage manual](docs/usage.md) (Chinese).
 
 ## Prerequisites: get multi-worktree parallelism working first
 
@@ -160,7 +160,7 @@ Running ten features in parallel requires real isolation between tasks: one work
 - **The project tree coexists with the official workspace tree.** Projects neither register nor occupy dsh workspaces: project sessions land in the official tree's "Ungrouped" section and are excluded there at render time (official counts and search still include them); when nothing but excluded rows is left in that section, its header is hidden too.
 - **The client is coupled to the host version.** Dialogs, menus and icons are copied from host sources, the Typert remote channel is a hand-written protocol shape, and the leader session layout depends on the host's session view service, so host upgrades require syncing this repository.
 
-The full list and trade-offs (status-light sources, watermark collapsing, avatars, the archive entry point, DOM injection positioning and more) live in [known limitations and trade-offs](docs/limitations.md) (Chinese).
+The full list lives in [known limitations](docs/limitations.md) (Chinese).
 
 ## Development
 
@@ -184,9 +184,9 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 |---|---|
 | [AGENTS.md](AGENTS.md) | Repository rules and the task-routed reading index |
 | [docs/getting-started.md](docs/getting-started.md) | Walkthrough (Chinese): prerequisites, adding a project and its Leader, the two project files, one card from creation to drill-down |
-| [docs/usage.md](docs/usage.md) | Full interaction for dispatch, follow-ups, cards, board, project management, slots and manuals |
+| [docs/usage.md](docs/usage.md) | Usage manual: projects, dispatch, cards, board, slots and manuals |
 | [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, host-contract landing spots |
-| [docs/limitations.md](docs/limitations.md) | Full known limitations and trade-offs |
+| [docs/limitations.md](docs/limitations.md) | Known limitations |
 | [docs/development.md](docs/development.md) | Dev environment, instances, build contract, test policy |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, screenshots) and manual evidence rules; assertion discipline and failure diagnosis live in `.agents/skills/e2e-scenarios/` |

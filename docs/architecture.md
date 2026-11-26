@@ -1,6 +1,6 @@
 # dsh-leader-agent 架构
 
-本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点；只回答组成、接缝与牵动面。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），完整交互见[使用手册](usage.md)，限制与取舍见[已知限制](limitations.md)，宿主能力边界见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发与构建见[开发](development.md)。
+本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点；只回答组成、接缝与牵动面。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），操作见[使用手册](usage.md)，限制见[已知限制](limitations.md)，宿主能力边界见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发与构建见[开发](development.md)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
