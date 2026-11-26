@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { test } from 'node:test'
-import { watchProblems } from './e2e/harness.mjs'
+import { formatPageError, watchProblems } from './e2e/harness.mjs'
 
 /** 造一个只发 console / pageerror 事件的假页面。 */
 function fakePage() {
@@ -20,10 +20,10 @@ test('未捕获异常与普通 console.error 仍然是失败', () => {
   const problems = watchProblems(page)
   page.emit('pageerror', new Error('boom'))
   page.emit('console', { type: () => 'error', text: () => '真实故障：订阅断了' })
-  assert.deepEqual(problems, [
-    'pageerror: boom',
-    'console.error: 真实故障：订阅断了',
-  ])
+  assert.equal(problems.length, 2)
+  assert.match(problems[0], /^pageerror: boom\nname: Error\nstack: Error: boom/)
+  assert.equal(problems[1], 'console.error: 真实故障：订阅断了')
+  assert.match(formatPageError({ name: '', message: 'x' }), /^pageerror: x\nname: Error\nstack: \(no stack\)$/)
 })
 
 test('宿主的 session 引用释放是预期取消，按文案放行', () => {
@@ -63,5 +63,7 @@ test('归集数组可复用：多个页面写同一个 problems', () => {
   watchProblems(second, problems)
   first.emit('pageerror', new Error('a'))
   second.emit('pageerror', new Error('b'))
-  assert.deepEqual(problems, ['pageerror: a', 'pageerror: b'])
+  assert.equal(problems.length, 2)
+  assert.match(problems[0], /^pageerror: a\n/)
+  assert.match(problems[1], /^pageerror: b\n/)
 })

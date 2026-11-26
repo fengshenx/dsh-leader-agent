@@ -40,6 +40,23 @@ const CLOSE_BUDGET_MS = 10_000
 const EXPECTED_SESSION_RELEASE = /^Sidebar Session opening failed: (?:Error: )?Session reference "[^"]*" is released(?:\n|$)/
 
 /**
+ * 把未捕获异常落成带栈的失败读数。
+ *
+ * 只记 message 时，`sessions.retain: unknown session` 这类错误看不到调用方，无法判断
+ * 是插件同步调用、标签卸载后的迟到调用，还是宿主内部释放竞态。name 也带上：
+ * Playwright 的 pageerror 不保证 message 自带类型名。
+ *
+ * @param {Error} error - 页面未捕获异常
+ * @returns {string} 失败读数
+ */
+export function formatPageError(error) {
+  const name = typeof error?.name === 'string' && error.name !== '' ? error.name : 'Error'
+  const message = typeof error?.message === 'string' ? error.message : String(error)
+  const stack = typeof error?.stack === 'string' && error.stack !== '' ? error.stack : '(no stack)'
+  return `pageerror: ${message}\nname: ${name}\nstack: ${stack}`
+}
+
+/**
  * 收集页内不该出现的异常：未捕获异常与 console.error。
  *
  * 已知的预期取消按文案放行（见 {@link EXPECTED_SESSION_RELEASE}），其余一律失败——
@@ -50,7 +67,7 @@ const EXPECTED_SESSION_RELEASE = /^Sidebar Session opening failed: (?:Error: )?S
  * @returns {string[]} 随页面生命周期增长的异常列表，场景末尾断言为空
  */
 export function watchProblems(page, problems = []) {
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  page.on('pageerror', (error) => problems.push(formatPageError(error)))
   page.on('console', (message) => {
     if (message.type() !== 'error') return
     const text = message.text()

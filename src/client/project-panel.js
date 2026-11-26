@@ -38,6 +38,7 @@ import { productIcon } from './icons.js'
 import {
   classifyDeletionResult,
   collectExcludedSessionIds,
+  createInFlightGuard,
   createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
@@ -204,6 +205,7 @@ export function ProjectPanel(props) {
   // 被反复重置。经 ref 解引用：订阅只在挂载时建立一次，取值永远走最新一份。
   const sessionsRef = useRef(getSessions)
   sessionsRef.current = getSessions
+  const openingProjects = useRef(createInFlightGuard())
   const refreshIndexRef = useRef(refreshSessionIndex)
   refreshIndexRef.current = refreshSessionIndex
 
@@ -521,13 +523,28 @@ export function ProjectPanel(props) {
       showToast(t('project.error.navigation'))
       return
     }
-    // 项目不碰 dsh 工作区：点项目行只是打开那条会话，不给它分组、也不改用户的工作区。
-    const result = openLeaderSession({
-      project,
-      openSession: (sessionId) => uiWorkspace.openSession(sessionId),
-      t,
-    })
-    if (result.ok !== true) showToast(result.message)
+    if (!openingProjects.current.begin(project.id)) return
+    try {
+      // 项目不碰 dsh 工作区：点项目行只是打开那条会话，不给它分组、也不改用户的工作区。
+      const result = await openLeaderSession({
+        project,
+        openSession: (sessionId) => uiWorkspace.openSession(sessionId),
+        t,
+        onRetry: () => showToast(t('project.leaderLoading', { name: project.name })),
+      })
+      if (result.ok !== true) showToast(result.message)
+    } catch (error) {
+      // 重试用尽或非 unknown 的宿主错误：用户要看见失败原因，不能点完没反应；
+      // console.error 同时让 e2e 的 watchProblems 保持 fail-loud。
+      const message = t('project.leaderOpenFailed', {
+        name: project.name,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      console.error(message, error)
+      showToast(message)
+    } finally {
+      openingProjects.current.end(project.id)
+    }
   }, [getUiWorkspace, t])
 
   const renameProject = useCallback(async (project, name) => {
