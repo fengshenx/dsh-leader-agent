@@ -12,8 +12,8 @@ const CJK_PATTERN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/gu
 /** 天花板超过当前值的这个倍数，说明余量已经大到不再约束体量，报 `loose`。 */
 export const LOOSE_RATIO = 1.12
 
-/** 天花板低于当前值的这个倍数，说明余量不足 5%，报 `tight`。 */
-export const FLOOR_RATIO = 1.05
+/** 未登记专项下限的文档，至少按 5% 判。 */
+const DEFAULT_MIN_HEADROOM_PERCENT = 5
 
 /** 9 个单位以下时 5% 与 12% 之间没有整数天花板，下界不参与判定。 */
 const FLOOR_MIN_UNITS = 9
@@ -32,16 +32,29 @@ export function countDocUnits(text) {
 }
 
 /**
- * 按当前值与 5% 余量算建议天花板。
+ * 把清单里的专项下限归一成百分比；未登记或非法值按默认 5%。
  *
- * `units` 很小时「5% 余量」与「12% 上限」之间可能没有整数解（如 1 个单位），
+ * @param {number | undefined} minHeadroom - 文档专项最小余量（百分比）
+ * @returns {number} 至少 5 的百分比
+ */
+function minimumHeadroomPercent(minHeadroom) {
+  const value = Number.isFinite(minHeadroom) ? minHeadroom : DEFAULT_MIN_HEADROOM_PERCENT
+  return Math.max(value, DEFAULT_MIN_HEADROOM_PERCENT)
+}
+
+/**
+ * 按当前值与要求余量算建议天花板。
+ *
+ * `units` 很小时专项余量与 12% 上限之间可能没有整数解（如 1 个单位），
  * 这时取能落地的最小值；返回值为正整数。
  *
  * @param {number} units - 当前体量单位数（调用方保证 > 0）
+ * @param {number} minHeadroom - 文档专项最小余量（百分比）
  * @returns {number} 建议天花板（正整数）
  */
-function recommendedCeiling(units) {
-  const target = Math.ceil(units * FLOOR_RATIO)
+function recommendedCeiling(units, minHeadroom) {
+  // 整数运算避免 100 * 1.1 = 110.00000000000001 把建议值抬到 111。
+  const target = Math.ceil((units * (100 + minimumHeadroomPercent(minHeadroom))) / 100)
   const upper = Math.floor(units * LOOSE_RATIO)
   return Math.min(target, upper)
 }
@@ -49,13 +62,14 @@ function recommendedCeiling(units) {
 /**
  * 当前天花板下还能保留多少单位，才不算贴线；无解时返回 null。
  *
- * 压缩目标要同时满足 5% 下界与 12% 上限；9 个单位附近会只剩抬天花板一条路。
+ * 压缩目标要同时满足文档要求的下界与 12% 上限；9 个单位附近会只剩抬天花板一条路。
  *
  * @param {number} ceiling - 当前天花板
+ * @param {number} minHeadroom - 文档专项最小余量（百分比）
  * @returns {number | null} 可压缩到的最大单位数；无整数解时为 null
  */
-function compactionTarget(ceiling) {
-  const maxUnits = Math.floor(ceiling / FLOOR_RATIO)
+function compactionTarget(ceiling, minHeadroom) {
+  const maxUnits = Math.floor((ceiling * 100) / (100 + minimumHeadroomPercent(minHeadroom)))
   return maxUnits > 0 && ceiling / maxUnits <= LOOSE_RATIO ? maxUnits : null
 }
 
@@ -64,36 +78,39 @@ function compactionTarget(ceiling) {
  *
  * 状态优先级：`bad-ceiling` / `missing` 是结构性错误，先报；`over` 是超限；
  * `loose` 是余量超过 12%；`units < 9` 的非 loose 文档判 `small`（下界豁免）；
- * `tight` 是余量低于 5%。`loose` / `tight` / `small` 互斥。
+ * 登记了专项下限的文档低于下限判 `tight-special`；其余低于 5% 判 `tight`。
+ * `loose` / `tight` / `tight-special` / `small` 互斥。
  *
- * @param {Array<{ path: string, ceiling: number, units: number | null }>} entries - 待判定项，`units` 为 null 表示文件不存在
- * @returns {Array<{ path: string, ceiling: number, units: number | null, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose' | 'tight' | 'small', suggestedCeiling?: number, maxUnits?: number }>} 判定结果
+ * @param {Array<{ path: string, ceiling: number, units: number | null, minHeadroom?: number }>} entries - 待判定项，`units` 为 null 表示文件不存在
+ * @returns {Array<{ path: string, ceiling: number, units: number | null, minHeadroom?: number, status: 'ok' | 'over' | 'missing' | 'bad-ceiling' | 'loose' | 'tight' | 'tight-special' | 'small', suggestedCeiling?: number, maxUnits?: number }>} 判定结果
  */
 export function checkBudgets(entries) {
-  return entries.map(({ path, ceiling, units }) => {
+  return entries.map(({ path, ceiling, units, minHeadroom: configuredMin }) => {
     if (!Number.isInteger(ceiling) || ceiling <= 0) {
       return { path, ceiling, units, status: 'bad-ceiling' }
     }
     if (units === null) return { path, ceiling, units: null, status: 'missing' }
     if (units > ceiling) return { path, ceiling, units, status: 'over' }
+    const minHeadroom = minimumHeadroomPercent(configuredMin)
     // 空文档与 9 单位以下的小文档没有可判的下界，标 small 让豁免可见。
-    if (units === 0) return { path, ceiling, units, status: 'small' }
+    if (units === 0) return { path, ceiling, units, status: 'small', minHeadroom }
     if (ceiling / units > LOOSE_RATIO) {
-      return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units) }
+      return { path, ceiling, units, status: 'loose', suggestedCeiling: recommendedCeiling(units, minHeadroom) }
     }
-    if (units < FLOOR_MIN_UNITS) return { path, ceiling, units, status: 'small' }
-    if (ceiling / units < FLOOR_RATIO) {
-      const maxUnits = compactionTarget(ceiling)
+    if (units < FLOOR_MIN_UNITS) return { path, ceiling, units, status: 'small', minHeadroom }
+    if (ceiling / units < 1 + minHeadroom / 100) {
+      const maxUnits = compactionTarget(ceiling, minHeadroom)
       return {
         path,
         ceiling,
         units,
-        status: 'tight',
-        suggestedCeiling: recommendedCeiling(units),
+        status: minHeadroom > 5 ? 'tight-special' : 'tight',
+        minHeadroom,
+        suggestedCeiling: recommendedCeiling(units, minHeadroom),
         ...(maxUnits === null ? {} : { maxUnits }),
       }
     }
-    return { path, ceiling, units, status: 'ok' }
+    return { path, ceiling, units, status: 'ok', minHeadroom }
   })
 }
 
@@ -117,35 +134,41 @@ export function findUnregisteredDocs(registered, discovered) {
 /**
  * 余量百分比，保留两位小数。
  *
- * 4.999% 四舍五入会显示成 5.00%，与 `tight` 自相矛盾；命中 5 时改为向下取整。
+ * 低于该文档适用下限时向下取整，避免 9.999% 显示成 10.00% 却仍判专项失败；
+ * 达到下限后正常四舍五入，避免 5.456% 被截成 5.45%。
  *
  * @param {number} units - 当前体量单位数
  * @param {number} ceiling - 当前天花板
+ * @param {number} [minHeadroom=5] - 当前文档适用的最小余量（百分比）
  * @returns {string} 例如 `4.00`
  */
-export function headroomPercent(units, ceiling) {
+export function headroomPercent(units, ceiling, minHeadroom = 5) {
   const percent = (ceiling / units - 1) * 100
-  const rounded = Math.round(percent * 100) / 100
-  return (rounded >= 5 ? Math.floor(percent * 100) / 100 : rounded).toFixed(2)
+  const hundredths = percent * 100
+  const displayed = percent < minHeadroom ? Math.floor(hundredths) : Math.round(hundredths)
+  return (displayed / 100).toFixed(2)
 }
 
 /**
  * 渲染判定结果的一行。
  *
- * @param {{ path: string, ceiling: number, units: number | null, status: string, suggestedCeiling?: number, maxUnits?: number }} result - 单项判定结果
+ * @param {{ path: string, ceiling: number, units: number | null, minHeadroom?: number, status: string, suggestedCeiling?: number, maxUnits?: number }} result - 单项判定结果
  * @returns {string} 对齐后的单行输出
  */
 export function formatBudgetRow(result) {
-  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE', tight: 'TIGHT', small: 'SMALL' }[result.status]
+  const label = { ok: 'ok  ', over: 'OVER', missing: 'MISS', 'bad-ceiling': 'BAD ', loose: 'LOOSE', tight: 'TIGHT', 'tight-special': 'TIGHT*', small: 'SMALL' }[result.status]
   const units = result.units === null ? '—' : String(result.units)
   let suggestion = ''
   if (result.status === 'loose') {
     suggestion = `  → 建议 ${result.suggestedCeiling}`
+  } else if (result.status === 'tight-special') {
+    const compress = result.maxUnits === undefined ? '' : `压到 ${result.maxUnits} 或`
+    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling, result.minHeadroom)}%，要求 ≥${result.minHeadroom}%；${compress}抬到 ${result.suggestedCeiling}`
   } else if (result.status === 'tight') {
     const compress = result.maxUnits === undefined ? '' : `压到 ${result.maxUnits} 或`
-    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling)}%，${compress}抬到 ${result.suggestedCeiling}`
+    suggestion = `  → 余量 ${headroomPercent(result.units, result.ceiling, result.minHeadroom)}%，${compress}抬到 ${result.suggestedCeiling}`
   } else if (result.status === 'small') {
-    const percent = result.units === 0 ? '' : `余量 ${headroomPercent(result.units, result.ceiling)}%，`
+    const percent = result.units === 0 ? '' : `余量 ${headroomPercent(result.units, result.ceiling, result.minHeadroom)}%，`
     suggestion = `  → ${percent}<9 单位，下界豁免`
   }
   return `${label}  ${units.padStart(6)} / ${String(result.ceiling).padEnd(6)} ${result.path}${suggestion}`

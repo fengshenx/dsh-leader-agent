@@ -248,20 +248,36 @@ test('未登记的长期文档被报出，已登记的不报', () => {
   assert.deepEqual(findUnregisteredDocs(['docs/a.md'], ['docs\\a.md']), [])
 })
 
-test('真实清单：声明的文件都在，且读数都是正整数', () => {
+test('真实清单：声明的文件都在，且天花板与专项下限都是正整数', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
   assert.ok(Object.keys(manifest).length > 0)
-  for (const [path, ceiling] of Object.entries(manifest)) {
+  for (const [path, config] of Object.entries(manifest)) {
     assert.ok(existsSync(join(root, path)), `清单里的 ${path} 不存在，改名或删除时同步 scripts/doc-budgets.json`)
+    const ceiling = typeof config === 'number' ? config : config.ceiling
     assert.ok(Number.isInteger(ceiling) && ceiling > 0, `${path} 的天花板必须是正整数`)
+    if (typeof config === 'object') {
+      assert.ok(Number.isInteger(config.minHeadroom) && config.minHeadroom > 5, `${path} 的 minHeadroom 必须是大于 5 的整数`)
+    }
   }
+})
+
+test('真实清单：只有 AGENTS.md 与 capability-gaps.md 登记专项下限', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
+  const special = Object.entries(manifest)
+    .filter(([, config]) => typeof config === 'object' && config.minHeadroom !== undefined)
+    .map(([path]) => path)
+  assert.deepEqual(special, ['AGENTS.md', 'docs/capability-gaps.md'])
+  assert.equal(manifest['AGENTS.md'].minHeadroom, 10)
+  assert.equal(manifest['docs/capability-gaps.md'].minHeadroom, 10)
 })
 
 test('真实清单：除 small 外都在 5–12% 余量内', () => {
   const manifest = JSON.parse(readFileSync(join(root, 'scripts/doc-budgets.json'), 'utf8'))
-  const entries = Object.entries(manifest).map(([path, ceiling]) => {
+  const entries = Object.entries(manifest).map(([path, config]) => {
     const abs = join(root, path)
-    return { path, ceiling, units: existsSync(abs) ? countDocUnits(readFileSync(abs, 'utf8')) : null }
+    const ceiling = typeof config === 'number' ? config : config.ceiling
+    const minHeadroom = typeof config === 'number' ? undefined : config.minHeadroom
+    return { path, ceiling, minHeadroom, units: existsSync(abs) ? countDocUnits(readFileSync(abs, 'utf8')) : null }
   })
   // 8 单位临时文档：过滤必须放行 small，否则未来登记小文档会让这条真实清单测试假红。
   entries.push({ path: 'docs/__small-fixture.md', ceiling: 8, units: countDocUnits('one two three four five six seven eight') })
@@ -297,6 +313,82 @@ test('门禁：growing/ 子目录里漏登记的文档让 check 变红', () => {
     'growing/2026-01-01-case/README.md': '案例\n',
   })
   assert.equal(complete.status, 0, complete.stderr)
+})
+
+test('判定：专项下限低于 10% 报 tight-special，10.0% 边界放行', () => {
+  const results = checkBudgets([
+    { path: 'special.md', ceiling: 1099, units: 1000, minHeadroom: 10 },
+    { path: 'edge.md', ceiling: 1100, units: 1000, minHeadroom: 10 },
+  ])
+  assert.deepEqual(results.map((result) => result.status), ['tight-special', 'ok'])
+  assert.equal(results[0].minHeadroom, 10)
+  assert.equal(results[0].suggestedCeiling, 1100)
+  assert.equal(results[0].maxUnits, 999)
+  assert.match(formatBudgetRow(results[0]), /要求 ≥10%/)
+})
+
+test('门禁：专项下限低于 10% 变红，恢复到 10% 变绿', () => {
+  const content = Array.from({ length: 100 }, (_, index) => `w${index % 10}`).join(' ')
+  const red = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 109, minHeadroom: 10 } }),
+    'docs/a.md': content,
+  })
+  assert.equal(red.status, 1, red.stderr)
+  assert.match(red.stdout, /TIGHT\*/)
+  assert.match(red.stderr, /余量 9\.00% 低于该文档要求的 10%/)
+  assert.match(red.stderr, /压缩到 99 个单位/)
+  assert.match(red.stderr, /抬天花板到 110/)
+
+  const green = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 110, minHeadroom: 10 } }),
+    'docs/a.md': content,
+  })
+  assert.equal(green.status, 0, green.stderr)
+  assert.match(green.stdout, /1 篇另需 ≥10% 余量/)
+})
+
+test('门禁：small 文档即使登记专项下限也仍豁免', () => {
+  const result = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 8, minHeadroom: 10 } }),
+    'docs/a.md': 'one two three four five six seven eight',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /^SMALL/m)
+  assert.match(result.stdout, /<9 单位，下界豁免/)
+})
+
+test('输出行：5% 以上按 raw 四舍五入，不再截成 5.45%', () => {
+  assert.equal(headroomPercent(10000, 10546), '5.46')
+})
+
+test('门禁：专项 9.999% 显示 9.99 且红，10.000% 显示 10.00 且绿', () => {
+  const content = Array.from({ length: 100000 }, (_, index) => `w${index % 10}`).join(' ')
+  const red = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 109999, minHeadroom: 10 } }),
+    'docs/a.md': content,
+  })
+  assert.equal(red.status, 1, red.stderr)
+  assert.match(red.stdout, /TIGHT\*/)
+  assert.match(red.stdout, /余量 9\.99%/)
+  assert.match(red.stderr, /余量 9\.99% 低于该文档要求的 10%/)
+  assert.doesNotMatch(red.stdout, /余量 10\.00%/)
+
+  const green = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 110000, minHeadroom: 10 } }),
+    'docs/a.md': content,
+  })
+  assert.equal(green.status, 0, green.stderr)
+  assert.equal(headroomPercent(100000, 110000, 10), '10.00')
+})
+
+test('门禁：small 文档带专项下限时汇总不把它算作专项', () => {
+  const result = runBudgetGate({
+    'scripts/doc-budgets.json': JSON.stringify({ 'docs/a.md': { ceiling: 8, minHeadroom: 10 } }),
+    'docs/a.md': 'one two three four five six seven eight',
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /1 篇 <9 单位豁免下界/)
+  assert.doesNotMatch(result.stdout, /另需 ≥10% 余量/)
 })
 
 test('门禁：4.x% 夹具报余量低于 5%，5.0% 边界放行', () => {

@@ -116,51 +116,33 @@ Three mechanisms make this more than "a smarter prompt":
 - Initialization is still manual: in your own project you write `LEADER.md` (the Leader's persona prompt and orchestration flow) and `SLOTS.md` (the role split and each role's persona prompt).
 - The Leader leads and workers never talk to each other; the tool surface rules it out. Today's agents are trained for strict instruction-following, and one noisy message between two agents can derail the entire conversation.
 
-## Five steps
+## Quick start
 
-1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is created immediately and bound to a leader session; clicking the project row opens that Leader. Selection comes in two layers: the whole row only lights up for the current Leader session, while opening a worker lights the row-start glyph and puts the row highlight on that worker's own session row. The slot at the row start shows the host's `apps-add-outline` glyph by default (three cells plus a plus; it replaces the folder icon so projects and workspaces differ): while the Leader is running it becomes a spinner (the Leader has no row, so this holds expanded or collapsed), and when the project is collapsed with a worker running under it, it becomes a spinner too — once expanded, each worker carries its own spinner.
-2. **Load the protocol.** In the leader session, have the model load `leader-mode`. It reads `playbooks/program.md` first, then the playbook for the current stage.
-3. **Dispatch.** `spawn_worker` requires `name` (a short role-task handle); `cardId` + `slot` optionally bind the card's executor slot in the same call. Pass `model` / `effort` to run it on another model; defaults: the bound slot's `SLOTS.md`, then the Leader's. It returns a session id immediately and the worker has **not started yet**. Deliver the task body with `message_worker` (`sessionId` + `message`, optionally `rename`; `model` / `effort` switch its route): the first message is what starts the turn, and a card-bound worker gets the card facts added to its request automatically, so you do not need to paste the spec. The worker's sandbox mode and approval policy are inherited from the Leader at dispatch time (an Auto Leader also passes on its review gate); the receipt states the permissions the worker actually runs with, and calls out full access by name. Use `read_worker_session` to see the turn's tools and failures without waking it, and `list_workers` to inventory existing workers with their model/effort (read-only).
-4. **Record task facts.** `create_card` opens a card (`title` required), `update_card` edits one (content changes carry `expectedRevision` for optimistic concurrency; links can be replaced wholesale with `links` or merged by id with `addLinks`), `list_cards` reads them. Links are deliverable entry points — PRs, issues, docs, assets — not comment or inline-comment anchors (`#issuecomment-` / `#discussion_r` / `#pullrequestreview-`). Comments are process evidence; write them in the report body. Cards belong to a project and are numbered globally; edits across projects are refused. `list_cards` and `create_card` are the Leader's alone, and plain sessions get neither; `update_card` is shared with workers. A worker may only edit a card it is bound to, and only derived fields such as `links` — `title` / `spec` / `status` / `kind` / `sortOrder` / `slots` belong to the Leader (the first two are the acceptance anchor and injected content, the rest organize the board and decide who executes). `read_card` is the worker's alone: it reads any card in the project, and with no `cardId` / `number` it reads the worker's single bound card — the way back to its task after compaction or a stale injection. Long specs come in 2000-character pages via `specOffset`.
-5. **Watch the board.** The Board tab in the right panel pulls cards for the project of the current session. It opens by itself when the leader creates a card; click a card for details (links editable, the card deletable, the rest read-only), click a slot chip to open the executor's session. Work mode is the default; choose Cinematic under Settings → Leader Agent → Task board.
+The shortest path is: add a project, load `leader-mode`, dispatch a worker, record the card, then watch the board. The full walkthrough is in [getting started](docs/getting-started.md); each action is documented in the [usage manual](docs/usage.md).
 
-## Orchestration lives in files
+1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is bound to a Leader immediately; the project row is its entry point. Details: [projects](docs/usage.md#加项目) and [getting started](docs/getting-started.md#二加一个项目就得到一个-leader).
+2. **Load the protocol.** In the Leader session, load the `leader-mode` skill. It starts with `playbooks/program.md`, then the playbook for the current stage.
+3. **Dispatch.** `spawn_worker` creates a worker (optionally with `cardId` + `slot`, `model` / `effort`); `message_worker` sends the first message and starts it. Later messages steer the same worker. The worker inherits the Leader's sandbox and approval policy, and the receipt reports the effective permissions. Use `read_worker_session` to inspect and `list_workers` to inventory. Details: [dispatch](docs/usage.md#派工) and [worker control](docs/limitations.md#worker-的控制面).
+4. **Record task facts.** `create_card` / `update_card` / `list_cards` manage cards; content changes carry `expectedRevision`; links are deliverable entry points (not comment anchors) and use `links` / `addLinks`. Workers can only update their bound card's links; `read_card` returns a worker to its task, and long specs page via `specOffset`. Details: [cards](docs/usage.md#卡片).
+5. **Watch the board.** The right-panel Board tab shows cards for the current project and opens when the Leader creates one. Click a card for details, or a slot chip to open the executor. Details: [board](docs/usage.md#看板).
 
-Three things, one layer each. None grant tool permissions; the two manuals contribute prompt text, and slots may set default models:
+`LEADER.md` and `SLOTS.md` are the project manuals; `leader-mode` is the protocol; the target project's `AGENTS.md` remains the host's shared engineering instructions. None grant tool permissions. See [project prompts](docs/usage.md#项目提示词), [getting started](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法), and the `init-leader-agent` skill for setup.
 
-| File / skill | For whom | What it holds |
-|---|---|---|
-| `LEADER.md` | The Leader of this project | How to command this project: boundaries, card and dispatch granularity, hard constraints every brief must carry, acceptance criteria. Injected into the leader session, with no binding step |
-| `SLOTS.md` | Workers, by role | Per-role method and persona under `## <slot-name>` (`dev` / `review` / …). The card's `slots` field binds a slot to a session, and that session gets the section injected |
-| `leader-mode` skill | The Leader's protocol | Staged playbooks for discussion → design → implementation and delivery → review → merge, plus parallel-collaboration and handoff guidance |
+## Prerequisites: multi-worktree isolation
 
-`LEADER.md` and `SLOTS.md` are evaluated before every model request and appended only when their text changes, so a change takes effect on the next request and nothing gets injected twice. The `leader-mode` skill takes a different path — the model loads it through the `skill` tool on demand, which is why the step above says load rather than configure. The target project's own `AGENTS.md` is read by the host's agent-instructions as a system-prompt section. Closing a card (`done` / `archived`) releases its executor: the slot binding and the card facts stop being injected together.
-
-The plugin only reads `LEADER.md`. A `COORDINATOR.md` that merely points at it is a compatibility shim for external tools that still look for the old file name; it is never injected, and you do not need it otherwise.
-
-Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default two roles `dev` / `review`. Slots may set default `model` / `effort`; dispatch otherwise uses the Leader's model. `message_worker` can switch it or apply the slot default on reassignment.
-
-The `init-leader-agent` skill handles project setup: it merges the repository's engineering conventions into a managed block of the target project's `AGENTS.md`, then writes `LEADER.md` (how the Leader drives this project) and `SLOTS.md` (executor roles) from the bundled skeletons. Re-running only replaces the managed block, and both manuals are read before editing. An empty directory gets the TODO skeleton plus the three questions still unanswered — project facts are never invented.
-
-For everyday use — projects, dispatch, cards, board, slots and manuals — see the [usage manual](docs/usage.md) (Chinese).
-
-## Prerequisites: get multi-worktree parallelism working first
-
-Running ten features in parallel requires real isolation between tasks: one worktree per task, one dsh instance per task, one data root per task, so tasks never overwrite each other's plugin version or compete for sessions and data. This repository's `scripts/worktree-*.mjs` and `scripts/dev.mjs` exist for exactly this ([Development](docs/development.md)); mechanisms and where each one lands are in [collaboration and documentation](docs/architecture.md#协作与文档机制) (Chinese).
+One worktree, one dsh instance and one data root per task; otherwise parallel tasks overwrite each other's plugin version and compete for sessions and data. Details: [development](docs/development.md) and [architecture](docs/architecture.md#项目与会话归属).
 
 ## Current limitations
 
-- **Background orchestration needs a long-lived host** (web / desktop / sdk). headless is a one-shot CLI: the session is destroyed when the turn ends, and nothing is left to receive completion reports.
-- **The Leader can steer a worker but cannot cancel one.** Workers are ordinary root sessions, so the host's `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` do not apply to them (`interrupt_agent` even returns a false success; `wait_agent` only blocks). A worker that goes off track is steered with `message_worker`: the message is injected into the next step of its current turn. There is no cancel — the host's `Agent.cancel()` is not exposed as a tool here — so a wedged worker needs a human in its own session. You can read what it is doing (`read_worker_session`, read-only, no wake-up).
-- **Completion reports depend on the turn ending normally.** If the process dies before a worker finishes, that turn is never settled. After a restart, open the worker session and continue there.
-- **The board only shows for project sessions.** The leader and that project's workers see it; an ordinary session in the same directory, or a retired leader, only gets a notice, and sessions outside any project get no board at all.
-- **The session tab bar is a DOM overlay, not a native host feature.** It is inserted above the conversation header; per-project tab state lives in browser localStorage and does not travel with the data root.
-- **Card details only write links and delete the card.** Links can be added, edited and removed; deletion lives in the detail footer, asks for confirmation, and is a hard delete with no undo. Completing, pinning and renaming still belong to the Leader's card tools. Card numbers increase globally and are never reused or reclaimed; models have no card-deletion tool, so a human must click it.
-- **The project registry lives only in the left sidebar.** No project tools exist; creating one needs the web UI. On hosts serving only the `browse` picker, an in-app folder browser replaces the native chooser.
-- **The project tree coexists with the official workspace tree.** Projects neither register nor occupy dsh workspaces: project sessions land in the official tree's "Ungrouped" section and are excluded there at render time (official counts and search still include them); when nothing but excluded rows is left in that section, its header is hidden too.
-- **The client is coupled to the host version.** Dialogs, menus and icons are copied from host sources, the Typert remote channel is a hand-written protocol shape, and the leader session layout depends on the host's session view service, so host upgrades require syncing this repository.
+- **Long-lived host required** (web / desktop / sdk): headless is one-shot, so completion reports have nowhere to land.
+- **The Leader can steer but cannot cancel a worker**: host subagent tools do not apply; a wedged worker needs a human in its session.
+- **Completion reports depend on the turn ending normally**; a killed process leaves that turn unsettled.
+- **The board and project tree are project-session-only**; the tab bar is a DOM overlay with per-project state in browser localStorage.
+- **Card details only edit links or delete the card**; other card changes stay on the Leader tools.
+- **The project registry lives only in the left sidebar**, and project sessions coexist with the official workspace tree.
+- **The client is coupled to the host version.**
 
-The full list lives in [known limitations](docs/limitations.md) (Chinese).
+The full list is in [known limitations](docs/limitations.md) (Chinese).
 
 ## Development
 

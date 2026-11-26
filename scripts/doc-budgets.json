@@ -1,7 +1,10 @@
 {
-  "AGENTS.md": 4840,
-  "README.md": 3426,
-  "README_ZH.md": 5210,
+  "AGENTS.md": {
+    "ceiling": 4840,
+    "minHeadroom": 10
+  },
+  "README.md": 2320,
+  "README_ZH.md": 3580,
   "LEADER.md": 3820,
   "COORDINATOR.md": 75,
   "SLOTS.md": 5950,
@@ -9,7 +12,10 @@
   "docs/architecture.md": 6320,
   "docs/limitations.md": 2440,
   "docs/development.md": 3008,
-  "docs/capability-gaps.md": 18171,
+  "docs/capability-gaps.md": {
+    "ceiling": 18171,
+    "minHeadroom": 10
+  },
   "docs/usage.md": 1990,
   "docs/getting-started.md": 2192,
   "docs/e2e-testing.md": 4740,
