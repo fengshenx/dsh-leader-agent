@@ -549,15 +549,34 @@ test('工作模式默认：设置页切到炫酷后 rail 由卡片驱动，reloa
     { description: '切回后 rail 主干仍是同一个节点', state: 'attached', timeoutMs: 10_000 },
   )
   assert.equal(await clearCount(), 0, '切会话不应重建 leader 的 rail')
-  // 看板跟到了 worker 的右栏；在 leader 上程序化关掉那个隐藏标签，绕开 issue #200
-  // （切到 worker 再关的真实用户路径会触发 pageerror: sessions.retain: unknown session）。
-  await page.evaluate((workerId) => {
-    document.querySelector(`[data-sidebar-right-session="${workerId}"] [data-dockkit-tab-close]`)?.click()
-  }, worker.id)
+  // 看板跟到了 worker 的右栏；走真实用户路径：再切到 worker，悬停并关闭它的
+  // 看板标签。不能像旧测试那样在 leader 上程序化点隐藏按钮——那条路绕开了 #200。
+  await workerRow.click()
+  await waitFor({
+    description: '再切到 worker 关看板标签',
+    check: async () => (await currentSessionId(page)) === worker.id,
+    timeoutMs: 15_000,
+  })
+  const workerBar = page.locator(`[data-sidebar-right-session="${worker.id}"]:visible`).first()
+  await waitForLocator(workerBar, { description: 'worker 右栏可见', state: 'visible', timeoutMs: 10_000 })
+  const workerTab = workerBar.locator('[data-dockkit-tab]').first()
+  await waitForLocator(workerTab, { description: 'worker 右栏的看板标签', state: 'visible', timeoutMs: 10_000 })
+  await workerTab.hover()
+  const workerClose = workerBar.locator('[data-dockkit-tab-close]').first()
+  await waitForLocator(workerClose, { description: 'worker 右栏的看板标签关闭按钮', state: 'visible', timeoutMs: 10_000 })
+  await workerClose.click()
   await waitFor({
     description: 'worker 右栏的看板标签已关闭',
     check: async () => (await page.locator(BOARD).count()) === 1,
     timeoutMs: 10_000,
+  })
+  // 关完回 leader：路径 A 的 reload 才面对 leader 的看板 tab（用户关 worker 的
+  // 标签后通常也会回 leader）。
+  await leaderTab.click()
+  await waitFor({
+    description: '关 worker 标签后回到 leader',
+    check: async () => (await currentSessionId(page)) === session.id,
+    timeoutMs: 15_000,
   })
 
   // 路径 A：右栏保持展开直接 reload，宿主恢复看板 tab → 不需要再导航。
