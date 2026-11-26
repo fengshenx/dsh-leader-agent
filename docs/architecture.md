@@ -97,7 +97,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 | 项目树 | 自建树，列出该项目派出的 worker 与退役 leader；行形态与活动提示（宿主 `StateDot`）复刻官方工作区行，但行首图标用宿主 `apps-add-outline`（三格 + 一个加号），不用官方目录字形 |
 | 官方树排除 | 渲染层按 `data-row-key="session:<id>"` 给 leader 与 worker 行加隐藏类；数据层不动，因此官方计数与搜索仍包含它们 |
 | 项目会话标签栏 | 在 `shell.overlay` 挂一个不占布局的锚，effect 把宿主节点插到主面板第一个子节点、portal 渲染真正的栏；首标签是项目名（leader 入口），worker 标签按项目记在浏览器 localStorage；栏右端承接会话「更多」（宿主 `contextMenus`）与右栏开关；栏可见时给主面板与会话体加 flex 收缩标记（参考 dsh-session-tabs，见 `THIRD_PARTY_LICENSE`） |
-| 会话水位折叠 | 复刻宿主工作区树口径：默认 5 条，每次加 5 条；运行中会话抬高水位；只升不降，收起回基线 |
+| 会话水位折叠 | 照宿主工作区树的分页口径：默认 5 条，每次加 5 条；只升不降，收起回基线。与宿主的一处分叉：只有当前会话抬高水位，运行中与完成未读不抬 |
 | leader 会话形态 | 注册第三方会话视图目标并激活，外壳切到 active 形态（输入框停靠、无欢迎页）；不产生模型调用 |
 | leader 引导卡 | `conversation.input.dock` 条目，`blank` 且未关闭时显示；「了解怎么用」经 `inputActions` 发通用触发语；未初始化时提示建 Hello World 卡、派 worker 说「你好」，回报后汇报、问是否关卡（不自动 done/archived），再问是否初始化 `LEADER.md` / `SLOTS.md`（确认前不写）；有手册只讲用法；关闭标记存 localStorage |
 | agent 消息气泡 | leader 任务与 worker 回报各用一个独立 Chat node kind + exclusive claim；任务渲染成右侧用户气泡（无身份头，正文与 assistant 内容同套 Markdown（`MarkdownText` compact），单换行按 Markdown 合并），回报渲染成左侧气泡、头像、名字可下钻；回报只渲染最后一次的内容，任务渲染投递原文 |

@@ -3,19 +3,18 @@
  *
  * 口径照宿主工作区树（`WorkspaceBrowser.tsx` 的 `watermarkRows` /
  * `requiredWatermark`）：默认露出 5 条，每次展开再加 5 条，剩余不超过 5 条时
- * 一次放完；运行中的会话把水位抬到它所在的位置，但只在前 50 条内生效；水位
- * 只升不降，收起回落到基线。宿主不导出这些函数（UI 包不为绕过包面规则开放
- * 值），只能照同一套口径自己算。
+ * 一次放完；水位只升不降，收起回落到基线。宿主不导出这些函数（UI 包不为绕过
+ * 包面规则开放值），只能照同一套口径自己算。
  *
  * 折叠本身不只会话列表用：看板「已完成」区按同一套「默认一页、展开加一页、
  * 最后一页一次放完、展开完收起」的口径翻页，只是页大小与基线不同。共享实现是
  * {@link foldRows} / {@link nextRowWatermark}，本模块的 `foldSessions` /
- * `nextWatermark` 负责把会话侧的注意力水位与 5 条一页接上去。
+ * `nextWatermark` 负责把当前会话水位与 5 条一页接上去。
  *
- * 与宿主的已知差异：宿主还会为「有子代理在跑」「等你输入」抬高水位，我们
- * 没有这两路状态源；运行中、完成未读（completed）与当前会话三档参与计算——
- * 绿点是通知语义，被折在「展开其余」后面就失去提示作用；当前会话若被折掉，
- * 点开它时完成标记清除、水位回落，这一行会当场从列表里消失。
+ * 与宿主的已知差异：宿主还按运行中、「有子代理在跑」「等你输入」抬高水位；
+ * 项目树只把**当前会话**抬进可见范围（刚点开的行不会因完成标记清除而消失），
+ * 运行中与完成未读都不抬——worker 常驻且频繁跑完，按未读撑开会把「默认一页」
+ * 顶成十几条；绿点保留状态语义，折在「展开其余」后面的要展开才看得到。
  *
  * @module dsh-leader-agent/client/session-watermark
  */
@@ -23,7 +22,7 @@
 /** 无会话抬升水位时，每个项目默认露出的会话条数。 */
 export const SESSION_WATERMARK_BASE = 5
 
-/** 注意力会话自动抬升的上限；展开操作可以超过它。 */
+/** 当前会话自动抬升的上限；展开操作可以超过它。 */
 export const SESSION_WATERMARK_AUTO_MAX = 50
 
 /**
@@ -39,26 +38,23 @@ export function watermarkRows(rows, watermark) {
 }
 
 /**
- * 算出「注意力会话」要求的最小水位。
+ * 算出「当前会话」要求的最小水位。
  *
- * 运行中的会话不该被折起来——用户正等着它，藏起来只会让人以为它没了；
- * 完成未读的会话同样不该被折——绿点就是这个功能要让人看见的通知；当前会话
- * 也要留在可见范围内，否则点开它的瞬间完成标记清除、水位回落，行会消失。
+ * 只有当前打开的行参与：它若被折掉，点开它的瞬间完成标记清除、水位回落，
+ * 这一行会当场从列表里消失。运行中与完成未读不抬水位——列表固定一页，未读是
+ * 状态而不是展开指令，排在后面的要展开才看得到。
  *
  * @param {object[]} rows - 会话行
  * @param {string} [currentSessionId] - 当前打开的会话 id
- * @returns {number} 需要的最小水位；没有注意力会话时是 0
+ * @returns {number} 需要的最小水位；没有当前会话时是 0
  */
 export function requiredWatermark(rows, currentSessionId) {
-  let required = 0
-  for (let index = 0; index < rows.length; index += 1) {
-    const position = index + 1
-    if (position > SESSION_WATERMARK_AUTO_MAX) break
-    const row = rows[index]
-    const current = currentSessionId !== undefined && row?.id === currentSessionId
-    if (row?.running === true || row?.completed === true || current) required = position
+  if (currentSessionId === undefined) return 0
+  const limit = Math.min(rows.length, SESSION_WATERMARK_AUTO_MAX)
+  for (let index = 0; index < limit; index += 1) {
+    if (rows[index]?.id === currentSessionId) return index + 1
   }
-  return required
+  return 0
 }
 
 /**
@@ -66,8 +62,7 @@ export function requiredWatermark(rows, currentSessionId) {
  *
  * 会话列表与看板已完成区共用这一层：默认露到基线（至少一页），点「展开其余」
  * 再加一页，最后一页一次放完；展开到最后一页后按钮变「收起」。基线由调用方
- * 给——会话列表会因运行中 / 完成未读 / 当前会话抬高基线，已完成卡没有注意力
- * 状态，基线就是一页。
+ * 给——会话列表把当前会话抬进基线，已完成卡没有注意力状态，基线就是一页。
  *
  * @param {readonly object[]} rows - 已排序的行
  * @param {number} watermark - 用户展开出来的水位（0 表示没展开过）
