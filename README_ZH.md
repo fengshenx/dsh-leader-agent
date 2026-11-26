@@ -142,7 +142,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 `init-leader-agent` skill 管项目初始化：先把仓库工程约定并入目标项目 `AGENTS.md` 的受管区块，再按包内骨架写 `LEADER.md`（leader 怎么指挥这个项目）与 `SLOTS.md`（执行者角色）。重复执行只替换受管区块，两份手册先读后改；空目录写带 TODO 的骨架，并把还没答的三个问题问清楚，不编造项目事实。
 
-完整交互（槽位 frontmatter 细节、归档、换 leader、看板信号灯口径）见[使用手册](docs/usage.md)。
+日常操作（项目、派工、卡片、看板、槽位与手册）见[使用手册](docs/usage.md)。
 
 ## 前提：先跑通多 worktree 并发
 
@@ -160,7 +160,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 - **项目树与官方工作区树并存**：项目不注册也不占用 dsh 工作区，项目会话落进官方树的「未分组」，在那里被渲染层排除（官方计数与搜索仍包含它们）；组里只剩被排除的行时「未分组」组头一起藏起来。
 - **客户端与宿主版本耦合**：弹窗、菜单、图标复制自宿主源码，Typert 远程通道是手写协议形状，leader 会话形态依赖宿主的会话视图服务——宿主升级时要同步本仓。
 
-完整清单与取舍（信号灯数据源、水位折叠、头像、归档入口、DOM 注入取位等）见[已知限制与取舍](docs/limitations.md)。
+完整限制清单见[已知限制](docs/limitations.md)。
 
 ## 开发
 
@@ -184,9 +184,9 @@ npm run e2e                       # 浏览器 e2e
 |---|---|
 | [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
 | [docs/getting-started.md](docs/getting-started.md) | 上手路线：使用前提、加项目与 Leader、两份项目文件、一张卡从创建到下钻 |
-| [docs/usage.md](docs/usage.md) | 派工、续聊、卡片、看板、项目管理、槽位与手册的完整交互 |
+| [docs/usage.md](docs/usage.md) | 使用手册：项目、派工、卡片、看板、槽位与手册 |
 | [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、宿主契约落点 |
-| [docs/limitations.md](docs/limitations.md) | 完整已知限制与取舍 |
+| [docs/limitations.md](docs/limitations.md) | 已知限制清单 |
 | [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
 | [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
 | [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、截图）与人工取证规范；断言纪律与失败诊断见 `.agents/skills/e2e-scenarios/` |
