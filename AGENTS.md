@@ -149,7 +149,7 @@ npm run release:check             # 发版门禁：check + build:client + verify
 - 模型侧只读 `LEADER.md` / `SLOTS.md` / `.agents/skills/`；不要把这两份注入提示词、复制进 skill，或当行为约束。
 - usage 跟**用户可见操作**走：只写怎么做、看到什么、何时被拒；实现与版本耦合进 architecture / capability-gaps。
 - limitations 跟**边界**走：1–2 句写清做不到什么与代价，推演链回 notes。
-- README 留概览与最短路径，存量长文另开 PR；`docs/` 不进 npm 包，长文只活在 GitHub。
+- README 只留概览与最短路径；长文只活在 `docs/`，`docs/` 不进 npm 包，不在此展开。
 
 - 文档体量由 `scripts/doc-budgets.json` 管，`npm run check` 里的 [`scripts/verify-doc-budgets.mjs`](scripts/verify-doc-budgets.mjs) 超限变红；判定细节与 5–12% 边界见 [`scripts/doc-budget.mjs`](scripts/doc-budget.mjs)。`docs/`、根目录与 `growing/**` 的 Markdown 必须全部登记，漏登记同样变红。红了按顺序处理：**搬到对的层 → 压缩 → 抬天花板**；抬天花板要在 PR 里写明为什么，并按同一比例重算余量。**余量 = 天花板 / 当前值 − 1**（计数口径：CJK 字符逐个算 1，非 CJK 按空白分词，代码块与表格都一并计入）。专项下限也在清单里声明；每个任务都要改的 `AGENTS.md` 与高频追加的 `capability-gaps.md` 至少留 10%。
 - 每条规则自包含，或一行断言加链接指向归属文档；背景与理由链到归属，不就地展开。
