@@ -151,14 +151,17 @@ test('已完成区默认 30 行，展开到 31 行变「收起」，收起回 30
     check: async () => (await projectRow.getAttribute('data-dead')) === null,
     timeoutMs: 20_000,
   })
-  await projectRow.click()
-  // 点项目行是异步切主视图；切到 leader 之前展开右栏，guide 页可能还绑着上一个
-  // 会话，入口要等会话切换完才渲染。data-selected 与右栏读的是同一个当前会话。
+  // 点项目行是异步切主视图；宿主侧栏刷新期间首次 click 可能丢（board-cinema
+  // 有同款记录）。点到 data-selected 为止，不用固定 sleep；失败时仍带行读数。
   try {
     await waitFor({
-      description: '项目行进入选中态（当前会话已切到 leader）',
-      check: async () => (await projectRow.getAttribute('data-selected')) === 'true',
-      timeoutMs: 15_000,
+      description: '项目行点击生效（当前会话已切到 leader）',
+      check: async () => {
+        if ((await projectRow.getAttribute('data-selected')) === 'true') return true
+        await projectRow.click({ timeout: 1000 }).catch(() => {})
+        return (await projectRow.getAttribute('data-selected')) === 'true'
+      },
+      timeoutMs: 20_000,
     })
   } catch (error) {
     const state = await projectRow.evaluate((node) => ({
