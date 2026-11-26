@@ -168,6 +168,16 @@ Data roots, instance overrides, build constraints and the test policy are in [de
 
 Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirements, and documentation rules live there. The short path is `npm install` → `npm run check` → open a PR. Commit messages are in Chinese, and non-trivial changes ship an `.agents/notes/` decision note in the same PR.
 
+## WeChat group
+
+Scan to join the dsh-leader-agent WeChat group:
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent WeChat group QR code" width="320">
+</p>
+
+The QR code is valid for 7 days and is refreshed when it expires.
+
 ## Docs
 
 | Document | Contents |

@@ -168,6 +168,16 @@ npm run e2e                       # 浏览器 e2e
 
 改代码前先读 [AGENTS.md](AGENTS.md)：worktree 纪律、验证要求与文档机制都在那里。最短路径是 `npm install` → `npm run check` → 开 PR；提交信息用中文，非平凡改动同 PR 带 `.agents/notes/` 决策笔记。
 
+## 加入微信群
+
+欢迎扫码加入 dsh-leader-agent 交流群：
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent 微信群二维码" width="320">
+</p>
+
+二维码 7 天内有效，过期后会更新。
+
 ## 文档
 
 | 文档 | 内容 |
