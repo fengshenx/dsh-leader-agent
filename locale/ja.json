@@ -138,7 +138,6 @@
     "project.leaderLoading": "Leader セッションを読み込み中です。再試行しています…",
     "project.leaderMissing": "プロジェクト「{name}」には開ける Leader セッションがありません。Leader を交代してください。",
     "project.leaderOpenFailed": "プロジェクト「{name}」の Leader セッションを開けませんでした：{message}",
-    "project.leaderMissing": "プロジェクト「{name}」には開ける Leader セッションがありません。Leader を交代してください。",
     "project.more": "その他",
     "project.name.empty": "プロジェクト名を入力してください",
     "project.name.tooLong": "プロジェクト名が長すぎます（最大 {max} 文字）",

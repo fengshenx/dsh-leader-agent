@@ -8,6 +8,7 @@ import {
   buildProjectMenuItems,
   classifyDeletionResult,
   collectExcludedSessionIds,
+  createInFlightGuard,
   createWriteQueue,
   currentSessionIdOf,
   defaultProjectName,
@@ -530,6 +531,42 @@ test('未知会话按递增间隔重试，成功即停', async () => {
   assert.deepEqual(opened, ['session-1', 'session-1', 'session-1'])
   assert.deepEqual(waits, [10, 20])
   assert.deepEqual(retries, [[1, 10], [2, 20]])
+})
+
+test('同一项目连点两次只跑一条打开链', async () => {
+  const guard = createInFlightGuard()
+  const calls = []
+  const waits = []
+  const pending = []
+  const wait = (ms) => new Promise((resolve) => {
+    waits.push(ms)
+    pending.push(resolve)
+  })
+  const run = () => {
+    if (!guard.begin('p-1')) return undefined
+    return openLeaderSession({
+      project: { id: 'p-1', leaderSessionId: 'session-1' },
+      openSession: (sessionId) => {
+        calls.push(sessionId)
+        throw new Error('sessions.retain: unknown session session-1')
+      },
+      t,
+      wait,
+      retryDelaysMs: [10, 20, 30],
+    }).finally(() => guard.end('p-1'))
+  }
+  const first = run()
+  const second = run()
+  assert.equal(second, undefined)
+  for (let i = 0; i < 3; i += 1) {
+    await new Promise((resolve) => setImmediate(resolve))
+    pending.shift()()
+  }
+  const [firstResult] = await Promise.allSettled([first])
+  assert.deepEqual(calls, ['session-1', 'session-1', 'session-1', 'session-1'])
+  assert.deepEqual(waits, [10, 20, 30])
+  assert.deepEqual([firstResult.status, second === undefined ? 'ignored' : 'started'], ['rejected', 'ignored'])
+  assert.equal(guard.has('p-1'), false)
 })
 
 test('省略注入时走默认延迟，重试成功', async () => {

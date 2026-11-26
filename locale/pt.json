@@ -138,7 +138,6 @@
     "project.leaderLoading": "A sessão do Leader ainda está carregando; tentando novamente…",
     "project.leaderMissing": "O projeto “{name}” não tem nenhuma sessão do Leader para abrir. Substitua o Leader do projeto.",
     "project.leaderOpenFailed": "Não foi possível abrir a sessão do Leader do projeto “{name}”: {message}",
-    "project.leaderMissing": "O projeto “{name}” não tem nenhuma sessão do Leader para abrir. Substitua o Leader do projeto.",
     "project.more": "Mais",
     "project.name.empty": "O nome do projeto não pode ficar vazio",
     "project.name.tooLong": "O nome do projeto é muito longo (no máximo {max} caracteres)",

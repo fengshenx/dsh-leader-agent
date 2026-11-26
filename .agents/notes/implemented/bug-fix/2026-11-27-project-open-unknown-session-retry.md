@@ -23,6 +23,8 @@ onClick
 
 面板在调用点捕获最终错误并显示「打开项目…失败：…」，点击后不再毫无反应；`watchProblems` 保持 fail-loud，没有过滤这条 pageerror。延迟函数与重试间隔都可注入，单测不真等。
 
+项目面板按 `project.id` 加 in-flight 锁：同一项目在飞时第二次点击直接忽略，`finally` 释放。这样连点不会叠加两条重试链，也不会出现「一组成功后另一组失败 toast 打脸」。
+
 ## Alternatives considered
 
 - **改宿主 `resolveTarget` / `openSession`**：本仓不改宿主仓库；catalog 是否就绪属于宿主契约，我们只能在调用点收敛。
@@ -34,7 +36,7 @@ onClick
 ## Consequences
 
 - 启动/热更后的短暂 catalog 竞态会被自动跨过；真正不存在的会话仍在约 1.7s 后报错。
-- 重试窗口内用户重复点击会各自发起一组重试，可能出现重复 toast；打开同一会话是幂等的，未额外加点击锁。
+- 同一项目连点只跑一条链；不同项目仍可并行；成功或失败后锁都会释放，下一次点击可以重新发起。
 - 不触碰槽位保留器与 board 的编造地址逻辑；它们解决的是另一条路径。
 - 错误文案直接带宿主 message，保留原始原因，不把它包装成「加载中」而丢失。
 
@@ -42,7 +44,7 @@ onClick
 
 ## Testing
 
-- `tests/project-panel.test.js`：前 2 次 unknown、第 3 次成功（断言递增间隔与 `onRetry`）；用尽后抛原错误；非 unknown 立即抛；默认延迟路径成功。
+- `tests/project-panel.test.js`：前 2 次 unknown、第 3 次成功（断言递增间隔与 `onRetry`）；用尽后抛原错误；非 unknown 立即抛；默认延迟路径成功；同一项目连点两次只跑一条链。
 - 修复前负载下 2/3 红，修复后按验收在合并后的 main 上补三场景各 ≥5 次。
 - mutation：撤掉 unknown 重试，单测「前 2 次 unknown、第 3 次成功」变红。
 - `npm run check` exit 0；`npm run build:client` 通过。

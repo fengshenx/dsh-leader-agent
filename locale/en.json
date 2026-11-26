@@ -138,7 +138,6 @@
     "project.leaderLoading": "The Leader session is still loading; retrying…",
     "project.leaderMissing": "Project \"{name}\" has no Leader session to open. Replace its Leader.",
     "project.leaderOpenFailed": "Could not open the Leader session for project \"{name}\": {message}",
-    "project.leaderMissing": "Project \"{name}\" has no Leader session to open. Replace its Leader.",
     "project.more": "More",
     "project.name.empty": "Project name cannot be empty",
     "project.name.tooLong": "Project name is too long (at most {max} characters)",

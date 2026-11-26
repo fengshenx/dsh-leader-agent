@@ -138,7 +138,6 @@
     "project.leaderLoading": "Сеанс Leader ещё загружается; повторная попытка…",
     "project.leaderMissing": "У проекта «{name}» нет сеанса Leader, который можно открыть. Замените Leader проекта.",
     "project.leaderOpenFailed": "Не удалось открыть сеанс Leader проекта «{name}»: {message}",
-    "project.leaderMissing": "У проекта «{name}» нет сеанса Leader, который можно открыть. Замените Leader проекта.",
     "project.more": "Ещё",
     "project.name.empty": "Название проекта не может быть пустым",
     "project.name.tooLong": "Название проекта слишком длинное (не более {max} символов)",

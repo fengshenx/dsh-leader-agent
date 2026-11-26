@@ -19,6 +19,42 @@ function waitForRetry(ms) {
   return new Promise((resolve) => { setTimeout(resolve, ms) })
 }
 
+/**
+ * 按 key 防重入的打开锁。
+ *
+ * 同一个项目连点时只能有一条重试链；否则两组 unknown 重试叠加，后一组失败还会
+ * 在成功之后弹失败 toast。锁由调用方在 finally 释放。
+ *
+ * @returns {{ begin: (key: string) => boolean, end: (key: string) => void, has: (key: string) => boolean }}
+ */
+export function createInFlightGuard() {
+  const active = new Set()
+  return {
+    /**
+     * @param {string} key - 项目 id
+     * @returns {boolean} 是否拿到锁；已在飞时返回 false
+     */
+    begin(key) {
+      if (active.has(key)) return false
+      active.add(key)
+      return true
+    },
+    /**
+     * @param {string} key - 项目 id
+     */
+    end(key) {
+      active.delete(key)
+    },
+    /**
+     * @param {string} key - 项目 id
+     * @returns {boolean} 当前是否在飞
+     */
+    has(key) {
+      return active.has(key)
+    },
+  }
+}
+
 export { MAX_PROJECT_NAME_LENGTH }
 
 /**

@@ -138,7 +138,6 @@
     "project.leaderLoading": "Leader 会话还在加载，正在重试…",
     "project.leaderMissing": "项目「{name}」没有可打开的 leader 会话，请换新 Leader。",
     "project.leaderOpenFailed": "打开项目「{name}」的 Leader 会话失败：{message}",
-    "project.leaderMissing": "项目「{name}」没有可打开的 leader 会话，请换新 Leader。",
     "project.more": "更多",
     "project.name.empty": "项目名不能为空",
     "project.name.tooLong": "项目名过长（上限 {max} 字）",
