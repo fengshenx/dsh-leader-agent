@@ -61,7 +61,8 @@ import {
   shouldHideUngroupedHeader,
 } from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
-import { DirectoryBrowseDialog, probeBrowseListing } from './directory-browse.js'
+import { DirectoryBrowseDialog } from './directory-browse.js'
+import { probeBrowseListing } from './directory-browse-logic.js'
 
 /**
  * 项目列表的重读间隔。
@@ -71,6 +72,9 @@ import { DirectoryBrowseDialog, probeBrowseListing } from './directory-browse.js
  * 慢到不至于变成一次后台空转，快到用户删完目录切回来就能看见会话回到树里。
  */
 const PROJECT_REFRESH_INTERVAL_MS = 5000
+
+/** browse 能力探测的上限：网络盘 home 卡住时不能让「加项目」一直 busy。 */
+const BROWSE_PROBE_TIMEOUT_MS = 5000
 
 /**
  * 项目区块。
@@ -446,7 +450,14 @@ export function ProjectPanel(props) {
       } catch (error) {
         // 宿主服务 browse 时 pick 必然被拒；列表原语能成功就说明该走应用内浏览。
         // 两个都失败（native 宿主上的真实失败）时把原始错误抛回给用户。
-        const listing = await probeBrowseListing(uiWorkspace)
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), BROWSE_PROBE_TIMEOUT_MS)
+        let listing
+        try {
+          listing = await probeBrowseListing(uiWorkspace, controller.signal)
+        } finally {
+          clearTimeout(timeout)
+        }
         if (listing === null) throw error
         setBrowse({ listing })
         return

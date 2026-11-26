@@ -19,6 +19,7 @@ import { ModalShell } from './modal-shell.js'
 import { productIcon } from './icons.js'
 import { ensureStyleSheet } from './style-sheet.js'
 import {
+  createBrowseFolder,
   directoryBrowseFailureText,
   displayCrumbs,
   parentCrumb,
@@ -144,6 +145,7 @@ const STYLE_TEXT = `
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   color: var(--dsw-alias-label-secondary);
   font-size: 12px;
@@ -152,21 +154,26 @@ const STYLE_TEXT = `
 
 .dsh-leader-agent-browse-toolbar-left {
   display: flex;
+  flex: 1 1 auto;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   min-width: 0;
 }
 
 .dsh-leader-agent-browse-check {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .dsh-leader-agent-browse-create {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
@@ -197,6 +204,7 @@ const STYLE_TEXT = `
   background: var(--dsw-alias-interactive-bg-hover);
   color: var(--dsw-alias-label-primary);
   font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -209,30 +217,30 @@ const STYLE_TEXT = `
   background: transparent;
   color: var(--dsw-alias-label-secondary);
 }
+
+@media (max-width: 360px) {
+  .dsh-leader-agent-browse-toolbar {
+    align-items: flex-start;
+  }
+
+  .dsh-leader-agent-browse-toolbar-left {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+
+  .dsh-leader-agent-browse-toolbar > .dsh-leader-agent-browse-action {
+    flex: 1 1 100%;
+  }
+
+  .dsh-leader-agent-browse-create .dsh-leader-agent-browse-input {
+    flex: 1 1 100%;
+  }
+}
 `
 
 /** 注入/刷新样式表；与弹层外壳相同的 HMR 处理。 */
 function ensureStyles() {
   ensureStyleSheet(STYLE_ID, STYLE_TEXT)
-}
-
-/**
- * 探测宿主是否服务 browse 目录原语。
- *
- * `pickDirectory()` 只服务 native，在 browse 宿主上必然被拒；两个后端的
- * capability 在浏览器侧都读不到（`uiWorkspace` 只暴露动词）。因此用
- * `listDirectory()` 的成败当能力判据：能列出主目录就是 browse 宿主。
- * 拒绝不是错误，是判据——native 宿主上它必然也拒绝。
- *
- * @param {object} uiWorkspace - 宿主的导航服务
- * @returns {Promise<object | null>} 主目录列表；宿主不是 browse 时 null
- */
-export async function probeBrowseListing(uiWorkspace) {
-  try {
-    return await uiWorkspace.listDirectory()
-  } catch {
-    return null
-  }
 }
 
 /**
@@ -311,12 +319,11 @@ export function DirectoryBrowseDialog({
 
   const submitFolder = useCallback(async () => {
     if (listing === null || creating) return
-    const name = folderName.trim()
-    if (name === '') return
     setCreating(true)
     setCreateError('')
     try {
-      const created = await workspace.createDirectory(listing.path, name)
+      const created = await createBrowseFolder(workspace, listing.path, folderName)
+      if (created === null) return
       await load(created)
     } catch (cause) {
       setCreateError(t('project.browse.createError', { message: directoryBrowseFailureText(cause) }))
@@ -329,9 +336,9 @@ export function DirectoryBrowseDialog({
   const up = listing === null ? null : parentCrumb(listing)
   const entries = listing === null ? [] : visibleEntries(listing.entries, showHidden)
   const selectDisabled = listing === null || loading || busy
-  // 扫描期间冻结导航：连点两下「上一级」时第二下读到的是旧的 listing，
+  // 扫描或新建期间冻结导航：连点两下「上一级」时第二下读到的是旧的 listing，
   // 会把父级算成同级——宁可按完等扫描落地。
-  const navigationDisabled = loading || busy
+  const navigationDisabled = loading || busy || creating
 
   const body = createElement(
     'div',
@@ -428,7 +435,7 @@ export function DirectoryBrowseDialog({
           createElement('input', {
             type: 'checkbox',
             checked: showHidden,
-            disabled: busy,
+            disabled: busy || creating,
             onChange: (event) => setShowHidden(event.target.checked),
           }),
           t('project.browse.showHidden'),
@@ -455,6 +462,7 @@ export function DirectoryBrowseDialog({
         createElement('input', {
           type: 'text',
           className: 'dsh-leader-agent-browse-input',
+          'aria-label': t('project.browse.folderName'),
           value: folderName,
           placeholder: t('project.browse.folderName'),
           autoFocus: true,

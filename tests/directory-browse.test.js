@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  createBrowseFolder,
   directoryBrowseFailureText,
   displayCrumbs,
   parentCrumb,
+  probeBrowseListing,
   visibleEntries,
 } from '../src/client/directory-browse-logic.js'
 
@@ -74,4 +76,65 @@ test('没有业务文案时退回 Error.message，非 Error 值转成字符串',
   assert.equal(directoryBrowseFailureText(new Error('网络中断')), '网络中断')
   assert.equal(directoryBrowseFailureText('断线'), '断线')
   assert.equal(directoryBrowseFailureText({ rpcError: { message: '' } }), '[object Object]')
+})
+
+test('probeBrowseListing 成功时返回列表，并把 signal 传给宿主', async () => {
+  const signal = new AbortController().signal
+  let call
+  const next = listing()
+  const result = await probeBrowseListing({
+    listDirectory: async (...args) => {
+      call = args
+      return next
+    },
+  }, signal)
+  assert.equal(result, next)
+  assert.deepEqual(call, [undefined, signal])
+})
+
+test('probeBrowseListing 在 native 拒绝与取消时都返回 null', async () => {
+  assert.equal(await probeBrowseListing({
+    listDirectory: async () => { throw new Error('directory picker unavailable') },
+  }), null)
+  const aborted = new Error('aborted')
+  aborted.name = 'AbortError'
+  assert.equal(await probeBrowseListing({
+    listDirectory: async () => { throw aborted },
+  }, new AbortController().signal), null)
+})
+
+test('新建文件夹成功时传父路径与 trim 后的名字，返回宿主列表', async () => {
+  let call
+  const next = listing({ path: '/home/dev/work/new' })
+  const result = await createBrowseFolder({
+    createDirectory: async (...args) => {
+      call = args
+      return next
+    },
+  }, '/home/dev/work', '  new  ')
+  assert.deepEqual(call, ['/home/dev/work', 'new'])
+  assert.equal(result, next)
+})
+
+test('空名不发新建请求', async () => {
+  let called = false
+  const result = await createBrowseFolder({
+    createDirectory: async () => {
+      called = true
+    },
+  }, '/home/dev/work', '   ')
+  assert.equal(result, null)
+  assert.equal(called, false)
+})
+
+test('重名与非法字符保留宿主错误', async () => {
+  for (const code of ['directory-picker/already-exists', 'directory-picker/invalid-name']) {
+    const error = Object.assign(new Error(code), { rpcError: { code, message: code } })
+    await assert.rejects(
+      createBrowseFolder({
+        createDirectory: async () => { throw error },
+      }, '/home/dev/work', 'bad/name'),
+      (caught) => caught === error,
+    )
+  }
 })

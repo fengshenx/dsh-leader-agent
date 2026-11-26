@@ -8,7 +8,7 @@ Status: implemented
 
 ## Decision
 
-**native 被拒后用同一 `uiWorkspace` 的 browse 原语自己渲染目录浏览。** 打开流程照常先调 `pickDirectory()`（native 宿主体验不变），被拒时用 `listDirectory()` 的成败判能力：成功即 browse 宿主，把预取的主目录列表交给弹层；失败则把原始 pick 错误抛回用户。弹层用 `listDirectory` / `createDirectory` 两个原语：面包屑从主目录起（与宿主一致）、「上一级」（完整 ancestry 里取父级，能走到 home 之外）、隐藏目录开关、新建文件夹；选中当前层后交给与 native 共用的 `adoptDirectory`（默认名、改名兜底、建项、展开列表）。
+**native 被拒后用同一 `uiWorkspace` 的 browse 原语自己渲染目录浏览。** 打开流程照常先调 `pickDirectory()`（native 宿主体验不变），被拒时用 `listDirectory()` 的成败判能力（探测最多等 5 秒，网络盘 home 卡住不会让「加项目」一直 busy）：成功即 browse 宿主，把预取的主目录列表交给弹层；失败则把原始 pick 错误抛回用户。弹层用 `listDirectory` / `createDirectory` 两个原语：面包屑从主目录起（与宿主一致）、「上一级」（完整 ancestry 里取父级，能走到 home 之外）、隐藏目录开关、新建文件夹；扫描或新建期间冻结面包屑、条目与「上一级」，空名不发请求，重名/非法字符由宿主拒绝；选中当前层后交给与 native 共用的 `adoptDirectory`（默认名、改名兜底、建项、展开列表）。
 
 **不预判、不缓存能力**：客户端拿不到 capability kind（见 capability-gaps 第 47 条），预判只能靠探测；每次加项目最多多一次被拒的 RPC，换掉一份会随宿主切换后端而失真的缓存。
 
@@ -28,4 +28,4 @@ Status: implemented
 
 ## Testing
 
-`tests/e2e/project-browse-picker.e2e.js` 用 `SSH_CONNECTION` 把真实宿主钉到 browse：点加项目 → 上一级到根 → 进 `/tmp` 目标目录 → 选中，断言项目行与 `projects.json`。双向验证：撤掉 `startAdd` 的 browse 回退，场景在「弹出应用内浏览」超时变红；还原后约 5 秒绿。纯逻辑（面包屑、上一级、隐藏过滤、失败文案）在 `tests/directory-browse.test.js`。`engines.dsh` 下限核对：`listDirectory` / `createDirectory` 在 `0.2.1-rc.2` 的 `UiWorkspace` 已存在（npm 包 `lib/types/client/navigation.d.ts`）。
+`tests/e2e/project-browse-picker.e2e.js` 用 `SSH_CONNECTION` 把真实宿主钉到 browse：点加项目 → 上一级到根 → 进 `/tmp` 目标目录 → 选中，断言项目行与 `projects.json`。双向验证：撤掉 `startAdd` 的 browse 回退，场景在「弹出应用内浏览」超时变红；还原后约 6 秒绿。纯逻辑（面包屑、上一级、隐藏过滤、失败文案）以及 probe 的 native 拒绝/取消、新建文件夹成功/重名/非法字符（fake workspace）在 `tests/directory-browse.test.js`。`engines.dsh` 下限核对：`listDirectory` / `createDirectory` 在 `0.2.1-rc.2` 的 `UiWorkspace` 已存在（npm 包 `lib/types/client/navigation.d.ts`）。

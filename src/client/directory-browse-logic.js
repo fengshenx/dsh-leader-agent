@@ -58,6 +58,43 @@ export function parentCrumb(listing) {
 }
 
 /**
+ * 探测宿主是否服务 browse 目录原语。
+ *
+ * `pickDirectory()` 只服务 native，在 browse 宿主上必然被拒；两个后端的
+ * capability 在浏览器侧都读不到（`uiWorkspace` 只暴露动词）。因此用
+ * `listDirectory()` 的成败当能力判据：能列出主目录就是 browse 宿主。
+ * 拒绝不是错误，是判据——native 宿主上它必然也拒绝。
+ *
+ * @param {object} uiWorkspace - 宿主的导航服务
+ * @param {AbortSignal} [signal] - 探测超时/取消信号
+ * @returns {Promise<object | null>} 主目录列表；宿主不是 browse 时 null
+ */
+export async function probeBrowseListing(uiWorkspace, signal) {
+  try {
+    return await uiWorkspace.listDirectory(undefined, signal)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 在当前目录新建一个文件夹。
+ *
+ * 空名不发请求；重名与非法字符由宿主 `createDirectory` 拒绝，错误原样抛出，
+ * 由调用方展示宿主文案。
+ *
+ * @param {object} workspace - 宿主的 `uiWorkspace`
+ * @param {string} parentPath - 当前目录
+ * @param {string} rawName - 用户输入的名字
+ * @returns {Promise<object | null>} 新建后的目录列表；空名时 null
+ */
+export async function createBrowseFolder(workspace, parentPath, rawName) {
+  const name = rawName.trim()
+  if (name === '') return null
+  return workspace.createDirectory(parentPath, name)
+}
+
+/**
  * 目录操作的失败文案。
  *
  * `DirectoryBrowseError` 把宿主业务错误放在 `rpcError.message`，`message` 只是

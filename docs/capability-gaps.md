@@ -404,15 +404,11 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 **目标形态**：点「加项目」、宿主弹出系统目录选择框后，键盘与鼠标立刻可用。
 
-**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出在浏览器窗口之上但没有被激活——框体呈灰态，点它没反应；必须先点一下浏览器窗口（让 Chrome 重新成为 active app），面板才变成可交互。症状与宿主 #7320 一致。
+**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出在浏览器窗口之上但没有被激活——框体呈灰态，点它没反应；必须先点一下浏览器窗口，面板才变成可交互。症状与宿主 #7320 一致。
 
-**证据**：
+**证据**：`native-picker.ts` 的 `MAC_PANEL` 在 `rc.2`～`rc.5` 都在 `runModal` 前同步调 `app.activateIgnoringOtherApps(true)`，modal 循环未起；修复提交 `7333a38c7a` 只在 `0.2.2-alpha.2+`。darwin + loopback bind + 非 SSH 启动走 native，所以本机 web 弹的就是它。
 
-- 宿主 `packages/host/directory-picker-native/src/native-picker.ts` 的 `MAC_PANEL` 脚本在 `0.2.1-rc.2`～`rc.5` 里都是 `app.activateIgnoringOtherApps(true)` 直接在 `panel.runModal` 之前同步调用；modal 事件循环还没起来，激活请求落空。
-- 提交 `7333a38c7a`（2026-10-26，Fixes #7320）把激活放进 `NSOperationQueue.mainQueue.addOperationWithBlock(...)`，等 modal 循环启动后再激活。该提交只进了 `0.2.2-alpha.2` 及之后（`git tag --contains 7333a38c7a` → `dsh-v0.2.2-alpha.2`），`rc.2`～`rc.5` 逐个 tag 核验均为修复前形态。
-- web 端走哪条选择器由 `dsh-host-directory-picker-auto` 启动时判定：darwin + loopback bind + 非 SSH 启动 → `native`，所以本机 web 实例弹的就是这个 NSOpenPanel。
-
-**影响**：本仓「加项目」只读调用 `uiWorkspace.pickDirectory()`，面板由宿主进程的 `osascript` 弹出、激活时机也在那支脚本里——bundle 侧没有任何 hook 能改它，也不能自带一条目录选择路径（浏览器拿不到绝对路径）。因此这一条只能靠升级宿主修复：`dsh` 升到 `0.2.2-alpha.2` 或更新的 `0.2.x`。本仓的工具与 UI 仍按 `engines.dsh` 下限 `0.2.1-rc.2` 的 API 面写，升级宿主不改这条规矩。
+**影响**：面板由宿主 `osascript` 弹出、激活时机也在那支脚本里，bundle 无 hook 可改；只能升宿主到 `0.2.2-alpha.2+`，本仓 API 仍按下限 `0.2.1-rc.2` 写。
 
 ### 43. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
 
@@ -475,14 +471,7 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 47. 浏览器侧读不到 `directoryPicker` 的能力种类
 
-**目标形态**：渲染「加项目」入口前就知道宿主服务 native 还是 browse，直接决定弹系统框还是应用内目录树。
-
-**dsh 实测**（`0.2.1-rc.2`～`0.2.2-rc.5`）：
-
-- 浏览器侧 `UiWorkspace` 只有 `pickDirectory` / `listDirectory` / `createDirectory` 三个动词，没有 `capability()`（`dsh-client-ui-workspace/src/client/navigation.ts`）。
-- 能力对象只在宿主侧：`DirectoryPickerController` 读 `ctx.directoryPicker.capability()`，每个 wire 动词按 kind 门禁拒绝（`dsh-api-workspace-controller/src/directory-picker.ts` 的 `requireCapability`）。`ctx.directoryPicker` 是宿主服务，浏览器侧取不到。
-
-**影响**：第三方只能在调用后判能力——`pickDirectory()` 被拒后拿 `listDirectory()` 的成败区分 browse（成功）与 native 上的真实失败（也拒绝）。代价是一次白跑的 pick，以及一个「拒绝是判据、必须吞掉」的异常点（`src/client/directory-browse.js` 的 `probeBrowseListing`）。宿主若暴露只读的 `capability()`，这段探测可以删。
+**目标**：加项目前判断 native / browse。**实测**：`UiWorkspace` 只有三个目录动词，无 `capability()`；能力只在宿主侧，wire 动词按 kind 拒绝（机制见 [browse 回退笔记](../.agents/notes/implemented/bug-fix/2026-11-26-browse-directory-picker-fallback.md)）。**影响**：只能先 pick，被拒时用 list 成败区分 browse；代价是白跑 pick 和吞异常点（`src/client/directory-browse.js` 的 `probeBrowseListing`），宿主暴露 `capability()` 后可删。
 
 ---
 
