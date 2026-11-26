@@ -70,6 +70,15 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
 
+## 如何使用
+
+1. **在左栏加目录**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个 Leader，项目行就是入口。
+2. **点引导卡，让 Leader 讲方法**：新 Leader 会话还没有消息时，输入框上方有一张引导卡；点「了解怎么用」，Leader 会解释卡、worker 与看板怎么配合。也可以直接在会话里问「这个项目该怎么设置 / 怎么开始？」。
+3. **按它的引导走**：做项目设置时，它会读当前目录与 `AGENTS.md`，需要时用 `init-leader-agent` 写 `LEADER.md` / `SLOTS.md`，再带你建卡、派工与看看板。
+4. **要细节时查手册**：[上手](docs/getting-started.md) 完整走一遍，[使用手册](docs/usage.md) 查每个动作。
+
+`LEADER.md` 与 `SLOTS.md` 是项目手册，`leader-mode` 是协议，目标项目的 `AGENTS.md` 仍由宿主作为共享工程约定读取；三者都不授予工具权限。见[项目提示词](docs/usage.md#项目提示词)、[上手](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法)与 `init-leader-agent` skill。
+
 ## 预览
 
 <div align="center">
@@ -117,19 +126,11 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 - 项目还缺少一些初始化机制，实际使用时你需要在你的项目内初始化 `LEADER.md`（Leader 的人设 Prompt 以及编排流）和 `SLOTS.md`（任务的角色分工以及对应的人设 Prompt）。
 - 项目设计成了 Leader 领导 Worker，Worker 之间绝不通信（Tool Use 层就杜绝了），因为当前的 Agent 被训练成了强指令遵循，两个 Agent 对话一旦出现一个错误的噪音，会把整个对话带偏。
 
-## 快速开始
-
-最短路径：加项目，然后直接问 Leader。
-
-1. **加项目**：左栏「项目」点「加项目」选目录。项目当场建好并绑定一个 Leader，项目行就是入口。
-2. **问 Leader 怎么设置**：在 Leader 会话里直接问「这个项目该怎么设置 / 怎么开始？」。它会读当前目录与 `AGENTS.md`，告诉你下一步；需要时可以用 `init-leader-agent` 帮你写 `LEADER.md` / `SLOTS.md`，再带你建卡、派工与看看板。空会话的输入框上方也有「了解怎么用」引导。
-3. **要细节时查手册**：[上手](docs/getting-started.md) 完整走一遍，[使用手册](docs/usage.md) 查每个动作。
-
-`LEADER.md` 与 `SLOTS.md` 是项目手册，`leader-mode` 是协议，目标项目的 `AGENTS.md` 仍由宿主作为共享工程约定读取；三者都不授予工具权限。见[项目提示词](docs/usage.md#项目提示词)、[上手](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法)与 `init-leader-agent` skill。
-
 ## 前提：多 worktree 隔离
 
-每个任务一个 worktree、一个独立 dsh 实例与数据根；否则并行任务会互相覆盖插件版本、争抢会话与数据。详见[开发](docs/development.md)与[架构](docs/architecture.md#项目与会话归属)。
+每个任务一个 worktree、一个独立 dsh 实例与数据根；否则并行任务会互相覆盖插件版本、争抢会话与数据。
+
+建议把「建 worktree → 起实例」做成项目脚本：worktree 建好后还有依赖、独立实例与数据根要准备，手工做容易漏。本仓用 `npm run worktree:spawn <任务名>` 建 `.worktrees/<任务名>` 与 `feature/<任务名>` 并链接依赖，再用 `npm run dev` 起独立实例与数据根；这两个脚本就是本仓日常开发实际使用的，可以照抄或按项目改造。详见[开发](docs/development.md)与[架构](docs/architecture.md#项目与会话归属)。
 
 ## 当前限制
 

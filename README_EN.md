@@ -70,6 +70,15 @@ The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES
 
 For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
 
+## How to use
+
+1. **Add a directory in the left sidebar.** In the left sidebar's Projects section, click Add project and pick a directory. The project is bound to a Leader immediately; the project row is its entry point.
+2. **Click the guide card and let the Leader explain.** While a new Leader session has no messages, a guide card sits above the input; click "Show me how to use it" and the Leader explains how cards, workers and the board fit together. You can also just ask "How should I set up this project?" or "How do I get started?".
+3. **Follow its lead.** For project setup, it reads the directory and `AGENTS.md`, writes `LEADER.md` / `SLOTS.md` via `init-leader-agent` when needed, then walks you through cards, dispatch and the board.
+4. **Look up details when needed.** [Getting started](docs/getting-started.md) walks the full path; the [usage manual](docs/usage.md) documents each action.
+
+`LEADER.md` and `SLOTS.md` are the project manuals; `leader-mode` is the protocol; the target project's `AGENTS.md` remains the host's shared engineering instructions. None grant tool permissions. See [project prompts](docs/usage.md#项目提示词), [getting started](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法), and the `init-leader-agent` skill for setup.
+
 ## Preview
 
 <div align="center">
@@ -117,19 +126,11 @@ These behaviours come from mechanisms, not from prompt wording:
 - Initialization is still manual: in your own project you write `LEADER.md` (the Leader's persona prompt and orchestration flow) and `SLOTS.md` (the role split and each role's persona prompt).
 - The Leader leads and workers never talk to each other; the tool surface rules it out. Today's agents are trained for strict instruction-following, and one noisy message between two agents can derail the entire conversation.
 
-## Quick start
-
-The shortest path: add a project, then ask the Leader.
-
-1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is bound to a Leader immediately; the project row is its entry point.
-2. **Ask the Leader how to set up.** In the Leader session, just ask "How should I set up this project?" or "How do I get started?". It reads the directory and `AGENTS.md` and tells you the next step; when needed it can write `LEADER.md` / `SLOTS.md` via `init-leader-agent`, then walks you through cards, dispatch and the board. An empty session also shows a "Show me how to use it" guide above the input.
-3. **Look up details when needed.** [Getting started](docs/getting-started.md) walks the full path; the [usage manual](docs/usage.md) documents each action.
-
-`LEADER.md` and `SLOTS.md` are the project manuals; `leader-mode` is the protocol; the target project's `AGENTS.md` remains the host's shared engineering instructions. None grant tool permissions. See [project prompts](docs/usage.md#项目提示词), [getting started](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法), and the `init-leader-agent` skill for setup.
-
 ## Prerequisites: multi-worktree isolation
 
-One worktree, one dsh instance and one data root per task; otherwise parallel tasks overwrite each other's plugin version and compete for sessions and data. Details: [development](docs/development.md) and [architecture](docs/architecture.md#项目与会话归属).
+One worktree, one dsh instance and one data root per task; otherwise parallel tasks overwrite each other's plugin version and compete for sessions and data.
+
+Use a project script for the whole worktree setup: creating the checkout and branch is only the first step, and dependencies, an isolated instance and its data root are easy to miss by hand. This repo uses `npm run worktree:spawn <task>` to create `.worktrees/<task>` and `feature/<task>` and link dependencies, then `npm run dev` for an isolated instance and data root. Both scripts are what this repo uses day to day; copy or adapt them for your project. Details: [development](docs/development.md) and [architecture](docs/architecture.md#项目与会话归属).
 
 ## Current limitations
 
