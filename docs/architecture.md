@@ -28,7 +28,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 身份 | 判定 | 工具面 |
 |---|---|---|
 | leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，摘掉 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` / `read_card` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 无 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；有 `update_card`（限自己挂着的卡）与 `read_card` |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 无 `spawn_worker` / `message_worker` / `list_workers` / `list_cards` / `create_card`；有 `update_card`（限自己挂着的卡）与 `read_card` |
 | 普通会话 | 其余会话 | 同 worker，再少 `update_card` / `read_card`；有宿主 subagent 四件 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。普通会话保留的宿主 subagent 工具在 0.2.2 起为四件（含 `wait_agent`）；`engines.dsh` 下限 0.2.1-rc.2 只有前三件，`applyToolGate` 的逐件重试会跳过缺失项。
@@ -150,6 +150,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | 派工给后台 worker | `spawn_worker` | 本 bundle |
 | 给 worker 续聊 / 改名 | `message_worker` | 本 bundle |
+| 盘点 worker 与各自的模型、状态 | `list_workers` | 本 bundle（登记表 + 活 agent） |
 | worker 轮次结束的自动回报 | `session/event` → `turn/end` | 宿主 |
 | 读 worker 回报 | 完成通知 | 本 bundle 的唤醒器 |
 | 回看 worker 的会话回合（不唤醒） | `read_worker_session` | 本 bundle（读宿主的 `sessionQuery.readSession`） |

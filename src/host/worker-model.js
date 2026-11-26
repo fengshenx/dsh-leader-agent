@@ -76,22 +76,20 @@ function latestSelectionEvent(session) {
 }
 
 /**
- * 读 leader 当前使用的模型。
+ * 读一个活 agent 当前使用的模型。
  *
  * 顺序按「多接近当前选择」排：
  * 1. `agent.model.current()`：新宿主把待生效的选择也算进来；
  * 2. 会话日志里的 `model/selection`：rc.2 的等价真源，用户在模型选择器里换过就有；
  * 3. 最近一次请求头：还没换过模型时就是实际在用的 route；
- * 4. `agent.options`：rc.2 的 live route；
- * 5. 部署默认模型：leader 还没跑过任何请求时的最后回落。
+ * 4. `agent.options`：rc.2 的 live route。
  *
  * 任何一步读到半截 route 都跳过，不提前返回 undefined——后一步可能更完整。
  *
- * @param {object | undefined} agent - leader agent
- * @param {object} ctx - Cordis 上下文（读部署默认模型）
- * @returns {{ provider: string, model: string, reasoningEffort?: string } | undefined} leader 当前选择
+ * @param {object | undefined} agent - 宿主活 agent
+ * @returns {{ provider: string, model: string, reasoningEffort?: string } | undefined} 当前选择
  */
-export function leaderModelSelection(agent, ctx) {
+export function liveModelSelection(agent) {
   if (agent === undefined) return undefined
   if (typeof agent.model?.current === 'function') {
     const live = normalizeModelSelection(agent.model.current())
@@ -101,8 +99,25 @@ export function leaderModelSelection(agent, ctx) {
   if (selected !== undefined) return selected
   const header = normalizeModelSelection(agent.session?.requestHeader?.()?.config)
   if (header !== undefined) return header
-  const options = normalizeModelSelection(agent.options)
-  if (options !== undefined) return options
+  return normalizeModelSelection(agent.options)
+}
+
+/**
+ * 读 leader 当前使用的模型。
+ *
+ * 先按活 agent 的四层读当前选择，再回落到部署默认模型（leader 还没跑过任何
+ * 请求时的最后兜底）。worker 不要用这个函数：它的 route 是派工时刻定下的，
+ * 部署默认只会把「读不到」装成「就是这个模型」。
+ *
+ * @param {object | undefined} agent - leader agent
+ * @param {object} ctx - Cordis 上下文（读部署默认模型）
+ * @returns {{ provider: string, model: string, reasoningEffort?: string } | undefined} leader 当前选择
+ */
+export function leaderModelSelection(agent, ctx) {
+  // 没有 leader agent 时不能拿部署默认冒充：调用方会把它当成 leader 正在用的 route。
+  if (agent === undefined) return undefined
+  const live = liveModelSelection(agent)
+  if (live !== undefined) return live
   return normalizeModelSelection(ctx.get('agentDefaultModel')?.currentSelection?.())
 }
 

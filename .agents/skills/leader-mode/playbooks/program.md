@@ -10,6 +10,7 @@
 |---|---|
 | 建 worker 会话（不开工，立即返回） | `spawn_worker` |
 | 查 worker 可用的模型 route 与 effort | `list_worker_models` |
+| 盘点本项目 worker 及其模型、effort 与状态 | `list_workers` |
 | 投递任务 / 续聊 / 改名（第一条消息即开工） | `message_worker` |
 | 读 worker 回报 | 完成通知（无需轮询） |
 | 回看 worker 的会话过程（不唤醒它） | `read_worker_session` |
@@ -23,11 +24,11 @@
 
 建完立刻投递：`spawn_worker` 之后不投任务的 worker 只是一条空闲会话，占名册也可能被误当成在跑。投递用 `message_worker`（worker 挂着未完成卡时 `cardId` 必填且必须一致），消息只写「做什么、边界、验收与指针」；卡片规格、链接与 revision 由宿主注入，不要抄进消息。
 
-复用 worker 派新活前先看它挂没挂卡：挂着 `active` 卡的 worker 不能接别的工作（投递会被拒绝），只能同卡续跑。要让它转去下一张卡，先把旧卡标 `done` 或归档——关闭卡片会自动释放槽位上的执行者，worker 立刻变成未挂卡、可以接新任务。名册到顶时的候选清单已经排除挂着卡的 worker，并在下面单独列出怎么释放。
+复用 worker 派新活前先用 `list_workers` 盘点：它按最近使用排序，列出本项目未归档 worker 的会话 id、模型 / effort、是否在跑与挂着的卡；再确认它挂没挂卡——挂着 `active` 卡的 worker 不能接别的工作（投递会被拒绝），只能同卡续跑。要让它转去下一张卡，先把旧卡标 `done` 或归档——关闭卡片会自动释放槽位上的执行者，worker 立刻变成未挂卡、可以接新任务。名册到顶时的候选清单已经排除挂着卡的 worker，并在下面单独列出怎么释放。
 
 worker 是常驻根会话，人可以在项目树里打开它直接下钻对话。**人自己聊的那几轮你要当没发生**：它不会唤醒你，也不会给你完成通知；除非用户回来让你接着推进，否则不要凭猜测去追问它在聊什么。
 
-worker 的一切交互只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session` 三个入口。宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 只认宿主 subagent 体系：我们的 worker 是普通根会话，不在它们的子会话名录里，传话、中止与等待都落不到它身上（这四件已从你的工具面摘掉）。worker 跑偏时用 `message_worker` 把纠偏指令 steer 进当前轮次（正在跑就插进下一步）；没有中止手段，真卡死了才请人去那个会话里处理。宿主另有同伴模型的一套同名工具，按成员名寻址，与本流程的 worker 不是同一批，同样不要混用。
+worker 的一切交互只有 `spawn_worker`、`message_worker` 与只读的 `read_worker_session` 三个入口；要看有哪些 worker、各自跑在什么模型上，用同样只读的 `list_workers`（不唤醒、不产生模型调用）。宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 只认宿主 subagent 体系：我们的 worker 是普通根会话，不在它们的子会话名录里，传话、中止与等待都落不到它身上（这四件已从你的工具面摘掉）。worker 跑偏时用 `message_worker` 把纠偏指令 steer 进当前轮次（正在跑就插进下一步）；没有中止手段，真卡死了才请人去那个会话里处理。宿主另有同伴模型的一套同名工具，按成员名寻址，与本流程的 worker 不是同一批，同样不要混用。
 
 worker 连续 15 分钟没有任何回报时，机制侧会注入一条带 **`【后台巡查】`** 前缀的例行检查提醒（与完成通知同一条通道，但正文自带前缀与会话 id，不是 worker 的回报；不一定是卡住，也不代表任务失败）。收到后先 `read_worker_session` 回看它最近几轮卡在哪一步，再决定继续等待、用 `message_worker` 纠偏，还是请人在它的会话里处理；不要因为收到提醒就重复追问或重派同一件活。提醒每 15 分钟至多一条，本流程仍没有中止手段。
 
