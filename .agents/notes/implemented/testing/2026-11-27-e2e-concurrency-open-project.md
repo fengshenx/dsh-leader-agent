@@ -36,5 +36,6 @@ Status: implemented
 
 - `npm run e2e:report`：21/21（load 37.38，自动 3.74）。
 - 并发：全量 + 3 场景子集，两边 21/21 与 3/3（load 8.26）。
-- 负载敏感四条各 3 次通过（load 11–40）；mutation 四车道全红后还原绿。
+- 负载敏感四条各 3 次通过（load 11–40）。
+- mutation：把 `openProject` 从「重试到 data-selected」改成「等 data-dead 后单次点击」；本地四车道并发 4 红、review 独立复跑 3 绿 / 1 红——点击丢失是概率性的，不保证每次 mutation 都红；还原后单跑 12.6s 绿。
 - `npm run check`：load 27.23 时 exit 0（1542 个用例通过，17 跳过）；低负载同样 exit 0。单测用注入的 load/cores 断言倍率，不依赖真实负载。

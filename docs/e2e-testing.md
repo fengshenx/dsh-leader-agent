@@ -110,7 +110,7 @@ test('场景要证明的一句话', { timeout: scenarioTimeout() }, async (t) =>
 
 ### 负载卫生：并发车道与自动倍率
 
-e2e 默认按整机负载自动放大等待：`resolveBudgetScale() = min(4, max(1, loadavg / ncpu))`。倍率每场景进程只解析一次，`scenarioTimeout()` 与所有等待共用，不会注册时/运行后不同。`E2E_BUDGET_SCALE=1.5` 仍优先，用于固定预算或 2 核 CI；自动值首次使用时打印一次。
+e2e 默认按整机负载自动放大等待：`resolveBudgetScale() = min(4, max(1, loadavg / ncpu))`。倍率每场景进程只解析一次，`scenarioTimeout()` 与所有等待共用；`E2E_BUDGET_SCALE` 仍优先。自动值首次使用时打印并固定，后段 load 上升不追加预算，超封顶仍红按失败处理。
 
 **允许两条车道并发**：一条全量 + 一条 `--files` 子集（子集与全量重合也可以，实例隔离），或两条不相交的 `--files` 子集。不要并发跑 `npm run check`（它会抢 CPU 且有自己的超时），也不要让两条全量同时跑；并发时整机 load 上升，自动倍率会把「首屏确实慢」放过去；点击丢失这类问题不会因此变绿（交互本身有就绪/选中确认，见 `openProject`）。
 
