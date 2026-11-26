@@ -50,7 +50,14 @@ const EXPECTED_SESSION_RELEASE = /^Sidebar Session opening failed: (?:Error: )?S
  * @returns {string[]} 随页面生命周期增长的异常列表，场景末尾断言为空
  */
 export function watchProblems(page, problems = []) {
-  page.on('pageerror', (error) => problems.push(`pageerror: ${error.message}`))
+  // 失败时只留 message 会把调用栈丢掉：像 sessions.retain 这类宿主内部异步抛出的
+  // pageerror，没有 stack 就无法判断是插件调用点还是宿主释放竞态。
+  page.on('pageerror', (error) => {
+    const name = typeof error?.name === 'string' && error.name !== '' ? error.name : 'Error'
+    const message = typeof error?.message === 'string' ? error.message : String(error)
+    const stack = typeof error?.stack === 'string' && error.stack !== '' ? error.stack : '(no stack)'
+    problems.push(`pageerror: ${name}: ${message}\n${stack}`)
+  })
   page.on('console', (message) => {
     if (message.type() !== 'error') return
     const text = message.text()
