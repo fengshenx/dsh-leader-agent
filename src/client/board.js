@@ -44,7 +44,7 @@ import {
   resolveBoardAccess,
   sameProjectSummary,
 } from './project-board-data.js'
-import { SlotRetention, retainTargetOf } from './slot-retain.js'
+import { SlotRetention } from './slot-retain.js'
 import { BoardCard } from './board-card.js'
 import { CardDetail } from './card-detail.js'
 import { describeCardRemoval } from './card-detail-view.js'
@@ -343,31 +343,18 @@ function useSlotStates(cards, getSessions, useSessionStatus) {
   const retention = useRef(undefined)
   const latest = useRef(getSessions)
   latest.current = getSessions
-  // 建卡会话表：子代理槽位的地址要用真正的父会话，卡片自己记着 `createdBy`。
-  // 表必须按 `cards` 记忆（每次渲染新建会连带 `needed` 变化，把同步效果拖成每
-  // 帧跑一次），保留器的闭包经 ref 读最新值。
-  const parentsNow = useMemo(() => {
-    const table = new Map()
+  // 依赖用 id 排序串而不是 Set 本身：卡片每 2 秒轮询都会换一个新数组，用 Set
+  // 当依赖会让同步效果每 2 秒跑一次——保留失败的槽位不在账本里，每次都会再
+  // retain 一遍，日志被去重挡住但底层调用没停。
+  const neededKey = useMemo(() => {
+    const ids = new Set()
     for (const card of cards) {
-      const creator = typeof card.createdBy === 'string' && card.createdBy !== '' ? card.createdBy : undefined
       for (const binding of slotBindingsOf(card)) {
-        if (binding.sessionId === '') continue
-        // 同一个会话可能绑在多张卡上：优先留记了建卡会话的那一张，存量卡没有
-        // `createdBy`，拿它当父会话会让地址挂到看板会话上。
-        if (!table.has(binding.sessionId) || (table.get(binding.sessionId) === undefined && creator !== undefined)) {
-          table.set(binding.sessionId, creator)
-        }
+        if (binding.sessionId !== '') ids.add(binding.sessionId)
       }
     }
-    return table
+    return [...ids].sort().join('\n')
   }, [cards])
-  const parents = useRef(parentsNow)
-  parents.current = parentsNow
-
-  // 依赖用 id 排序串而不是 Map 本身：卡片每 2 秒轮询都会换一个新数组，用 Map
-  // 当依赖会让 `needed` 每轮都是新 Set，同步效果跟着每 2 秒跑一次——保留失败的
-  // 槽位不在账本里，每次都会再 retain 一遍，日志被去重挡住但底层调用没停。
-  const neededKey = useMemo(() => [...parentsNow.keys()].sort().join('\n'), [parentsNow])
   const needed = useMemo(
     () => new Set(neededKey === '' ? [] : neededKey.split('\n')),
     [neededKey],
@@ -393,24 +380,10 @@ function useSlotStates(cards, getSessions, useSessionStatus) {
       retain: (sessionId) => {
         const sessions = latest.current()
         if (sessions === undefined || sessions === null) throw new Error('会话服务不可用')
-        const options = { source: 'dshLeaderBoard' }
-        try {
-          return sessions.retain(sessionId, options)
-        } catch (error) {
-          // 有些会话在客户端会话目录里没有独立条目（如历史 subagent 时代的
-          // worker），裸 id 认不出来。这类会话要靠
-          // `{ parentSessionId, childSessionId }` 地址才找得到——父会话只能是建
-          // 这张卡的会话。看板当前挂在哪个会话上（尤其切到 worker 后）不是父子
-          // 关系，拿它兜底会得到宿主不认的地址；宁可把原错误抛回去，由保留器
-          // 记下「未知」，也不编造父会话。
-          const target = retainTargetOf(sessions, sessionId, parents.current.get(sessionId))
-          if (target === undefined) throw error
-          try {
-            return sessions.retain(target, options)
-          } catch {
-            throw error
-          }
-        }
+        // 只按裸 id 保留：worker 是根会话，宿主认不认得由它自己判。编造
+        // `{ parentSessionId, childSessionId }` 地址会让宿主把根会话投影成子代理，
+        // 之后每次读历史都按子代理校验，一律 `subagent/unauthorized`。
+        return sessions.retain(sessionId, { source: 'dshLeaderBoard' })
       },
       onState: (sessionId, state) => {
         setSnapshots((previous) => {
