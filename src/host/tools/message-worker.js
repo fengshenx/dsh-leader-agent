@@ -23,7 +23,7 @@ export function createMessageWorkerTool({ dispatcher }) {
   return {
     name: 'message_worker',
     description:
-      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 正在跑时消息会在它的下一步注入当前轮次，空闲时立刻开工；它结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。可同次换模型（model / effort），不填就保持它当前的 route——换了之后这一轮和以后都用新 route，冷恢复也沿用。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
+      '给一个已派出的 worker 发后续消息：追问结果、补充要求或返工指示。worker 正在跑时消息会在它的下一步注入当前轮次，空闲时立刻开工；它结束后会自动唤醒你并附上完成通知与产物摘要。可顺手改名。可同次换模型（model / effort）；不填时保持当前 route，但如果是复用承接新角色（换了卡或槽位），会按新槽位的 SLOTS.md 默认模型切换。换了之后这一轮和以后都用新 route，冷恢复也沿用。目标 worker 挂着未完成的卡时只能同卡续跑（带 cardId）；要让它接新任务，先把那张卡标 done 或归档（槽位会自动释放）。',
     parameters: {
       type: 'object',
       properties: {
@@ -45,11 +45,11 @@ export function createMessageWorkerTool({ dispatcher }) {
         },
         model: {
           type: 'string',
-          description: '可选：把 worker 切到这个模型 route，写成 provider/model（如 deepseek/deepseek-reasoner）；只写模型 id 时沿用 worker 当前的 provider。省略则保持它现在的模型。',
+          description: '可选：把 worker 切到这个模型 route，写成 provider/model（如 deepseek/deepseek-reasoner）；只写模型 id 时沿用 worker 当前的 provider。省略则保持当前模型；复用承接新角色时改用新槽位的 `SLOTS.md` 默认。',
         },
         effort: {
           type: 'string',
-          description: '可选：reasoning effort id（如 low / medium / high，以该模型的模型目录为准）。只给 effort 时套在 worker 当前模型上；换模型时省略 effort 就用新模型默认。',
+          description: '可选：reasoning effort id（如 low / medium / high，以该模型的模型目录为准）。只给 effort 时套在当前模型上（换指派时套新槽位默认模型）；换模型时省略 effort 就用新模型默认。显式 model / effort 分别优先于槽位同名值。',
         },
       },
       required: ['sessionId', 'message'],
@@ -63,14 +63,15 @@ export function createMessageWorkerTool({ dispatcher }) {
           status: { type: 'string' },
           model: { type: 'string' },
           effort: { type: 'string' },
+          modelSource: { type: 'string' },
         },
         required: ['sessionId', 'status'],
       },
       render(args, value) {
-        const result = /** @type {{ sessionId: string, name?: string, status: string, model?: string, effort?: string }} */ (value)
+        const result = /** @type {{ sessionId: string, name?: string, status: string, model?: string, effort?: string, modelSource?: string }} */ (value)
         const switched = result.model === undefined
           ? ''
-          : `\n模型：${result.model}${result.effort === undefined ? '' : `，effort ${result.effort}`}（续聊指定）`
+          : `\n模型：${result.model}${result.effort === undefined ? '' : `，effort ${result.effort}`}（${result.modelSource === 'slot' ? '槽位默认' : '续聊指定'}）`
         if (result.status === 'merged') {
           return [
             {
@@ -143,6 +144,7 @@ export function createMessageWorkerTool({ dispatcher }) {
         status: result.code,
         ...result.model === undefined ? {} : { model: result.model },
         ...result.effort === undefined ? {} : { effort: result.effort },
+        ...result.modelSource === undefined ? {} : { modelSource: result.modelSource },
       }
     },
   }

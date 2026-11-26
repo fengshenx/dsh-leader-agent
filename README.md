@@ -138,7 +138,7 @@ Three things, one layer each. None grant tool permissions; the two manuals contr
 
 The plugin only reads `LEADER.md`. A `COORDINATOR.md` that merely points at it is a compatibility shim for external tools that still look for the old file name; it is never injected, and you do not need it otherwise.
 
-Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default two roles `dev` / `review`. Slots may set default `model` / `effort`; dispatch otherwise uses the Leader's model, switchable later with `message_worker`.
+Slot names are ASCII identifiers (lowercase letters, digits, underscore, hyphen, up to 32 characters); display names come from the `slots:` frontmatter at the top of `SLOTS.md`. A project without `SLOTS.md` falls back to the default two roles `dev` / `review`. Slots may set default `model` / `effort`; dispatch otherwise uses the Leader's model. `message_worker` can switch it or apply the slot default on reassignment.
 
 The `init-leader-agent` skill handles project setup: it merges the repository's engineering conventions into a managed block of the target project's `AGENTS.md`, then writes `LEADER.md` (how the Leader drives this project) and `SLOTS.md` (executor roles) from the bundled skeletons. Re-running only replaces the managed block, and both manuals are read before editing. An empty directory gets the TODO skeleton plus the three questions still unanswered — project facts are never invented.
 

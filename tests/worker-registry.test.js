@@ -257,3 +257,31 @@ test('续聊换模型不带 modelSource 时保留原来源', async () => {
 
   assert.equal(updated.modelSource, 'slot')
 })
+
+test('记录复用指派：写 cardId + slot，跨实例读得到', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+  await registry.register({ childId: 'child-1', parentSessionId: 'parent-1', name: '工' })
+
+  const updated = await registry.setAssignment('child-1', { cardId: 'card-9', slot: 'dev' })
+
+  assert.deepEqual(updated.assignment, { cardId: 'card-9', slot: 'dev' })
+  assert.equal(updated.name, '工')
+  assert.deepEqual((await createWorkerRegistry({ home }).get('child-1')).assignment, {
+    cardId: 'card-9',
+    slot: 'dev',
+  })
+  // 没挂槽位时 slot 记 null，表示「这张卡没有角色槽位」，不是「字段没写」。
+  assert.deepEqual(
+    (await registry.setAssignment('child-1', { cardId: 'card-10', slot: null })).assignment,
+    { cardId: 'card-10', slot: null },
+  )
+})
+
+test('记录复用指派时没有这条记录就不写盘、不补登记', async () => {
+  const home = await makeTempDir('dsh-leader-agent-registry-')
+  const registry = createWorkerRegistry({ home })
+
+  assert.equal(await registry.setAssignment('child-别的', { cardId: 'card-1', slot: 'dev' }), undefined)
+  assert.equal(await registry.get('child-别的'), undefined)
+})

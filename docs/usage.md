@@ -8,11 +8,11 @@ README 给最短路径，[上手](getting-started.md) 把整条路径串一遍�
 
 工具立即返回会话 id，但 worker **还没开工**——它不产生模型调用，等 `message_worker` 投递首条消息才开始跑。分两步是为了让绑定先落盘：第一条请求组装时，角色槽位与卡片事实（规格、链接、revision）已在上下文里。`cardId` 必须是**本项目**的、状态为 `active` 的卡：跨项目的卡会被拒绝（否则 A 项目能把 worker 绑到 B 的卡上，每轮读到 B 的 spec），已关闭或归档的卡也会被拒绝（关闭即释放执行者，再绑会让投递门禁看不见它）。绑定失败会销毁刚建的会话；改名在绑定成功后才做，磁盘上不会留下空会话。
 
-worker 的模型按 **`spawn_worker` 参数 → `SLOTS.md` 槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；换模型没给 effort 时用新模型默认。派工前可用 `list_worker_models` 查 route（provider → 模型 → effort；查 effort 必须同时给 provider）。指定模型/effort 时在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。只给 effort 却没有可用 route 会直接报错。
+worker 派工时的模型按 **`spawn_worker` 参数 → `SLOTS.md` 槽位默认 → leader 当前模型**回落。`model` 写 `provider/model`，裸 id 沿用 leader 的 provider；`effort` 可单独给，套在最终模型上；换模型没给 effort 时用新模型默认。派工前可用 `list_worker_models` 查 route（provider → 模型 → effort；查 effort 必须同时给 provider）。指定模型/effort 时在建会话前经 `llm.resolveCallConfig` 预检，失败即拒；回执写明来源。只给 effort 却没有可用 route 会直接报错。
 
-worker 是**常驻根会话**——它在左栏项目树下有自己的会话行，你能打开它直接输入新指令，也能在 `message_worker` 里续聊。worker 每轮结束会唤醒 leader 并附完成通知——回报由机制侧从会话事件结算，worker 不必调用工具。
+worker 是**常驻根会话**，在左栏项目树下有自己的会话行，能打开直接输入指令，也能 `message_worker` 续聊。worker 每轮结束会唤醒 leader 并附完成通知——回报由机制侧从会话事件结算，worker 不必调用工具。
 
-通知在会话里渲染成 **worker 的发言**：左侧气泡，气泡上方是头像与 worker 名字；头像内联 SVG，悬停眨一次眼（`prefers-reduced-motion` 下不动），正文没有「谁在说话」的前缀——与用户输入（右侧气泡）区分开。气泡只显示最后一次回报（产物摘要或失败原因），协议字段（会话、状态、下一步）留给模型读；气泡下方是时间与复制按钮，点 worker 名字可跳到它的会话。通知排进 inbox 的 **next-turn** 边界（下一轮输入），且**父会话忙时先不投**——留在落盘队列，等父会话空闲再投，因此不会挂到输入框上方的消息队列面板。
+通知渲染成 **worker 的发言**：左侧气泡，上方是头像与名字；头像内联 SVG，悬停眨眼（`prefers-reduced-motion` 下不动），正文没有「谁在说话」的前缀——与用户输入（右侧气泡）区分开。气泡只显示最后一次回报（产物摘要或失败原因），协议字段留给模型读；下方是时间与复制，点名字可跳到它的会话。通知排进 inbox 的 **next-turn** 边界（下一轮输入），且**父会话忙时先不投**——留在落盘队列等空闲再投，不占输入框上方的消息队列。
 
 反过来，打开 worker 的会话也能看到 leader 派给它的任务：同一条 `message_worker` 渲染成 **右侧用户气泡**，而不是「收到执行请求」的上下文行。正文与 assistant 同套 Markdown；单换行合并，断行用空行或 Markdown 语法。下方是时间与复制；没有身份头、leader 名字，也不能跳回 leader。它靠内容与右侧气泡形态同用户消息区分，没有独立视觉标识；悬停气泡会提示「Leader 派发的任务」。
 
@@ -20,7 +20,7 @@ worker 是**常驻根会话**——它在左栏项目树下有自己的会话行
 
 用 `message_worker` 投递（`sessionId` 与 `message` 必填，`sessionId` 就是 `spawn_worker` 返回的会话 id；可选的 `rename` 顺手改名，登记表与会话标题同次改到新名字）。**第一条消息就是开工信号**，之后再用它是续聊。会话还活着就把消息投进它的当前轮次（返回 `merged`）——worker 正在跑时下一步即生效，空闲时立即开工；进程重启后不在内存就先冷恢复再投（返回 `sent`）。两种形态对调用方是同一步，新的一轮结束时同样唤醒 leader，收到一条格式一致的汇报气泡。
 
-同一调用可带 `model` / `effort` 换 route：不填就保持当前选择；只给 effort 套在当前模型上，换模型没给 effort 用新模型默认。切换与派工同套写法与预检，失败即拒、不投递；新 route 从下一步起生效并落进登记表，冷恢复沿用，不动 leader 默认模型。
+同一调用带 `model` / `effort` 换 route：显式 model / effort 分别压过槽位同名值；复用承接新角色时，没给 model 就用新槽位 `SLOTS.md` 默认，同卡续聊保持当前。effort 套在最终模型上；显式换模型没给 effort 用新模型默认。切换与派工同套写法与预检，失败即拒、不投递；新 route 从下一步起生效并落进登记表，冷恢复沿用，不动 leader 默认模型。
 
 **人下钻跟 worker 聊天不经过这条路径**：结算按回合归属，你的回合不回报 leader；leader 消息未取走时留到下一轮，不会拿你的产物顶名。派工要求会话持久化与查询后端（`sessionPersistence` / `sessionQuery`）：缺一就拒绝，而不是降级成只能跑一轮的一次性 worker。
 
@@ -137,7 +137,7 @@ leader 会话不显示宿主每轮末尾的「已编辑 N 个文件」汇总卡�
 
 槽位名是 ASCII 机器标识（小写字母、数字、下划线、连字符，最长 32 字符），卡片工具与解析器共用同一条规则，非法名在写卡时直接报错。文件顶部的 YAML frontmatter 用 `slots:` 声明卡面上的显示名：`slots:` 下按槽位名缩进一层写 `label:`（块状 YAML，不能写成 `slots.dev.label: 开发` 这种点路径），中文可用，只影响界面、不进入注入正文；没声明时内置 `dev` / `review` 按界面语言显示，其余槽位显示槽位名（`discuss` 保留内置翻译）。
 
-`slots:` 同一层可给角色声明默认 `model` / `effort`：派工未显式指定时用它，`model` 没写回落 leader 当前模型。**槽位默认只在派工时用**，之后改 `SLOTS.md` 只影响新派的工；坏值在解析时忽略并告警，绑到该槽位派工会被拒；语法或 route 不可用则在派工预检（`llm.resolveCallConfig`）报错。示例见[上手](getting-started.md#slotsmd定义每个角色怎么干活)。
+`slots:` 同一层可给角色声明默认 `model` / `effort`：派工未显式指定时用它，`model` 没写回落 leader 当前模型。**派工与换卡/槽位复用承接时都会应用**，同卡续聊不重置；改 `SLOTS.md` 只影响之后新派/新承接的工。坏值解析忽略并告警，绑该槽位被拒；语法/route 不可用则预检（`llm.resolveCallConfig`）报错。示例见[上手](getting-started.md#slotsmd定义每个角色怎么干活)。
 
 槽位只贡献提示词文本，不授予工具权限。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`（正文为空）。节名不合法（中文、大写、超长）的节整节忽略，宿主日志一次列出全部被忽略的节名；一个合法节都不剩时同样回落。同一槽位在 frontmatter 里出现两个不同 `label` 时告警，后者覆盖。同一问题只告警一次，配置修好后再坏会重新报——沉默的配置错误会让注入静默变空串或显示名静默丢失。
 

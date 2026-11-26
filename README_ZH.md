@@ -138,7 +138,7 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 
 插件只读 `LEADER.md`。项目里另放一个只指向它的 `COORDINATOR.md` 是给仍按旧文件名找 leader 手册的外部工具用的兼容入口，不参与注入；没有那个工具就不需要建。
 
-槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。槽位可声明默认 `model` / `effort`；没给就回落到 Leader 模型，之后可用 `message_worker` 换 route。
+槽位名是 ASCII 标识（小写字母、数字、下划线、连字符，最长 32 字符），界面显示名由 `SLOTS.md` 顶部 frontmatter 的 `slots:` 声明。没写 `SLOTS.md` 的项目回落默认两角色 `dev` / `review`。槽位可声明默认 `model` / `effort`；没给就回落到 Leader 模型。`message_worker` 可换 route；复用承接该槽位时自动应用默认，同卡续聊不重置。
 
 `init-leader-agent` skill 管项目初始化：先把仓库工程约定并入目标项目 `AGENTS.md` 的受管区块，再按包内骨架写 `LEADER.md`（leader 怎么指挥这个项目）与 `SLOTS.md`（执行者角色）。重复执行只替换受管区块，两份手册先读后改；空目录写带 TODO 的骨架，并把还没答的三个问题问清楚，不编造项目事实。
 

@@ -1,13 +1,14 @@
 /**
  * worker 模型选择：显式派工参数 > 角色槽位默认 > leader 当前模型。
  *
- * 模型在派工或续聊显式指定时定下：`SLOTS.md` 再改默认模型只影响之后新派的工，
- * 不会自己切换已在跑的会话；要换就在 `message_worker` 里带 `model` / `effort`。
- * 冷恢复要沿用登记表里的最近 route，所以选择结果还要随登记表落盘（见
- * `worker-sessions.js` 的 `resolveSessionSelection`）。
+ * 模型在派工建会话时定下；复用承接新角色（换卡/换槽位）时按新槽位的默认值
+ * 重选，同一张卡续聊保持当前 route；要临时换就在 `message_worker` 里带
+ * `model` / `effort`。冷恢复要沿用登记表里的最近 route，所以选择结果还要随
+ * 登记表落盘（见 `worker-sessions.js` 的 `resolveSessionSelection`）。
  *
- * route 的写法与宿主模型选择器一致：`provider/model`。只写模型 id 时沿用 leader
- * 的 provider——大多数项目里角色默认模型换的是同一家供应商下的模型。
+ * route 的写法与宿主模型选择器一致：`provider/model`。裸模型 id 的 provider 口径
+ * 分两种：派工与复用承接的槽位默认沿用 leader 的 provider；续聊显式换模型沿用
+ * worker 当前的 provider——大多数项目里换的是同一家供应商下的模型。
  *
  * @module dsh-leader-agent/host/worker-model
  */

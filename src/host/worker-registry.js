@@ -236,6 +236,26 @@ export function createWorkerRegistry({
     },
 
     /**
+     * 记录 worker 当前承接的指派（卡 + 槽位）。
+     *
+     * 续聊复用换卡/换槽位时靠它判断「这是新角色」并应用槽位默认模型；同卡同槽
+     * 续聊不重置 route。旧记录没有这个字段时按「首次补记录」处理，不改模型。
+     *
+     * @param {string} childId - 子会话 id
+     * @param {{ cardId: string, slot: string | null }} assignment - 本次指派
+     * @returns {Promise<object | undefined>} 更新后的记录；没有这条时 undefined
+     */
+    async setAssignment(childId, assignment) {
+      return serializeDeferredWrite(async (registry, flush) => {
+        const existing = registry.workers.find((item) => item.childId === childId)
+        if (existing === undefined) return undefined
+        existing.assignment = { cardId: assignment.cardId, slot: assignment.slot }
+        await flush()
+        return existing
+      })
+    },
+
+    /**
      * 把一个父会话派出的工改绑到另一个父会话（换 leader 后的接管）。
      *
      * 只改「现在还归它」的记录：`parentSessionId` 等于 `fromId` 的那些。改过的

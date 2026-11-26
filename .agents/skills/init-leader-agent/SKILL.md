@@ -49,7 +49,7 @@ dsh 读取 `AGENTS.md` 作为系统提示段落，写入后立即对模型生效
 1. 读 `references/SLOTS.md`，得到骨架：frontmatter 声明 `dev` / `review` 两个槽位，正文按 `## <槽位名>` 分节。
 2. 按项目需要调整槽位（可以增删，frontmatter 与正文章节要同步）。需要单独的需求讨论角色，再加一节 `## discuss`。
 3. 每节写这个项目对这类角色的具体要求：开工前读什么、改动范围、验证方式、审查判据。不写通用道理。
-4. 可选：在 frontmatter 给角色写默认 `model` / `effort`（`model` 写 `provider/model`，或只写模型 id 沿用 leader 的 provider）；不写就回落 leader 当前模型。拿不准模型 id 时先用 `list_worker_models` 查，别编。这里只是派工默认；已在跑的 worker 用 `message_worker` 的 `model` / `effort` 换。
+4. 可选：在 frontmatter 给角色写默认 `model` / `effort`（`model` 写 `provider/model`，或只写模型 id 沿用 leader 的 provider）；不写就回落 leader 当前模型。拿不准模型 id 时先用 `list_worker_models` 查，别编。这里只是槽位默认；派工和复用承接该槽位时，缺 `model` / `effort` 分别用它，显式值优先。
 5. 写到项目根目录的 `SLOTS.md`。已存在就先读再改。
 
 槽位只描述工作方法与人设，不授予工具权限。
