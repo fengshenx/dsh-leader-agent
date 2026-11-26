@@ -63,11 +63,27 @@ function standingDocs() {
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
 const listOnly = process.argv.includes('--list')
 
-const entries = Object.entries(manifest).map(([path, ceiling]) => {
+/**
+ * 清单项既支持纯数字天花板，也支持 `{ ceiling, minHeadroom }` 的专项下限。
+ *
+ * @param {number | { ceiling?: number, minHeadroom?: number }} config - 清单值
+ * @returns {{ ceiling: number | undefined, minHeadroom: number | undefined }} 归一化后的配置
+ */
+function readConfig(config) {
+  if (typeof config === 'number') return { ceiling: config, minHeadroom: undefined }
+  if (config !== null && typeof config === 'object') {
+    return { ceiling: config.ceiling, minHeadroom: config.minHeadroom }
+  }
+  return { ceiling: config, minHeadroom: undefined }
+}
+
+const entries = Object.entries(manifest).map(([path, config]) => {
   const abs = resolve(root, path)
+  const { ceiling, minHeadroom } = readConfig(config)
   return {
     path: relative(root, abs),
     ceiling,
+    minHeadroom,
     units: existsSync(abs) ? countDocUnits(readFileSync(abs, 'utf8')) : null,
   }
 })
@@ -81,12 +97,19 @@ for (const path of unregistered) console.log(`UNREG  ${'—'.padStart(6)} / ${'�
 if (listOnly) process.exit(0)
 
 const small = results.filter((result) => result.status === 'small')
+const special = results.filter((result) => result.minHeadroom > 5)
 const failures = results.filter((result) => result.status !== 'ok' && result.status !== 'small')
 if (failures.length === 0 && unregistered.length === 0) {
-  if (small.length === 0) {
+  if (small.length === 0 && special.length === 0) {
     console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 都在 5–12% 余量内`)
   } else {
-    console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 通过；${small.length} 篇 <9 单位豁免下界，其余在 5–12% 余量内`)
+    const notes = []
+    if (small.length > 0) notes.push(`${small.length} 篇 <9 单位豁免下界`)
+    if (special.length > 0) {
+      const percents = [...new Set(special.map((result) => result.minHeadroom))].sort((a, b) => a - b)
+      notes.push(`${special.length} 篇另需 ≥${percents.join('/')}% 余量`)
+    }
+    console.log(`verify-doc-budgets: ${results.length} 篇 standing docs 通过；${notes.join('；')}，其余在 5–12% 余量内`)
   }
   process.exit(0)
 }
@@ -100,6 +123,11 @@ for (const failure of failures) {
     console.error(`  ${failure.path}: ${failure.units} 个单位超过天花板 ${failure.ceiling}——按 AGENTS.md 先搬到对的层，再压缩；抬天花板要在 PR 里写明理由`)
   } else if (failure.status === 'loose') {
     console.error(`  ${failure.path}: 天花板 ${failure.ceiling} 高于当前值 ${failure.units} 的 12%——按当前值重设（建议 ${failure.suggestedCeiling}），不要留没有约束力的余量`)
+  } else if (failure.status === 'tight-special') {
+    const action = failure.maxUnits === undefined
+      ? `抬天花板到 ${failure.suggestedCeiling}`
+      : `压缩到 ${failure.maxUnits} 个单位，或抬天花板到 ${failure.suggestedCeiling}（二选一）`
+    console.error(`  ${failure.path}: 余量 ${headroomPercent(failure.units, failure.ceiling)}% 低于该文档要求的 ${failure.minHeadroom}%——${action}；抬天花板要在 PR 里写明为什么`)
   } else if (failure.status === 'tight') {
     const action = failure.maxUnits === undefined
       ? `抬天花板到 ${failure.suggestedCeiling}`
