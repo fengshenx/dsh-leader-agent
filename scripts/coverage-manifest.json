@@ -34,7 +34,7 @@
       "reason": "路径匹配分支多，逐步补"
     },
     "src/host/dispatch.js": {
-      "lines": 97,
+      "lines": 98,
       "reason": "派工失败与重试分支，逐步补"
     },
     "src/host/index.js": {

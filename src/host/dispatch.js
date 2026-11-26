@@ -1518,6 +1518,23 @@ export function createDispatcher({
   }
 
   /**
+   * 被宿主 `agent/pre-step` 拦下的轮次，给 leader 的失败说明。
+   *
+   * `blocked` 是通用终态、不带原因；归档是常见来源，能确认时直接写进说明，
+   * 省掉一次 `read_worker_session` 反查。注册表读不到时退回通用文案。
+   *
+   * @param {string} sessionId - worker 会话 id
+   * @param {object} reason - `turn/end` 的 `reason`
+   * @returns {string} 失败说明
+   */
+  function describeBlockedTurn(sessionId, reason) {
+    if (readArchivedSessionIds()?.includes(sessionId) === true) {
+      return `${describeTurnFailure(reason)}（该 worker 会话已归档；先反归档再续聊，或重新派工）`
+    }
+    return describeTurnFailure(reason)
+  }
+
+  /**
    * 结算一个 worker 的轮次：把这一轮的产物或失败原因交给 leader。
    *
    * 产出取这一轮的 `assistant/message`，终态取 `turn/end` 的 `reason`——与宿主
@@ -1525,7 +1542,9 @@ export function createDispatcher({
    *
    * 归属按回合判：这一轮必须真的消费了在飞记录的那条消息，且这一轮是 leader 开启
    * 的。用户自己聊出来的回合不结算；那条消息如果已经被用户回合吃掉，记录随即丢弃
-   * ——它已经进过上下文，留到下一轮只会把别的产物认成它的。
+   * ——它已经进过上下文，留到下一轮只会把别的产物认成它的。宿主在 pre-step 直接
+   * 拒绝的 `blocked` 轮次是例外：消息已被 claim、不会落成 `user/message`，按失败结算，
+   * 否则 leader 只看到投递成功。
    *
    * @param {string} sessionId - worker 会话 id
    * @param {object} reason - `turn/end` 的 `reason`
@@ -1548,11 +1567,16 @@ export function createDispatcher({
         }
         // 模型 route 在 `preStep`/`prepareRequest` 就失败时，这一轮还没走到
         // `user/message`，但宿主已经在 `agent/inbox/claimed` 里报过取走了谁的输入。
-        // 用户 claim 的轮次失败不能算派工失败，记录要留着等任务消息真正进入下一轮；
-        // 只接 error 终态。归属仍不确定时在通知里写明，让 leader 自己决定重投或换模型。
-        if (turn?.openedBy !== undefined || reason?.kind !== 'error') return false
+        // 用户 claim 的轮次失败不能算派工失败，记录要留着等任务消息真正进入下一轮。
+        // 未归属的轮次只接 error 终态；`blocked` 是例外——宿主在 pre-step 就 reject，
+        // 消息已被取走且不会落成 user/message，不结算就是「投递成功、随后静默」。
+        if (turn?.openedBy !== undefined) return false
+        const blockedAndClaimed = reason?.kind === 'blocked' && claimed
+        if (!blockedAndClaimed && reason?.kind !== 'error') return false
         record.outcome = 'failed'
-        record.summary = describeTurnFailure(reason)
+        record.summary = blockedAndClaimed
+          ? describeBlockedTurn(sessionId, reason)
+          : describeTurnFailure(reason)
         record.unattributed = true
         if (claimed) record.claimed = true
       } else {
