@@ -39,29 +39,25 @@ test('watermarkRows 按水位切出前缀，并报出藏了几条', () => {
   assert.equal(watermarkRows(rows, 0).hiddenCount, 8)
 })
 
-test('requiredWatermark 抬到最后一个运行中会话说在的位置', () => {
+test('requiredWatermark 不认运行中与完成未读：列表固定一页', () => {
   assert.equal(requiredWatermark(makeRows(10)), 0)
-  assert.equal(requiredWatermark(makeRows(10, [3])), 3)
-  assert.equal(requiredWatermark(makeRows(10, [2, 9])), 9)
+  assert.equal(requiredWatermark(makeRows(10, [3])), 0)
+  assert.equal(requiredWatermark(makeRows(10, [], [6])), 0)
+  assert.equal(requiredWatermark(makeRows(10, [2, 9], [3, 8])), 0)
 })
 
-test('requiredWatermark 也抬到最后一个完成未读会话的位置', () => {
-  assert.equal(requiredWatermark(makeRows(10, [], [6])), 6)
-  assert.equal(requiredWatermark(makeRows(10, [8], [3])), 8)
-  assert.equal(requiredWatermark(makeRows(10, [2], [9])), 9)
-})
-
-test('requiredWatermark 也认当前会话：点开后水位不回落', () => {
+test('requiredWatermark 认当前会话：点开后水位不回落', () => {
   assert.equal(requiredWatermark(makeRows(8), 's-6'), 6)
   assert.equal(requiredWatermark(makeRows(8), 's-1'), 1)
   assert.equal(requiredWatermark(makeRows(8), 'missing'), 0)
 })
 
 test('requiredWatermark 只在前 50 条内生效', () => {
-  assert.equal(requiredWatermark(makeRows(80, [SESSION_WATERMARK_AUTO_MAX])), SESSION_WATERMARK_AUTO_MAX)
-  assert.equal(requiredWatermark(makeRows(80, [SESSION_WATERMARK_AUTO_MAX + 1])), 0)
-  assert.equal(requiredWatermark(makeRows(80, [], [SESSION_WATERMARK_AUTO_MAX])), SESSION_WATERMARK_AUTO_MAX)
-  assert.equal(requiredWatermark(makeRows(80, [], [SESSION_WATERMARK_AUTO_MAX + 1])), 0)
+  assert.equal(
+    requiredWatermark(makeRows(80), `s-${SESSION_WATERMARK_AUTO_MAX}`),
+    SESSION_WATERMARK_AUTO_MAX,
+  )
+  assert.equal(requiredWatermark(makeRows(80), `s-${SESSION_WATERMARK_AUTO_MAX + 1}`), 0)
 })
 
 test('会话列表一页 5 条', () => {
@@ -107,21 +103,23 @@ test('nextWatermark 剩余不超过一页时一次放完', () => {
   assert.equal(nextWatermark(20, 10), 15)
 })
 
-test('foldSessions 默认露出基准条数，运行中的会话不被折起来', () => {
+test('foldSessions 默认露一页，运行中与完成未读都不撑开列表', () => {
   const plain = foldSessions(makeRows(8), 0, undefined, t)
   assert.equal(plain.rows.length, SESSION_WATERMARK_BASE)
   assert.equal(plain.hiddenCount, 3)
   assert.equal(plain.expanded, false)
   assert.equal(plain.expandLabel, '展开其余 3 个会话')
 
+  // 运行中不再抬水位：项目树固定一页，跑在后面的行要展开才看得到。
   const withRunning = foldSessions(makeRows(8, [7]), 0, undefined, t)
-  assert.equal(withRunning.rows.length, 7)
-  assert.equal(withRunning.hiddenCount, 1)
+  assert.equal(withRunning.rows.length, SESSION_WATERMARK_BASE)
+  assert.equal(withRunning.hiddenCount, 3)
 
-  // 绿点是通知：第 6 条完成未读被折起来就看不见了，水位要把它露出来。
+  // 绿点只是状态，不把列表撑开；被折起来的未读行要展开才看得到。
   const withCompleted = foldSessions(makeRows(8, [], [6]), 0, undefined, t)
-  assert.equal(withCompleted.rows.length, 6)
-  assert.equal(withCompleted.hiddenCount, 2)
+  assert.equal(withCompleted.rows.length, SESSION_WATERMARK_BASE)
+  assert.equal(withCompleted.hiddenCount, 3)
+  assert.equal(withCompleted.expandLabel, '展开其余 3 个会话')
 
   // 点开第 6 条后 completed 清除；它成了当前会话，水位不能跟着回落，
   // 否则这一行会在用户眼前当场消失。
