@@ -5177,13 +5177,20 @@ test('leader claim 后宿主阻断归档 worker，按失败回报并指出归档
   assert.match(text, /失败原因：被阻断/)
   assert.match(text, /已归档/)
   assert.match(text, /反归档/)
+  assert.match(text, /反归档不会补跑这条消息，需重新 message_worker 投递/)
   assert.equal(dispatcher.inflightCount(), 0)
 })
 
-test('leader claim 后被宿主阻断但未归档，也按失败回报', async () => {
+test('leader claim 后被宿主阻断且归档集合为空，不追加已归档仍按失败回报', async () => {
   const fixture = createFixture()
   const home = await makeTempDir('dsh-leader-agent-dispatch-')
-  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store: createNotificationStore({ home }), workers: fixture.workers })
+  const dispatcher = makeDispatcher({
+    ctx: fixture.ctx,
+    store: createNotificationStore({ home }),
+    workers: fixture.workers,
+    // 已知本项目没有归档会话：与「注册表缺失（undefined）」是不同分支。
+    archivedSessionIds: () => [],
+  })
   const parent = createParent('parent-1', fixture.delivered)
   fixture.agents.set('parent-1', parent)
 

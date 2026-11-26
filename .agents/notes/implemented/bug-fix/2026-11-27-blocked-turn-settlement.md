@@ -9,7 +9,7 @@ leader 把消息投给一个在宿主归档视图里归档、但派工登记还�
 ## Decision
 
 - 未归属轮次里，只要 leader 消息已被 claim、终态是 `blocked`，就按失败结算并回报 leader，说明消息已被取走、没有落成 `user/message`。
-- 结算时若会话仍在归档集合里，失败原因追加「该 worker 会话已归档；先反归档再续聊，或重新派工」；注册表读不到时退回通用 blocked 文案，不猜。
+- 结算时若会话仍在归档集合里，失败原因追加「该 worker 会话已归档；先反归档再续聊，或重新派工。反归档不会补跑这条消息，需重新 message_worker 投递」；注册表读不到时退回通用 blocked 文案，不猜。
 - 用户自己开启的轮次仍不结算，保持原口径；`blocked` 却没有 claim 记录的轮次也不报，避免误归属。
 - 不给 `message_worker` 加归档预检：拦截发生在异步轮次里，发送时拿不到结果；预检只会把同一次查归档再复制一遍，也覆盖不了别的 pre-step 拒绝。
 
@@ -31,4 +31,4 @@ leader 把消息投给一个在宿主归档视图里归档、但派工登记还�
 
 ## Testing
 
-`tests/dispatch.test.js` 新增两条：归档集合命中时收到带「已归档」的失败回报；未归档的 blocked 也回报但不冒充归档。双向：撤掉 `blocked && claimed` 分支后两条用例都红（`turn/end` 返回 `false`、没有通知），还原后全绿；全量 dispatch 测试通过。
+`tests/dispatch.test.js` 新增两条：归档集合命中时收到带「已归档」与「反归档不会补跑」的失败回报；`archivedSessionIds: () => []` 的已知空集合 blocked 也回报但不冒充归档（不再只覆盖注册表缺失 `undefined` 分支）。双向：撤掉 `blocked && claimed` 分支后两条用例都红（`turn/end` 返回 `false`、没有通知），还原后全绿；全量 dispatch 测试通过。

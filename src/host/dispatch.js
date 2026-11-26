@@ -1529,7 +1529,7 @@ export function createDispatcher({
    */
   function describeBlockedTurn(sessionId, reason) {
     if (readArchivedSessionIds()?.includes(sessionId) === true) {
-      return `${describeTurnFailure(reason)}（该 worker 会话已归档；先反归档再续聊，或重新派工）`
+      return `${describeTurnFailure(reason)}（该 worker 会话已归档；先反归档再续聊，或重新派工。反归档不会补跑这条消息，需重新 message_worker 投递）`
     }
     return describeTurnFailure(reason)
   }
