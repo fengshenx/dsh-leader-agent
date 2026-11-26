@@ -1,5 +1,6 @@
 /**
- * 项目树会话列表的水位：默认露 5 条，展开其余后收起项目、再展开回到 5 条。
+ * 项目树会话列表的水位与排序：默认露 5 条，展开其余后收起项目、再展开回到 5 条；
+ * worker 之间按登记表 `lastUsedAt` 倒序（与创建顺序区分）。
  *
  * 两个项目各自有一份水位：展开 A 到 6 条、收起 B 时 A 不受影响，B 回到 5；
  * 再收起 A 后重开也回到 5。两段起实例（同 `projects.json` / `workers.json` 的
@@ -137,14 +138,26 @@ function seedProjects(home, dirs, leaders, workers) {
       updatedAt: now,
     })),
   }, null, 2)}\n`)
+  const byProject = new Map()
+  for (const worker of workers) {
+    const list = byProject.get(worker.projectId) ?? []
+    list.push(worker)
+    byProject.set(worker.projectId, list)
+  }
   writeFileSync(join(home, 'dsh-leader-agent', 'workers.json'), `${JSON.stringify({
     version: 1,
-    workers: workers.map((worker) => ({
-      childId: worker.id,
-      parentSessionId: leaders.get(worker.projectId),
-      name: worker.name,
-      registeredAt: now,
-    })),
+    workers: workers.map((worker) => {
+      const list = byProject.get(worker.projectId)
+      const index = list.indexOf(worker)
+      return {
+        childId: worker.id,
+        parentSessionId: leaders.get(worker.projectId),
+        name: worker.name,
+        registeredAt: now,
+        // 与创建顺序相反：每个项目第 1 个 worker 最后使用时间最新，用来验证 DOM 顺序。
+        lastUsedAt: now - index * 1000,
+      }
+    }),
   }, null, 2)}\n`)
 }
 
@@ -350,6 +363,15 @@ test('收起项目再展开回到默认 5 条，且不影响其它项目', { tim
   await overflowA.click()
   await waitForCount(sessionsA, WORKERS_PER_PROJECT, 'A 展开其余后 6 条全可见')
   assert.equal(await overflowA.innerText(), '收起', 'A 全部放完后按钮应变成收起')
+  // 原 worker-session-order 的 DOM 顺序守卫：创建顺序是 A1..A6，登记表 lastUsedAt
+  // 反过来，排序正确时页面应显示 A1..A6（而不是会话库默认的 A6..A1）。
+  const orderedA = await sessionsA.evaluateAll((nodes) => nodes.map((node) => node.dataset.sessionId))
+  const expectedA = workers.filter((worker) => worker.projectId === projectA.id).map((worker) => worker.id)
+  assert.deepEqual(
+    orderedA,
+    expectedA,
+    `排序：A 的 ${WORKERS_PER_PROJECT} 条 worker 应按最近使用倒序；期望 ${expectedA.join(', ')}，实际 ${orderedA.join(', ')}`,
+  )
 
   await rowB.locator('button[aria-label="展开会话"]').click()
   await waitForLocator(sessionsB.first(), { description: 'B 展开后的第一条 worker 会话行' })

@@ -90,10 +90,11 @@ function appendWorkerReport(home, session) {
 }
 
 /** 打开设置；默认落在 General，语言行由 locale 插件注册。 */
-async function openSettings(page) {
+async function openSettings(page, menuLabel = '账号菜单', settingsLabel = '设置') {
   // 侧栏底部的 launcher 被账号菜单接管，设置入口在「账号菜单 → 设置」里。
-  await page.getByRole('button', { name: '账号菜单', exact: true }).first().click()
-  const entry = page.getByRole('menuitem', { name: '设置', exact: true }).first()
+  // 语言切到 en 后宿主按钮文案也变，调用方按当前语言传标签。
+  await page.getByRole('button', { name: menuLabel, exact: true }).first().click()
+  const entry = page.getByRole('menuitem', { name: settingsLabel, exact: true }).first()
   await waitForLocator(entry, { description: '账号菜单里的设置入口', timeoutMs: 10_000 })
   await entry.click()
   const dialog = page.locator('[data-shortcut-modal="settings"]')
@@ -258,6 +259,26 @@ test('运行时切换语言：zh → en → ja → zh', { timeout: scenarioTimeo
   // zh → en
   await selectLanguage(page, dialog, '语言', 'English', 'Language')
   await expectLabels(page, 'en')
+  // guide 页被设置面板挡住；先关设置，再从看板 tab 旁新开 guide 标签页读入口。
+  await page.keyboard.press('Escape')
+  await waitFor({
+    description: '英文断言后关闭设置面板',
+    check: async () => !(await dialog.isVisible()),
+    timeoutMs: 10_000,
+  })
+  // 原 i18n-english 的独有守卫：guide 入口标题与正文也必须走 en 字典。
+  // 看板 tab 会占住右栏；新开一个 guide 标签页再读入口，读完由入口切回看板。
+  const addTab = page.locator('[data-sidebar-right-session]:visible [data-dockkit-add-tab]').first()
+  await addTab.click({ force: true })
+  await waitForLocator(guideEntry, { description: '英文 guide 入口', timeoutMs: 15_000 })
+  const guideTitle = (await guideEntry.locator('.dsh-leader-agent-guide-entry-title').innerText()).trim()
+  assert.equal(guideTitle, 'Board', `guide 入口标题应来自 en 字典：${guideTitle}`)
+  const guideText = await guideEntry.innerText()
+  assert.equal(CJK.test(guideText), false, `guide 入口出现中文：${guideText}`)
+  await guideEntry.click()
+  await waitForLocator(page.locator('.dsh-leader-agent-board-empty-title').first(), {
+    description: '从 guide 入口重新打开的看板', timeoutMs: 15_000,
+  })
   for (const target of [
     page.locator('.dsh-leader-agent-project-section'),
     page.locator('.dsh-leader-agent-board-list'),
@@ -266,6 +287,9 @@ test('运行时切换语言：zh → en → ja → zh', { timeout: scenarioTimeo
     const text = await target.innerText()
     assert.equal(CJK.test(text), false, `英文界面出现中文：${text}`)
   }
+
+  // 继续 en → ja 前重新打开设置面板（宿主按钮文案已随语言切到英文）。
+  await openSettings(page, 'Account menu', 'Settings')
 
   // en → ja：插件随包提供 ja 字典，四处标签都应逐字等于日文，而不是走 en 回退。
   // 日文本身含汉字，不能用 CJK 判据；逐字比对才能证明选中的是 ja 字典。

@@ -1,15 +1,18 @@
 /**
- * 项目区块的最小几何守卫：行高与小节标题/行首/标题左缘跟宿主一致。
+ * 项目区块的左栏落点与最小几何守卫：先守落点（工作区列表之上、不退回栏底），
+ * 再守行高与小节标题/行首/标题左缘跟宿主一致。
  *
- * 这条场景只守 `2026-11-14-project-section-row-geometry` 修过的那个 bug：宿主 0.2.2
+ * 落点部分守 portal 结构：宿主 0.2.2 把面板列表与工作区包进滚动网格后，老锚点
+ * 失效会让区块静默退回 footer（宽度被压成 4px）。几何部分只守
+ * `2026-11-14-project-section-row-geometry` 修过的那个 bug：宿主 0.2.2
  * 把工作区行压到 32px 并让内容行吃 paint-inset 后，项目区块照 0.2.1 的数值抄，
  * 「项目」比「工作区」右移一截、项目行比宿主行矮 2px。e2e 不测样式，但这四条
  * 读数量的是**两个宿主元素之间的相对偏移**，不是某个颜色/字号的具体值，换宿主
  * 版本也不该漂移；全量像素对齐（内边距、边框、截图）改走人工取证。
  *
  * 基准始终取宿主同一元素：行高对宿主工作区行、图标左缘对宿主行图标、标题左缘对
- * 宿主行标题、小节标题左缘对宿主 section label。先种项目再起第二段实例：项目
- * 注册表只在启动时读回内存。
+ * 宿主行标题、小节标题左缘对宿主 section label（从 hostRow 向上找同 section，
+ * 不取全局第一条）。先种项目再起第二段实例：项目注册表只在启动时读回内存。
  */
 
 import assert from 'node:assert/strict'
@@ -71,11 +74,17 @@ async function readGeometry(page) {
     const ourIcon = ourRow?.querySelector('.dsh-leader-agent-project-lead') ?? null
     const ourTitle = ourRow?.querySelector('.dsh-leader-agent-project-title') ?? null
 
-    const hostHeader = document.querySelector('[class*="sectionHeader"]')
-    const hostLabel = hostHeader?.querySelector('[class*="sectionLabel"]') ?? null
+    // 从宿主工作区行往上找同一个小节，取该小节的 header；不要拿全局第一条。
     const hostRow = document.querySelector('[class*="projectRow"]')
     const hostIcon = hostRow?.querySelector('svg') ?? null
     const hostTitle = hostRow?.querySelector('[class*="title"]') ?? null
+    let hostHeader = null
+    for (let node = hostRow?.parentElement ?? null; node !== null; node = node.parentElement) {
+      hostHeader = node.querySelector('[class*="sectionHeader"]')
+      if (hostHeader !== null) break
+    }
+    const hostLabel = hostHeader?.querySelector('[class*="sectionLabel"]') ?? null
+    const hostLabelText = hostLabel?.textContent?.trim() ?? null
 
     return {
       ourRowHeight: heightOf(ourRow),
@@ -86,11 +95,50 @@ async function readGeometry(page) {
       hostTitleLeft: leftOf(hostTitle),
       ourLabelLeft: leftOf(ourLabel),
       hostLabelLeft: leftOf(hostLabel),
+      hostLabelText,
     }
   })
 }
 
-test('项目区块的行高、小节标题与行首/标题左缘跟宿主一致', { timeout: scenarioTimeout() }, async (t) => {
+/**
+ * 落点读数：项目区块应进入工作区容器，而不是退回 footer。
+ *
+ * @param {import('playwright').Page} page - 页面
+ * @returns {Promise<object>} 落点读数
+ */
+async function readPlacement(page) {
+  return page.evaluate(() => {
+    const section = document.querySelector('.dsh-leader-agent-project-section')
+    const host = section?.closest('[data-dsh-leader-agent-projects]') ?? null
+    const region = document.querySelector('[class*="regionArea"]')
+    const nav = region?.parentElement?.querySelector('nav') ?? null
+    const navParent = nav?.parentElement ?? null
+    const scrollGrid = navParent !== null
+      && (navParent.hasAttribute('data-sidebar-scrollport') || getComputedStyle(navParent).display === 'grid')
+    const expectedParent = scrollGrid ? region : navParent
+    const workspace = region === null
+      ? null
+      : Array.from(region.children).find((child) => child !== host) ?? null
+    const key = host !== null ? 'host' : section?.closest('[class*="footArea"]') !== null ? 'footer' : 'elsewhere'
+    const sectionRect = section?.getBoundingClientRect() ?? null
+    return {
+      key,
+      regionFound: region !== null,
+      navFound: nav !== null,
+      scrollGrid,
+      hostFound: host !== null,
+      hostParentIsExpected: host !== null && expectedParent !== null && host.parentElement === expectedParent,
+      inFooter: section !== null && section.closest('[class*="footArea"]') !== null,
+      afterNav: nav !== null && section !== null
+        && (nav.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      aboveWorkspace: workspace !== null && section !== null
+        && (section.compareDocumentPosition(workspace) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+      sectionWidth: sectionRect === null ? 0 : Math.round(sectionRect.width),
+    }
+  })
+}
+
+test('项目区块落在工作区列表之上，行高与左缘跟宿主一致', { timeout: scenarioTimeout() }, async (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-leader-agent-e2e-alignment-'))
   const mock = await startMockProvider({})
   const problems = []
@@ -137,6 +185,36 @@ test('项目区块的行高、小节标题与行首/标题左缘跟宿主一致'
     description: '宿主工作区行出现在左栏',
     timeoutMs: 20_000,
   })
+  // 落点：mount 先落在 footer，portal 的 effect 随后才搬走。连续三次读到同一个
+  // 落点才判定稳定，成功与失败都按同一口径收敛。
+  let previous = null
+  let streak = 0
+  const placement = await waitFor({
+    description: '项目区块落点稳定（进入落点容器或停在 footer）',
+    check: async () => {
+      const reading = await readPlacement(page)
+      streak = previous !== null && previous.key === reading.key ? streak + 1 : 1
+      previous = reading
+      return streak >= 3 ? reading : null
+    },
+  })
+  const placementReading = JSON.stringify(placement)
+  assert.equal(placement.navFound, true, `落点：左栏里应有面板列表 nav；读数 ${placementReading}`)
+  assert.equal(placement.regionFound, true, `落点：左栏里应有工作区容器；读数 ${placementReading}`)
+  assert.equal(placement.hostFound, true, `落点：项目区块应被 portal 搬进左栏落点容器；读数 ${placementReading}`)
+  assert.equal(placement.inFooter, false, `落点：项目区块不应退回栏底的 footer 槽；读数 ${placementReading}`)
+  assert.ok(
+    placement.sectionWidth >= 100,
+    `落点：项目区块宽度不应被网格压成竖条（朴素写法实测 4px）；读数 ${placementReading}`,
+  )
+  assert.equal(
+    placement.hostParentIsExpected,
+    true,
+    `落点：落点应是工作区容器（0.2.2）或左栏根（0.2.1），不能是滚动网格本身；读数 ${placementReading}`,
+  )
+  assert.equal(placement.afterNav, true, `落点：项目区块应排在面板列表 nav 之后；读数 ${placementReading}`)
+  assert.equal(placement.aboveWorkspace, true, `落点：项目区块应排在工作区列表之前；读数 ${placementReading}`)
+
   // 项目行、标题与小节标题是多次渲染（列表先到、展开态后到），等两边的四条读数都齐全再断言。
   const geometry = await waitFor({
     description: '项目区块与工作区行的四条读数齐全',
@@ -146,6 +224,7 @@ test('项目区块的行高、小节标题与行首/标题左缘跟宿主一致'
         && reading.ourIconLeft !== null && reading.hostIconLeft !== null
         && reading.ourTitleLeft !== null && reading.hostTitleLeft !== null
         && reading.ourLabelLeft !== null && reading.hostLabelLeft !== null
+        && reading.hostLabelText !== null
         ? reading
         : null
     },
@@ -156,20 +235,25 @@ test('项目区块的行高、小节标题与行首/标题左缘跟宿主一致'
   // 不放宽到「看起来差不多」。
   assert.ok(
     Math.abs(geometry.ourRowHeight - geometry.hostRowHeight) <= 1,
-    `项目行行高应与宿主工作区行一致；读数 ${reading}`,
+    `几何：项目行行高应与宿主工作区行一致；读数 ${reading}`,
   )
   assert.ok(
     Math.abs(geometry.ourIconLeft - geometry.hostIconLeft) <= 1,
-    `项目行行首图标应与宿主工作区行图标同一左边缘；读数 ${reading}`,
+    `几何：项目行行首图标应与宿主工作区行图标同一左边缘；读数 ${reading}`,
   )
   assert.ok(
     Math.abs(geometry.ourTitleLeft - geometry.hostTitleLeft) <= 1,
-    `项目行标题应与宿主工作区行标题同一左边缘；读数 ${reading}`,
+    `几何：项目行标题应与宿主工作区行标题同一左边缘；读数 ${reading}`,
   )
   // 小节标题：宿主 sectionLabel 自带 left:-1px，允许 1px 差异。
   assert.ok(
     Math.abs(geometry.ourLabelLeft - geometry.hostLabelLeft) <= 1,
-    `「项目」标题应与「工作区」标题同一左边缘；读数 ${reading}`,
+    `几何：「项目」标题应与「工作区」标题同一左边缘；读数 ${reading}`,
+  )
+  assert.equal(
+    geometry.hostLabelText,
+    '工作区',
+    `几何：小节标题必须绑定到宿主「工作区」那一条，实际 ${geometry.hostLabelText}；读数 ${reading}`,
   )
 
   assert.deepEqual(problems, [], '页内不应有未处理的异常或 console 错误')

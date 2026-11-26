@@ -158,12 +158,10 @@ test('leader 会话隐藏宿主的改动文件卡片，普通会话保留', {
   mkdirSync(join(WORKTREE, '.dev', 'e2e-artifacts', 'leader-changes'), { recursive: true })
   changedFiles.push(leaderFile, ordinaryFile)
   scripts[MARKERS.leader] = [
-    { tool: { name: 'working_directory', input: { cd: WORKTREE } } },
     { tool: { name: 'write', input: { file_path: leaderFile, content: 'leader 改动\n' } } },
     { text: LEADER_REPLY },
   ]
   scripts[MARKERS.ordinary] = [
-    { tool: { name: 'working_directory', input: { cd: WORKTREE } } },
     { tool: { name: 'write', input: { file_path: ordinaryFile, content: '普通会话改动\n' } } },
     { text: ORDINARY_REPLY },
   ]
