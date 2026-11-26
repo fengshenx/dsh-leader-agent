@@ -70,6 +70,28 @@ test('renderWorkerList：读不到归档集合时明说列表可能含已归档�
   )
 })
 
+test('renderWorkerList：注明「在跑」只统计 leader 派出的轮次', () => {
+  const text = renderWorkerList({ workers: [worker()], archivedKnown: true })
+  assert.match(text, /「在跑」只统计你派出的轮次/)
+})
+
+test('renderWorkerList：超过 limit 时只列最近使用的，并截断超长名字与卡标题', () => {
+  const longName = 'x'.repeat(5000)
+  const longTitle = 'y'.repeat(200)
+  const workers = Array.from({ length: 20 }, (_, index) => worker({
+    sessionId: `worker-${index}`,
+    name: longName,
+    cards: [{ number: index, title: longTitle, slot: 'dev', cardId: `card-${index}` }],
+  }))
+  const text = renderWorkerList({ workers, total: 50, archivedKnown: true })
+  assert.match(text, /共 50 个/)
+  assert.match(text, /这里列出最近使用的 20 个/)
+  assert.match(text, /还有 30 个更久未用的 worker 未列出/)
+  assert.match(text, /已截断，原长 5000 码元/)
+  assert.match(text, /已截断，原长 200 码元/)
+  assert.ok(text.length < 8000, `输出应有上限，实际 ${text.length} 字`)
+})
+
 test('工具把调用方 agent 交给派工器，并把名册渲染成文本', async () => {
   const calls = []
   const tool = createListWorkersTool({
@@ -87,7 +109,25 @@ test('工具把调用方 agent 交给派工器，并把名册渲染成文本', a
   const text = await tool.execute({}, EXEC)
   assert.match(text, /worker「dev-login」/)
   assert.match(text, /effort low/)
-  assert.deepEqual(calls, [{ parent: EXEC.agent }])
+  assert.deepEqual(calls, [{ parent: EXEC.agent, limit: 20 }])
+})
+
+test('工具把 limit 传给派工器，越界时直接报错', async () => {
+  const calls = []
+  const tool = createListWorkersTool({
+    dispatcher: {
+      async listWorkers(input) {
+        calls.push(input)
+        return { workers: [], total: 0, archivedKnown: true }
+      },
+    },
+  })
+  await tool.execute({ limit: 5 }, EXEC)
+  await tool.execute({}, EXEC)
+  assert.deepEqual(calls.map((call) => call.limit), [5, 20])
+  await assert.rejects(() => tool.execute({ limit: 0 }, EXEC), /limit 必须是 1–100 的整数/)
+  await assert.rejects(() => tool.execute({ limit: 101 }, EXEC), /limit 必须是 1–100 的整数/)
+  await assert.rejects(() => tool.execute({ limit: 1.5 }, EXEC), /limit 必须是 1–100 的整数/)
 })
 
 test('缺少调用方 agent 时直接报错，不静默返回空名册', async () => {

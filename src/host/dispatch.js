@@ -68,6 +68,9 @@ import { liveModelSelection, normalizeModelSelection, resolveWorkerModel } from 
  */
 const DEFAULT_ACTIVE_WORKER_LIMIT = 50
 const NOTIFICATION_LIMIT = 4000
+/** 名册默认列出多少个 worker；上限防止 leader 把整张表一次性拉进上下文。 */
+const LIST_WORKERS_DEFAULT_LIMIT = 20
+const LIST_WORKERS_MAX_LIMIT = 100
 /**
  * 截断标记之后的下一步：回报被压短时必须告诉 leader 去哪儿读全文。
  *
@@ -262,7 +265,7 @@ export function buildWorkerReport(outcome, record) {
  * @param {() => number} [options.getAutoResumeLimit] - 连续自动续行上限的取值函数（每次投递时现取，设置页改完即时生效）
  * @param {number} [options.activeWorkerLimit] - 每个项目未归档 worker 数量上限
  * @param {(parentSessionId: string) => string | undefined} [options.resolveWorkerCwd] - 取 worker 的工作目录
- * @param {() => readonly string[]} [options.archivedSessionIds] - 宿主已归档的会话 id；缺省时不限派工数量
+ * @param {() => readonly string[] | undefined} [options.archivedSessionIds] - 宿主已归档的会话 id；返回 undefined 表示注册表缺失（名册标明可能含已归档会话，派工不限数量）
  * @param {(sessionId: string) => Promise<{ cardId: string, number: number, title: string, status: string, slot: string }[]>} [options.listCardBindings] - 会话挂到哪些卡上；缺省时不做投递卡门禁
  * @param {() => Promise<Map<string, { cardId: string, number: number, title: string, status: string, slot: string }[]>>} [options.cardBindingsBySession] - 一次读盘取全部会话的绑定；名册用它避免逐 worker 读卡
  * @param {(input: { cardId: string, slot: string, sessionId: string }) => Promise<object>} [options.bindCardSlot] - 派工时把卡槽位绑到新会话；缺省时传了 cardId 就报错
@@ -683,14 +686,29 @@ export function createDispatcher({
   }
 
   /**
+   * 读宿主已归档的会话 id。
+   *
+   * `undefined` 表示注册表缺失，与「读到空集合」是两回事：后者说明本项目确实没有
+   * 已归档会话，前者只能把登记表全列出来并标明可能含已归档会话。
+   *
+   * @returns {readonly string[] | undefined} 归档 id；读不到为 undefined
+   */
+  function readArchivedSessionIds() {
+    if (typeof archivedSessionIds !== 'function') return undefined
+    const ids = archivedSessionIds()
+    return Array.isArray(ids) ? ids : undefined
+  }
+
+  /**
    * 未归档 worker 的名册概况，只算调用方会话所属项目。
    *
    * @param {string} scopeSessionId - 调用方会话 id（派工的 leader）
    * @returns {Promise<{ total: number, idle: object[], bound: object[], newest: object | undefined } | null>} 名册；拿不到归档集合时 null（此时不限数量）
    */
   async function describeRoster(scopeSessionId) {
-    if (typeof archivedSessionIds !== 'function') return null
-    const archived = new Set(archivedSessionIds())
+    const archivedIds = readArchivedSessionIds()
+    if (archivedIds === undefined) return null
+    const archived = new Set(archivedIds)
     const leaders = await leaderSessionsOfProject(scopeSessionId)
     const active = (await workers.list()).filter((item) => !archived.has(item.childId)
       && (leaders === undefined || leaders.has(item.parentSessionId)))
@@ -742,22 +760,26 @@ export function createDispatcher({
    *
    * @param {object} options - 列名参数
    * @param {object} options.parent - 调用方 leader agent
-   * @returns {Promise<{ workers: object[], archivedKnown: boolean }>} 名册（最近使用在前）
+   * @param {number} [options.limit] - 最多列出多少个（按最近使用排序后截断，默认 20）
+   * @returns {Promise<{ workers: object[], total: number, archivedKnown: boolean }>} 名册（最近使用在前）
    */
-  async function listWorkers({ parent }) {
+  async function listWorkers({ parent, limit = LIST_WORKERS_DEFAULT_LIMIT }) {
     await assertLeader(parent, {
       pending: 'list_workers: 项目注册表尚未读出，无法确认 leader 身份，暂不能列 worker',
       refused: 'list_workers: 只有项目 leader 能列本项目的 worker——这个会话已不是任何项目的 leader',
     })
-    const archivedKnown = typeof archivedSessionIds === 'function'
-    const archived = archivedKnown ? new Set(archivedSessionIds()) : undefined
+    const archivedIds = readArchivedSessionIds()
+    const archivedKnown = archivedIds !== undefined
+    const archived = archivedKnown ? new Set(archivedIds) : undefined
     const records = (await workers.list()).filter((record) => record.parentSessionId === parent.id
       && (archived === undefined || !archived.has(record.childId)))
     const bindingsFor = await cardBindingsResolver()
     const liveAgents = ctx.get('agents')
     const rows = []
     for (const record of records) {
-      const agent = workerSessions.get(record.childId)?.agent
+      // 旧组合/自定义 manager 没有 get：回落到宿主 agents，不能因为缺一个可选方法整条名册 TypeError。
+      const session = typeof workerSessions.get === 'function' ? workerSessions.get(record.childId) : undefined
+      const agent = session?.agent
         ?? (typeof liveAgents?.get === 'function' ? liveAgents.get(record.childId) : undefined)
       const recorded = normalizeModelSelection(record.agentOptions)
       const liveSelection = liveModelSelection(agent)
@@ -794,7 +816,11 @@ export function createDispatcher({
     }
     rows.sort((left, right) => right.lastUsedAt - left.lastUsedAt
       || left.sessionId.localeCompare(right.sessionId))
-    return { workers: rows, archivedKnown }
+    const total = rows.length
+    const effectiveLimit = Number.isInteger(limit) && limit > 0
+      ? Math.min(limit, LIST_WORKERS_MAX_LIMIT)
+      : LIST_WORKERS_DEFAULT_LIMIT
+    return { workers: rows.slice(0, effectiveLimit), total, archivedKnown }
   }
 
   /**

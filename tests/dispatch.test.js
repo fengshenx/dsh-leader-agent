@@ -2625,6 +2625,10 @@ test('listWorkers 列出本项目未归档 worker 的模型与 effort，最近�
   // 旧登记没有 agentOptions：模型是「未记录」，不能拿部署默认冒充。
   assert.equal(roster.workers[2].model, undefined)
   assert.equal(roster.workers[2].modelSource, undefined)
+
+  const limited = await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered), limit: 2 })
+  assert.equal(limited.total, 3)
+  assert.deepEqual(limited.workers.map((worker) => worker.sessionId), ['child-b', 'child-a'])
 })
 
 test('listWorkers 优先读活 agent 的当前模型，并标出在跑', async () => {
@@ -2690,6 +2694,46 @@ test('listWorkers 读不到归档集合时列出全部登记并标明 archivedKn
   const roster = await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) })
   assert.equal(roster.archivedKnown, false)
   assert.deepEqual(roster.workers.map((worker) => worker.sessionId), ['child-a'])
+
+  // 生产装配在注册表缺失时让 provider 返回 undefined，而不是换成空数组：
+  // 「读到空集合」不能当成「读不到」，否则名册的归档未知提示永远不会触发。
+  const registryMissing = makeDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    archivedSessionIds: () => undefined,
+  })
+  const missing = await registryMissing.listWorkers({ parent: createParent('parent-1', fixture.delivered) })
+  assert.equal(missing.archivedKnown, false)
+  assert.deepEqual(missing.workers.map((worker) => worker.sessionId), ['child-a'])
+})
+
+test('listWorkers 在 workerSessions 没有 get 时回落到宿主 agents，不抛 TypeError', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  await fixture.workers.register({
+    childId: 'child-a',
+    parentSessionId: 'parent-1',
+    name: 'dev-a',
+    agentOptions: { provider: 'deepseek', model: 'chat' },
+  })
+  const dispatcher = createDispatcher({
+    ctx: fixture.ctx,
+    store,
+    workers: fixture.workers,
+    workerSessions: { spawn: async () => {}, send: async () => {} },
+    leaderIndex: {
+      async awaitIndex() {
+        return true
+      },
+      isLeaderSession: () => true,
+    },
+    archivedSessionIds: () => [],
+  })
+
+  const roster = await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) })
+  assert.equal(roster.workers[0].model, 'deepseek/chat')
 })
 
 test('listWorkers 在没派过工的项目里返回空名册', async () => {
@@ -2704,7 +2748,7 @@ test('listWorkers 在没派过工的项目里返回空名册', async () => {
   })
   assert.deepEqual(
     await dispatcher.listWorkers({ parent: createParent('parent-1', fixture.delivered) }),
-    { workers: [], archivedKnown: true },
+    { workers: [], total: 0, archivedKnown: true },
   )
 })
 

@@ -266,8 +266,9 @@ export function apply(ctx) {
     // 派工前要确认调用方是 leader，且索引真的读出来了，不能靠工具面的宽松放行。
     leaderIndex: projectService,
     // 名册上限与投递卡门禁都读宿主现状：归档集合来自工作区注册表，卡绑定来自
-    // 卡片库。两者缺失时各自降级（不限数量 / 不做门禁），不阻塞派工。
-    archivedSessionIds: () => ctx.get('workspaceRegistry')?.archivedSessionIds ?? [],
+    // 卡片库。注册表缺失时 provider 返回 undefined（不是空数组），名册据此标明
+    // 列表可能含已归档会话；两者缺失时各自降级（不限数量 / 不做门禁），不阻塞派工。
+    archivedSessionIds: () => ctx.get('workspaceRegistry')?.archivedSessionIds,
     listCardBindings: (sessionId) => cards.bindingsOf(sessionId),
     // 名册一次读盘取全量绑定再分组：逐 worker 读 cards.json 会让一次派工付
     // O(N × 文件体积)。

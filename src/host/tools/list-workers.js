@@ -10,6 +10,18 @@
  * @module dsh-leader-agent/host/tools/list-workers
  */
 
+import { clipText } from '../../shared/truncate.js'
+
+/** 默认列出多少个 worker：覆盖常见项目，又不至于把名册撑满 leader 上下文。 */
+const DEFAULT_LIMIT = 20
+/** `limit` 上限：再大就不再是「一张可读的名册」。 */
+const MAX_LIMIT = 100
+/** 名字与卡标题是 leader 自造输入（只校验非空），渲染时按上限截断。 */
+const NAME_LIMIT = 80
+const CARD_TITLE_LIMIT = 120
+/** 整张名册的硬上限：limit 调大或名字/标题都超长时，也不让输出挤掉 leader 的工作记忆。 */
+const OUTPUT_LIMIT = 12_000
+
 /**
  * 把模型来源写成给 leader 看的一段话。
  *
@@ -34,7 +46,8 @@ function describeSource(source) {
  * @returns {string} 多行文本
  */
 function renderWorker(worker) {
-  const lines = [`- worker「${worker.name}」 会话 ${worker.sessionId}`]
+  const name = clipText(worker.name, NAME_LIMIT, '；名字在派工时设置')
+  const lines = [`- worker「${name}」 会话 ${worker.sessionId}`]
   if (worker.model === undefined) {
     lines.push('  模型：（未记录；可能是旧版派工或登记失败）')
   } else {
@@ -48,7 +61,7 @@ function renderWorker(worker) {
   lines.push(`  状态：${running}；最后使用 ${new Date(worker.lastUsedAt).toISOString()}`)
   if (worker.cards.length > 0) {
     lines.push(`  挂卡：${worker.cards.map((card) => (
-      `#${card.number} ${card.title}（槽位 ${card.slot}，cardId: ${card.cardId}）`
+      `#${card.number} ${clipText(card.title, CARD_TITLE_LIMIT, '；完整标题请查卡')}（槽位 ${card.slot}，cardId: ${card.cardId}）`
     )).join('、')}`)
   }
   return lines.join('\n')
@@ -57,19 +70,25 @@ function renderWorker(worker) {
 /**
  * 把名册渲染成给模型看的文本。
  *
- * @param {{ workers: object[], archivedKnown: boolean }} roster - 名册
+ * @param {{ workers: object[], total?: number, archivedKnown: boolean }} roster - 名册
  * @returns {string} 文本
  */
-export function renderWorkerList({ workers, archivedKnown }) {
+export function renderWorkerList({ workers, total = workers.length, archivedKnown }) {
   if (workers.length === 0) {
     return '本项目目前没有可用的 worker（未归档）。用 spawn_worker 派第一个工，或确认它们是否已经被归档。'
   }
   const lines = [
-    `本项目可用的 worker 共 ${workers.length} 个（未归档，最近使用在前）：`,
+    total > workers.length
+      ? `本项目可用的 worker 共 ${total} 个（未归档，最近使用在前），这里列出最近使用的 ${workers.length} 个：`
+      : `本项目可用的 worker 共 ${total} 个（未归档，最近使用在前）：`,
     ...workers.map(renderWorker),
   ]
+  if (total > workers.length) {
+    lines.push(`（还有 ${total - workers.length} 个更久未用的 worker 未列出；需要时用更大的 limit。）`)
+  }
   if (!archivedKnown) lines.push('（当前组合读不到归档集合，列表可能包含已归档会话）')
-  return lines.join('\n')
+  lines.push('（「在跑」只统计你派出的轮次；人下钻跟 worker 聊的那一轮不算，别据此判断能否立刻续聊。）')
+  return clipText(lines.join('\n'), OUTPUT_LIMIT, '；用更小的 limit 聚焦最近使用的 worker')
 }
 
 /**
@@ -83,22 +102,33 @@ export function createListWorkersTool({ dispatcher }) {
   return {
     name: 'list_workers',
     description:
-      '列出本项目里由你派出的、未归档的 worker 会话：会话 id、名字、当前模型与 effort、运行状态与挂着的卡。用来核对某个 worker 跑在哪个模型上、盘点可复用的 worker，或决定续聊还是新派工。只读，不唤醒 worker、不产生模型调用。',
+      '列出本项目里由你派出的、未归档的 worker 会话：会话 id、名字、当前模型与 effort、运行状态与挂着的卡。用来核对某个 worker 跑在哪个模型上、盘点可复用的 worker，或决定续聊还是新派工。只读，不唤醒 worker、不产生模型调用。「在跑」只统计你派出的轮次，人下钻聊的那一轮不算。',
     parameters: {
       type: 'object',
-      properties: {},
+      properties: {
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: MAX_LIMIT,
+          description: `最多列出多少个 worker（默认 ${DEFAULT_LIMIT}，按最近使用排序后截断）`,
+        },
+      },
     },
     output: {
       schema: { type: 'string' },
       render: (_args, value) => [{ type: 'text', text: value }],
     },
     isConcurrencySafe: () => true,
-    async execute(_args, exec) {
+    async execute(args, exec) {
       const parent = exec?.agent
       if (parent === undefined) {
         throw new Error('list_workers: 需要调用方 agent 才能列 worker')
       }
-      return await renderWorkerList(await dispatcher.listWorkers({ parent }))
+      const limit = args?.limit ?? DEFAULT_LIMIT
+      if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
+        throw new Error(`list_workers: limit 必须是 1–${MAX_LIMIT} 的整数`)
+      }
+      return await renderWorkerList(await dispatcher.listWorkers({ parent, limit }))
     },
   }
 }
