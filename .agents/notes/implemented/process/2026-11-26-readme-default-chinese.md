@@ -11,7 +11,7 @@ Status: implemented
 - **默认中文**：中文放进 `README.md`，英文移到 `README_EN.md`，两版顶栏互切；GitHub 仓库页与 npm 包页默认展示中文。指向 `README_ZH.md` 的文档链接、`package.json` 的 `files`、发布包清单测试与文档预算清单同步改名，不保留 `README_ZH.md` 兼容文件。
 - **亮点补一条**：在「编排规则写进两份文件」之后加「每个 worker 用合适的模型」，一句话覆盖派工选模型、槽位默认、续聊切换与 route 查询；后续编号顺延，两版同位置同步。
 - **使用手册补一节**：`docs/usage.md` 新增「给 worker 选模型」，写清三个来源的优先级、`provider/model` 与裸模型 id 的解析、`effort` 回落、route 查询与拒绝场景（预检失败、读不到 worker 当前 route）；续聊切换与换卡/换槽位重选的规则也落在这一节。
-- **预算与入口同步**：`scripts/doc-budgets.json` 的键改名并按新增的「如何使用 / 常规用法 / 微信群」重算（README 3860、README_EN 2490、usage 2250），落地页的「Full README」改指英文版、中文入口继续指 `README.md`；[README 改成亮点优先](2026-11-02-readme-highlights-first.md) 里的「英文默认」加取代指针。
+- **预算与入口同步**：`scripts/doc-budgets.json` 的键改名并按新增的「如何使用 / 常规用法 / 微信群」重算（README 3885、README_EN 2505、usage 2250），落地页的「Full README」改指英文版、中文入口继续指 `README.md`；[README 改成亮点优先](2026-11-02-readme-highlights-first.md) 里的「英文默认」加取代指针。
 
 ## Alternatives considered
 

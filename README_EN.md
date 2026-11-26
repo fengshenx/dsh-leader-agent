@@ -170,7 +170,7 @@ Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirement
 
 ## WeChat group
 
-Scan to join the dsh-leader-agent WeChat group:
+Join the dsh-leader-agent WeChat group — plugin users and anyone interested in frontier agent development and multi-agent orchestration are welcome:
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent WeChat group QR code" width="320">

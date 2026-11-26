@@ -170,7 +170,7 @@ npm run e2e                       # 浏览器 e2e
 
 ## 加入微信群
 
-欢迎扫码加入 dsh-leader-agent 交流群：
+欢迎本插件用户，以及对前沿 Agent 开发、多 Agent 编排感兴趣的朋友入群讨论：
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent 微信群二维码" width="320">
