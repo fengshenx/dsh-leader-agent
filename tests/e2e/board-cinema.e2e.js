@@ -19,7 +19,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { closeBrowser, scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { closeBrowser, openProject, scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
 const PROJECT_ID = 'e2e-board-cinema-project'
 const BOARD = '.dsh-leader-agent-board'
@@ -55,46 +55,6 @@ async function currentSessionId(page) {
     const row = document.querySelector('[data-row-key^="session:"][aria-selected="true"]')
     return row?.getAttribute('data-row-key')?.slice('session:'.length) ?? null
   })
-}
-
-/**
- * 等侧栏 DOM 连续 quietMs 没有变化。
- *
- * 启动时项目/会话列表还在刷新，点太早会落在重渲染中间被丢掉；这里等的是「没有
- * 变化」这个状态，不是睡一段固定时间。自带 10 秒上限：侧栏若一直有 DOM 变化，
- * 失败读数要能指到「最后几次变化、data-dead、行数」，别只留场景级 90 秒超时。
- */
-async function waitForSidebarStable(page, quietMs = 500, timeoutMs = 10_000) {
-  const state = await page.evaluate(({ quiet, timeout }) => new Promise((resolve) => {
-    const root = document.querySelector('.dsh-leader-agent-project-section')?.parentElement ?? document.body
-    let timer = 0
-    let finished = false
-    let mutations = 0
-    function finish(stable) {
-      if (finished) return
-      finished = true
-      clearTimeout(timer)
-      clearTimeout(deadline)
-      observer.disconnect()
-      resolve({
-        stable,
-        mutations,
-        project: document.querySelector('.dsh-leader-agent-project-row')?.getAttribute('data-dead') ?? null,
-        rows: root.querySelectorAll('[data-row-key]').length,
-      })
-    }
-    const observer = new MutationObserver(() => {
-      mutations += 1
-      clearTimeout(timer)
-      timer = setTimeout(() => finish(true), quiet)
-    })
-    timer = setTimeout(() => finish(true), quiet)
-    const deadline = setTimeout(() => finish(false), timeout)
-    observer.observe(root, { subtree: true, childList: true, attributes: true, characterData: true })
-  }), { quiet: quietMs, timeout: timeoutMs })
-  if (!state.stable) {
-    throw new Error(`侧栏在 ${timeoutMs}ms 内没有稳定：最后 ${state.mutations} 次 DOM 变化（观察 .dsh-leader-agent-project-section 的父级），data-dead=${state.project}，[data-row-key] 行数 ${state.rows}`)
-  }
 }
 
 /** 把该会话登记成项目。 */
@@ -198,23 +158,9 @@ async function openSettings(page) {
  * @returns {Promise<'board-restored' | 'expanded-board' | 'guide-entry' | 'new-tab-guide'>} 进入路径
  */
 async function openBoard(page, session) {
-  const projectRow = page.locator('.dsh-leader-agent-project-row').first()
-  await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
-  await waitFor({
-    description: '项目可打开（leader 会话已就绪）',
-    check: async () => (await projectRow.getAttribute('data-dead')) === null,
-    timeoutMs: 20_000,
-  })
-  // 启动时宿主还在建空白会话、项目/会话列表也在刷新：先等侧栏 DOM 连续 500ms
-  // 没有变化再点，避免首次点击落在重渲染中间被丢掉。只点一次——点不中就照常
-  // 红，是产品问题就 fail loud，不在这里重试。
-  await waitForSidebarStable(page)
-  await projectRow.click()
-  await waitFor({
-    description: '项目行进入选中态',
-    check: async () => (await projectRow.getAttribute('data-selected')) === 'true',
-    timeoutMs: 15_000,
-  })
+  // 不靠「侧栏 500ms 没变化」：先等 data-dead 为空，再点到 data-selected；
+  // 重渲染换掉行时 locator 会重新解析，点击丢失会重试而不是静默超时。
+  await openProject(page, { description: '项目行', timeoutMs: 20_000 })
 
   const board = page.locator(`${BOARD}:visible`)
   const guideEntry = page.locator(`${GUIDE_ENTRY}:visible`)

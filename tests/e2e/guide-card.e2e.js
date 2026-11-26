@@ -20,7 +20,7 @@ import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
-import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { openProject, scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 import { LOCALE_UI } from '../../src/client/locales.js'
 
 const zh = LOCALE_UI.zh
@@ -115,16 +115,11 @@ test('引导卡只在空 leader 会话里出现，关掉或说完第一句话就
   // 第二段：同一个数据根，项目注册表在启动时读回内存。
   const second = await startInstanceIn({ root, baseUrl: mock.url })
   instance = second
-  const ready = async (page) => {
-    watchProblems(page, problems)
-    await page.goto(second.url, { waitUntil: 'domcontentloaded' })
-    return page.locator('.dsh-leader-agent-project-row').first()
-  }
   const card = (page) => page.locator('.dsh-leader-agent-guide-card')
   const openLeader = async (page) => {
-    const row = await ready(page)
-    await waitForLocator(row, { description: '项目行出现在左栏', timeoutMs: 20_000 })
-    await row.click()
+    watchProblems(page, problems)
+    await page.goto(second.url, { waitUntil: 'domcontentloaded' })
+    await openProject(page, { description: '项目行', timeoutMs: 20_000 })
   }
 
   // 一、卡片出现，且引导期间没有任何模型请求。

@@ -19,7 +19,7 @@ import { test } from 'node:test'
 import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { startInstanceIn } from './instance.mjs'
-import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { openProject, scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 import { startMockProvider } from './mock-llm.mjs'
 import { workerReportSource } from '../../src/shared/worker-report.js'
 
@@ -146,8 +146,10 @@ test('worker 回报气泡：头像内联 SVG、恶意 name 不注入、长正文
   page = await browser.newPage({ locale: 'zh-CN', viewport: { width: 1440, height: 900 } })
   watchProblems(page, problems)
   await page.goto(instance.url, { waitUntil: 'domcontentloaded' })
-  await waitForLocator(page.getByText('avatar').first(), { description: '项目行', timeoutMs: 15_000 })
-  await page.getByText('avatar').first().click()
+  // 不再用 getByText('avatar')：文本 locator 可能命中项目标题之外的同名片段，
+  // 也没有就绪/选中确认。先绑到项目行，再由 openProject 等就绪并点到选中。
+  const projectRow = page.locator('.dsh-leader-agent-project-row').filter({ hasText: 'avatar' }).first()
+  await openProject(page, { row: projectRow, description: '项目行 avatar', timeoutMs: 20_000 })
   await waitForLocator(page.locator('.dsh-leader-agent-agent-bubble').first(), {
     description: 'worker 回报气泡',
     timeoutMs: 15_000,

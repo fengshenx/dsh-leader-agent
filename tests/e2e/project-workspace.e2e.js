@@ -18,7 +18,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { openProject, scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
 /** 从数据根里取宿主启动时建的第一个会话。 */
 function firstSession(home) {
@@ -130,7 +130,7 @@ test('项目会话不归属工作区，历史挂载在启动时摘掉', { timeou
     4,
     '项目行首应当是应用格子图标',
   )
-  await row.click()
+  await openProject(page, { row, description: '项目行', timeoutMs: 20_000 })
 
   // 点项目行仍然能打开 leader：不归属工作区不影响可打开性。
   await waitForLocator(page.locator('.dsh-leader-agent-guide-card'), {

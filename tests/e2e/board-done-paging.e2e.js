@@ -21,7 +21,7 @@ import { chromium } from 'playwright'
 import { readSessionLogs } from './session-logs.mjs'
 import { WORKTREE, startInstanceIn } from './instance.mjs'
 import { startMockProvider } from './mock-llm.mjs'
-import { scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
+import { openProject, scenarioTimeout, stopScenario, waitFor, waitForLocator, watchProblems } from './harness.mjs'
 
 /** 分页页大小：与 `src/client/board-projection.js` 的 `DONE_PAGE_SIZE` 对齐。 */
 const PAGE_SIZE = 30
@@ -142,36 +142,7 @@ test('已完成区默认 30 行，展开到 31 行变「收起」，收起回 30
   await page.goto(second.url, { waitUntil: 'domcontentloaded' })
 
   // 打开 leader 会话：看板入口只在项目会话（leader / worker）里渲染。
-  const projectRow = page.locator('.dsh-leader-agent-project-row').first()
-  await waitForLocator(projectRow, { description: '项目行出现在左栏', timeoutMs: 20_000 })
-  // data-dead 表示宿主还没把 leader 会话算进存活集合。此时点开只会弹「leader 已被
-  // 删除」，而面板下一轮刷新会把标记摘掉——先等它就绪，点击才一定会切主视图。
-  await waitFor({
-    description: '项目可打开（leader 会话已就绪）',
-    check: async () => (await projectRow.getAttribute('data-dead')) === null,
-    timeoutMs: 20_000,
-  })
-  // 点项目行是异步切主视图；宿主侧栏刷新期间首次 click 可能丢（board-cinema
-  // 有同款记录）。点到 data-selected 为止，不用固定 sleep；失败时仍带行读数。
-  try {
-    await waitFor({
-      description: '项目行点击生效（当前会话已切到 leader）',
-      check: async () => {
-        if ((await projectRow.getAttribute('data-selected')) === 'true') return true
-        await projectRow.click({ timeout: 1000 }).catch(() => {})
-        return (await projectRow.getAttribute('data-selected')) === 'true'
-      },
-      timeoutMs: 20_000,
-    })
-  } catch (error) {
-    const state = await projectRow.evaluate((node) => ({
-      dead: node.getAttribute('data-dead'),
-      selected: node.getAttribute('data-selected'),
-      current: node.getAttribute('aria-current'),
-      title: node.getAttribute('title'),
-    }))
-    throw new Error(`${error.message}；项目行读数 ${JSON.stringify(state)}`, { cause: error })
-  }
+  await openProject(page, { description: '项目行', timeoutMs: 20_000 })
 
   // 展开右栏，从 guide 页的「看板」胶囊进面板。入口挂载后要问一次项目通道，
   // 所以等胶囊出现而不是固定等待。

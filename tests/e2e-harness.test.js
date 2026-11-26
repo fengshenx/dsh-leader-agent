@@ -10,7 +10,7 @@ import { existsSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { closeBrowser, scenarioTimeout, stopScenario } from './e2e/harness.mjs'
+import { closeBrowser, processBudgetScale, resolveBudgetScale, scenarioTimeout, stopScenario } from './e2e/harness.mjs'
 
 test('没有浏览器句柄时直接算关闭成功', async () => {
   assert.equal(await closeBrowser(null), true)
@@ -78,12 +78,23 @@ test('清理顺利时静默返回，没有数据根也不报错', async () => {
   assert.deepEqual(order, ['browser', 'instance', 'mock'])
 })
 
-test('测试级上限跟着 E2E_BUDGET_SCALE 放大', () => {
-  assert.equal(scenarioTimeout(), 90_000)
-  process.env.E2E_BUDGET_SCALE = '1.5'
-  try {
-    assert.equal(scenarioTimeout(), 135_000)
-  } finally {
-    delete process.env.E2E_BUDGET_SCALE
-  }
+test('自动倍率按 load / 核数计算并封顶，显式值优先', () => {
+  assert.equal(resolveBudgetScale({ load: 5, cores: 10, override: '' }), 1)
+  assert.equal(resolveBudgetScale({ load: 20, cores: 10, override: '' }), 2)
+  assert.equal(resolveBudgetScale({ load: 50, cores: 10, override: '' }), 4)
+  assert.equal(resolveBudgetScale({ load: 50, cores: 10, override: '1.5' }), 1.5)
+  assert.equal(resolveBudgetScale({ load: 50, cores: 10, override: 'not-a-number' }), 4)
+  assert.equal(resolveBudgetScale({ load: 50, cores: 0, override: '' }), 1)
+})
+
+test('测试级上限接受注入倍率，不读真实 load', () => {
+  assert.equal(scenarioTimeout(90_000, 1), 90_000)
+  assert.equal(scenarioTimeout(90_000, 1.5), 135_000)
+  assert.equal(scenarioTimeout(150_000, 2), 300_000)
+})
+
+test('同一进程内等待上限与倍率只解析一次', () => {
+  const scale = processBudgetScale()
+  assert.equal(processBudgetScale(), scale)
+  assert.equal(scenarioTimeout(90_000), Math.round(90_000 * scale))
 })
