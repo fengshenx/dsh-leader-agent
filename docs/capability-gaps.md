@@ -473,6 +473,19 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ---
 
+### 47. 浏览器侧读不到 `directoryPicker` 的能力种类
+
+**目标形态**：渲染「加项目」入口前就知道宿主服务 native 还是 browse，直接决定弹系统框还是应用内目录树。
+
+**dsh 实测**（`0.2.1-rc.2`～`0.2.2-rc.5`）：
+
+- 浏览器侧 `UiWorkspace` 只有 `pickDirectory` / `listDirectory` / `createDirectory` 三个动词，没有 `capability()`（`dsh-client-ui-workspace/src/client/navigation.ts`）。
+- 能力对象只在宿主侧：`DirectoryPickerController` 读 `ctx.directoryPicker.capability()`，每个 wire 动词按 kind 门禁拒绝（`dsh-api-workspace-controller/src/directory-picker.ts` 的 `requireCapability`）。`ctx.directoryPicker` 是宿主服务，浏览器侧取不到。
+
+**影响**：第三方只能在调用后判能力——`pickDirectory()` 被拒后拿 `listDirectory()` 的成败区分 browse（成功）与 native 上的真实失败（也拒绝）。代价是一次白跑的 pick，以及一个「拒绝是判据、必须吞掉」的异常点（`src/client/directory-browse.js` 的 `probeBrowseListing`）。宿主若暴露只读的 `capability()`，这段探测可以删。
+
+---
+
 ## 四、工具级（已验证可用，无缺口）
 
 表里的工具名反映实测当时的版本：项目注册表工具（`add_project` 等）与 `init_project` 已在后续版本删除，项目改由左栏区块操作、初始化改为纯 skill；这些行保留为宿主能力的实测证据。
