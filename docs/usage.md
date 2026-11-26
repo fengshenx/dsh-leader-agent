@@ -35,6 +35,7 @@ worker 是普通会话，在项目树下有自己的行，可以打开直接输�
 
 - **回报气泡**：出现在 Leader 会话里，点 worker 名字跳到它的会话。
 - **`read_worker_session({ sessionId, turns })`**：只读，不唤醒 worker，看它这一轮的任务、正文、工具调用与失败原因。`turns` 默认 2、最多 20，`offset` 往前翻页。
+- **`list_workers({ limit })`**：盘点本项目未归档 worker 的会话 id、名字、模型与 effort、在跑状态与挂卡，按最近使用排序；只读，不唤醒 worker；只有 Leader 能查。`limit` 默认 20、最多 100。「在跑」只算你派出的轮次，人下钻聊的那一轮不算。
 - **巡查**：Leader 发起的一轮超过 **15 分钟**没有回报，会收到带「【后台巡查】」前缀的提醒，附 worker 名字、挂着的卡与回看建议。它只是提醒，不是失败；本插件没有中止手段。
 
 长时间没动静时，先 `read_worker_session`，再决定继续等、用 `message_worker` 纠偏，或请人打开那个会话处理。
