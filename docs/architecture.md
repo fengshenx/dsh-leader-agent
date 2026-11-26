@@ -28,7 +28,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 身份 | 判定 | 工具面 |
 |---|---|---|
 | leader | 项目注册表 `leaderSessionId` 指向的会话 | 全部工具，摘掉 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` / `read_card` |
-| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 无 `spawn_worker` / `message_worker` / `list_cards` / `create_card`；有 `update_card`（限自己挂着的卡）与 `read_card` |
+| worker | 本 bundle 派出的根会话，登记表 + 内存集合判定 | 无 `spawn_worker` / `message_worker` / `list_workers` / `list_cards` / `create_card`；有 `update_card`（限自己挂着的卡）与 `read_card` |
 | 普通会话 | 其余会话 | 同 worker，再少 `update_card` / `read_card`；有宿主 subagent 四件 |
 
 身份决定工具面，工具面在会话创建时裁剪（见[工具面分配](#工具面分配)），不是靠提示词隐藏。普通会话保留的宿主 subagent 工具在 0.2.2 起为四件（含 `wait_agent`）；`engines.dsh` 下限 0.2.1-rc.2 只有前三件，`applyToolGate` 的逐件重试会跳过缺失项。
@@ -39,9 +39,9 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 建 worker 与冷恢复都要显式把 `agentPresets.mount()` 交给 `setup` 并把 preset id 写进 `meta.agentPreset`，否则只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。挂上的是整个标准组合（persona、`agent-instructions`、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web`…），因此 worker 也能向用户提问。worker 的沙箱模式与审批策略在派工时从 leader 继承，回执写回读到的实际权限（[capability-gaps 第 41 条](capability-gaps.md)、[限制](limitations.md#worker-的控制面)）。
 
-模型选择在建会话时交给 `agentOptions`，并随登记表落盘供冷恢复还原（rc.2 的 `resume` 不从日志取 route）；续聊切换也落盘。
+模型选择在建会话时交给 `agentOptions`，并随登记表落盘供冷恢复还原（rc.2 的 `resume` 不从日志取 route）。
 
-派工分两步：`spawn_worker` 建会话、登记、可选绑卡槽位后**立即返回且不开工**；开工由 `message_worker` 的第一条消息触发。这样槽位绑定与卡片事实先落盘，首轮请求就带着它们。`message_worker` 既是开工入口也是续聊入口：会话活着就把消息 `steer` 进它的当前轮次（下一步注入，空闲则立即开一轮）。「活着」分两层——插件自己的 `live` 表，以及宿主 `agents.get()` 里的活 agent（GUI 打开或进程启动时恢复的会话在这里，写句柄随它常驻）；两层都没有才冷恢复。回执按投递形态分：前两层都算 `merged`，只有冷恢复是 `sent`，可选 `rename` 改名；也可带 `model` / `effort` 同次切换该会话的模型选择（写进登记表与会话日志，冷恢复沿用）。
+派工分两步：`spawn_worker` 建会话、登记、可选绑卡槽位后**立即返回且不开工**；开工由 `message_worker` 的第一条消息触发。这样槽位绑定与卡片事实先落盘，首轮请求就带着它们。`message_worker` 既是开工入口也是续聊入口：会话活着就把消息 `steer` 进它的当前轮次（下一步注入，空闲则立即开一轮）。「活着」分两层——插件自己的 `live` 表，以及宿主 `agents.get()` 里的活 agent（GUI 打开或进程启动时恢复的会话在这里，写句柄随它常驻）；两层都没有才冷恢复。回执按投递形态分：前两层都算 `merged`，只有冷恢复是 `sent`，可选 `rename` 改名；`model` / `effort` 同次换 route（写进登记表与日志，冷恢复沿用）。
 
 完成信号由机制侧从会话事件里认：`dispatch.js` 订阅宿主的 `session/event`，在 `turn/end` 折叠这一轮的 `assistant/message` 文本与终态——worker 不调用任何工具回报，模型漏写一句话不会让 leader 卡在等待里。唤醒走 `agent.followup()`：宿主的 completion notice 只投给 subagent 树里的创建者，worker 是根会话不在树上，所以本 bundle 自己订阅会话事件重建同一条路径，并多做一层落盘（父会话离线时下次启动补投）。通知有两条硬边界：排进 `inbox['next-turn']`（下一个 turn 的一次输入，不插进当前这一步）且父会话空闲才投；为什么这样定、代价是什么见[限制](limitations.md#宿主语义与运行形态)。结算按**回合归属**判：`turn/end` 只在「这一轮取走了那条 leader 消息、且这一轮由 leader 开启」时结算，人自己下钻聊出来的回合不回报；leader 的消息若还没被取走，记录留到它真正进入的那一轮。
 
@@ -150,6 +150,7 @@ dsh 的客户端没有「第三方并列区块」这类扩展点，本 bundle �
 |---|---|---|
 | 派工给后台 worker | `spawn_worker` | 本 bundle |
 | 给 worker 续聊 / 改名 / 换模型 | `message_worker` | 本 bundle |
+| 盘点 worker 与各自的模型、状态 | `list_workers` | 本 bundle（登记表 + 活 agent） |
 | worker 轮次结束的自动回报 | `session/event` → `turn/end` | 宿主 |
 | 读 worker 回报 | 完成通知 | 本 bundle 的唤醒器 |
 | 回看 worker 的会话回合（不唤醒） | `read_worker_session` | 本 bundle（读宿主的 `sessionQuery.readSession`） |

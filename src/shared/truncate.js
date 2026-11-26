@@ -14,6 +14,20 @@
  */
 
 /**
+ * 构造截断标记。
+ *
+ * 标记本身计入上限：`clipText` 先留出它的长度再切正文；按整块丢弃的渲染也用它
+ * 生成同一口径的「原长 N 码元」提示，避免两处格式漂移。
+ *
+ * @param {number} originalLength - 原长（UTF-16 码元）
+ * @param {string} [note] - 接在原长之后的下一步提示，须自带分隔符（通常以 `；` 开头）
+ * @returns {string} 截断标记
+ */
+export function truncationMarker(originalLength, note = '') {
+  return `…（已截断，原长 ${originalLength} 码元${note}）`
+}
+
+/**
  * 把正文压到 `limit` 个 UTF-16 码元以内，超出时追加截断标记。
  *
  * `limit` 小到装不下标记时（只可能是调用方传错）退化成只留省略号，仍不超限。
@@ -27,7 +41,7 @@ export function clipText(text, limit, note = '') {
   if (typeof text !== 'string' || text === '') return ''
   if (limit <= 0) return ''
   if (text.length <= limit) return text
-  const marker = `…（已截断，原长 ${text.length} 码元${note}）`
+  const marker = truncationMarker(text.length, note)
   const room = limit - marker.length
   if (room < 1) return `${text.slice(0, codePointEnd(text, limit - 1))}…`
   return `${text.slice(0, codePointEnd(text, room))}${marker}`

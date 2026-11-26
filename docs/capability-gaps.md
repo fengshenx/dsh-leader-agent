@@ -402,17 +402,13 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 
 ### 42. macOS 原生目录选择器在 0.2.1-rc.x 有初始灰态——修复只在 0.2.2-alpha.2 起
 
-**目标形态**：点「加项目」、宿主弹出系统目录选择框后，键盘与鼠标立刻可用。
+**目标形态**：点「加项目」后系统目录框立刻可交互。
 
-**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出在浏览器窗口之上但没有被激活——框体呈灰态，点它没反应；必须先点一下浏览器窗口（让 Chrome 重新成为 active app），面板才变成可交互。症状与宿主 #7320 一致。
+**dsh 实测**（`0.2.1-rc.2`，本机真实点击）：NSOpenPanel 弹出但未激活，框体呈灰态；先点浏览器窗口才可交互，症状同宿主 #7320。
 
-**证据**：
+**证据**：`MAC_PANEL` 在 `rc.2`～`rc.5` 于 `runModal` 前同步调 `activateIgnoringOtherApps`，modal 循环未起；修复提交 `7333a38c7a` 只在 `0.2.2-alpha.2+`；darwin + loopback + 非 SSH 走 native。
 
-- 宿主 `packages/host/directory-picker-native/src/native-picker.ts` 的 `MAC_PANEL` 脚本在 `0.2.1-rc.2`～`rc.5` 里都是 `app.activateIgnoringOtherApps(true)` 直接在 `panel.runModal` 之前同步调用；modal 事件循环还没起来，激活请求落空。
-- 提交 `7333a38c7a`（2026-10-26，Fixes #7320）把激活放进 `NSOperationQueue.mainQueue.addOperationWithBlock(...)`，等 modal 循环启动后再激活。该提交只进了 `0.2.2-alpha.2` 及之后（`git tag --contains 7333a38c7a` → `dsh-v0.2.2-alpha.2`），`rc.2`～`rc.5` 逐个 tag 核验均为修复前形态。
-- web 端走哪条选择器由 `dsh-host-directory-picker-auto` 启动时判定：darwin + loopback bind + 非 SSH 启动 → `native`，所以本机 web 实例弹的就是这个 NSOpenPanel。
-
-**影响**：本仓「加项目」只读调用 `uiWorkspace.pickDirectory()`，面板由宿主进程的 `osascript` 弹出、激活时机也在那支脚本里——bundle 侧没有任何 hook 能改它，也不能自带一条目录选择路径（浏览器拿不到绝对路径）。因此这一条只能靠升级宿主修复：`dsh` 升到 `0.2.2-alpha.2` 或更新的 `0.2.x`。本仓的工具与 UI 仍按 `engines.dsh` 下限 `0.2.1-rc.2` 的 API 面写，升级宿主不改这条规矩。
+**影响**：面板由宿主 `osascript` 弹出，bundle 无 hook 可改；只能升宿主到 `0.2.2-alpha.2+`，API 仍按下限 `0.2.1-rc.2` 写。
 
 ### 43. 右栏首次打开的宽度由宿主按视口 45% 决定，第三方没有设置入口
 
@@ -470,6 +466,12 @@ dsh 要求仓外事件必须带 `ignorable` 标记且不进读路径（`packages
 - `dispose()` 也不删已落盘的会话日志：它只 close/drain 持久化句柄，宿主没有删除会话的公开 API。新建的空会话在 `session/created` 上就写入权限事实（见第 41 条），落盘由持久化的写入缓冲负责，`dispose()` 的 close/drain 把它落盘（`packages/session/session-persistence-jsonl/src/storage.ts:274-280`、`:223-240`）；进程重启后它可能作为空会话重新出现（按源码推断，未端到端复现）。
 
 **影响**：撤销能力只在创建方手里。本 bundle 因此把 leader 会话的创建也改走 `agents.create()`（与 worker 同一条路），创建结果把 `AgentHandle` 交给项目服务；落盘失败时 `dispose()` 停活会话。已落盘的空会话可能重启后重现。没有拿到句柄就等于没有撤销能力——这时只能大声记日志，活会话会留在左栏「未分组」里（见 `docs/limitations.md`）。`resume()` 也能拿句柄，但对已存在会话会抢写句柄，不能拿来撤销。
+
+---
+
+### 47. 浏览器侧读不到 `directoryPicker` 的能力种类
+
+**目标**：加项目前判断 native / browse。**实测**：`UiWorkspace` 无 `capability()`，只有三个目录动词；能力在宿主侧按 kind 拒绝（机制见 [browse 回退笔记](../.agents/notes/implemented/bug-fix/2026-11-26-browse-directory-picker-fallback.md)）。**影响**：只能先 pick，被拒后用 list 成败区分 browse；宿主暴露 `capability()` 后这段探测可删。
 
 ---
 

@@ -61,6 +61,8 @@ import {
   shouldHideUngroupedHeader,
 } from './workspace-exclusion.js'
 import { ConfirmDialog } from './confirm-dialog.js'
+import { DirectoryBrowseDialog } from './directory-browse.js'
+import { resolveDirectoryPick } from './directory-browse-logic.js'
 
 /**
  * 项目列表的重读间隔。
@@ -101,6 +103,12 @@ export function ProjectPanel(props) {
   const [listExpanded, setListExpanded] = useState(true)
   /** 待确认删除的项目；null 表示没有待确认的删除。 */
   const [pendingDelete, setPendingDelete] = useState(null)
+  /**
+   * 应用内目录浏览的预取结果；null 表示弹层没开。
+   *
+   * 只在 native 选择器被拒、而 browse 原语可用时出现——见 `startAdd`。
+   */
+  const [browse, setBrowse] = useState(null)
   const [deleteError, setDeleteError] = useState('')
   /**
    * 待确认「停止并归档」的会话；null 表示没有。
@@ -398,6 +406,29 @@ export function ProjectPanel(props) {
     return () => exclusion.dispose()
   }, [excludedSessionIds, excludedCountsByGroup, hideUngrouped])
 
+  /**
+   * 采用一个已选好的目录：默认名可用就直接建，否则先让用户改名。
+   *
+   * native 选择器与应用内浏览共用这一段——两条入口选完目录后的行为必须一致，
+   * 否则 browse 宿主上建出来的项目名/回执会和别的宿主不一样。
+   *
+   * @param {string | null} directory - 绝对目录路径；取消时为 null
+   * @returns {Promise<void>} 完成
+   */
+  const adoptDirectory = useCallback(async (directory) => {
+    if (typeof directory !== 'string' || directory === '') return
+    const check = defaultProjectName(directory, t)
+    if (!check.ok) {
+      // 目录名当不了项目名，直接提交只会换回一条没有出口的报错——让用户在这里改。
+      setNaming({ directory, name: check.name, error: check.error })
+      return
+    }
+    await callRemote('create', [directory, check.name])
+    await refresh()
+    // 新项目行就是唯一回执，列表收着就等于没有回执——建完必须展开给它看。
+    setListExpanded(true)
+  }, [callRemote, refresh, t])
+
   const startAdd = useCallback(async () => {
     if (busy) return
     // 重新点「加项目」就是放弃上一个待建项：上一次可能停在改名框上，留着它会让
@@ -410,26 +441,42 @@ export function ProjectPanel(props) {
     }
     setBusy(true)
     try {
-      const directory = await uiWorkspace.pickDirectory()
-      if (typeof directory !== 'string' || directory === '') return
-      // 名字默认取目录名：用户挑完目录就想看到项目建好，再让他填一遍名字、
-      // 再点一次确认，都是多余的手续。名字要改随时用行上的「重命名」。
-      const check = defaultProjectName(directory, t)
-      if (!check.ok) {
-        // 目录名当不了项目名，直接提交只会换回一条没有出口的报错——让用户在这里改。
-        setNaming({ directory, name: check.name, error: check.error })
+      const outcome = await resolveDirectoryPick(uiWorkspace)
+      if (outcome.kind === 'cancelled') return
+      if (outcome.kind === 'browse') {
+        setBrowse({ listing: outcome.listing })
         return
       }
-      await callRemote('create', [directory, check.name])
-      await refresh()
-      // 新项目行就是唯一回执，列表收着就等于没有回执——建完必须展开给它看。
-      setListExpanded(true)
+      if (outcome.kind === 'error') throw outcome.error
+      await adoptDirectory(outcome.directory)
     } catch (error) {
       showToast(projectRemoteErrorText(error, t, 'project.error.create'))
     } finally {
       setBusy(false)
     }
-  }, [busy, callRemote, getUiWorkspace, refresh, t])
+  }, [adoptDirectory, busy, getUiWorkspace, t])
+
+  /**
+   * 应用内浏览选定目录后的建项目入口。
+   *
+   * 弹层先关再建：用户已经做完选择，让弹层挂在「正在建」上只会挡着，看不到
+   * 列表里新出现的项目行。
+   *
+   * @param {string} directory - 选中的绝对路径
+   * @returns {Promise<void>} 完成
+   */
+  const adoptFromBrowse = useCallback(async (directory) => {
+    setBrowse(null)
+    if (busy) return
+    setBusy(true)
+    try {
+      await adoptDirectory(directory)
+    } catch (error) {
+      showToast(projectRemoteErrorText(error, t, 'project.error.create'))
+    } finally {
+      setBusy(false)
+    }
+  }, [adoptDirectory, busy, t])
 
   /**
    * 提交改名后的建项目请求。
@@ -722,6 +769,20 @@ export function ProjectPanel(props) {
     onCancel: cancelArchive,
   })
 
+  // 条件挂载：关闭时整个卸掉，下次打开从头取列表；也让浮层外壳的关闭回焦
+  // 在卸载清理里正常执行。
+  const browseDialog = browse === null
+    ? null
+    : createElement(DirectoryBrowseDialog, {
+      open: true,
+      t,
+      workspace: getUiWorkspace?.(),
+      initialListing: browse.listing,
+      busy,
+      onOpen: (directory) => { void adoptFromBrowse(directory) },
+      onClose: () => setBrowse(null),
+    })
+
   if (!wide) {
     // 窄导轨放不下列表：图标入口 + 浮层。图标取工作区同款，工作区在导轨里也是
     // 一列图标。
@@ -775,6 +836,7 @@ export function ProjectPanel(props) {
         : null,
       dialog,
       archiveDialog,
+      browseDialog,
     )
   }
 
@@ -784,6 +846,7 @@ export function ProjectPanel(props) {
     createElement(SidebarPlacement, null, body),
     dialog,
     archiveDialog,
+    browseDialog,
   )
 }
 

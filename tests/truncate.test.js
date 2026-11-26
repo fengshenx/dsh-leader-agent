@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { clipText } from '../src/shared/truncate.js'
+import { clipText, truncationMarker } from '../src/shared/truncate.js'
 
 /**
  * 找出正文里第一个孤立代理的下标。
@@ -23,6 +23,11 @@ function loneSurrogateAt(text) {
   }
   return undefined
 }
+
+test('truncationMarker：与 clipText 的标记同口径', () => {
+  assert.equal(truncationMarker(123, '；提示'), '…（已截断，原长 123 码元；提示）')
+  assert.equal(truncationMarker(9), '…（已截断，原长 9 码元）')
+})
 
 test('没超上限时原样返回，不画蛇添足', () => {
   assert.equal(clipText('短正文', 10), '短正文')

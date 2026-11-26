@@ -38,7 +38,7 @@ npm run worktree:prune -- --apply --delete-remote   # 连远端分支一起删�
 
 测试用 `node:test`，lint 用 oxlint（`npm run lint`，已接进 `npm run check` 最前面；配置在 `.oxlintrc.json`，`--deny-warnings` 让 warning 也判失败）：未用 import 与死代码由 lint 拦住，拼写错误靠人工。可判定逻辑抽成纯函数再测；IO 与 React 组件不硬测，UI 行为用 `npm run e2e` 证明——真实 `dsh` + 本地 mock + chromium，无密钥、不进 `npm run check`，场景写法见 [e2e-testing.md](e2e-testing.md)，断言纪律与失败诊断见 [e2e-scenarios](../.agents/skills/e2e-scenarios/SKILL.md)。能进 `tests/*.test.js` 的纯函数不要塞进 e2e。e2e 实例与 `npm run dev` 共用 `scripts/dev-instance.mjs` 的 profile 派生；组合必须一致，否则测到的不是用户实际实例。
 
-`desktop-remove.integration` 并发超时先单跑（LaunchServices）。
+`desktop-remove.integration` 超时先单跑（LaunchServices）；仅 app 已拉起但 `open --env` 丢失才跳过，`open` 失败按红，沙箱用 `DSH_DESKTOP_E2E=skip`。
 
 覆盖率门禁 `npm run test:coverage`（`npm run check` 末尾跑的就是它）判 `src` 下 per-file 行覆盖：没登记门槛的文件要求 100%，存量欠账按整数记在 `scripts/coverage-manifest.json` 的 `thresholds`，掉到门槛以下变红，涨出门槛会提示抬高。Node 只统计被加载过的文件，单测 import 不到的必须登记在 `unmeasured` 并写明理由（客户端组件由 e2e 覆盖）——新增 `src` 文件既不进报告也不登记同样变红。只判行覆盖：分支与函数覆盖率既不设门槛，也不进门禁输出。
 

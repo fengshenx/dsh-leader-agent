@@ -24,9 +24,10 @@
 
 - **Leader 能纠偏、不能中止**：`message_worker` 只能把消息插进当前轮次的下一步；宿主的 `Agent.cancel` 没接成工具。
 - **宿主的 `list_agents` / `send_message` / `interrupt_agent` / `wait_agent` 对 worker 无效**：worker 是根会话，不在 subagent 体系里，`interrupt_agent` 还会返回假成功。
-- **权限是派工时的快照；模型默认也是**：改 preset / `SLOTS.md` / Leader 模型不影响已派 worker，但 `message_worker` 显式换 route，或复用承接**新角色**（换卡/换槽位）时重选。`ask` 无人应答，需审批调用被拒。
+- **权限是派工时的快照；模型默认也是**：改 preset / `SLOTS.md` / Leader 模型不影响已派 worker，但 `message_worker` 显式换 route、或换卡/换槽位承接新角色时重选。`ask` 无人应答，需审批调用被拒。
 - **用户 claim 失败的在飞记录不会自动过期**：会留到任务进入下一轮或进程重启，期间 15 分钟巡查反复提醒。
 - **`read_worker_session` 是视图，不是导出**：单条 4000 码元、单页 12000 码元，超出标注原长并给 `offset`；工具参数与成功结果不返回。
+- **`list_workers` 只覆盖你派出的未归档 worker**：跨项目、别的 Leader 与已归档的看不到；「在跑」只算你派出的轮次，人下钻聊的那一轮不算（机制见[笔记](../.agents/notes/implemented/feature/2026-11-25-list-workers-tool.md)）。
 - **无回报巡查有延迟**：60 秒扫一次、超过 15 分钟才提醒；重启后不补，人下钻的回合不计时。
 
 ## 看板与卡片
@@ -46,7 +47,7 @@
 
 ## 项目树与工作区
 
-- **模型没有项目注册表工具**：加、列、换 Leader、删项目都只能人在左栏做；没有 web 导航服务时无法建项目，web 宿主上 native 选择器被拒时退回应用内目录浏览。
+- **模型没有项目注册表工具**：加、列、换 Leader、删项目都只能人在左栏做；没有 web 导航服务时无法建项目，web 宿主上 native 选择器被拒时退回应用内目录浏览（[机制](../.agents/notes/implemented/bug-fix/2026-11-26-browse-directory-picker-fallback.md)）。
 - **初始化提示的拒绝只在本会话生效**：换新会话会再问一次；想持久停用就创建 `LEADER.md`。
 - **项目树是自建的，与官方工作区树并存**：worker 按登记表加目录 realpath 判定，退役 Leader 按项目记录判定。
 - **项目会话不出现在官方工作区树是渲染层排除**：数据仍在，官方计数与搜索仍包含它们。
