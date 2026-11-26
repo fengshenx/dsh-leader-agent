@@ -23,13 +23,49 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      # 四个步骤只有成功的那个有 page_url；上游修复后只剩第一个。
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_retry_1.outputs.page_url || steps.deployment_retry_2.outputs.page_url || steps.deployment_retry_3.outputs.page_url }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Upload site
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: site
+
+      # 上游 bug（actions/deploy-pages#451，修复 #455 未发布）：deploy-pages 在
+      # upload 之后立刻按名字查工件，可能查到 0 个，而工件其实已经上传成功。
+      # 重试只重跑 deploy，**不重跑 upload**——同一 run 里出现两个 github-pages
+      # 工件，查找会从「找不到」变成「找到多个」，一样失败。上游发版后删掉重试。
       - name: Deploy
         id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        continue-on-error: true
+
+      - name: Wait 5s before retry
+        if: steps.deployment.outcome == 'failure'
+        run: sleep 5
+
+      - name: Deploy (retry 1)
+        id: deployment_retry_1
+        if: steps.deployment.outcome == 'failure'
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        continue-on-error: true
+
+      - name: Wait 20s before retry
+        if: steps.deployment_retry_1.outcome == 'failure'
+        run: sleep 20
+
+      - name: Deploy (retry 2)
+        id: deployment_retry_2
+        if: steps.deployment_retry_1.outcome == 'failure'
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        continue-on-error: true
+
+      - name: Wait 60s before retry
+        if: steps.deployment_retry_2.outcome == 'failure'
+        run: sleep 60
+
+      - name: Deploy (retry 3)
+        id: deployment_retry_3
+        if: steps.deployment_retry_2.outcome == 'failure'
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
