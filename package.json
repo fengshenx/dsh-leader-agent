@@ -28,7 +28,7 @@
     "locale/*.json",
     "THIRD_PARTY_LICENSE",
     "README.md",
-    "README_ZH.md"
+    "README_EN.md"
   ],
   "scripts": {
     "test": "node --test tests/*.test.js",

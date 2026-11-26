@@ -19,16 +19,24 @@
 
 分两步：
 
-1. `spawn_worker({ name })` 建一个常驻 worker 会话并立即返回会话 id，但 worker **还没开工**。`name` 同时是会话标题；可带 `cardId` + `slot` 绑卡片槽位，也可带 `model` / `effort`（不填回落 `SLOTS.md` 的槽位默认，再回落 Leader 当前模型）；绑卡自动注入卡片事实。
+1. `spawn_worker({ name })` 建一个常驻 worker 会话并立即返回会话 id，但 worker **还没开工**。`name` 同时是会话标题；可带 `cardId` + `slot` 绑卡片槽位，也可带 `model` / `effort`（见[给 worker 选模型](#给-worker-选模型)）；绑卡自动注入卡片事实。
 2. `message_worker({ sessionId, message })` 投第一条消息，worker 才开始跑；之后再用就是续聊。worker 忙时消息插进当前轮次的下一步，空闲时立即开工。
 
 worker 是普通会话，在项目树下有自己的行，可直接打开输入；每跑完一轮 Leader 会收到回报气泡（产物摘要或失败原因），不用轮询，worker 也不用调工具交作业。
 
 卡必须是**本项目**的、`active` 才能绑；跨项目/已关闭被拒。
 
-派工前可用 `list_worker_models` 查 route：不传参列 provider，给 `provider` 列 model，再给 `model` 列 effort（查 effort 必须给 `provider`）。
+### 给 worker 选模型
 
-`message_worker` 换模型需当前 route；读不到拒绝，重派。
+不指定时用 Leader 当前模型；有三个来源，优先级从高到低：
+
+1. **派工参数**：`spawn_worker` 的 `model` / `effort`。`model` 写 `provider/model`；只写模型 id 时沿用 Leader 的 provider（id 自带斜杠时写全 route）。只给 `effort` 会套在最终模型上，显式换模型没给 `effort` 用新模型默认。
+2. **槽位默认**：`SLOTS.md` 顶部 frontmatter 的 `slots.<槽位名>` 下写 `model` / `effort`，只影响之后新派或承接新角色的 worker。
+3. **Leader 当前模型**：前两者都没有时回落。
+
+派工前用 `list_worker_models` 查 route：不传参列 provider，给 `provider` 列 model，再给 `model` 列 reasoning effort（查 effort 必须同时给 `provider`）。列表可见不等于可调用，预检失败会拒绝派工。
+
+worker 已在跑时，`message_worker` 也能带 `model` / `effort`，与消息同一次生效；裸模型 id 沿用 worker 当前 provider，换卡或换槽位承接新角色时按新槽位默认重选。同卡同槽续聊保持当前模型；读不到 worker 当前 route 时拒绝换模型，需要重新派工并指定 `model`。
 
 ### worker 名册上限与复用
 

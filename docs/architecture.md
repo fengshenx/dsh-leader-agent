@@ -1,6 +1,6 @@
 # dsh-leader-agent 架构
 
-本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点；只回答组成、接缝与牵动面。安装与入门见 [README](../README.md)（[中文](../README_ZH.md)），操作见[使用手册](usage.md)，限制见[已知限制](limitations.md)，宿主能力边界见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发与构建见[开发](development.md)。
+本文是 dsh-leader-agent 的架构地图：分层、运行时模型、数据流、持久化布局、宿主契约落点；只回答组成、接缝与牵动面。安装与入门见 [README](../README.md)（[English](../README_EN.md)），操作见[使用手册](usage.md)，限制见[已知限制](limitations.md)，宿主能力边界见 [capability-gaps.md](capability-gaps.md)，决策推演见 [.agents/notes/](../.agents/notes/)，开发与构建见[开发](development.md)。
 
 阅读顺序：先看[分层](#分层)与[运行时模型](#运行时模型)；跨模块改动前读[宿主契约与架构约束](#宿主契约与架构约束)。
 
@@ -13,7 +13,7 @@ bundle 只贡献一层插件配置（`cordis.patch.yml`），实现分四处，�
 | 宿主侧 | `src/host/` | Node 进程 | 工具、派工、会话生命周期、卡片与项目存储、项目通道、提示词注入 |
 | 客户端 | `src/client/` | 浏览器进程 | 左栏项目区块、项目树、右栏看板、agent 消息气泡（leader 任务 / worker 回报）、弹窗与提示条 |
 | 共用 | `src/shared/` | 两端 | 纯函数与消息来源约定（frontmatter 解析、项目共享规则、回报 source kind） |
-| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议、`init-leader-agent` 初始化方法与宣传片流水线（[入口](../README.md#docs)） |
+| 协议层 | `.agents/skills/` | 模型上下文 | `leader-mode` 派工协议、`init-leader-agent` 初始化方法与宣传片流水线（[入口](../README.md#文档)） |
 
 两端不共处一个进程：宿主侧拿不到 client 服务，客户端没有文件系统，项目与卡片的真源都在宿主侧，浏览器侧经 Typert 远程通道读写。
 

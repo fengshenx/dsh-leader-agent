@@ -91,7 +91,7 @@ function normalize(path) {
  * locale 的覆盖面由磁盘枚举给出——`exports` 里的 `./locale/*.json` 是通配，取不到
  * 具体文件名。
  *
- * `files` 里的固定路径也并进必需集：白名单写了 `README_ZH.md` 而文件已改名的场合，
+ * `files` 里的固定路径也并进必需集：白名单写了 `README_EN.md` 而文件已改名的场合，
  * npm 不报错、只是不带它，门禁照绿。通配条目（`src/**`）不展开——它们的覆盖面由
  * `exports` 推导与装机 smoke 兜住。
  *
