@@ -75,7 +75,8 @@ profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出
 1. **在左栏加目录**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个 Leader，项目行就是入口。
 2. **点引导卡，让 Leader 讲方法**：新 Leader 会话还没有消息时，输入框上方有一张引导卡；点「了解怎么用」，Leader 会解释卡、worker 与看板怎么配合。也可以直接在会话里问「这个项目该怎么设置 / 怎么开始？」。
 3. **按它的引导走**：做项目设置时，它会读当前目录与 `AGENTS.md`，需要时用 `init-leader-agent` 写 `LEADER.md` / `SLOTS.md`，再带你建卡、派工与看看板。
-4. **要细节时查手册**：[上手](docs/getting-started.md) 完整走一遍，[使用手册](docs/usage.md) 查每个动作。
+4. **定制流程**： `LEADER.md` / `SLOTS.md`可以根据你的实际需求，自行定制。你可以在其中提示Leader/Worker加载Skill。
+5. **要细节时查手册**：[上手](docs/getting-started.md) 完整走一遍，[使用手册](docs/usage.md) 查每个动作。
 
 `LEADER.md` 与 `SLOTS.md` 是项目手册，`leader-mode` 是协议，目标项目的 `AGENTS.md` 仍由宿主作为共享工程约定读取；三者都不授予工具权限。见[项目提示词](docs/usage.md#项目提示词)、[上手](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法)与 `init-leader-agent` skill。
 
