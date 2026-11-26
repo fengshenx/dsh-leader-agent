@@ -18,7 +18,7 @@ dsh-leader-agent —— dsh（DeepSeek Harness）的**仓外插件 bundle**：le
 | 任务 | 先读 |
 |---|---|
 | 理解整体架构、查模块归属 | [docs/architecture.md](docs/architecture.md)（分层、运行时模型、数据流、持久化布局、宿主契约落点） |
-| 改用户可见操作、写/改使用手册 | [docs/usage.md](docs/usage.md)（只写怎么做）；限制变化同步 [docs/limitations.md](docs/limitations.md) |
+| 改用户可见操作、写/改使用手册 | [docs/usage.md](docs/usage.md)；限制变化同步 [docs/limitations.md](docs/limitations.md) |
 | 查某处限制与代价 | [docs/limitations.md](docs/limitations.md)（完整限制清单） |
 | 改 host 侧、加工具、动 `agent/created` | [docs/capability-gaps.md](docs/capability-gaps.md)（宿主能力边界，每条都有实测依据） |
 | 加改 client 半边、看板与项目面板 | [2026-10-23-client-side-findings-and-build-constraints.md](.agents/notes/implemented/architecture/2026-10-23-client-side-findings-and-build-constraints.md) |
@@ -144,12 +144,12 @@ npm run release:check             # 发版门禁：check + build:client + verify
 | `docs/usage.md` | 使用者视角的操作手册 | 实现与取舍 |
 | `.agents/notes/` | 永久决策与边界（why、放弃了什么、怎么验证） | 迁移计划、验收清单、状态播报 |
 
-**用户文档的维护口径**：`docs/usage.md` 与 `docs/limitations.md` 的读者是人，不是模型。
+**用户文档口径**：`docs/usage.md`、`docs/limitations.md` 的读者是人，不是模型。
 
-- 模型侧只读 `LEADER.md` / `SLOTS.md` / `.agents/skills/`；不要把这两份注入提示词、复制进 skill，或当成对模型的行为约束。
-- usage 跟着**用户可见操作**走：界面行为、工具用法、被拒条件变了就改；只写「怎么做、看到什么」，实现与版本耦合进 architecture / capability-gaps。
-- limitations 跟着**边界**走：新增或推翻限制时改；一条限制一到两句，写清做不到什么与代价，推演链回 notes。
-- README 留概览、最短路径，存量长文另开 PR 收；`docs/` 不进 npm 包（`files` 只有两份 README），长文只活在 GitHub。
+- 模型侧只读 `LEADER.md` / `SLOTS.md` / `.agents/skills/`；不要把这两份注入提示词、复制进 skill，或当行为约束。
+- usage 跟**用户可见操作**走：只写怎么做、看到什么、何时被拒；实现与版本耦合进 architecture / capability-gaps。
+- limitations 跟**边界**走：1–2 句写清做不到什么与代价，推演链回 notes。
+- README 留概览与最短路径，存量长文另开 PR；`docs/` 不进 npm 包，长文只活在 GitHub。
 
 - 文档体量由 `scripts/doc-budgets.json` 管，`npm run check` 里的 `scripts/verify-doc-budgets.mjs` 超限变红。`docs/`、根目录与 `growing/**` 的 Markdown 必须全部登记，漏登记同样变红。红了按顺序处理：**搬到对的层 → 压缩 → 抬天花板**；抬天花板要在 PR 里写明为什么，并按同一比例重算余量。（计数口径：CJK 字符逐个算 1，非 CJK 按空白分词，代码块与表格一并计入；天花板按当前值留 5–12% 余量：低于 5% 报 `tight`，超过 12% 报 `loose` 并按当前值重设；9 单位以下且非 `loose` 的文档标 `small`（下界豁免，5–12% 间无整数解）；每个任务都要改的 `AGENTS.md` 与高频追加的 `capability-gaps.md` 留 10%，不贴线。）
 - 每条规则自包含，或一行断言加链接指向归属文档；背景与理由链到归属，不就地展开。
