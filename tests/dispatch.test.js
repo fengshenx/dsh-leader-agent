@@ -4575,6 +4575,7 @@ test('长时间没有回报：注入一条后台巡查提醒，带卡与可照�
   assert.doesNotMatch(text, /#8 已完成的卡/)
   assert.match(text, new RegExp(`read_worker_session\\(\\{ sessionId: "${childId}", turns: 3 \\}\\)`))
   assert.match(text, /没有中止 worker 的手段/)
+  assert.match(text, /最后回报：无记录（这一轮还没有结束过）/)
   // 入队即投递，队列里不留残余。
   assert.equal((await store.listPending()).length, 0)
 
@@ -4582,6 +4583,55 @@ test('长时间没有回报：注入一条后台巡查提醒，带卡与可照�
   await fixture.finishTurn(childId, { text: '改完了' })
   await waitFor(() => fixture.delivered.length === 2)
   assert.equal(await dispatcher.scanStalled(at + 15 * 60 * 1000), 0)
+  dispatcher.dispose()
+})
+
+test('复用的 worker 带着上一轮回报开新轮：提醒写「本轮还没有回报」', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件新活',
+    name: '复用派工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  // 复用的 session 带着上一轮的结算开新轮：回报时刻早于本轮起点。
+  await fixture.workers.markReported(childId, Date.now() - 9 * 60 * 60 * 1000)
+  const at = Date.now() + 15 * 60 * 1000
+  assert.equal(await dispatcher.scanStalled(at), 1)
+  await waitFor(() => fixture.delivered.length === 1)
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /最后回报：本轮还没有回报（上一次回报在 9 小时 15 分钟前）/)
+  assert.doesNotMatch(text, /最后回报：9 小时 15 分钟前/)
+  dispatcher.dispose()
+})
+
+test('本轮已有回报：巡查正文的最后回报写「X 前」', async () => {
+  const fixture = createFixture()
+  const home = await makeTempDir('dsh-leader-agent-dispatch-')
+  const store = createNotificationStore({ home })
+  const dispatcher = makeDispatcher({ ctx: fixture.ctx, store, workers: fixture.workers })
+  const parent = createParent('parent-1', fixture.delivered)
+  fixture.agents.set('parent-1', parent)
+  await dispatchAndStart(dispatcher, {
+    parent,
+    initialMessage: '做一件新活',
+    name: '本轮派工',
+    signal: new AbortController().signal,
+  })
+  const childId = fixture.spawned.at(-1).sessionId
+  await fixture.workers.markReported(childId)
+  const at = Date.now() + 15 * 60 * 1000
+  assert.equal(await dispatcher.scanStalled(at), 1)
+  await waitFor(() => fixture.delivered.length === 1)
+  const text = fixture.delivered[0].content[0].text
+  assert.match(text, /最后回报：15 分钟前/)
+  assert.doesNotMatch(text, /本轮还没有回报/)
   dispatcher.dispose()
 })
 

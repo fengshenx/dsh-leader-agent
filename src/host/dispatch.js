@@ -1488,6 +1488,7 @@ export function createDispatcher({
       childId: item.sessionId,
       elapsedMs: item.elapsedMs,
       lastReportAt,
+      runStartedAt: item.runStartedAt,
       now: item.now,
       cards,
     })

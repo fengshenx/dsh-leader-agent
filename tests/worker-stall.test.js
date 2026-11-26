@@ -62,6 +62,7 @@ test('提醒正文是自包含纯文本：前缀、sessionId、卡、回看调�
     childId: 'child-1',
     elapsedMs: 22 * 60_000,
     lastReportAt: now - 3 * 60_000,
+    runStartedAt: now - 22 * 60_000,
     now,
     cards: [{ number: 7, title: '修 auth 超时', slot: 'dev' }],
   })
@@ -74,12 +75,45 @@ test('提醒正文是自包含纯文本：前缀、sessionId、卡、回看调�
   assert.match(text, /没有中止 worker 的手段/)
 })
 
+test('上一轮的回报不算本轮的：复用 worker 时写「本轮还没有回报」', () => {
+  const now = 10_000_000
+  const text = buildStallNoticeText({
+    name: '复用派工',
+    childId: 'child-3',
+    elapsedMs: 15 * 60_000,
+    // 复用的 session 带着上一轮的回报开新轮：9 小时 6 分钟前结算，本轮 15 分钟前才开跑。
+    lastReportAt: now - (9 * 60 + 6) * 60_000,
+    runStartedAt: now - 15 * 60_000,
+    now,
+  })
+  assert.match(text, /最后回报：本轮还没有回报（上一次回报在 9 小时 6 分钟前）/)
+  assert.doesNotMatch(text, /最后回报：9 小时 6 分钟前/)
+})
+
+test('最后回报恰好等于本轮起点算本轮：只有严格早于才跨轮', () => {
+  const now = 10_000_000
+  const runStartedAt = now - 15 * 60_000
+  const text = buildStallNoticeText({
+    name: '同毫秒派工',
+    childId: 'child-4',
+    elapsedMs: 15 * 60_000,
+    // 上一轮 turn/end 与新一轮派工落在同一毫秒：相等不构成「早于」。
+    lastReportAt: runStartedAt,
+    runStartedAt,
+    now,
+  })
+  assert.match(text, /最后回报：15 分钟前/)
+  assert.doesNotMatch(text, /本轮还没有回报/)
+})
+
 test('没有挂卡、没有回报过时如实写「无记录」，不编造轮次', () => {
+  const now = 5_000_000
   const text = buildStallNoticeText({
     name: '调研',
     childId: 'child-2',
     elapsedMs: 15 * 60_000,
-    now: 5_000_000,
+    runStartedAt: now - 15 * 60_000,
+    now,
   })
   assert.doesNotMatch(text, /挂着的卡/)
   assert.match(text, /最后回报：无记录（这一轮还没有结束过）/)
