@@ -1296,6 +1296,37 @@ test('投递失败且模型回滚也失败时保留原错误并记日志', async
   assert.match(lines.at(-1), /restore failed/)
 })
 
+test('没有可回滚的旧 route 时，换模型在应用前拒绝', async () => {
+  const fixture = createFixture({ steerError: new Error('steer failed') })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    selection: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' },
+  })
+  const worker = fixture.created[0]
+  // 模拟切换前既没有 model.current() 也没有 options：回滚没有目标。
+  worker.selection = undefined
+  delete worker.agent.options
+
+  await assert.rejects(
+    () => sessions.send({
+      sessionId,
+      text: '没有旧 route 也要换',
+      parentSessionId: 'c',
+      signal: new AbortController().signal,
+      model: 'mock/mock-strong',
+    }),
+    /没有可回滚的当前模型选择，无法换模型/,
+  )
+
+  assert.equal(worker.selections.length, 0)
+  assert.equal(worker.selection, undefined)
+  assert.equal(worker.messages.length, 0)
+  assert.equal(fixture.appended.some((event) => event.type === 'model/selection'), false)
+})
+
 test('宿主 agent 没有 model.select() 也没有 options 时切模型报错', async () => {
   const fixture = createFixture({ bareAgent: true })
   const sessions = createWorkerSessions({ ctx: fixture.ctx })

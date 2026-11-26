@@ -509,6 +509,12 @@ export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSel
         return { form, selection }
       }
       const previous = currentAgentSelection(agent)
+      // 没有旧 route 就没有回滚目标；新宿主也没有清空选择的公开入口。先拒绝，
+      // 不能先切过去、等投递失败再留下一个无法撤销的新 route。连切换入口都没有
+      // 的宿主仍交给 applyAgentSelection 报它自己的缺 API 错误。
+      if (previous === undefined && (typeof agent.model?.select === 'function' || agent.options !== undefined)) {
+        throw new Error('message_worker: 该 worker 没有可回滚的当前模型选择，无法换模型；请先给 worker 一个当前 route 再切换')
+      }
       try {
         applyAgentSelection(agent, selection)
         deliver(agent, form, { sessionId, text, name, parentSessionId, messageId })
