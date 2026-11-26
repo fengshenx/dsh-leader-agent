@@ -36,7 +36,7 @@ Issue #201 时 22 个场景 / 212.5s；本次实测 24 个 / 241.8s（平均 10.
 
 ## Testing
 
-- 基线 `npm run e2e:report`：24/24，241.8s（load 5.17，无倍率）；精简后 21/21，226.5s（合并 #229 前的 head，load 7.33，`E2E_BUDGET_SCALE=1.5`）。合并 #229 后同一命令在 load 7.8 下命中 `guide-card` / `project-workspace` 同款点击竞态，两条空载单跑 8.2s / 7.2s 通过。
+- 基线 `npm run e2e:report`：24/24，241.8s（load 5.17，无倍率）；精简后 21/21，226.5s（合并 main 产品修复前的 head，load 7.33，`E2E_BUDGET_SCALE=1.5`）。合并 main 产品修复后同一命令在 load 7.8 下命中 `guide-card` / `project-workspace` 同款点击竞态，两条空载单跑 8.2s / 7.2s 通过。
 - mutation：行高 30px、header padding 0、行左缘 +4px、en label 中文各红一次，还原后绿。
 - `board-done-paging` 修复后单跑 9.7s 通过；最终全量 21/21。
 - `npm run check`：exit 0。
