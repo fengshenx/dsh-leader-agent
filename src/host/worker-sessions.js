@@ -205,6 +205,21 @@ export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSel
   }
 
   /**
+   * 投递失败时把 live route 退回切换前。
+   *
+   * 新旧宿主各自的真源不同：0.2.2+ 用 `model.select()` 选回，rc.2 恢复
+   * `agent.options` 并补回旧选择。只有切换前本来就有 route 才能回滚；新宿主没有
+   * 清空选择的公开入口，不能凭一个不存在的旧 route 造事件。
+   *
+   * @param {object} agent - 宿主的活 Agent
+   * @param {{ provider: string, model: string, reasoningEffort?: string } | undefined} previous - 切换前的选择
+   * @returns {void}
+   */
+  function restoreAgentSelection(agent, previous) {
+    if (previous !== undefined) applyAgentSelection(agent, previous)
+  }
+
+  /**
    * 把任务消息投进指定 agent 的当前轮次。
    *
    * @param {object} agent - 宿主的活 Agent（`AgentHandle.agent` 或 `agents.get()`）
@@ -459,29 +474,52 @@ export function createWorkerSessions({ ctx, logger = () => {}, resolveSessionSel
         if (active !== undefined) {
           agent = active
           form = 'live'
-        } else {
-          let handle
-          try {
-            handle = await resumeOnce(sessionId, signal)
-          } catch (error) {
-            throw explainOccupiedError(error, sessionId)
-          }
-          agent = handle.agent
-          form = 'resumed'
         }
       }
+      // 预检必须先于冷恢复：`resolveWorkerModelSwitch` 会调 `llm.resolveCallConfig`，
+      // 失败时不能在磁盘上留下一个刚被唤醒、随后常驻的 live worker。冷 worker 的
+      // 当前 route 从登记表读，和 resume 之后装上去的那条是同一个真源。
       let selection
       if (model !== undefined || effort !== undefined) {
+        const currentSelection = agent === undefined
+          ? typeof resolveSessionSelection === 'function'
+            ? normalizeModelSelection(await resolveSessionSelection(sessionId))
+            : undefined
+          : currentAgentSelection(agent)
         selection = await resolveWorkerModelSwitch({
           ctx,
-          current: currentAgentSelection(agent),
+          current: currentSelection,
           model,
           effort,
           signal,
         })
-        if (selection !== undefined) applyAgentSelection(agent, selection)
       }
-      deliver(agent, form, { sessionId, text, name, parentSessionId, messageId })
+      if (agent === undefined) {
+        let handle
+        try {
+          handle = await resumeOnce(sessionId, signal)
+        } catch (error) {
+          throw explainOccupiedError(error, sessionId)
+        }
+        agent = handle.agent
+        form = 'resumed'
+      }
+      if (selection === undefined) {
+        deliver(agent, form, { sessionId, text, name, parentSessionId, messageId })
+        return { form, selection }
+      }
+      const previous = currentAgentSelection(agent)
+      try {
+        applyAgentSelection(agent, selection)
+        deliver(agent, form, { sessionId, text, name, parentSessionId, messageId })
+      } catch (error) {
+        try {
+          restoreAgentSelection(agent, previous)
+        } catch (restoreError) {
+          logger(`dsh-leader-agent: worker ${sessionId} 的模型回滚失败，live route 可能停在新选择：${restoreError instanceof Error ? restoreError.message : String(restoreError)}`)
+        }
+        throw error
+      }
       return { form, selection }
     },
 

@@ -20,7 +20,7 @@ worker 是**常驻根会话**，在左栏项目树下有自己的会话行，能
 
 用 `message_worker` 投递（`sessionId` 与 `message` 必填，`sessionId` 就是 `spawn_worker` 返回的会话 id；可选的 `rename` 顺手改名，登记表与会话标题同次改到新名字）。**第一条消息就是开工信号**，之后再用它是续聊。会话还活着就把消息投进它的当前轮次（返回 `merged`）——worker 正在跑时下一步即生效，空闲时立即开工；进程重启后不在内存就先冷恢复再投（返回 `sent`）。两种形态对调用方是同一步，新的一轮结束时同样唤醒 leader，收到一条格式一致的汇报气泡。
 
-同一调用带 `model` / `effort` 换 route：显式 model / effort 分别压过槽位同名值；复用承接新角色时，没给 model 就用新槽位 `SLOTS.md` 默认，同卡续聊保持当前。effort 套在最终模型上；显式换模型没给 effort 用新模型默认。切换与派工同套写法与预检，失败即拒、不投递；新 route 从下一步起生效并落进登记表，冷恢复沿用，不动 leader 默认模型。
+同次带 `model` / `effort` 换 route：显式 model / effort 分别压过槽位同名值；复用承接新角色时，没给 model 就用新槽位 `SLOTS.md` 默认，同卡续聊保持当前。effort 套在最终模型上；换模型没给 effort 用新模型默认。切换与派工同套写法与预检，失败即拒、不投递；新 route 从下一步生效并落进登记表，冷恢复沿用，不动 leader 默认模型。
 
 **人下钻跟 worker 聊天不经过这条路径**：结算按回合归属，你的回合不回报 leader；leader 消息未取走时留到下一轮，不会拿你的产物顶名。派工要求会话持久化与查询后端（`sessionPersistence` / `sessionQuery`）：缺一就拒绝，而不是降级成只能跑一轮的一次性 worker。
 

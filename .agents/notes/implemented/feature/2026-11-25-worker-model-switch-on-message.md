@@ -10,6 +10,7 @@ Status: implemented
 
 - **`message_worker` 新增可选 `model` / `effort`**，与投递同一次完成：不填保持 worker 当前选择；只给 `effort` 套在当前模型上；换模型没给 `effort` 用新模型默认（旧 effort 不跨模型套用）。裸模型 id 沿用 **worker 自己的** provider——续聊不是重新派工，不该被 leader 的 route 带着走。
 - **与派工共用解析与预检**：写法、长度上限、`llm.resolveCallConfig()` 校验同一套；校验失败不投递、不改登记表。
+- **预检先于冷恢复、投递失败回滚 route**：冷 worker 先按登记表当前 route（`resolveSessionSelection`）解析并预检，失败就不调 `agents.resume()`；投递抛错时把 live route / `options` 与 `model/selection` 退回切换前，避免「工具报失败、下一条续聊却用新 route」。
 - **切换先于投递**：worker 正在跑时，新 route 从当前轮次的下一步生效；空闲或冷恢复时，这一条消息的首步就用新 route。
 - **两代宿主各走各的入口**：0.2.2+ 用 `agent.model.select()`（追加 `model/selection`、与模型选择器共用持久投影）；rc.2 没有 per-agent 选择 API，改 live `agent.options` 并手工补 `model/selection` 事件。不调 `sessionController.selectModel()`——它会把 worker 的 route 存成用户的全局默认模型。
 - **落盘两条路**：登记表新增 `setModel()` 写 `agentOptions` 与 `modelSource: 'message'`，供 rc.2 冷恢复读回 route；会话日志的 `model/selection` 供新宿主还原。在飞记录与完成通知的模型标签同时改成新 route，失败回报不再报切换前那条。
@@ -38,4 +39,4 @@ Status: implemented
 
 ## Testing
 
-`tests/worker-model.test.js` 钉住续聊切换的来源与 effort 回落、裸 id 用 worker provider、缺当前 route / 缺 llm / 预检失败的报错；`tests/worker-sessions.test.js` 钉住 0.2.2+ 的 `agent.model.select()`、rc.2 改 options 并补事件、冷恢复后切换、宿主既无 model 也无 options 时报错；`tests/dispatch.test.js` 钉住切换先于投递、只换 effort / 只换模型、预检失败不投递、登记表与失败回报的新 route，以及换卡/换槽位复用应用槽位默认、同卡续聊不重置、显式值优先、旧记录首次只补记录；`tests/worker-registry.test.js` 钉住 `setModel()` / `setAssignment()` 落盘与缺记录不补写；`tests/message-worker-tool.test.js` 钉住参数校验、透传与回执渲染。
+`tests/worker-model.test.js` 钉住续聊切换的来源与 effort 回落、裸 id 用 worker provider、缺当前 route / 缺 llm / 预检失败的报错；`tests/worker-sessions.test.js` 钉住 0.2.2+ 的 `agent.model.select()`、rc.2 改 options 并补事件、冷恢复后切换、投递失败回滚 options 与 `model/selection`、宿主既无 model 也无 options 时报错；`tests/dispatch.test.js` 钉住切换先于投递、只换 effort / 只换模型、预检失败不投递、冷 worker 预检失败不 resume、投递失败 route 与登记表保持旧值、登记表与失败回报的新 route，以及换卡/换槽位复用应用槽位默认、同卡续聊不重置、同卡换 slot、删卡后重派、显式值优先、旧记录首次只补记录；`tests/worker-registry.test.js` 钉住 `setModel()` / `setAssignment()` 落盘与缺记录不补写；`tests/message-worker-tool.test.js` 钉住参数校验、透传与回执渲染。

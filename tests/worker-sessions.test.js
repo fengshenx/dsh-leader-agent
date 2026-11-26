@@ -1218,6 +1218,84 @@ test('冷恢复后再切模型：新选择装在恢复出来的 agent 上', asyn
   assert.equal(worker.messages.at(-1).content[0].text, '接着做')
 })
 
+test('投递失败时 rc.2 的 options 与 model/selection 退回切换前', async () => {
+  const fixture = createFixture({
+    legacyAgent: true,
+    steerError: new Error('steer failed'),
+  })
+  const sessions = createWorkerSessions({ ctx: fixture.ctx })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    selection: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' },
+  })
+  const worker = fixture.created[0]
+
+  await assert.rejects(
+    () => sessions.send({
+      sessionId,
+      text: '换了模型但没投出去',
+      parentSessionId: 'c',
+      signal: new AbortController().signal,
+      model: 'mock-strong',
+      effort: 'high',
+    }),
+    /steer failed/,
+  )
+
+  assert.deepEqual(worker.agent.options, {
+    provider: 'mock',
+    model: 'mock-echo',
+    reasoningEffort: 'low',
+  })
+  const selections = fixture.appended.filter((event) => event.type === 'model/selection')
+  assert.deepEqual(selections.at(-1)?.data, {
+    provider: 'mock',
+    model: 'mock-echo',
+    reasoningEffort: 'low',
+  })
+  assert.equal(worker.messages.length, 0)
+})
+
+test('投递失败且模型回滚也失败时保留原错误并记日志', async () => {
+  const lines = []
+  const fixture = createFixture({ steerError: new Error('steer failed') })
+  const sessions = createWorkerSessions({
+    ctx: fixture.ctx,
+    logger: (line) => lines.push(line),
+  })
+  const { sessionId } = await sessions.spawn({
+    name: 'w',
+    parentSessionId: 'c',
+    signal: new AbortController().signal,
+    selection: { provider: 'mock', model: 'mock-echo', reasoningEffort: 'low' },
+  })
+  const worker = fixture.created[0]
+  const select = worker.agent.model.select
+  let calls = 0
+  worker.agent.model.select = (selection) => {
+    calls += 1
+    if (calls === 2) throw new Error('restore failed')
+    select(selection)
+  }
+
+  await assert.rejects(
+    () => sessions.send({
+      sessionId,
+      text: '换了模型但没投出去',
+      parentSessionId: 'c',
+      signal: new AbortController().signal,
+      model: 'mock-strong',
+    }),
+    /steer failed/,
+  )
+
+  assert.equal(calls, 2)
+  assert.match(lines.at(-1), /模型回滚失败/)
+  assert.match(lines.at(-1), /restore failed/)
+})
+
 test('宿主 agent 没有 model.select() 也没有 options 时切模型报错', async () => {
   const fixture = createFixture({ bareAgent: true })
   const sessions = createWorkerSessions({ ctx: fixture.ctx })

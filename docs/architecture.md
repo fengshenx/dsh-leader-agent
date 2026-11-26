@@ -39,7 +39,7 @@ worker 是本 bundle 用 `ctx.agents.create` 建的**普通根会话**，不走�
 
 建 worker 与冷恢复都要显式把 `agentPresets.mount()` 交给 `setup` 并把 preset id 写进 `meta.agentPreset`，否则只剩全局工具（[capability-gaps 第 38 条](capability-gaps.md)）。挂上的是整个标准组合（persona、`agent-instructions`、time-context、`subagent` / `workflow`、`ask_user_question`、`todo`、`web`…），因此 worker 也能向用户提问。worker 的沙箱模式与审批策略在派工时从 leader 继承，回执写回读到的实际权限（[capability-gaps 第 41 条](capability-gaps.md)、[限制](limitations.md#worker-的控制面)）。
 
-模型选择在建会话时交给 `agentOptions`，并随登记表落盘供冷恢复还原（rc.2 的 `resume` 不从日志取 route）；续聊切换后按登记表与会话日志里的 `model/selection` 还原。
+模型选择在建会话时交给 `agentOptions`，并随登记表落盘供冷恢复还原（rc.2 的 `resume` 不从日志取 route）；续聊切换也落盘。
 
 派工分两步：`spawn_worker` 建会话、登记、可选绑卡槽位后**立即返回且不开工**；开工由 `message_worker` 的第一条消息触发。这样槽位绑定与卡片事实先落盘，首轮请求就带着它们。`message_worker` 既是开工入口也是续聊入口：会话活着就把消息 `steer` 进它的当前轮次（下一步注入，空闲则立即开一轮）。「活着」分两层——插件自己的 `live` 表，以及宿主 `agents.get()` 里的活 agent（GUI 打开或进程启动时恢复的会话在这里，写句柄随它常驻）；两层都没有才冷恢复。回执按投递形态分：前两层都算 `merged`，只有冷恢复是 `sent`，可选 `rename` 改名；也可带 `model` / `effort` 同次切换该会话的模型选择（写进登记表与会话日志，冷恢复沿用）。
 
