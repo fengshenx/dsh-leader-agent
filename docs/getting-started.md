@@ -10,7 +10,7 @@ README 给最短路径，[使用手册](usage.md) 给每个动作怎么用；本
 - 每个 worktree 一个独立实例（`npm run dev`），数据根也独立，插件版本互不覆盖；
 - 同一项目下的 worker 各在自己的会话里跑、不共享上下文——Leader 是唯一知道全局的人。
 
-为什么必须隔离、数据落在哪儿，见 README 的[前提](../README_ZH.md#前提先跑通多-worktree-并发)与[开发](development.md)。桌面版另走 `npm run desktop`，profile 与 web 分开，见 README 的桌面版小节。
+为什么必须隔离、数据落在哪儿，见 README 的[前提](../README.md#前提多-worktree-隔离)与[开发](development.md)。桌面版另走 `npm run desktop`，profile 与 web 分开，见 README 的桌面版小节。
 
 ## 二、加一个项目，就得到一个 Leader
 
@@ -118,6 +118,6 @@ slots:
 | `create_card` 报没有权限 | 只有 Leader 能建卡与列卡，worker 只有 `update_card` |
 | `spawn_worker` 被拒 | 卡不是本项目、不是 `active`，或这个 worker 还挂着未完成卡 |
 | 改 `SLOTS.md` 没生效 | 确认槽位与正文都改对了；槽位模型只在建 worker 时生效 |
-| 桌面版没有看板 | 桌面版读 `desktop` profile，与 web 的插件安装互不相通 |
+| 桌面版看不到看板 | 插件只在 `web` profile 里装了；要在 `desktop` profile 再装一次 |
 
 更多操作见[使用手册](usage.md)。看板与信号灯的口径见[已知限制](limitations.md)。

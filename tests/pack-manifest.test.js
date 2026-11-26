@@ -34,11 +34,11 @@ test('改入口即改门禁：manifest 里的路径直接决定必需文件', ()
 
 test('files 里的固定路径并进必需集，通配不展开', () => {
   const files = requiredPackFiles({
-    manifest: { ...manifest, files: ['index.js', 'lib/client.js', 'README_ZH.md', 'src/**', '.agents/skills/**'] },
+    manifest: { ...manifest, files: ['index.js', 'lib/client.js', 'README_EN.md', 'src/**', '.agents/skills/**'] },
     skillFiles: [],
     localeFiles: [],
   })
-  assert.ok(files.includes('README_ZH.md'), 'files 写了它就该验它在包里：文件改名时 npm 不报错，只是不带')
+  assert.ok(files.includes('README_EN.md'), 'files 写了它就该验它在包里：文件改名时 npm 不报错，只是不带')
   assert.ok(!files.some((path) => path.includes('*')), `通配不该展开：${files.join(', ')}`)
 })
 

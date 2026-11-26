@@ -1,192 +1,210 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en-dark.svg">
-    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-en.svg" alt="dsh-leader-agent: a Leader keystone fanning out into parallel worker tracks" width="460">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh-dark.svg">
+    <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/logo-zh.svg" alt="dsh-leader-agent：Leader 节点扇出三条并行执行轨" width="460">
   </picture>
 </p>
 
 <p align="center">
-  <strong>English</strong> | <a href="README_ZH.md">简体中文</a> | <a href="https://fengshenx.github.io/dsh-leader-agent/">Website</a>
+  <a href="README_EN.md">English</a> | <strong>简体中文</strong> | <a href="https://fengshenx.github.io/dsh-leader-agent/">官网</a>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm version" src="https://img.shields.io/npm/v/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm 版本" src="https://img.shields.io/npm/v/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
   <a href="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/fengshenx/dsh-leader-agent/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-263146?style=flat-square"></a>
-  <img alt="dsh version" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
-  <img alt="status" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
-  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm downloads" src="https://img.shields.io/npm/dm/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
-  <a href="https://github.com/fengshenx/dsh-leader-agent/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <img alt="dsh 版本要求" src="https://img.shields.io/badge/dsh-%3E%3D0.2.1--rc.2-4b6fff?style=flat-square">
+  <img alt="状态" src="https://img.shields.io/badge/status-developer%20preview-7da1de?style=flat-square">
+  <a href="https://www.npmjs.com/package/dsh-leader-agent"><img alt="npm 月下载量" src="https://img.shields.io/npm/dm/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
+  <a href="https://github.com/fengshenx/dsh-leader-agent/stargazers"><img alt="GitHub Stars" src="https://img.shields.io/github/stars/fengshenx/dsh-leader-agent?style=flat-square&color=4b6fff"></a>
 </p>
 
 # dsh-leader-agent
 
-> One Leader drives the work and the review, so you can run ten features in parallel instead of babysitting each one.
+> 一个 Leader 帮你推进开发和 Review，解放你的注意力：同时并行开发 10 个 feature，而不是逐个陪跑。
 >
-> A leader / worker orchestration bundle for DeepSeek Harness (dsh). The Leader splits work, dispatches it, tracks every worker to completion, checks what comes back and runs review; workers do the work in the background, report back automatically, and every task fact lands on a board organized by project. Running one worktree per task is this repository's convention, not a requirement of the bundle.
+> DeepSeek Harness（dsh）的 leader / 执行者编排 bundle。Leader 拆解、派工、盯完成、收产物、组织审查；worker 在后台各自干活、完成自动回报，任务事实落进按项目组织的看板。一人一个 worktree 是本仓的约定，不是 bundle 的硬性要求。
 
-## Highlights
+## 亮点
 
-1. **One Leader drives development and review** — state the goal once: it opens cards, dispatches workers, watches each one finish, checks the deliverable and organizes review. Target: ten features in flight at once.
-2. **A board that shows who is working** — one per project, as a **Work** list or a **Cinematic** workflow map. Cards carry the executor slot and a live status light; click a card for its spec, or a slot to drill into that agent's session and keep talking.
-3. **Arrangement lives in two files** — `LEADER.md` holds the Leader's prompt and this project's rules, `SLOTS.md` gives each worker role its own. Edits apply on the next request, with no session rebuild.
-4. **Many projects in parallel, one Leader each** — adding a project binds a leader session and lists its workers; deleting it keeps the folder and sessions, and a new Leader inherits the workers plus undelivered reports.
-5. **A protocol skill, not a persona line** — `leader-mode` stages the work from discussion through design, delivery, review and merge, with playbooks for parallel collaboration and handoff.
-6. **A stall surfaces instead of hanging** — a worker with no report for 15 minutes triggers a background patrol notice (【后台巡查】) carrying its card, last report and a copy-pasteable read-back call; `read_worker_session` then replays what it did, read-only and without waking it.
+1. **通过一个 Leader，帮你推进开发和 Review** — 你只说一次目标：它拆卡、派工、盯住每个 worker 的完成、验证产物、组织审查。目标规模是一次并行开发 10 个 feature。
+2. **一块看得见谁在干活的看板** — 一个项目一块，**工作**列表或**炫酷**线路图两种呈现；卡面是执行者槽位与实时信号灯，点卡看详情，点槽位直接钻进那个 Agent 的会话接着聊。
+3. **编排规则写进两份文件** — `LEADER.md` 写 Leader 的 prompt 与本项目的编排规则，`SLOTS.md` 按角色给 worker 写。改文件即改行为，下一次请求生效，不用重建会话。
+4. **每个 worker 用合适的模型** — 派工时按任务挑模型与 effort：重活用强模型、查证用快模型；`SLOTS.md` 可按角色写默认，`message_worker` 续聊时也能换，派工前用 `list_worker_models` 查可选 route。
+5. **多项目并行，每个项目一个 Leader** — 加项目即绑定一个 leader 会话并列出它派出的 worker；删项目只删记录、保留文件夹与会话；换 Leader 时原班 worker 与未投递的回报一并改投。
+6. **给 Leader 的编排 Skill，不是一句人设** — `leader-mode` 按讨论 → 设计 → 实现交付 → 审查 → 合入分阶段给 playbook，另有并行协作与交接规范。
+7. **卡住的任务会浮出来，不会无限等** — worker 超过 15 分钟没有回报时，会触发一条带「【后台巡查】」前缀的提醒，附挂着的卡、最后回报与可照抄的回看调用；`read_worker_session` 只读回放它做过什么，不唤醒 worker。
 
-## Install
+## 安装
 
-### Desktop install (DeepSeek Harness Desktop)
+### 桌面版安装（DeepSeek Harness Desktop）
 
-Desktop uses its own profile (`$DSH_HOME/profiles/desktop`), separate from `web`. The **delivery board is a web-profile feature**; the desktop profile loads the plugin without it.
+桌面版用独立 profile（`$DSH_HOME/profiles/desktop`），与上面的 `web` 互不相通：插件要在对应 profile 里分别安装，装好后两侧功能一致（含看板与项目树）；会话、项目与卡片数据共享。
 
-**GUI install:** open **Plugins** in the left sidebar, click **Add plugin** in the top right, type `dsh-leader-agent` and click **Install**:
+**图形界面安装**：左侧 SidePanel 打开「插件」，点右上角「添加插件」，在包名框填 `dsh-leader-agent` 后点「安装」：
 
-<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin wizard: enter dsh-leader-agent" width="880">
+<img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/desktop-add-plugin.png" alt="Add plugin 向导：输入 dsh-leader-agent" width="880">
 
-**CLI install:** the system `dsh` refuses to manage the desktop profile; use the CLI bundled with the desktop install:
+**命令行安装**：系统 `dsh` 拒绝管理 desktop profile，要用桌面安装自带的 CLI：
 
 ```sh
-# quit the app completely first (closing the window only hides it)
+# 先完全退出应用（关窗口只是隐藏）
 "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" \
   plugin --profile desktop add dsh-leader-agent
 ```
 
-On Windows / Linux, use `runtime/cli/bin/dsh` inside the installation directory. The app reads the profile only at startup, and only one version can be mounted at a time. `DSH_HOME` must be absolute or start with `~/`. Sessions, projects, and cards are shared with `web`; plugin packages and activation are separate.
+Windows / Linux 换成安装目录里对应的 `runtime/cli/bin/dsh`。应用只在启动时读 profile，同一时刻只能挂一个版本；`DSH_HOME` 要用绝对路径或 `~/` 写法。会话、项目与卡片数据与 `web` 共享，插件包与激活状态各自一份。
 
-Development: `npm run desktop` uses an isolated root (`.dev/desktop-home`); `npm run desktop:prod` uses a shadow root (`.dev/desktop-prod-home`) linking sessions/cards to `~/.dsh`; online profile untouched. Both run local code; direct launches use the installed version. `-- --remove` cleans its root; `-- --remove --remove-mount` removes a legacy mount.
+`npm run desktop` 用 dev 根 `.dev/desktop-home`；`npm run desktop:prod` 用正式数据（影子根 `.dev/desktop-prod-home`，共用日常，线上 profile 不动）。都用本仓代码，直接启动仍用线上；`-- --remove` 清根，旧版用 `-- --remove --remove-mount` 摘。
 
-### Web install
+### Web 版安装
 
-Install from npm (package name `dsh-leader-agent`):
+从 npm 安装（包名 `dsh-leader-agent`）：
 
 ```sh
 dsh plugin --profile web add dsh-leader-agent
 dsh web
 ```
 
-The profile must be named `web`; custom names are absent from `PROFILE_TEMPLATES`, so the install lacks the web-app bundle and the client half never loads. Requires dsh `>=0.2.1-rc.2 <0.3.0`.
+profile 名必须用 `web`；自定义名不在 `PROFILE_TEMPLATES` 里，装出来缺 web-app bundle，客户端半边不加载。需要 dsh `>=0.2.1-rc.2 <0.3.0`。
 
-For pinning a version, removing it, development installs, or trying it without a profile, see [Development](docs/development.md).
+指定版本、卸载、开发期安装与不装 profile 直接试跑见[开发](docs/development.md)。
 
-## Preview
+## 如何使用
+
+1. **在左栏加目录**：左栏「项目」区块点「加项目」，选一个目录。项目当场建好并绑定一个 Leader，项目行就是入口。
+2. **点引导卡，让 Leader 讲方法**：新 Leader 会话还没有消息时，输入框上方有一张引导卡；点「了解怎么用」，Leader 会解释卡、worker 与看板怎么配合。也可以直接在会话里问「这个项目该怎么设置 / 怎么开始？」。
+3. **按它的引导走**：做项目设置时，它会读当前目录与 `AGENTS.md`，需要时用 `init-leader-agent` 写 `LEADER.md` / `SLOTS.md`，再带你建卡、派工与看看板。
+4. **要细节时查手册**：[上手](docs/getting-started.md) 完整走一遍，[使用手册](docs/usage.md) 查每个动作。
+
+`LEADER.md` 与 `SLOTS.md` 是项目手册，`leader-mode` 是协议，目标项目的 `AGENTS.md` 仍由宿主作为共享工程约定读取；三者都不授予工具权限。见[项目提示词](docs/usage.md#项目提示词)、[上手](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法)与 `init-leader-agent` skill。
+
+## 常规用法
+
+按你手上的东西选入口：
+
+1. **给文档**：先把需求聊清、写成文档，直接交给 Leader。它按 `LEADER.md` 约定的编排拆卡、派工，推进开发 / Review / 修 Bug，需要决策时由你拍板。
+2. **给 PR**：也可以自己在普通工作区的会话里边聊边开发，完成后提 PR；把 PR 交给 Leader，由它接手后续的 Review / 修 Bug。
+3. **问状态**：随时问 Leader「汇报当前状态。哪个 PR 可以合并，哪些事情需要我决策」，它会按卡片、交付物与 CI 给出可行动的结论。
+
+## 预览
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="Work mode: the project tree on the left, the Leader's conversation in the middle, the delivery board as a list on the right" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/main/docs/assets/readme/board.png" alt="工作模式：左栏项目树、中栏 Leader 的会话、右栏列表形态的交付看板" width="1200">
 </div>
 
-**Work mode (default).** The plain list: one card per task with a slot chip per executor. Left: projects and their workers. Center: the Leader's session — task, dispatch, report, verdict. Right: the board; click an executor to open its session.
+**工作模式（默认）**：纯列表，一卡一件事，槽位 chip 标出执行者。左栏项目树、中栏 Leader 会话、右栏看板；点执行者即可下钻到它的会话。
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/ab19c6307736fc21675bbac2847dd9bce3bf7a81/docs/assets/readme/board-cinema.png" alt="Cinematic mode in the dark theme: the delivery board as a workflow map, with cards on a trunk and executors on animated branches" width="1200">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/ab19c6307736fc21675bbac2847dd9bce3bf7a81/docs/assets/readme/board-cinema.png" alt="炫酷模式（深色主题）：交付看板画成线路图，卡片挂在主干上，执行者支线按运行状态点亮" width="1200">
 </div>
 
-**Cinematic mode.** The same board as a workflow map: cards on a trunk, one branch per executor; only a running branch animates. Built for demos and social sharing. Shown in the dark theme; the light theme uses electric-blue lines.
+**炫酷模式**：同一块看板画成线路图——卡片挂主干，执行者是右侧支线，只有执行中的支线跑光点。纯演示，社交媒体传播用。图为深色主题；浅色宿主下是电蓝正交线条。
 
-Switch under **Settings → Leader Agent → Task board**; the choice is stored per instance. Work-mode shot is a real session; cinematic shot is the browser e2e fixture (real host + local mock).
+在 **设置 → Leader Agent → 任务看板** 切换，选择只存本实例；工作模式截图取自真实会话，炫酷模式取自 e2e 夹具（真实宿主 + 本地 mock）。
 
-## How it runs
+## 它是怎么跑起来的
 
 ```text
-you ──────▶ Leader (the leader session, sole commander of the project)
-             │  create_card      record what to build and how it is accepted
-             │  spawn_worker     create the worker session, return immediately
-             │  message_worker   deliver the first message — that is what starts work
+你 ──────▶ Leader（leader 会话，项目的唯一指挥）
+             │  create_card     记下要做什么、验收是什么
+             │  spawn_worker    建 worker 会话，立即返回
+             │  message_worker  投第一条消息——开工的是它
              ▼
-      worker ─ worker ─ worker        each runs in its own project directory
-             │                        (one worktree each is the project convention, see Prerequisites)
-             │  the turn end is settled by the runtime, workers submit nothing
+      worker ─ worker ─ worker        各自在自己的项目目录里后台并行
+             │                        （一人一个 worktree 是项目约定，见「前提」）
+             │  turn 结束由机制侧结算（worker 不用调工具交作业）
              ▼
-      Leader wakes up ──▶ board status lights update ──▶ open any worker and keep talking
+      Leader 被唤醒 ──▶ 看板信号灯更新 ──▶ 你打开任一 worker 接着聊
 ```
 
-Three mechanisms make this more than "a smarter prompt":
+这些行为由机制保证，不靠提示词：
 
-- **Identity decides the tool surface.** The Leader gets `spawn_worker` / `message_worker`; workers don't. The host trims the tool surface when a session is created — the model is not trusted to hold back.
-- **Completion is settled by the runtime, which wakes the Leader.** When a worker's turn ends, the Leader receives a report (rendered as the worker speaking), with no polling from the Leader and no submit step from the worker.
-- **Workers are persistent root sessions.** Several run at once, you can open any of them and keep the conversation going, and they cold-resume after a restart. The cost: the Leader cannot stop one, see [Current limitations](#current-limitations).
-- **Project sessions get a tab bar.** The project name is the Leader tab; workers you open join it with a live status light. The bar's right end carries the session **More** menu and the right-panel toggle, so the close control stays put. Closing a tab only drops the shortcut — the session stays in the project tree.
+- **身份决定工具面**：Leader 拿得到 `spawn_worker` / `message_worker`，worker 拿不到；工具面在会话创建时由宿主裁剪，不是靠提示词约束模型。
+- **完成由机制结算并自动唤醒**：worker 那一轮结束时，Leader 自动收到一条回报（渲染成 worker 的发言气泡），不轮询、不靠 worker 自觉。
+- **worker 是常驻根会话**：能同时跑多个，人可以直接打开它的会话接着聊，进程重启后能冷恢复。代价是 Leader 侧不能强杀它，见[当前限制](#当前限制)。
+- **项目会话有标签栏**：第一个标签是项目名（Leader 入口），点开的 worker 带着状态灯加入；栏右端是会话「更多」与右栏开关。关标签只丢快捷方式，会话仍在项目树里。
 
-## Design trade-offs
+## 设计取舍
 
-- This project does not aim to rebuild [the Super-agent research prototype from the DeepSeek Harness team](https://github.com/deepseek-ai/dsh-superagent-prototype) (a research prototype, not an official DeepSeek product), which watches one repository and runs event-driven sessions. It solves a different problem: letting one person manage 20+ sessions, with a Leader, a board and parallel tasks ([FAQ](https://fengshenx.github.io/dsh-leader-agent/#faq)).
-- Today's agents are not reliable enough to run unattended, so the design assumes you can interrupt or push any worker at any point.
-- The routing layer runs a full-size model. In practice, holding the global picture, it often connects several PRs in one thought and resolves what a single worker cannot see.
-- Agent orchestration generalizes. A card describes the task itself, so it works outside coding and composes with any skill.
-- Initialization is still manual: in your own project you write `LEADER.md` (the Leader's persona prompt and orchestration flow) and `SLOTS.md` (the role split and each role's persona prompt).
-- The Leader leads and workers never talk to each other; the tool surface rules it out. Today's agents are trained for strict instruction-following, and one noisy message between two agents can derail the entire conversation.
+- 这个项目不复刻 [DeepSeek Harness 团队的 Super-agent 研究原型](https://github.com/deepseek-ai/dsh-superagent-prototype)（研究原型，不是 DeepSeek 官方产品；它盯一个仓库、按事件起会话），要解决的是另一件事：让 1 个人管理 20 个以上的 Session，有 Leader、看板和并行任务（[项目落地页 FAQ](https://fengshenx.github.io/dsh-leader-agent/#faq)）。
+- 你可以随时打开 worker 的会话，直接看它的消息流：做到哪、卡在哪，再决定打断或推进。
+- routing 层用的是完整大模型，实际使用中，routing 层由于知道全局信息，经常能够把多个 PR 串起来思考，解决单 Worker 看不到的问题。
+- Agent 编排的泛化。Card 是任务本身的描述，可以用在非编码场景，也可以和各种 Skill 集成。
+- 项目还缺少一些初始化机制，实际使用时你需要在你的项目内初始化 `LEADER.md`（Leader 的人设 Prompt 以及编排流）和 `SLOTS.md`（任务的角色分工以及对应的人设 Prompt）。
+- 项目设计成了 Leader 领导 Worker，Worker 之间绝不通信（Tool Use 层就杜绝了），因为当前的 Agent 被训练成了强指令遵循，两个 Agent 对话一旦出现一个错误的噪音，会把整个对话带偏。
 
-## Quick start
+## 前提：多 worktree 隔离
 
-The shortest path is: add a project, load `leader-mode`, dispatch a worker, record the card, then watch the board. The full walkthrough is in [getting started](docs/getting-started.md); each action is documented in the [usage manual](docs/usage.md).
+每个任务一个 worktree、一个独立 dsh 实例与数据根；否则并行任务会互相覆盖插件版本、争抢会话与数据。
 
-1. **Add a project.** In the left sidebar's Projects section, click Add project and pick a directory. The project is bound to a Leader immediately; the project row is its entry point. Details: [projects](docs/usage.md#加项目) and [getting started](docs/getting-started.md#二加一个项目就得到一个-leader).
-2. **Load the protocol.** In the Leader session, load the `leader-mode` skill. It starts with `playbooks/program.md`, then the playbook for the current stage.
-3. **Dispatch.** `spawn_worker` creates a worker (optionally with `cardId` + `slot`, `model` / `effort`); `message_worker` sends the first message and starts it. Later messages steer the same worker. The worker inherits the Leader's sandbox and approval policy, and the receipt reports the effective permissions. Use `read_worker_session` to inspect and `list_workers` to inventory. Details: [dispatch](docs/usage.md#派工) and [worker control](docs/limitations.md#worker-的控制面).
-4. **Record task facts.** `create_card` / `update_card` / `list_cards` manage cards; content changes carry `expectedRevision`; links are deliverable entry points (not comment anchors) and use `links` / `addLinks`. Workers can only update their bound card's links; `read_card` returns a worker to its task, and long specs page via `specOffset`. Details: [cards](docs/usage.md#卡片).
-5. **Watch the board.** The right-panel Board tab shows cards for the current project and opens when the Leader creates one. Click a card for details, or a slot chip to open the executor. Details: [board](docs/usage.md#看板).
+建议把「建 worktree → 起实例」做成项目脚本：worktree 建好后还有依赖、独立实例与数据根要准备，手工做容易漏。本仓用 `npm run worktree:spawn <任务名>` 建 `.worktrees/<任务名>` 与 `feature/<任务名>` 并链接依赖，再用 `npm run dev` 起独立实例与数据根；这两个脚本就是本仓日常开发实际使用的，可以照抄或按项目改造。详见[开发](docs/development.md)与[架构](docs/architecture.md#项目与会话归属)。
 
-`LEADER.md` and `SLOTS.md` are the project manuals; `leader-mode` is the protocol; the target project's `AGENTS.md` remains the host's shared engineering instructions. None grant tool permissions. See [project prompts](docs/usage.md#项目提示词), [getting started](docs/getting-started.md#三两份文件leader-的人设worker-的工作方法), and the `init-leader-agent` skill for setup.
+## 当前限制
 
-## Prerequisites: multi-worktree isolation
+- **后台编排需要长驻宿主**（web / desktop / sdk）：headless 是一次性 CLI，没有载体接收回报。
+- **Leader 能纠偏、不能中止 worker**：宿主的 subagent 工具对 worker 无效；真卡死只能请人进它的会话处理。
+- **回报依赖轮次正常结束**：进程在 worker 跑完前被杀，那一轮不结算。
+- **看板与项目树只对项目会话展示**；标签栏是 DOM 注入，状态按项目存在浏览器 localStorage。
+- **卡片详情只能改链接或删卡**；其它卡片修改仍归 Leader 的工具。
+- **项目注册表只经左栏操作**，项目会话与官方工作区树并存。
+- **客户端与宿主版本耦合。**
 
-One worktree, one dsh instance and one data root per task; otherwise parallel tasks overwrite each other's plugin version and compete for sessions and data. Details: [development](docs/development.md) and [architecture](docs/architecture.md#项目与会话归属).
+完整限制清单见[已知限制](docs/limitations.md)。
 
-## Current limitations
-
-- **Long-lived host required** (web / desktop / sdk): headless is one-shot, so completion reports have nowhere to land.
-- **The Leader can steer but cannot cancel a worker**: host subagent tools do not apply; a wedged worker needs a human in its session.
-- **Completion reports depend on the turn ending normally**; a killed process leaves that turn unsettled.
-- **The board and project tree are project-session-only**; the tab bar is a DOM overlay with per-project state in browser localStorage.
-- **Card details only edit links or delete the card**; other card changes stay on the Leader tools.
-- **The project registry lives only in the left sidebar**, and project sessions coexist with the official workspace tree.
-- **The client is coupled to the host version.**
-
-The full list is in [known limitations](docs/limitations.md) (Chinese).
-
-## Development
+## 开发
 
 ```sh
-npm run worktree:spawn <task>     # create the worktree and feature branch
-cd .worktrees/<task>
-npm run dev                       # dsh instance mounting this worktree's plugin
-npm run check                     # full gate
-npm run e2e                       # browser e2e
+npm run worktree:spawn <任务名>   # 建 worktree + feature 分支
+cd .worktrees/<任务名>
+npm run dev                       # 起挂当前工作树的 dsh 实例
+npm run check                     # 全量门禁
+npm run e2e                       # 浏览器 e2e
 ```
 
-Data roots, instance overrides, build constraints and the test policy are in [development](docs/development.md) (Chinese); the command index is in [AGENTS.md](AGENTS.md#常用命令) (Chinese). `npm start` runs the daily instance.
+数据根、实例覆盖项、构建契约与测试口径见[开发](docs/development.md)；常用命令见 [AGENTS.md](AGENTS.md#常用命令)。`npm start` 起日常实例。
 
-## Contributing
+## 贡献
 
-Read [AGENTS.md](AGENTS.md) first: worktree discipline, verification requirements, and documentation rules live there. The short path is `npm install` → `npm run check` → open a PR. Commit messages are in Chinese, and non-trivial changes ship an `.agents/notes/` decision note in the same PR.
+改代码前先读 [AGENTS.md](AGENTS.md)：worktree 纪律、验证要求与文档机制都在那里。最短路径是 `npm install` → `npm run check` → 开 PR；提交信息用中文，非平凡改动同 PR 带 `.agents/notes/` 决策笔记。
 
-## Docs
+## 加入微信群
 
-| Document | Contents |
+欢迎本插件用户，以及对前沿 Agent 开发、多 Agent 编排感兴趣的朋友入群讨论：
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/fengshenx/dsh-leader-agent/7daa10e0d4fed1240cdec8004b0c6021e47c0e2f/docs/assets/readme/wechat-group.jpg" alt="dsh-leader-agent 微信群二维码" width="320">
+</p>
+
+二维码 7 天内有效，过期后会更新。
+
+## 文档
+
+| 文档 | 内容 |
 |---|---|
-| [AGENTS.md](AGENTS.md) | Repository rules and the task-routed reading index |
-| [docs/getting-started.md](docs/getting-started.md) | Walkthrough (Chinese): prerequisites, adding a project and its Leader, the two project files, one card from creation to drill-down |
-| [docs/usage.md](docs/usage.md) | Usage manual: projects, dispatch, cards, board, slots and manuals |
-| [docs/architecture.md](docs/architecture.md) | Layers, runtime model, data flow, persistence layout, host-contract landing spots |
-| [docs/limitations.md](docs/limitations.md) | Known limitations |
-| [docs/development.md](docs/development.md) | Dev environment, instances, build contract, test policy |
-| [docs/capability-gaps.md](docs/capability-gaps.md) | Measured evidence for host capability boundaries (read before touching host-side code) |
-| [docs/e2e-testing.md](docs/e2e-testing.md) | Browser e2e lane (commands, fixtures, mock conventions, screenshots) and manual evidence rules; assertion discipline and failure diagnosis live in `.agents/skills/e2e-scenarios/` |
-| [growing/](growing/) | Growth archive: case studies, copy, source files; media lives in OSS |
-| [.agents/notes/](.agents/notes/) | Decision memory for non-trivial changes |
-| [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | Protocol layer: dispatch, handoff, event scheduling, card upkeep, acceptance |
-| [.agents/skills/promo-video/](.agents/skills/promo-video/) | Promo pipeline for the repo dev env (needs Playwright + ffmpeg): storyboard, TTS timeline, capture/record, cover production; narration in `doubao-tts/`, covers in `promo-stills/` |
+| [AGENTS.md](AGENTS.md) | 仓库铁律与按任务查阅入口 |
+| [docs/getting-started.md](docs/getting-started.md) | 上手路线：使用前提、加项目与 Leader、两份项目文件、一张卡从创建到下钻 |
+| [docs/usage.md](docs/usage.md) | 使用手册：项目、派工、卡片、看板、槽位与手册 |
+| [docs/architecture.md](docs/architecture.md) | 分层、运行时模型、数据流、持久化布局、宿主契约落点 |
+| [docs/limitations.md](docs/limitations.md) | 已知限制清单 |
+| [docs/development.md](docs/development.md) | 开发环境、实例、构建契约与测试口径 |
+| [docs/capability-gaps.md](docs/capability-gaps.md) | 宿主能力边界的实测依据（改宿主侧前先读） |
+| [docs/e2e-testing.md](docs/e2e-testing.md) | 浏览器 e2e 车道（命令、夹具、mock 约定、截图）与人工取证规范；断言纪律与失败诊断见 `.agents/skills/e2e-scenarios/` |
+| [growing/](growing/) | 增长资产索引：案例、文案、源文件；媒体在 OSS |
+| [.agents/notes/](.agents/notes/) | 非平凡改动的决策记忆 |
+| [.agents/skills/leader-mode/](.agents/skills/leader-mode/) | 协议层：派工、接力、事件调度、卡片维护、验收裁决 |
+| [.agents/skills/promo-video/](.agents/skills/promo-video/) | 宣传片流水线（需本仓开发环境：Playwright + ffmpeg）：分镜、旁白时间轴、录制与封面制作；旁白见 `doubao-tts/`，封面见 `promo-stills/` |
 
-## Credits
+## 致谢
 
-The design drew on **Cursor's Project implementation** and **PStack's orchestration mechanism**: treating a project as a first-class entity, aggregating sessions and deliverables per project, and the leader-dispatches / executor-reports / delivery-board line.
+本方案在设计时参考过 **Cursor 的 Project 实现**与 **PStack 的编排机制**：把项目当成一等实体、按项目聚合会话与交付物，以及「leader 派工 / 执行者回报 / 交付看板」这条主线。
 
-The session tab bar drew on [dsh-session-tabs](https://github.com/QIN-SMART/dsh-session-tabs) (MIT) for main-panel anchoring and per-project tab persistence; see [THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE) for the full third-party inventory.
+会话标签栏参考了 [dsh-session-tabs](https://github.com/QIN-SMART/dsh-session-tabs)（MIT）的主面板定位与标签持久化实现；完整第三方清单见 [THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE)。
 
-Thanks also to the **DeepSeek Harness team**: the host plugin contract, and the worktree, Agent Note, progressive-disclosure and documentation practices this repository mirrors directly.
+也感谢 **DeepSeek Harness 团队**：宿主的插件契约，以及 worktree 并发、Agent Note、AGENTS.md 渐进式披露、文档防腐化这套工程实践，是本仓直接对照的来源。
 
-## License
+## 许可证
 
 [MIT](LICENSE)
 
-Third-party notices: [THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE).
+第三方许可：[THIRD_PARTY_LICENSE](THIRD_PARTY_LICENSE)。
