@@ -37,8 +37,18 @@ export function retainTargetOf(sessions, sessionId, fatherSessionId) {
 }
 
 /**
- * 槽位会话保留器。
+ * 宿主认不出会话 id 时的固定错误。
+ *
+ * 只吞这一类：已删除、从未存在或地址解析不出的会话。其它错误照抛，保留器的
+ * 同步调用在 React effect 里，吞掉全部异常会把真正的宿主故障藏成空心圈。
+ *
+ * @param {unknown} error - 捕获到的异常
+ * @returns {boolean} 是否宿主「未知会话」错误
  */
+export function isUnknownSessionError(error) {
+  return error instanceof Error && error.message.startsWith('sessions.retain: unknown session ')
+}
+
 export class SlotRetention {
   /**
    * @param {object} options - 选项
@@ -58,6 +68,8 @@ export class SlotRetention {
     this.entries = new Map()
     /** 已报告过的失败：同一个槽位只报一次，不随每次同步重复刷。 */
     this.reported = new Set()
+    /** 卸载后即使迟到的 effect 再同步，也不能重新保留会话。 */
+    this.disposed = false
   }
 
   /**
@@ -68,6 +80,7 @@ export class SlotRetention {
    * @param {Iterable<string>} needed - 当前需要的会话 id
    */
   sync(needed) {
+    if (this.disposed) return
     for (const [sessionId, entry] of this.entries) {
       if (needed.has(sessionId)) continue
       this.drop(sessionId, entry)
@@ -86,13 +99,16 @@ export class SlotRetention {
    * @param {string} sessionId - 会话 id
    */
   hold(sessionId) {
+    if (this.disposed) return
     let reference
     try {
       reference = this.retain(sessionId)
     } catch (error) {
+      // 只接住宿主认不出会话这一类；关闭标签后的迟到同步也可能撞上它。
+      if (!isUnknownSessionError(error)) throw error
       // 宿主不认识这个会话（已删、从未存在、或地址解析不出）：状态保持未知，
       // 不谎称空闲。这条要说出来——槽位上只表现为一个空心圈，没有日志就查不到。
-      this.report(sessionId, `看板无法保留会话 ${sessionId}，槽位状态未知：${error instanceof Error ? error.message : String(error)}`)
+      this.report(sessionId, `看板无法保留会话 ${sessionId}，槽位状态未知：${error.message}`)
       return
     }
     const entry = { reference, unsubscribe: undefined }
@@ -148,6 +164,8 @@ export class SlotRetention {
    * 不回调 `onDrop`：面板卸载后没有状态可更新，回调只会徒增一次无用的渲染。
    */
   dispose() {
+    if (this.disposed) return
+    this.disposed = true
     for (const entry of this.entries.values()) {
       entry.unsubscribe?.()
       entry.reference.release()

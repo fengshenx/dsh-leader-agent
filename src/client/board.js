@@ -336,16 +336,13 @@ function sameStatuses(left, right) {
  * @param {object[]} cards - 当前卡片
  * @param {() => object | undefined} getSessions - 取会话服务的延迟取值器
  * @param {Function} [useSessionStatus] - 宿主会话状态 hook，槽位没注入时为 `undefined`
- * @param {string} parentSessionId - 看板所属会话，卡片没记建卡会话时兜底当父会话
  * @returns {Map<string, object>} 会话 id 到状态
  */
-function useSlotStates(cards, getSessions, useSessionStatus, parentSessionId) {
+function useSlotStates(cards, getSessions, useSessionStatus) {
   const [snapshots, setSnapshots] = useState(() => new Map())
   const retention = useRef(undefined)
   const latest = useRef(getSessions)
   latest.current = getSessions
-  const parent = useRef(parentSessionId)
-  parent.current = parentSessionId
   // 建卡会话表：子代理槽位的地址要用真正的父会话，卡片自己记着 `createdBy`。
   // 表必须按 `cards` 记忆（每次渲染新建会连带 `needed` 变化，把同步效果拖成每
   // 帧跑一次），保留器的闭包经 ref 读最新值。
@@ -402,10 +399,11 @@ function useSlotStates(cards, getSessions, useSessionStatus, parentSessionId) {
         } catch (error) {
           // 有些会话在客户端会话目录里没有独立条目（如历史 subagent 时代的
           // worker），裸 id 认不出来。这类会话要靠
-          // `{ parentSessionId, childSessionId }` 地址才找得到——父会话是建这张卡
-          // 的会话，卡片没记时退回看板所属会话。
-          // 地址也拿不到就把原错误抛回去，由保留器记下「未知」，不静默换成空闲。
-          const target = retainTargetOf(sessions, sessionId, parents.current.get(sessionId) ?? parent.current)
+          // `{ parentSessionId, childSessionId }` 地址才找得到——父会话只能是建
+          // 这张卡的会话。看板当前挂在哪个会话上（尤其切到 worker 后）不是父子
+          // 关系，拿它兜底会得到宿主不认的地址；宁可把原错误抛回去，由保留器
+          // 记下「未知」，也不编造父会话。
+          const target = retainTargetOf(sessions, sessionId, parents.current.get(sessionId))
           if (target === undefined) throw error
           try {
             return sessions.retain(target, options)
@@ -731,7 +729,7 @@ function BoardPanel({
   }, [project, cards, loaded])
 
   const cardList = cards
-  const states = useSlotStates(cardList, getSessions, useSessionStatus, sessionId)
+  const states = useSlotStates(cardList, getSessions, useSessionStatus)
 
   const { active, done } = useMemo(() => ({
     active: sortActiveCards(
